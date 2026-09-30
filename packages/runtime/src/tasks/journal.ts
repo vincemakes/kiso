@@ -67,17 +67,33 @@ export function fsyncDir(dir: string): void {
 	}
 }
 
-/** Every complete record, in order. A torn last line (a write cut by a
- *  crash) is not a record: it is dropped, never guessed at. */
+/** A journal that is not a sequence of records with at most a torn tail. */
+export class TaskJournalCorruptError extends Error {
+	readonly file: string;
+	readonly line: number;
+	constructor(file: string, line: number) {
+		super(`task journal ${file} is corrupt at line ${line} — a record follows an unreadable one`);
+		this.name = "TaskJournalCorruptError";
+		this.file = file;
+		this.line = line;
+	}
+}
+
+/** Every complete record, in order. A torn LAST line (a write cut by a
+ *  crash) is not a record: it is dropped, never guessed at. An unreadable
+ *  line with a record after it is corruption, and it fails loudly — the
+ *  verdicts are inferences from what is present, so nothing is skipped. */
 export function readRecords(file: string): TaskRecord[] {
 	if (!existsSync(file)) return [];
 	const out: TaskRecord[] = [];
-	for (const line of readFileSync(file, "utf8").split("\n")) {
+	const lines = readFileSync(file, "utf8").split("\n");
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i]!;
 		if (line.trim() === "") continue;
 		try {
 			out.push(JSON.parse(line) as TaskRecord);
 		} catch {
-			// a torn line — only ever the last one; nothing after it exists
+			if (lines.slice(i + 1).some((l) => l.trim() !== "")) throw new TaskJournalCorruptError(file, i + 1);
 		}
 	}
 	return out;

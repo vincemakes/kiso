@@ -25,7 +25,7 @@ export interface ProcessTaskBackendOptions {
 
 export interface ProcessTaskBackend {
 	spawn(spec: { readonly dir: string; readonly env: Readonly<Record<string, string | undefined>> }): Promise<void>;
-	alive(pid: number, startedAt: string): boolean;
+	identify(pid: number, startedAt: string): "verified" | "gone" | "unverifiable";
 	signalStop(pid: number): void;
 }
 
@@ -45,19 +45,21 @@ export function processTaskBackend(options: ProcessTaskBackendOptions = {}): Pro
 			}
 			throw new Error(`the task runner did not record itself within ${options.startTimeoutMs ?? 10_000} ms (${dir})`);
 		},
-		alive(pid, startedAt) {
+		identify(pid, startedAt) {
 			try {
 				process.kill(pid, 0);
 			} catch (err) {
-				if ((err as NodeJS.ErrnoException).code !== "EPERM") return false;
+				if ((err as NodeJS.ErrnoException).code !== "EPERM") return "gone";
 			}
-			// The pid is live. Its start time decides whether it is still the
-			// runner; a time that cannot be read (now, or when the runner
-			// recorded "") is unverifiable — treated as alive, never as dead,
-			// so nothing is reported ended or re-run on a failed query.
+			// The pid is live. Only its OS start time says whose it is: equal to
+			// the recorded one — the runner; another — a stranger holds the
+			// pid; none readable (now, or recorded as "") — unverifiable,
+			// which is never taken for the runner (ADR-0058 §6: "when identity
+			// cannot be verified, the verdict is the gone row").
 			const id = processStartTime(pid);
-			if (id.kind === "unknown" || startedAt === "") return id.kind !== "gone";
-			return id.kind === "running" && id.startedAt === startedAt;
+			if (id.kind === "gone") return "gone";
+			if (id.kind === "unknown" || startedAt === "") return "unverifiable";
+			return id.startedAt === startedAt ? "verified" : "gone";
 		},
 		signalStop(pid) {
 			try {

@@ -7,7 +7,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { appendRecord, readRecords, RUNNER_START_WINDOW_MS, verdictOf, type TaskRecord } from "../src/tasks/journal.js";
+import { appendRecord, readRecords, RUNNER_START_WINDOW_MS, TaskJournalCorruptError, verdictOf, type TaskRecord } from "../src/tasks/journal.js";
 import { TaskManager, type TaskBackend, type TaskTransition } from "../src/tasks/manager.js";
 
 const now = 1_000_000;
@@ -52,15 +52,25 @@ describe("ADR-0058 §6 — the verdict table", () => {
 		appendFileSync(file, '{"type":"runner_sta');
 		expect(readRecords(file)).toEqual([planned]);
 	});
+	it("a bad line anywhere but the tail is corruption — it fails loudly, never skipped", () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-journal-"));
+		const file = join(dir, "journal.jsonl");
+		appendRecord(file, planned);
+		appendFileSync(file, '{"type":"command_sta\n');
+		appendRecord(file, { type: "terminal", ts: now, exitCode: 0, signal: null });
+		expect(() => readRecords(file)).toThrow(TaskJournalCorruptError);
+	});
 });
 
 /** A backend with no processes: `spawn` writes what a runner would. */
-function fakeBackend(): TaskBackend & { live: Set<number>; stopped: number[] } {
+function fakeBackend(): TaskBackend & { live: Set<number>; unverifiable: Set<number>; stopped: number[] } {
 	let pid = 100;
 	const live = new Set<number>();
+	const unverifiable = new Set<number>();
 	const stopped: number[] = [];
 	return {
 		live,
+		unverifiable,
 		stopped,
 		async spawn({ dir }) {
 			pid += 1;
@@ -68,7 +78,7 @@ function fakeBackend(): TaskBackend & { live: Set<number>; stopped: number[] } {
 			appendRecord(join(dir, "journal.jsonl"), { type: "runner_started", ts: Date.now(), pid, startedAt: `start-${pid}` });
 			appendRecord(join(dir, "journal.jsonl"), { type: "command_started", ts: Date.now() });
 		},
-		alive: (p, startedAt) => live.has(p) && startedAt === `start-${p}`,
+		identify: (p, startedAt) => (!live.has(p) ? "gone" : unverifiable.has(p) ? "unverifiable" : startedAt === `start-${p}` ? "verified" : "gone"),
 		signalStop: (p) => void stopped.push(p),
 	};
 }
@@ -156,6 +166,66 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		expect(fresh.get(b.id)!.state.kind).toBe("unknown");
 		expect(readRecords(join(root, b.id, "journal.jsonl")).map((r) => r.type)).toContain("stop_unconfirmed");
 		expect(fresh.stop(a.id, "model")).toBe(false);
+	});
+
+	it("an identity that cannot be verified is never read as the runner: unknown, and a stop is only requested — no signal", async () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		const m = new TaskManager({ root, backend });
+		const t = await m.start({ command: "sleep 9", cwd: "/" });
+		backend.unverifiable.add(101); // the pid is live; whose it is cannot be told
+		expect(m.get(t.id)!.state.kind).toBe("unknown");
+		expect(m.stop(t.id, "person")).toBe(true); // the runner, if it is ours, reads the journal
+		expect(readRecords(join(root, t.id, "journal.jsonl")).map((r) => r.type)).toContain("stop_requested");
+		expect(backend.stopped).toEqual([]); // never a signal to a pid that may be a stranger's
+		m.close();
+	});
+
+	it("an adopted task this process still owns is running even when its owner's start time was unreadable", () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		backend.live.add(4242);
+		backend.unverifiable.add(4242);
+		const m = new TaskManager({ root, backend });
+		const t = m.adopt({ command: "x", cwd: "/", runner: { pid: 4242, startedAt: "" }, stop: () => {} });
+		expect(m.get(t.id)!.state.kind).toBe("running");
+		m.close();
+		// a new manager (another process) cannot verify it: the gone row
+		expect(new TaskManager({ root, backend }).get(t.id)!.state.kind).toBe("unknown");
+	});
+
+	it("subscribe: every listener hears each transition; unsubscribing stops it", async () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		const m = new TaskManager({ root, backend, pollMs: 20 });
+		const a: string[] = [];
+		const b: string[] = [];
+		m.subscribe((t, tr) => void a.push(`${t.id}:${tr}`));
+		const off = m.subscribe((t, tr) => void b.push(`${t.id}:${tr}`));
+		const t1 = await m.start({ command: "x", cwd: "/" });
+		appendRecord(join(root, t1.id, "journal.jsonl"), { type: "terminal", ts: Date.now(), exitCode: 0, signal: null });
+		await new Promise((r) => setTimeout(r, 120));
+		off();
+		const t2 = await m.start({ command: "y", cwd: "/" });
+		appendRecord(join(root, t2.id, "journal.jsonl"), { type: "terminal", ts: Date.now(), exitCode: 0, signal: null });
+		await new Promise((r) => setTimeout(r, 120));
+		m.close();
+		expect(a).toEqual(["t1:ended", "t2:ended"]);
+		expect(b).toEqual(["t1:ended"]);
+	});
+
+	it("TaskInfo carries what delivery needs: the executionId, the backend, and who stopped it", async () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		backend.live.add(4242);
+		const m = new TaskManager({ root, backend });
+		const p = await m.start({ command: "x", cwd: "/", executionId: "ex-3" });
+		expect(m.get(p.id)).toMatchObject({ executionId: "ex-3", backend: "process" });
+		const f = m.adopt({ command: "y", cwd: "/", executionId: "ex-4", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		m.stop(f.id, "model");
+		f.ended(null, "SIGTERM");
+		expect(m.get(f.id)).toMatchObject({ executionId: "ex-4", backend: "foreground", stoppedBy: "model" });
+		m.close();
 	});
 
 	it("a directory without a journal is not a task", () => {
