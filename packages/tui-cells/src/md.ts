@@ -45,7 +45,7 @@ import { visibleWidth } from "./components.js";
 /** The block kinds. `fence-open`/`fence-line` are separate kinds on
  *  purpose: a fence's rows must be able to freeze ONE AT A TIME, and
  *  MD-1.4's `code-line` is the same shape for the same reason. */
-export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close" | "code-line";
+export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close" | "code-line" | "refdef";
 
 /** One block: its SOURCE lines, never a rendered form. The render is a
  *  pure function of (block, width), which is what makes the freeze
@@ -75,6 +75,14 @@ const HEADING = /^ {0,3}(#{1,6}) +(\S.*)$/;
 const RULE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,}) *$/;
 const QUOTE = /^ {0,3}> ?(.*)$/;
 const TABLE = /^ {0,3}\|/;
+/** A link reference definition: `[label]: url "title"` (the title may be
+ *  double-, single- or paren-quoted, and may be absent). Graphite R2f
+ *  (owner, 2026-09-30): it is its own block, one row per definition, dim.
+ *  DECLARED DEVIATION: CommonMark lets a definition not interrupt a
+ *  paragraph; here a complete line that is one starts its own block,
+ *  because the decision is taken line by line and a model writes its
+ *  definitions after a blank anyway. */
+const REFDEF = /^ {0,3}\[([^\]\n]+)\]:[ \t]*(\S+)(?:[ \t]+("[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*$/;
 const ITEM = /^( *)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
 /** MD-1.4 — a SETEXT underline. Only meaningful under an OPEN paragraph,
  *  which is the only place `#line` consults it. Before this, `=` was not a
@@ -125,6 +133,7 @@ function classify(line: string): MdKind | null {
 	if (HEADING.test(line)) return "heading";
 	if (QUOTE.test(line)) return "quote";
 	if (TABLE.test(line)) return "table";
+	if (REFDEF.test(line)) return "refdef";
 	if (ITEM.test(line)) return "list";
 	if (CODE.test(line)) return "code-line";
 	return "para";
@@ -151,6 +160,8 @@ function joins(kind: MdKind, line: string): boolean {
 			return c === "table";
 		case "quote":
 			return c === "quote";
+		case "refdef":
+			return c === "refdef";
 		default:
 			return false;
 	}
@@ -539,6 +550,8 @@ function blockBody(b: MdBlock, W: number, depth: number, base = "", hard = false
 			return listRows(b, W, base);
 		case "table":
 			return tableRows(b, W);
+		case "refdef":
+			return b.lines.flatMap((l) => refdefRows(l, W));
 		default:
 			// a paragraph's soft line breaks are spaces — the block reflows at
 			// the terminal's width, which is the whole point of rendering it.
@@ -546,6 +559,19 @@ function blockBody(b: MdBlock, W: number, depth: number, base = "", hard = false
 			if (hard) return b.lines.flatMap((l) => wrap(styled(l), W, "", ""));
 			return wrap(styled(b.lines.join(" ")), W, "", "");
 	}
+}
+
+/** Graphite R2f — one reference definition, as a row of its own:
+ *  `[label] url · title`, dim; the url and the title are data, never
+ *  styled. A streamed definition renders the moment its line completes,
+ *  and a reference to it earlier in the text has already frozen — which
+ *  is why a reference link shows its text and its label, not the url. */
+function refdefRows(line: string, W: number): string[] {
+	const p = palette();
+	const m = REFDEF.exec(line);
+	if (m === null) return wrap(line, W, "", "");
+	const title = m[3] === undefined ? "" : ` \u00b7 ${m[3].slice(1, -1)}`;
+	return wrap(`${p.dim}[${m[1]}] ${m[2]}${title}${p.reset}`, W, "", "  ");
 }
 
 /**
@@ -564,14 +590,24 @@ function blockBody(b: MdBlock, W: number, depth: number, base = "", hard = false
  *   out, so a nested span can never strand it. Italic is the one span
  *   that closes surgically (SGR 23), because it can.
  *
+ * Graphite R2f (owner, 2026-09-30) adds `***bold italic***`, code spans
+ * of any backtick run, a link's title (read and dropped), `<autolinks>`,
+ * `![images]` (named: `image` dim, the alt as a link, the url dim),
+ * `[reference][links]` (the text as a link, the label dim) and `<br>` (a
+ * line break).
+ *
  * Documented deviations from CommonMark: `_` never emphasizes (it is a
  * character in identifiers far more often than a marker in prose);
  * emphasis does not nest across a code span; `~~` makes its text dim
  * (R2b), never SGR 9, whose terminal support is too fragmented to
- * promise — Apple Terminal draws none.
+ * promise — Apple Terminal draws none; a shortcut reference `[label]`
+ * stays literal.
  */
 export function inlineSpans(text: string, base: string): string {
 	const p = palette();
+	/** a link's words: `blue` and underlined on a known ground (the base
+	 *  style reopened after them), bold off one */
+	const linkWords = (t: string): string => (p.blue !== "" ? `${p.blue}${p.underline}${t}${p.underlineEnd}${p.fgEnd}${base}` : `${p.bold}${t}${p.reset}${base}`);
 	let out = "";
 	let i = 0;
 	while (i < text.length) {
@@ -582,23 +618,78 @@ export function inlineSpans(text: string, base: string): string {
 			continue;
 		}
 		if (ch === "`") {
-			const end = text.indexOf("`", i + 1);
-			if (end > i) {
-				// a code span's content is LITERAL — no markers inside it mean
-				// anything, which is what makes `x | y` survive a table split
-				// DC-3: inline code is a SURFACE (`wash`), closed with washEnd
-				// rather than a reset so the span composes inside a heading's
-				// or a quote's own style.
-				// Graphite §5 (R2b): `blue`, no ground — like a code block (owner,
-				// 2026-09-29, choosing between the prototype's light blue ground
-				// and none, side by side in Apple Terminal)
-				out += p.blue !== "" ? `${p.blue}${text.slice(i + 1, end)}${p.fgEnd}${base}` : `${p.wash}${text.slice(i + 1, end)}${p.washEnd}${base}`;
-				i = end + 1;
+			// Graphite R2f: a code span opens with a RUN of backticks and
+			// closes at the next run of the SAME length (CommonMark), so
+			// ``` `` `x` `` ``` quotes its backticks; one space inside each end
+			// is padding and comes off. A run with no closer is literal.
+			let n = 1;
+			while (text[i + n] === "`") n += 1;
+			const end = codeCloser(text, i + n, n);
+			if (end < 0) {
+				out += text.slice(i, i + n);
+				i += n;
+				continue;
+			}
+			let body = text.slice(i + n, end);
+			if (body.length >= 2 && body.startsWith(" ") && body.endsWith(" ") && body.trim() !== "") body = body.slice(1, -1);
+			// a code span's content is LITERAL — no markers inside it mean
+			// anything, which is what makes `x | y` survive a table split
+			// DC-3: inline code is a SURFACE (`wash`), closed with washEnd
+			// rather than a reset so the span composes inside a heading's
+			// or a quote's own style.
+			// Graphite §5 (R2b): `blue`, no ground — like a code block (owner,
+			// 2026-09-29, choosing between the prototype's light blue ground
+			// and none, side by side in Apple Terminal)
+			out += p.blue !== "" ? `${p.blue}${body}${p.fgEnd}${base}` : `${p.wash}${body}${p.washEnd}${base}`;
+			i = end + n;
+			continue;
+		}
+		// Graphite R2f (owner, 2026-09-30): `<br>` is a line break wherever it
+		// stands — GitHub's reading; in a table cell the cell grows a row. The
+		// wrapper breaks at the newline (mdWrap's hard token).
+		if (ch === "<") {
+			const br = BR.exec(text.slice(i, i + 8));
+			if (br !== null) {
+				out += "\n";
+				i += br[0].length;
+				continue;
+			}
+			// an autolink — `<https://…>`, `<mailto:…>`, `<a@b.c>` — is the
+			// address itself, as a link, without its brackets
+			const auto = AUTOLINK.exec(text.slice(i));
+			if (auto !== null) {
+				out += linkWords(auto[1]!);
+				i += auto[0].length;
+				continue;
+			}
+		}
+		// Graphite R2f (owner, 2026-09-30): a terminal cannot draw an image, so
+		// it is named — `image` dim, the alt text as a link, the url dim
+		if (ch === "!" && text[i + 1] === "[") {
+			const img = LINK.exec(text.slice(i + 1));
+			const ref = img === null ? REFLINK.exec(text.slice(i + 1)) : null;
+			if (img !== null || ref !== null) {
+				const alt = (img ?? ref)![1]!;
+				const where = img !== null ? ` (${img[2]})` : ref![2] !== "" ? ` [${ref![2]}]` : "";
+				out += `${p.dim}image${p.dim === "" ? "" : `${p.reset}${base}`}${alt === "" ? "" : ` ${linkWords(alt)}`}${where === "" ? "" : `${p.dim}${where}${p.dim === "" ? "" : `${p.reset}${base}`}`}`;
+				i += 1 + (img ?? ref)![0].length;
+				continue;
+			}
+		}
+		if (text.startsWith("***", i)) {
+			// Graphite R2f: `***x***` is bold AND italic
+			const end = closerAt(text, i + 3, "***");
+			if (end >= 0) {
+				out += `${p.bold}${p.italic}${inlineSpans(text.slice(i + 3, end), `${base}${p.bold}${p.italic}`)}${p.italicEnd}${p.reset}${base}`;
+				i = end + 3;
 				continue;
 			}
 		}
 		if (text.startsWith("**", i)) {
-			const end = closerAt(text, i + 2, "**");
+			let end = closerAt(text, i + 2, "**");
+			// Graphite R2f: the bold closes at the END of an asterisk run, so
+			// `**a *b***` closes the italic inside it first (CommonMark's reading)
+			while (end >= 0 && text[end + 2] === "*") end += 1;
 			if (end >= 0) {
 				out += `${p.bold}${inlineSpans(text.slice(i + 2, end), `${base}${p.bold}`)}${p.reset}${base}`;
 				i = end + 2;
@@ -640,6 +731,16 @@ export function inlineSpans(text: string, base: string): string {
 				i += link[0].length;
 				continue;
 			}
+			// Graphite R2f (owner, 2026-09-30): `[text][label]` — the url is
+			// defined elsewhere, often below, and a row once drawn never
+			// changes; so the text reads as a link and the label says where its
+			// definition is (drawn dim, as its own row, when it arrives)
+			const ref = REFLINK.exec(text.slice(i));
+			if (ref !== null) {
+				out += `${linkWords(ref[1]!)}${ref[2] === "" ? "" : `${p.dim} [${ref[2]}]${p.dim === "" ? "" : `${p.reset}${base}`}`}`;
+				i += ref[0].length;
+				continue;
+			}
 		}
 		out += ch;
 		i += 1;
@@ -647,8 +748,29 @@ export function inlineSpans(text: string, base: string): string {
 	return out;
 }
 
-const ESCAPABLE = /[\\`*_~[\]()#|+.!>-]/;
-const LINK = /^\[([^\]\n]*)\]\(([^)\s\n]*)\)/;
+const ESCAPABLE = /[\\`*_~[\]()#|+.!<>-]/;
+/** `[text](url)`, and (R2f) a title after the url — `"…"`, `'…'` or `(…)`
+ *  — which a terminal has no hover to show, so it is read and dropped. */
+const LINK = /^\[([^\]\n]*)\]\(([^)\s\n]*)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*\)/;
+/** R2f: `[text][label]` and `[text][]`. The shortcut `[label]` alone is
+ *  left literal — a bracketed word in prose is far more common. */
+const REFLINK = /^\[([^\]\n]+)\]\[([^\]\n]*)\]/;
+/** R2f: `<scheme:…>` and `<a@b.c>`. */
+const AUTOLINK = /^<((?:https?|ftp):\/\/[^\s<>]+|mailto:[^\s<>]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})>/;
+/** R2f: `<br>`, `<br/>`, `<br />`, any case. */
+const BR = /^<br[ \t]*\/?>/i;
+
+/** The start of the next run of exactly `n` backticks at or after
+ *  `from`, or −1 — a longer or shorter run is content. */
+function codeCloser(text: string, from: number, n: number): number {
+	for (let i = text.indexOf("`", from); i >= 0; ) {
+		let m = 1;
+		while (text[i + m] === "`") m += 1;
+		if (m === n) return i;
+		i = text.indexOf("`", i + m);
+	}
+	return -1;
+}
 
 /** The closing delimiter for an emphasis opener at `from`, or −1.
  *  Strict on both edges: an opener followed by a space, or a closer
@@ -916,7 +1038,8 @@ function tableRows(b: MdBlock, W: number): string[] {
 
 /** A cell's column count: what a human sees, styling removed. */
 function cellWidth(cell: string): number {
-	return visibleWidth(inlineSpans(cell, ""));
+	// R2f: a `<br>` makes a cell several rows — its width is the widest
+	return Math.max(0, ...inlineSpans(cell, "").split("\n").map(visibleWidth));
 }
 
 /** MD-1.1 — the SHRINK FLOOR: eight columns, four CJK characters. A
@@ -1041,6 +1164,8 @@ interface Tok {
 	readonly text: string;
 	readonly w: number;
 	readonly space: boolean;
+	/** R2f: a forced break (a `<br>`) — the row ends here */
+	readonly hard?: true;
 }
 
 /** May a row break between `prev` and `ch`? Only where a script allows
@@ -1079,6 +1204,12 @@ function tokens(text: string): Tok[] {
 		const cp = text.codePointAt(i)!;
 		const ch = String.fromCodePoint(cp);
 		i += ch.length;
+		if (ch === "\n") {
+			flush();
+			out.push({ text: "", w: 0, space: false, hard: true });
+			prev = "";
+			continue;
+		}
 		if (ch === " " || ch === "\t") {
 			flush();
 			out.push({ text: " ", w: 1, space: true });
@@ -1187,6 +1318,10 @@ export function mdWrap(text: string, W: number, first: string, hang: string): st
 		pendW = 0;
 	};
 	for (const t of tokens(text)) {
+		if (t.hard === true) {
+			close();
+			continue;
+		}
 		if (t.space) {
 			// a space at a break vanishes; inside a row it is held until the
 			// next word earns it
