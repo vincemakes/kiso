@@ -131,8 +131,8 @@ not another recalibration)
   `onUserMessage` once and the runtime's never. Overturns architecture
   §5 ("Run — one user turn") and "input lands between runs".
 - 0058 — Tasks: execution that outlives the tool call that started it —
-  **Accepted**, 2026-09-28, ratified by the owner; Amendment 1
-  2026-09-30. A foreground command that outlives `foregroundMs` (60 s by
+  **Accepted**, 2026-09-28, ratified by the owner; Amendments 1–2
+  2026-09-30, Amendment 3 2026-10-01. A foreground command that outlives `foregroundMs` (60 s by
   default; the model's value wins) is promoted to a task, never killed;
   `background: true` starts one under a detached runner that survives
   kiso; `readyWhen` ends the wait on a ready line. A write-ahead journal
