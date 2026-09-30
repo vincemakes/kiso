@@ -391,6 +391,22 @@ describe("win32: processStartTime — running, gone, or unknown (never a failed 
 	});
 });
 
+describe("win32: a task stop is the journal's stop_requested record, never a signal", () => {
+	it("signalStop does not call process.kill — on Windows that is TerminateProcess, and the runner would die without its record", () => {
+		bareWindows();
+		const kill = vi.spyOn(process, "kill").mockImplementation((() => true) as typeof process.kill);
+		processTaskBackend({ runnerPath: "/nowhere/task-runner.js" }).signalStop(4242);
+		expect(kill).not.toHaveBeenCalled();
+		expect(cp.runs.some((r) => /taskkill/i.test(r.file))).toBe(false);
+	});
+
+	it("POSIX keeps SIGTERM as the fast path (guard)", () => {
+		const kill = vi.spyOn(process, "kill").mockImplementation((() => true) as typeof process.kill);
+		processTaskBackend({ runnerPath: "/nowhere/task-runner.js" }).signalStop(4242);
+		expect(kill).toHaveBeenCalledWith(4242, "SIGTERM");
+	});
+});
+
 describe("the task runner's detached spawn is hidden (no console window on Windows)", () => {
 	it("windowsHide: true beside detached: true", async () => {
 		const dir = ws();
