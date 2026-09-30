@@ -889,16 +889,16 @@ body.
 
 **8.1 A band names itself.** Its opening row is the hairline with its name
 in it: `─── commands ───…`, the rule in `line`, the name bold gold —
-`commands`, `files`, `sessions`, `keys`, `needs you`, `question`, `model`,
+`commands`, `files`, `resume`, `keys`, `needs you`, `question`, `model`,
 `mode`, `status`, `settings` — and what follows the name in the label
-(`· this workspace 2 of 5 · tab all`) `dim`. One row, not a hairline and
+(`· this workspace · 2 of 5`) `dim`. One row, not a hairline and
 a title row: every band and panel keeps the height it had (R3a). It closes
 on the hairline. With scrollback behind it, nothing else says where the
 surface begins. Off a known ground the row is one dim span, the same
 words.
 
 **8.2 A band is a WINDOW, not the whole list.** Five rows and a
-counter — and the counter appears only when the list is actually cut,
+counter (the resume picker's own window is §8.11) — and the counter appears only when the list is actually cut,
 because over rows you can all see it says nothing they do not. Rows
 are a table: the name column padded to the longest entry in the WHOLE
 list so the descriptions do not shift as the window scrolls, and a
@@ -1112,6 +1112,66 @@ interrupts the person (owner, 2026-09-28). The text is escaped and stripped
 of bidi and invisible formatting code points, and the name is cut at 40
 cells. On exit kiso writes the ready form, so a closed session never leaves
 a working or waiting mark behind.
+
+**8.11 The resume picker** (P1, owner, 2026-09-30: option B revision 2,
+chosen from three designs after a comparison with the reference picker).
+`/resume` and `kiso resume` open one band:
+
+```
+─── resume · this workspace · 8 of 12 ─────────────────────────────────────
+  fix the flaky resize test in the PTY pool   interrupted  12m  14 turns
+▌ add /name so a session can be called…                     2h   9 turns    selected, on washAsk
+▌ completed clean · started Sep 30 15:51 · profile ds                       the opened row
+  why does the cache hit rate drop after…     1 ask         5h   3 turns
+↓ refactor the approval panel into one…                     1d  22 turns
+  ↑↓ move · ⏎ resumes · tab 4 more elsewhere · esc                   2/8
+─────────────────────────────────────────────────────────────────────────
+❯ █filter by title or id
+```
+
+- A TABLE: the title, a state word, the age, the turns — columns measured
+  over every session in the scope, never the filtered subset, so nothing
+  moves while the person types. Titles are cut by cells (a CJK character
+  is two) with an ellipsis. The table is as wide as its longest title
+  needs, so on a wide terminal the facts stay beside the titles. As the
+  width shrinks the turns give way, then the workspace, then the state,
+  then the age.
+- The state is a word only when it asks for attention: `interrupted`
+  blue (unfinished work, the running card's colour), an ask or an
+  uncertain side effect gold (it waits for the person), a failed ending
+  red, an unknown one dim. A finished session's cell is empty.
+- The selected row is §8.2's selection, its title bold, and it OPENS into
+  a second row on the same bar: the whole note (`sessionNote`, the words
+  `kiso sessions` prints — one definition), then while they fit when it
+  started (read from the id, which is its UTC stamp, said in local time),
+  its profile, a foreign session's workspace, and its id.
+- Eight sessions on a terminal 30 rows or taller, five below. A dim `↑` or
+  `↓` in column 0 of the first or last row says the list goes on (column 1
+  empty, so it never reads as the title's first letter). The window keeps
+  the cursor one row inside its edges while more lies past them, so a
+  marked row is never the selected one.
+- The key row closes the band: the keys, and the selection's place in the
+  filtered list aligned to the table's edge. Narrow, the scope's key gives
+  way, then the arrows'; enter and esc stay. `tab N more elsewhere` counts
+  what the other view adds — DECLARED CHANGE of 0.40.1's row that counted
+  the sessions with no workspace above the list: they are counted there
+  with the rest, and tab lists them as `unknown`. The default view still
+  never falls back to every workspace.
+- Under tab a column says where each session is from: blank for this
+  workspace, the last directory (the path, home as `~`, from 110 columns),
+  `unknown`.
+- Typing filters (the subsequence rank, title before id); the matched
+  letters of a title are bold gold, and the band says `N of M match`. With
+  nothing typed the input carries a dim `filter by title or id` after the
+  drawn cursor — DECLARED EXCEPTION to §7.8's empty input (owner,
+  2026-09-29): the input is the picker's filter, so the hint names the key
+  about to be pressed; everywhere else the empty input stays empty.
+- Empty: `nothing matches "…"` with what was typed, or `no session from
+  this workspace yet`; the key row stays.
+- Left out, and why: a row per session of two lines and a blank (three
+  sessions to a screen), a bordered search box (box glyphs seam, §1.5, and
+  the input is the search field), a git branch column (kiso records no
+  branch — a runtime change). Not now: `space` to preview a session.
 
 ---
 
