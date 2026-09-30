@@ -130,6 +130,15 @@ not another recalibration)
   an ingress sealed by every terminal, a person's input through
   `onUserMessage` once and the runtime's never. Overturns architecture
   §5 ("Run — one user turn") and "input lands between runs".
+- 0058 — Tasks: execution that outlives the tool call that started it —
+  **Accepted**, 2026-09-28, ratified by the owner; Amendment 1
+  2026-09-30. A foreground command that outlives `foregroundMs` (60 s by
+  default; the model's value wins) is promoted to a task, never killed;
+  `background: true` starts one under a detached runner that survives
+  kiso; `readyWhen` ends the wait on a ready line. A write-ahead journal
+  per task and a verified runner identity decide every state after a
+  crash; nothing is ever re-run. Completions reach the model through
+  ADR-0057's admission seam, batched, with at most one autonomous wake.
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's

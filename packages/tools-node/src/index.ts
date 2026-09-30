@@ -18,12 +18,13 @@
  * always has a path to the full content.
  */
 
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import type { SearchReply, SearchRequest } from "./search-worker.js";
+import { killTree, processStartTime, RotatingOutput, startCommand } from "./process.js";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -83,6 +84,13 @@ const ACI2_LINES_SHOWN = 5;
 const ACI2_OFFSETS_KEPT = 500;
 const OUTPUT_CAP = 100_000; // chars of output a tool result may carry
 const DEFAULT_SHELL_TIMEOUT_MS = 30_000;
+/** ADR-0058 §3: with tasks, how long the shell waits before a command
+ *  continues as a task (the model's own value wins). */
+const DEFAULT_FOREGROUND_MS = 60_000;
+/** A promoted task's output file rotates here, as a runner's does. */
+const TASK_OUTPUT_CAP = 64 * 1024 * 1024;
+/** A task's stop: SIGTERM, this long, then the confirmed sweep. */
+const TASK_STOP_GRACE_MS = 5_000;
 // the token round: the scoped-read defaults — read_file shows the head 200 lines
 // of a large file (with an actionable continuation note, never a silent
 // drop), search_text caps at 50 excerpts, list_dir at 200 entries. The
@@ -180,6 +188,24 @@ export class PathEscapeError extends Error {
 	}
 }
 
+/** ADR-0058 §4: read_file's resolution — the workspace, or an absolute path
+ *  inside one of the host-granted read-only roots. The containment check is
+ *  the workspace's own, applied to that root. */
+function resolveReadable(opts: WorkspaceToolsOptions, input: string, sessionId?: string): { readonly full: string; readonly root: string } {
+	if (isAbsolute(input)) {
+		// 3b: the session's own task directory, when the host wires tasks
+		const taskRoot = opts.tasks?.(sessionId)?.root;
+		for (const root of [...(opts.extraReadRoots ?? []), ...(taskRoot !== undefined ? [taskRoot] : [])]) {
+			if (!existsSync(root)) continue;
+			for (const base of [root, realpathSync(root)]) {
+				const rel = relative(base, input);
+				if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) return { full: resolveWithinRoot(root, rel), root };
+			}
+		}
+	}
+	return { full: resolveWithinRoot(opts.workspaceRoot, input), root: opts.workspaceRoot };
+}
+
 export function resolveWithinRoot(root: string, input: string): string {
 	if (isAbsolute(input)) {
 		throw new PathEscapeError(`absolute paths are not allowed — use workspace-relative paths: ${input}`);
@@ -259,6 +285,17 @@ export interface WorkspaceToolsOptions {
 	 *  secrets — so it says so. Ignored when `shellEnv` is "inherit", which is
 	 *  an explicit opt-in to the whole environment. */
 	readonly secretEnvNames?: readonly string[];
+	/** ADR-0058 §4: read-only roots `read_file` may also serve, by ABSOLUTE
+	 *  path and only inside them — a session's task outputs. Nothing else
+	 *  widens: every other tool, and every relative path, stays inside the
+	 *  workspace. */
+	readonly extraReadRoots?: readonly string[];
+	/** ADR-0058 (3b): the session's tasks. With them the shell promotes a
+	 *  command that outlives its wait instead of killing it, can start one
+	 *  in the background, `task_stop` joins the tools, and `read_file`
+	 *  serves the session's task outputs. Absent: today's shell, its schema
+	 *  byte for byte. */
+	readonly tasks?: (sessionId: string | undefined) => ShellTasks | undefined;
 	/**
 	 * DC-54 — the bounds that keep a tool call finite. Every field is
 	 * optional and defaults to the constant beside it; a host embedding
@@ -431,15 +468,15 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 		effects: { precommitSafe: true, concurrency: "shared" },
 		promptSnippet: "read_file — whole files or offset/limit ranges, workspace-relative paths",
 		promptGuidelines: ["read only the range you need — offset/limit beat whole-file reads"],
-		execute: async ({ path, offset, limit }) => {
+		execute: async ({ path, offset, limit }, ctx) => {
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			try {
-				const full = resolveWithinRoot(opts.workspaceRoot, path);
+				const { full, root } = resolveReadable(opts, path, ctx?.sessionId);
 				// the credential store is never served (protected.ts) — checked
 				// by the disk's own resolution and by inode, before any read
 				const guard = protectedIdentity(opts.protectedFiles);
 				if (isProtectedPath(full, guard)) return precondition(protectedRefusalText("read_file", path));
-				const denied = await inodeReadPolicy(opts.workspaceRoot, full);
+				const denied = await inodeReadPolicy(root, full);
 				if (denied !== null) return escapeResult(denied);
 				// DC-54 — the ceiling. `read_file` had the same unbounded
 				// `readFileSync` that froze `search_text`, and the same 994 GB
@@ -1257,54 +1294,139 @@ export { PROTECTED_REFUSAL, diskPath, isProtectedPath, protectedIdentity, protec
  *  read-only shell allow holds a shell read to the same definition rather
  *  than a copy of it. */
 export { isCredentialName, isCredentialPath } from "./corpus.js";
+// ADR-0058: the process task backend (the runner ships beside it)
+export { processTaskBackend, type ProcessTaskBackend, type ProcessTaskBackendOptions } from "./process-backend.js";
 
-export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; timeoutMs?: number }> {
-	return defineTool<{ command: string; timeoutMs?: number }>({
+/**
+ * ADR-0058 (3b): a session's tasks, as the shell and `task_stop` reach them.
+ * The runtime's TaskManager satisfies it structurally; the host hands one
+ * per session (tools-node takes no dependency on the runtime).
+ */
+export interface ShellTasks {
+	/** `<store root>/<session>.tasks` — read_file serves it. */
+	readonly root: string;
+	/** `background: true` — a runner owns the command (it survives kiso). */
+	start(spec: {
+		readonly command: string;
+		readonly cwd: string;
+		readonly env?: Readonly<Record<string, string | undefined>>;
+		readonly executionId?: string;
+		readonly readyWhen?: string;
+		readonly profile?: "oneshot" | "service";
+	}): Promise<{ readonly id: string; readonly outputPath: string }>;
+	/** A promotion: the running child becomes a task this process owns. */
+	adopt(spec: {
+		readonly command: string;
+		readonly cwd: string;
+		readonly executionId?: string;
+		readonly readyWhen?: string;
+		readonly runner: { readonly pid: number; readonly startedAt: string };
+		readonly ready?: boolean;
+		readonly stop: () => void;
+	}): {
+		readonly id: string;
+		readonly outputPath: string;
+		ready(match: string): void;
+		ended(exitCode: number | null, signal: string | null): void;
+		unconfirmed(pids: readonly number[]): void;
+	};
+	stop(id: string, by: "model"): boolean;
+	get(id: string): { readonly state: { readonly kind: string } } | undefined;
+}
+
+type ShellInput = { command: string; timeoutMs?: number; foregroundMs?: number; background?: boolean; readyWhen?: string };
+
+/** This process as a promoted task's owner — read once. */
+let selfIdentity: { readonly pid: number; readonly startedAt: string } | undefined;
+function ownerIdentity(): { readonly pid: number; readonly startedAt: string } {
+	if (selfIdentity === undefined) {
+		const id = processStartTime(process.pid);
+		selfIdentity = { pid: process.pid, startedAt: id.kind === "running" ? id.startedAt : "" };
+	}
+	return selfIdentity;
+}
+
+export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
+	// ADR-0058 (3b): the task-aware contract exists only where tasks are
+	// wired; a host without them keeps today's schema byte for byte.
+	const withTasks = opts.tasks !== undefined;
+	return defineTool<ShellInput>({
 		name: "shell",
-		description:
-			"Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
-		parameters: {
-			type: "object",
-			properties: {
-				command: { type: "string", description: "The command to run" },
-				timeoutMs: { type: "number", description: "Timeout in ms (default 30000)" },
-			},
-			required: ["command"],
-			additionalProperties: false,
-		},
+		description: withTasks
+			? "Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. A command still running after foregroundMs is never killed: it continues as a background task, the result gives its id and output path, and you are notified when it ends. Fails loudly on a non-zero exit."
+			: "Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
+		parameters: withTasks
+			? {
+					type: "object",
+					properties: {
+						command: { type: "string", description: "The command to run" },
+						foregroundMs: { type: "number", description: "How long to wait for the result, in ms (default 60000); if you need the result to go on, allow enough time" },
+						background: { type: "boolean", description: "Start as a background task and return at once: servers, watchers, long jobs" },
+						readyWhen: { type: "string", description: "A literal piece of the output that means ready (a server's ready line): the wait ends there and the command keeps running as a task" },
+						timeoutMs: { type: "number", description: "Deprecated: use foregroundMs" },
+					},
+					required: ["command"],
+					additionalProperties: false,
+				}
+			: {
+					type: "object",
+					properties: {
+						command: { type: "string", description: "The command to run" },
+						timeoutMs: { type: "number", description: "Timeout in ms (default 30000)" },
+					},
+					required: ["command"],
+					additionalProperties: false,
+				},
 		promptSnippet: "shell — any command the task needs (builds, tests, git, curl, system queries)",
 		promptGuidelines: ["commands run in the workspace root; on failure read the error and adjust — never repeat blindly"],
-		execute: async ({ command, timeoutMs }, ctx) => {
-			const timeout = timeoutMs ?? DEFAULT_SHELL_TIMEOUT_MS;
+		execute: async ({ command, timeoutMs, foregroundMs, background, readyWhen }, ctx) => {
+			// the session's tasks, when wired and this call has a session
+			const tasks = opts.tasks?.(ctx.sessionId);
+			const timeout = foregroundMs ?? timeoutMs ?? (tasks !== undefined ? DEFAULT_FOREGROUND_MS : DEFAULT_SHELL_TIMEOUT_MS);
 			// E group: a PRE-aborted signal never spawns the command.
 			if (ctx.signal.aborted) {
 				return { content: "shell aborted before start", isError: true, errorKind: "fatal" };
+			}
+			// bootstrap #3 (finding #7): the shell child NEVER inherits kiso's own
+			// provider credentials by default — only the explicit
+			// shellEnv: "inherit" opt-in keeps them. A record (ADR-0031
+			// Amendment 1) rides on the STRIPPED base and wins per key.
+			const env = opts.shellEnv === "inherit" ? process.env : { ...strippedShellEnv(process.env, opts.secretEnvNames), ...(opts.shellEnv ?? {}) };
+			if (background === true) {
+				if (tasks === undefined) return { content: "background tasks are not available here — run the command in the foreground", isError: true, errorKind: "precondition" };
+				const task = await tasks.start({
+					command,
+					cwd: opts.workspaceRoot,
+					env,
+					...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
+					...(readyWhen !== undefined ? { readyWhen } : {}),
+					profile: readyWhen !== undefined ? "service" : "oneshot",
+				});
+				return { content: `started background task ${task.id}. ${taskNote(task.outputPath)}`, isError: false };
 			}
 			return new Promise((resolvePromise) => {
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
 				// not just the outer shell (Area 4). cwd is the workspace.
-				// bootstrap #3 (finding #7): the shell child NEVER inherits kiso's own
-				// provider credentials by default — only the explicit
-				// shellEnv: "inherit" opt-in keeps them. A record (ADR-0031
-				// Amendment 1) rides on the STRIPPED base and wins per key.
-				const child = spawn(command, {
-					shell: true,
-					detached: true,
-					cwd: opts.workspaceRoot,
-					stdio: ["ignore", "pipe", "pipe"],
-					env:
-						opts.shellEnv === "inherit"
-							? process.env
-							: { ...strippedShellEnv(process.env, opts.secretEnvNames), ...(opts.shellEnv ?? {}) },
-				});
+				const child = startCommand(command, { cwd: opts.workspaceRoot, env });
 				let stdout = "";
 				let stderr = "";
 				let stdoutDropped = 0;
 				let stderrDropped = 0;
-				let exited = false;
 				let settled = false;
 				let killing = false;
+				// ADR-0058 (3b): once promoted, the child's output goes to its task
+				let promoted: { readonly task: ReturnType<ShellTasks["adopt"]>; readonly out: RotatingOutput } | null = null;
+				let stopping = false;
+				let readySeen = false;
+				let recent = ""; // the tail readyWhen is matched against
+				const matchReady = (text: string): boolean => {
+					if (readyWhen === undefined || readySeen) return false;
+					recent = (recent + text).slice(-(readyWhen.length + 65_536));
+					if (!recent.includes(readyWhen)) return false;
+					readySeen = true;
+					return true;
+				};
 
 				// TUI2-R1 (C): the progress sidecar — truncated at the start
 				// (a kill -9 leftover is cleared, never appended to), appended
@@ -1345,133 +1467,50 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					resolvePromise(result);
 				};
 
-				/**
-				 * Kill the whole tree and CONFIRM it exited (rounds 8/11):
-				 *
-				 * 1. FREEZE the root (SIGSTOP) FIRST — a stopped shell cannot
-				 *    fork new descendants while we enumerate;
-				 * 2. repeatedly discover AND freeze descendants (pid-table
-				 *    sweep — the only way to see a setsid()-escaped process)
-				 *    until the set is STABLE (two identical scans), so the
-				 *    enumeration cannot miss a mid-sweep fork;
-				 * 3. SIGKILL the process group and every tracked pid;
-				 * 4. poll every tracked pid to death. If ANY tracked pid is
-				 *    still alive at the deadline, the verdict is NOT
-				 *    "aborted"/"timed out" — it is an explicit UNCERTAIN
-				 *    error naming the survivors: the side effect may have
-				 *    outlived the tool, and the caller must not assume it
-				 *    was killed.
-				 */
-				const killTree = (): Promise<{ unconfirmed: number[] }> =>
-					new Promise((resolveKill) => {
-						const tracked = new Set<number>();
-						// round 11 (adversarial): the ROOT itself is tracked too — the
-						// verdict must not read "aborted" while the root
-						// survives. DOCUMENTED LIMITS: (1) a process that
-						// forks between SIGSTOP delivery and the next scan,
-						// setsids, and is then reparented when its parent is
-						// killed can escape the enumeration entirely — it is
-						// untracked and unknowable from the pid table; the
-						// platform cannot confirm it. (2) if THIS process is
-						// killed between the first SIGSTOP and the SIGKILL
-						// sweep, the stopped descendants stay permanently
-						// stopped (nobody SIGCONTs orphans) — the inherent
-						// cost of freeze-first. Both limits are recorded here
-						// so no claim of "the whole tree is gone" is ever
-						// stronger than what the platform can prove.
-						if (child.pid !== undefined && child.pid > 0) {
-							tracked.add(child.pid);
-							try {
-								process.kill(child.pid, "SIGSTOP"); // freeze the root
-							} catch {
-								// already gone
-							}
-						}
-						// Stable discovery: freeze as we go; stop when two
-						// consecutive scans are identical.
-						let previous = new Set<number>();
-						for (let i = 0; i < 10; i++) {
-							const current = new Set(descendantsOf(child.pid ?? 0));
-							for (const pid of current) {
-								tracked.add(pid);
-								try {
-									process.kill(pid, "SIGSTOP"); // freeze each descendant
-								} catch {
-									// already gone
-								}
-							}
-							if (current.size === previous.size && [...current].every((pid) => previous.has(pid))) {
-								break;
-							}
-							previous = current;
-						}
-						// The process group (E group: never kill an undefined/0
-						// pid), which also takes the frozen root down.
-						if (child.pid !== undefined && child.pid > 0) {
-							try {
-								process.kill(-child.pid, "SIGKILL");
-							} catch {
-								try {
-									child.kill("SIGKILL");
-								} catch {
-									// already gone
-								}
-							}
-						}
-						for (const pid of tracked) {
-							try {
-								process.kill(pid, "SIGKILL");
-							} catch {
-								// already gone
-							}
-						}
-						const confirm = (): void => {
-							void waitAllDead([...tracked]).then((unconfirmed) => resolveKill({ unconfirmed }));
-						};
-						if (exited) {
-							confirm();
-							return;
-						}
-						const fallback = setTimeout(confirm, 2000);
-						child.once("close", () => {
-							clearTimeout(fallback);
-							confirm();
-						});
-					});
 
 				child.stdout?.on("data", (d: Buffer) => {
+					if (promoted !== null) return feedTask(d);
 					const text = d.toString();
 					progress(text);
 					const r = capAccumulate(stdout, text);
 					stdout = r.text;
 					stdoutDropped += r.dropped;
+					if (tasks !== undefined && matchReady(text)) promote("ready");
 				});
 				child.stderr?.on("data", (d: Buffer) => {
+					if (promoted !== null) return feedTask(d);
 					const text = d.toString();
 					progress(text);
 					const r = capAccumulate(stderr, text);
 					stderr = r.text;
 					stderrDropped += r.dropped;
+					if (tasks !== undefined && matchReady(text)) promote("ready");
 				});
 				child.on("error", (err) => {
 					settle({ content: `shell failed: ${err.message}`, isError: true, errorKind: "fatal" });
 				});
-				child.on("close", (code) => {
-					exited = true;
+				// R-C item 2: the overflow note names WHAT was dropped and
+				// the recovery path — a silent tail-cut would be the exact
+				// destructive class this round kills (W10 made model-facing).
+				const overflowNote = (dropped: number, stream: string): string =>
+					dropped === 0
+						? ""
+						: `\n… [${stream} capped at ${OUTPUT_CAP} chars — ${dropped} more chars dropped; capture to a file and read it with read_file, or narrow the command]`;
+				const combinedOutput = (): string =>
+					(stdout + overflowNote(stdoutDropped, "stdout") + (stderr ? `\n[stderr] ${stderr}` : "") + overflowNote(stderrDropped, "stderr")).trim();
+				let exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
+				child.on("close", (code, signal) => {
+					if (promoted !== null) {
+						// a stop's verdict owns the task's last record
+						exitInfo = { code, signal };
+						if (!stopping) {
+							promoted.out.close();
+							promoted.task.ended(code, signal);
+						}
+						return;
+					}
 					if (killing) return; // the timeout/abort verdict owns the result
-					// R-C item 2: the overflow note names WHAT was dropped and
-					// the recovery path — a silent tail-cut would be the exact
-					// destructive class this round kills (W10 made model-facing).
-					const overflowNote = (dropped: number, stream: string): string =>
-						dropped === 0
-							? ""
-							: `\n… [${stream} capped at ${OUTPUT_CAP} chars — ${dropped} more chars dropped; capture to a file and read it with read_file, or narrow the command]`;
-					const combined = (
-						stdout +
-						overflowNote(stdoutDropped, "stdout") +
-						(stderr ? `\n[stderr] ${stderr}` : "") +
-						overflowNote(stderrDropped, "stderr")
-					).trim();
+					const combined = combinedOutput();
 					settle(
 						code === 0
 							? { content: combined || "(no output)", isError: false }
@@ -1487,7 +1526,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 						: "";
 				const onAbort = (): void => {
 					killing = true;
-					void killTree().then(({ unconfirmed }) =>
+					void killTree(child).then(({ unconfirmed }) =>
 						settle({
 							content: `shell aborted${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}`,
 							isError: true,
@@ -1496,9 +1535,62 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 					);
 				};
 				ctx.signal.addEventListener("abort", onAbort);
+				/** ADR-0058 §3: the wait is over — the command continues as a
+				 *  task this process owns; nothing is killed. */
+				const promote = (reason: "waited" | "ready"): void => {
+					if (settled || killing || promoted !== null || tasks === undefined) return;
+					const task = tasks.adopt({
+						command,
+						cwd: opts.workspaceRoot,
+						...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
+						...(readyWhen !== undefined ? { readyWhen } : {}),
+						runner: ownerIdentity(),
+						ready: reason === "ready",
+						stop: () => stopPromoted(),
+					});
+					const out = new RotatingOutput(task.outputPath, TASK_OUTPUT_CAP);
+					const sofar = combinedOutput();
+					if (sofar !== "") out.write(Buffer.from(`${sofar}\n`));
+					promoted = { task, out };
+					const tail = sofar.length > 2048 ? `…${sofar.slice(-2048)}` : sofar;
+					settle({
+						content:
+							(reason === "ready" ? `ready — the output contains "${readyWhen}"; ` : `still running after ${timeout} ms; `) +
+							`continued as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath)}` +
+							(tail !== "" ? `\nOutput so far:\n${tail}` : ""),
+						isError: false,
+					});
+				};
+				const feedTask = (d: Buffer): void => {
+					if (promoted === null) return;
+					promoted.out.write(d);
+					if (matchReady(d.toString())) promoted.task.ready(readyWhen!);
+				};
+				/** task_stop, or a clean exit: TERM, a grace, the confirmed
+				 *  sweep; survivors mean no terminal — the task stays unknown. */
+				const stopPromoted = (): void => {
+					if (stopping) return;
+					stopping = true;
+					void killTree(child, { graceMs: TASK_STOP_GRACE_MS }).then(async ({ unconfirmed }) => {
+						if (promoted === null) return;
+						if (unconfirmed.length > 0) {
+							promoted.task.unconfirmed(unconfirmed);
+							return;
+						}
+						const waitClose = Date.now() + 1_000;
+						while (exitInfo === null && Date.now() < waitClose) await new Promise((r) => setTimeout(r, 25));
+						promoted.out.close();
+						const e = exitInfo as { code: number | null; signal: NodeJS.Signals | null } | null;
+						promoted.task.ended(e?.code ?? null, e?.signal ?? null);
+					});
+				};
 				const timer = setTimeout(() => {
+					if (tasks !== undefined) {
+						promote("waited");
+						return;
+					}
 					killing = true;
-					void killTree().then(({ unconfirmed }) =>
+					void killTree(child).then(({ unconfirmed }) =>
 						settle({
 							content: `shell timed out after ${timeout}ms${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}`,
 							isError: true,
@@ -1512,64 +1604,33 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<{ command: string; 
 	});
 }
 
-/**
- * All live pids whose ancestor chain includes `pid`, from the pid table
- * (round 8: `ps -axo pid=,ppid=` — the ONLY way to see a setsid()-escaped
- * process, which is in its own group and invisible to a group kill).
- */
-function descendantsOf(pid: number): number[] {
-	if (pid <= 0) return [];
-	let table: string;
-	try {
-		table = execFileSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8", maxBuffer: 1 << 20 });
-	} catch {
-		return [];
-	}
-	const children = new Map<number, number[]>();
-	for (const line of table.split("\n")) {
-		const m = line.trim().match(/^(\d+)\s+(\d+)$/);
-		if (m === null) continue;
-		const child = Number(m[1]);
-		const parent = Number(m[2]);
-		if (!children.has(parent)) children.set(parent, []);
-		children.get(parent)!.push(child);
-	}
-	const out: number[] = [];
-	const queue = [pid];
-	while (queue.length > 0) {
-		const current = queue.shift()!;
-		for (const c of children.get(current) ?? []) {
-			out.push(c);
-			queue.push(c);
-		}
-	}
-	return out;
+/** Where a task's output is, and what happens next — one wording for the
+ *  shell's results. */
+function taskNote(outputPath: string): string {
+	return `Output: ${outputPath} (read it with read_file). You will be notified when it ends; task_stop stops it.`;
 }
 
-/**
- * Poll the pid table until NONE of the tracked pids is alive (bounded).
- * Returns the pids still alive at the deadline — the caller MUST NOT
- * report "aborted"/"timed out" while any tracked pid survives (round 11).
- */
-function waitAllDead(pids: readonly number[]): Promise<number[]> {
-	if (pids.length === 0) return Promise.resolve([]);
-	return new Promise((resolve) => {
-		const deadline = Date.now() + 2000;
-		const poll = (): void => {
-			const alive: number[] = [];
-			for (const pid of pids) {
-				try {
-					process.kill(pid, 0);
-					alive.push(pid);
-				} catch (err) {
-					if ((err as NodeJS.ErrnoException).code === "EPERM") alive.push(pid);
-					// ESRCH — gone
-				}
-			}
-			if (alive.length === 0 || Date.now() > deadline) return resolve(alive);
-			setTimeout(poll, 50);
-		};
-		poll();
+/** ADR-0058 §4: stop a task this session started — its whole process group. */
+export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> {
+	return defineTool<{ id: string }>({
+		name: "task_stop",
+		description: "Stop a background task this session started, with its whole process group. The result says whether it was still running.",
+		parameters: {
+			type: "object",
+			properties: { id: { type: "string", description: "The task id, as the shell reported it (t1, t2, …)" } },
+			required: ["id"],
+			additionalProperties: false,
+		},
+		promptSnippet: "task_stop — stop a background task by id",
+		execute: async ({ id }, ctx) => {
+			const tasks = opts.tasks?.(ctx.sessionId);
+			const info = tasks?.get(id);
+			if (tasks === undefined || info === undefined) return { content: `no task ${id} in this session`, isError: true, errorKind: "precondition" };
+			if (info.state.kind === "ended") return { content: `task ${id} had already ended`, isError: false };
+			return tasks.stop(id, "model")
+				? { content: `stopping task ${id}; you will be notified when it has ended`, isError: false }
+				: { content: `task ${id} is not running (${info.state.kind}); nothing to stop`, isError: false };
+		},
 	});
 }
 
@@ -1582,5 +1643,6 @@ export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<an
 		writeFileTool(opts),
 		editFileTool(opts),
 		shellTool(opts),
+		...(opts.tasks !== undefined ? [taskStopTool(opts)] : []),
 	];
 }
