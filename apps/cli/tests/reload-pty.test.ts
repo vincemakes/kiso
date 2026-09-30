@@ -283,7 +283,7 @@ describe("§2.5 — /reload", () => {
 			cwd: workdir,
 			timeout: 110,
 			feeds: [
-				["trust this project's .kiso?", "y\r"],
+				["trust this project", "y\r"],
 				["/mode to switch", `!!rm -rf ${join(dirs.skills, "doomed")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
 				// ONE reload at a time, each awaited on a line the previous
@@ -307,7 +307,7 @@ describe("§2.5 — /reload", () => {
 		extensionWithTool(join(workdir, ".kiso", "extensions"), "proj.mjs", "proj_tool", "PROJECT TOOL");
 		const raw = ptyRun(["--mode", "bypass", "reload-trust"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
-			feeds: [["trust this project's .kiso?", "n\r"]],
+			feeds: [["trust this project", "n\r"]],
 			delays: [
 				[8, "/reload\r"],
 				[15, "exit\r"],
@@ -315,7 +315,7 @@ describe("§2.5 — /reload", () => {
 		});
 		const out = strip(raw);
 		reloaded(out);
-		const asks = out.split("trust this project's .kiso?").length - 1;
+		const asks = out.split("trust this project").length - 1;
 		expect(asks, "asked once — the reload did not re-put a question already answered").toBe(1);
 	}, 300_000);
 
@@ -340,7 +340,7 @@ describe("§2.5 — /reload", () => {
 			cwd: workdir,
 			timeout: 110,
 			feeds: [
-				["trust this project's .kiso?", "y\r"],
+				["trust this project", "y\r"],
 				["/mode to switch", "/reload\r"],
 				// three reloads, driven ONE AT A TIME. Each is awaited on a
 				// line no earlier reload could have printed, because an

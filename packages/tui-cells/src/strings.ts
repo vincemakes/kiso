@@ -59,7 +59,7 @@ export function projectTrustRows(files: readonly TrustArtifact[], indent = ""): 
  *  the artifact listing as the always-verbose args, and the question as
  *  the rule override. The same rows the scrollback records — the panel
  *  is a bounded block, the record is not. */
-export function projectTrustView(root: string, files: readonly TrustArtifact[]): PanelView {
+export function projectTrustView(root: string, files: readonly TrustArtifact[], shownRoot: string = root): PanelView {
 	return {
 		flavor: "simple",
 		name: "project trust",
@@ -68,6 +68,10 @@ export function projectTrustView(root: string, files: readonly TrustArtifact[]):
 		statusText: "❯ project trust",
 		args: { kind: "text", lines: projectTrustRows(files) },
 		ruleOverride: "trust this project's .kiso?",
+		// Graphite P1b (owner, 2026-09-30): kiso's own question, and the
+		// answers say what they do, like the other gates'
+		asked: { question: "trust this project?", facts: [shownRoot], prose: "Its .kiso folder holds these files. kiso loads none of them until you trust the project." },
+		simpleOptions: ["trust it", "not now"],
 		fallbackQuestion: `trust this project's .kiso? (y/n) `,
 	};
 }
@@ -99,15 +103,20 @@ export function projectUntrustedNote(count: number, root: string): string {
  *  applied"); what follows it is the action the answer performs. The
  *  invariant a test now holds for every simple view: the dock-less
  *  question names `simpleOptions[0]`, the action `y` performs. */
-export function uncertainView(name: string, executionId: string): PanelView {
+export function uncertainView(name: string, executionId: string, target: readonly string[] = []): PanelView {
+	// Graphite P1b: the panel quotes WHAT may have run — the command, or the
+	// call's target as its tool card names it (the CLI reads it from the
+	// execution record) — where it used to quote the execution id twice
+	const what = name === "shell" ? "command" : "call";
 	return {
 		flavor: "simple",
 		name: "uncertain execution",
 		title: `${name} (${executionId})`,
 		speaker: "kiso",
 		statusText: "❯ uncertain execution",
-		args: { kind: "text", lines: [executionId] },
+		args: { kind: "text", lines: target.length > 0 ? [...target] : [executionId] },
 		ruleOverride: "an interrupted execution may have applied — rerun it?",
+		asked: { question: "rerun it?", facts: [name], prose: `kiso stopped before this ${what}'s result was saved, so it may already have run. Check the workspace, then choose.` },
 		simpleOptions: ["rerun it", "abandon it"],
 		fallbackQuestion: `interrupted execution: ${escapeTerminal(name)} (${executionId}) — rerun it? (y)es / (n)o `,
 	};
@@ -127,15 +136,18 @@ export function uncertainView(name: string, executionId: string): PanelView {
  * of idempotency, so an interrupted ask meets this gate on the way
  * back. Re-asking is safe — that is what the first option says out loud.)
  */
-export function unansweredAskView(executionId: string): PanelView {
+export function unansweredAskView(executionId: string, questions: readonly string[] = []): PanelView {
+	const many = questions.length > 1;
 	return {
 		flavor: "simple",
 		name: "unanswered question",
 		title: `ask_user (${executionId})`,
 		speaker: "kiso",
 		statusText: "❯ unanswered question",
-		args: { kind: "text", lines: [executionId] },
+		// Graphite P1b: the question itself, quoted — not its execution id
+		args: { kind: "text", lines: questions.length > 0 ? [...questions] : [executionId] },
 		ruleOverride: "an unanswered question was interrupted — ask it again?",
+		asked: { question: many ? "ask them again?" : "ask it again?", facts: ["never answered"], prose: `The session stopped while ${many ? "these questions" : "this question"} waited for you.` },
 		simpleOptions: ["ask it again", "drop it"],
 		fallbackQuestion: `an unanswered question was interrupted (${executionId}) — ask it again? (y)es / (n)o `,
 	};
@@ -155,13 +167,18 @@ export function coldResumeLine(tokens: number, minutesAgo: number): string {
 
 export function coldResumeView(tokens: number, minutesAgo: number): PanelView {
 	const line = coldResumeLine(tokens, minutesAgo);
+	const k = `${Math.round(tokens / 1000)}k`;
 	return {
 		flavor: "simple",
 		name: "cold cache",
-		title: `compact first? (${Math.round(tokens / 1000)}k tokens, ${minutesAgo} min idle)`,
+		title: `compact first? (${k} tokens, ${minutesAgo} min idle)`,
 		speaker: "kiso",
 		statusText: "❯ resumed session",
-		args: { kind: "text", lines: [line, "compacting first is one summary call, then every turn is cheap"] },
+		// Graphite P1b: the size and the idle time ride the band; one
+		// sentence says what happens and what compacting costs — nothing is
+		// quoted, so the gutter is empty
+		args: { kind: "text", lines: [] },
+		asked: { question: "compact first?", facts: [`${k} tokens`, `idle ${minutesAgo} min`], prose: `The cache expired while the session was idle, so the next request sends all ${k} tokens again. Compacting first is one summary call; the turns after it are small.` },
 		ruleOverride: `${line} — compact first? (one summary call, then every turn is cheap)`,
 		simpleOptions: ["compact first", "keep the full history"],
 		fallbackQuestion: `${line} — compact first? (y)es / (n)o `,

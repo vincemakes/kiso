@@ -90,7 +90,7 @@ def driver(cli, home, script_path, session_id, workdir):
             pass   # EIO = the child exited — benign, the capture has it
     try:
         # the project-trust gate (if the env shape fires it) — answer y
-        if read_until(b"trust this project's .kiso?", 8):
+        if read_until(b"trust this project", 8):
             send(b"y\\r")
         # the line-mode brick — feed the task (the FIRST session write: the
         # lazy lock acquisition happens here)

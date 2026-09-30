@@ -115,7 +115,7 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 		// Nothing about the picker resumes a session — it hands an id to
 		// the flow that always did.
 		const screen = settledScreen(raw).join("\n");
-		expect(screen + raw).toContain("interrupted execution");
+		expect(screen + raw).toContain("rerun it?"); // P1b: the recovery panel asks the action in its band
 		// and the picker is GONE once it has been taken (Graphite P1: its key
 		// row is the line only the picker draws)
 		expect(settledScreen(raw).join("\n")).not.toContain("⏎ resumes");

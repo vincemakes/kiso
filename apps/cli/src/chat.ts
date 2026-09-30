@@ -34,7 +34,7 @@ import { homedir } from "node:os";
 import { currentBranch } from "./git-branch.js";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import type { UserInputVia } from "@vincemakes/kiso-core";
-import { dispatch, markAutoCompact, type DispatchCtx, abortBangCommand } from "./dispatch.js";
+import { dispatch, markAutoCompact, markCompactWhy, type DispatchCtx, abortBangCommand } from "./dispatch.js";
 import { paintWindowTitle, setTitleState } from "./window-title.js";
 import { agentBaseUrl, agentModel, body, bodyLog, configuredWindow, dock, retryOnRow, retryShown, setRetryShown, floorOn, protectedFiles, upstreamOf, VERSION, type LineInput } from "./state.js";
 import { attachImages } from "./attachments.js";
@@ -1814,10 +1814,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// before the run resumes: the run continues on the compacted projection.
 	const cold = !cancelled && process.stdin.isTTY ? coldResumeOffer(session) : null;
 	if (cold !== null) {
+		// Graphite P1b (owner, 2026-09-30): either way the compaction row
+		// says why it runs — `cold cache` — so on a dock dontAsk needs no line
+		// of its own; off a dock the line is printed as it always was
 		if (getMode() === "dontAsk") {
-			body.notice(`[dontAsk] ${coldResumeLine(cold.tokens, cold.minutes)} — compacting first`);
+			if (!dock.active) body.notice(`[dontAsk] ${coldResumeLine(cold.tokens, cold.minutes)} — compacting first`);
+			markCompactWhy("cold cache");
 			dispatch("/compact", dispatchCtx);
 		} else if ((await askPanel(input, coldResumeView(cold.tokens, cold.minutes))).action === "allow") {
+			markCompactWhy("cold cache");
 			dispatch("/compact", dispatchCtx);
 		}
 		await chainRef.current;

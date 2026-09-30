@@ -290,9 +290,13 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 			["resume", "q5"],
 			"q5",
 			[
-				["ask it again?", "1\r", 0], // 1 = re-ask (the rerun resolution)
-				["which bundler?", "2", 2], // the panel RE-PRESENTS — esbuild this time
-				["which test runners?", "2", 3], // node:test
+				// Graphite P1b (owner, 2026-09-30) — RE-DERIVED: the recovery panel
+				// quotes the interrupted questions now, so the question texts are on
+				// screen before the ask re-presents; the answers wait for what only
+				// the ask panel draws — an option's own words
+				["again? · never answered", "1\r", 0], // 1 = re-ask (the rerun resolution)
+				["one binary", "2", 2], // the panel RE-PRESENTS — esbuild this time
+				["node:test", "2", 3], // node:test
 				["◉ node:test", "\r", 4],
 			],
 			["locked in after the crash"],
@@ -301,8 +305,8 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 
 		// the interrupted ask was announced as a QUESTION, not as a side
 		// effect that may have applied
-		expect(second).toContain("an unanswered question was interrupted — ask it again?");
-		expect(second).toContain("an unanswered question was interrupted — ask it again?");
+		expect(second).toContain("ask them again? · never answered");
+		expect(second).toContain("The session stopped while these questions waited for you.");
 		expect(second).not.toContain("did the interrupted execution apply?");
 
 		// the SAME questions came back, and were answered
@@ -335,7 +339,7 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 		expect(third).not.toContain("answers are durable facts");
 		expect(third).not.toContain("question 1 of 2");
 		expect(third.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("asked 2 questions (answered)");
-		expect(third).not.toContain("ask it again?");
+		expect(third).not.toContain("never answered"); // P1b: the recovery panel's band, singular or plural
 		expect(third).not.toContain("did the interrupted execution apply?");
 		// nothing re-executed: no new ask, no new started execution
 		expect(durable(dirs.home, "q5").filter((r) => r.event.type === "tool_execution_started")).toHaveLength(startedBefore);
