@@ -127,7 +127,7 @@ describe("R3a — cross-session history", () => {
 });
 
 describe("R3a — Shift+Tab cycles the tier", () => {
-	it("CSI Z at the composer flips default → accept-edits, with the notice", () => {
+	it("CSI Z at the composer flips default → accept edits, with the notice", () => {
 		const { env } = isolatedEnv();
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-r3a-st-"));
 		// the cycle callback registers inside chat() — a CSI Z fired at the
@@ -136,8 +136,8 @@ describe("R3a — Shift+Tab cycles the tier", () => {
 		const out = strip(ptyRun(["chat", "st-one"], env, [
 			["/ commands · \u2191 history", "hi\r"],
 			["What would you like me to inspect", "\x1b[Z"],
-			["mode → accept-edits", "exit\r"],
+			["mode → accept edits", "exit\r"],
 		], workdir));
-		expect(out).toContain("mode → accept-edits (shift+tab cycles)");
+		expect(out).toContain("mode → accept edits (shift+tab cycles)");
 	});
 });

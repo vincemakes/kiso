@@ -6,7 +6,7 @@
 
 - **It picks up where it left off.** Every approval and tool result is on disk the moment it happens. After a crash, a `kill -9` or a closed terminal, `kiso resume` continues from the durable committed prefix: generation still streaming when it died is regenerated, and a side effect whose outcome is unknown goes to a human rather than being repeated.
 - **Long tasks don't overflow.** Past half the window, kiso compacts at the end of a phase, and each new summary replaces the last instead of piling up. The window is known per model; when an endpoint refuses an oversized request, kiso learns its real limit.
-- **You decide, and the floor holds.** Five approval modes; "don't ask again" becomes a rule file you can delete; even in bypass, a command that would destroy something unrecoverable is refused.
+- **You decide, and the floor holds.** Four approval modes and a don't-ask switch; "don't ask again" becomes a rule file you can delete; even in full access, a command that would destroy something unrecoverable is refused.
 - **Any model you have.** DeepSeek, Claude, GPT, a ChatGPT subscription, and any OpenAI-compatible endpoint or gateway. Keys never go in the config file.
 - **You can see where it goes.** Each turn ends with its fresh input, output and cache hits; `/context` shows what fills the context; `/status` says where the window figure comes from.
 - **Small and inspectable.** The kernel is capped at 2,200 lines (2,192 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 44 ADRs, with why, and when to overturn it.
@@ -101,12 +101,13 @@ Say what you want done. The model has six tools — read, list, search, write, e
 | `default` | reads and read-only shell run; writes, edits and other shell ask |
 | `accept-edits` | `default`, and edits run too (except into `.git/` or `.kiso/`) |
 | `plan` | reads only; everything else is refused |
-| `bypass` | everything runs |
-| `dontAsk` | never asks: whatever would ask is refused and the run goes on — for unattended and CI runs |
+| `full-access` | everything runs without asking — a user deny and the floor still hold |
 
 A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again.
 
-In every mode, bypass included, a destructive command aimed at what cannot be recovered — `/`, your home directory, the workspace root, its `.git`, `~/.ssh` and the like — is refused. The full rules: [docs/cli.md](docs/cli.md).
+**Don't ask** is a second setting beside the mode: may kiso stop for you? Turned on — `--dont-ask`, `/dont-ask`, `KISO_DONT_ASK=1` or `"dontAsk": true` — it never does. Whatever would ask is refused and the model is told why, the model is offered no questions, and a call cut off mid-flight stays unresolved rather than guessed. It grants nothing: `full-access` with don't ask is the hands-off pair, `default` with don't ask the careful one for CI. The old names still work — `bypass` is `full-access`, and `dontAsk` is `default` with the switch on.
+
+In every mode, full access included, a destructive command aimed at what cannot be recovered — `/`, your home directory, the workspace root, its `.git`, `~/.ssh` and the like — is refused. The full rules: [docs/cli.md](docs/cli.md).
 
 ## Sessions
 

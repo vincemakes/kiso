@@ -438,7 +438,7 @@ describe("TUI2-R1 T-V5 — /context reads the REAL trace sidecar", () => {
 			ptyRun(["--mode", "bypass", "r1-meter"], env as NodeJS.ProcessEnv, [["▌ ", "hi\r"], ["answered.", "exit\r"]], 25, ws),
 		);
 		// the idle row painted, and it carries no invented price
-		expect(out).toContain("▸ bypass · /mode to switch · faux · ctx left ~");
+		expect(out).toContain("▸ full access · /mode to switch · faux · ctx left ~");
 		expect(out).not.toMatch(/\$\d/);
 	}, 120_000);
 

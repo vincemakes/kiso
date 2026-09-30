@@ -49,9 +49,24 @@ describe("each value names its layer", () => {
 	it("mode: flag > env > project > user > default; anything else was set in this session", () => {
 		expect(row({ ...base, mode: "plan", modeFlag: "plan", env: { KISO_MODE: "plan" } }, "mode")).toContain("from --mode");
 		expect(row({ ...base, mode: "plan", env: { KISO_MODE: "plan" }, user: cfg({ mode: "plan" }) }, "mode")).toContain("from env KISO_MODE");
-		expect(row({ ...base, mode: "bypass", project: cfg({ mode: "bypass" }), user: cfg({ mode: "bypass" }) }, "mode")).toContain("from project config");
-		expect(row({ ...base, mode: "bypass", user: cfg({ mode: "bypass" }) }, "mode")).toContain("from user config");
-		expect(row({ ...base, mode: "accept-edits", user: cfg({ mode: "bypass" }) }, "mode")).toContain("from set in this session");
+		expect(row({ ...base, mode: "full-access", project: cfg({ mode: "full-access" }), user: cfg({ mode: "full-access" }) }, "mode")).toContain("from project config");
+		expect(row({ ...base, mode: "full-access", user: cfg({ mode: "full-access" }) }, "mode")).toContain("from user config");
+		expect(row({ ...base, mode: "accept-edits", user: cfg({ mode: "full-access" }) }, "mode")).toContain("from set in this session");
+		// an old name is named, so the row teaches the new one
+		expect(row({ ...base, mode: "full-access", user: cfg({ mode: "bypass" }) }, "mode")).toMatch(/full-access\n\s+from user config \(written "bypass"\)/);
+		expect(row({ ...base, mode: "default", dontAsk: true, env: { KISO_MODE: "dontAsk" } }, "mode")).toContain('from env KISO_MODE (written "dontAsk")');
+	});
+
+	it("don't ask: its own key at each layer, or the old name dontAsk where it won the tier", () => {
+		expect(row(base, "don't ask")).toMatch(/off\n\s+from default/);
+		expect(row({ ...base, dontAsk: true, dontAskFlag: true }, "don't ask")).toMatch(/on — what would ask is refused\n\s+from --dont-ask/);
+		expect(row({ ...base, dontAsk: true, env: { KISO_DONT_ASK: "1" } }, "don't ask")).toContain("from env KISO_DONT_ASK");
+		expect(row({ ...base, dontAsk: true, project: cfg({ dontAsk: true }), user: cfg({ dontAsk: false }) }, "don't ask")).toContain("from project config");
+		expect(row({ ...base, dontAsk: true, modeFlag: "dontAsk" }, "don't ask")).toContain('from --mode (written "dontAsk")');
+		expect(row({ ...base, dontAsk: true, user: cfg({ mode: "dontAsk" }) }, "don't ask")).toContain('from user config (written "dontAsk")');
+		// --mode bypass won the tier, so a user config's old dontAsk brings no switch
+		expect(row({ ...base, mode: "full-access", modeFlag: "bypass", user: cfg({ mode: "dontAsk" }) }, "don't ask")).toMatch(/off\n\s+from default/);
+		expect(row({ ...base, dontAsk: true }, "don't ask")).toContain("from set in this session");
 	});
 
 	it("model: a /model switch wins the attribution; then flag, project, user, the env route, default", () => {
@@ -88,9 +103,33 @@ describe("/settings in the built CLI (a pipe)", () => {
 		const out = runCli(["chat", "settings-e2e"], env, { input: "/settings\nexit\n" }).stdout;
 		const version = (JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as { version: string }).version;
 		expect(out).toMatch(/model\s+deepseek-flash@api\.deepseek\.com · profile ds\n\s+from user config/);
-		expect(out).toMatch(/mode\s+bypass\n\s+from user config/);
+		expect(out).toMatch(/mode\s+full-access\n\s+from user config \(written "bypass"\)/);
+		expect(out).toMatch(/don't ask\s+off\n\s+from default/);
 		expect(out).toMatch(/window\s+1M, the registry's for this endpoint/);
 		expect(out).toMatch(/thinking\s+shown\n\s+from default/);
 		expect(out).toMatch(new RegExp(`version\\s+${version.replace(/\./g, "\\.")}\\n\\s+from running`));
+	});
+});
+
+describe("the don't-ask switch in the built CLI (a pipe)", () => {
+	it("the old names resolve as they did: a user config's dontAsk under --mode bypass is full-access, asking", () => {
+		const { dirs, env } = isolatedEnv();
+		writeFileSync(join(dirs.home, "config.json"), JSON.stringify({ mode: "dontAsk" }));
+		const out = runCli(["--mode", "bypass", "chat", "old-names"], env, { input: "/settings\nexit\n" }).stdout;
+		expect(out).toMatch(/mode\s+full-access\n\s+from --mode \(written "bypass"\)/);
+		expect(out).toMatch(/don't ask\s+off\n\s+from default/);
+	});
+
+	it("--dont-ask and KISO_DONT_ASK turn it on under any tier; /dont-ask flips it, and bare /mode prints it only when on", () => {
+		const { env } = isolatedEnv();
+		const flag = runCli(["--mode", "full-access", "--dont-ask", "chat", "flag-on"], env, { input: "/settings\nexit\n" }).stdout;
+		expect(flag).toMatch(/mode\s+full-access\n\s+from --mode/);
+		expect(flag).toMatch(/don't ask\s+on — what would ask is refused\n\s+from --dont-ask/);
+		const fromEnv = runCli(["chat", "env-on"], { ...env, KISO_DONT_ASK: "1" }, { input: "/mode\n/dont-ask off\n/mode\nexit\n" }).stdout;
+		expect(fromEnv).toContain("mode default\ndon't ask on\ntiers: default accept-edits plan full-access");
+		expect(fromEnv).toContain("don't ask → off");
+		expect(fromEnv).toContain("mode default\ntiers: default accept-edits plan full-access");
+		const bad = runCli(["chat", "bad-arg"], env, { input: "/dont-ask maybe\nexit\n" }).stdout;
+		expect(bad).toContain("usage: /dont-ask [on|off]");
 	});
 });

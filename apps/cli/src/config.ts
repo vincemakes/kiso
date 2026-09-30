@@ -13,7 +13,10 @@
  *   models?: { [name]: { kind: "openai-compat"|"anthropic"|"openai-responses",
  *                        baseUrl?: string, model: string, apiKeyEnv: string,
  *                        upstream?: string } }   — upstream: never where requests go
- *   mode?: "manual"|"default"|"accept-edits"|"plan"|"bypass"|"dontAsk"
+ *   mode?: "default"|"accept-edits"|"plan"|"full-access" — and every older
+ *                    spelling: "manual", "bypass" (full-access's old name),
+ *                    "dontAsk" (default with the don't-ask switch on)
+ *   dontAsk?: boolean           — the don't-ask switch (mode.ts)
  *   contextWindow?: number      — tokens
  *   autoCompact?: { thresholdRatio: number }   — 0<r<1; default off
  *   projectTrust?: "ask" | "never"             — no "always" (the ruling)
@@ -33,7 +36,7 @@ import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { kisoHome } from "./state.js";
-import type { Mode } from "./mode.js";
+import { MODE_VALUES, parseMode } from "./mode.js";
 import { AuthError, effectiveBaseUrl, endpointCredentialId, getCredential, providerIdOf } from "./auth/credentials.js";
 import { BUILTIN_MANIFESTS } from "@vincemakes/kiso-runtime/internal";
 
@@ -121,7 +124,12 @@ export interface AutoCompactConfig {
 export interface KisoConfig {
 	readonly model?: string;
 	readonly models?: Readonly<Record<string, ModelProfile>>;
-	readonly mode?: Mode;
+	/** As written — an old name stays an old name here, and mode.ts
+	 *  resolves it (resolveModeLayers), so /settings can say which. */
+	readonly mode?: string;
+	/** The don't-ask switch. Either config may set it: it only ever
+	 *  refuses more, so a project turning it on lowers nothing. */
+	readonly dontAsk?: boolean;
 	readonly contextWindow?: number;
 	readonly autoCompact?: AutoCompactConfig;
 	/** ADR-0058 §8.4: false turns every task wake into a notice that waits
@@ -166,7 +174,6 @@ export interface ResolvedConfig {
 }
 
 const KINDS: readonly string[] = ["openai-compat", "anthropic", "openai-responses"];
-const MODES_LIST: readonly string[] = ["manual", "default", "accept-edits", "plan", "bypass", "dontAsk"];
 
 export class ConfigError extends Error {}
 
@@ -185,7 +192,8 @@ export function parseConfig(text: string, source: string): KisoConfig {
 	const out: {
 		model?: string;
 		models?: Record<string, ModelProfile>;
-		mode?: Mode;
+		mode?: string;
+		dontAsk?: boolean;
 		contextWindow?: number;
 		autoCompact?: AutoCompactConfig;
 		taskWake?: boolean;
@@ -299,8 +307,12 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		out.models = models;
 	}
 	if (obj.mode !== undefined) {
-		if (typeof obj.mode !== "string" || !MODES_LIST.includes(obj.mode)) fail("mode", `expected one of ${MODES_LIST.join(", ")}`);
-		out.mode = obj.mode as Mode;
+		if (typeof obj.mode !== "string" || parseMode(obj.mode) === undefined) fail("mode", `expected one of ${MODE_VALUES.join(", ")}`);
+		out.mode = obj.mode as string;
+	}
+	if (obj.dontAsk !== undefined) {
+		if (typeof obj.dontAsk !== "boolean") fail("dontAsk", "expected true or false");
+		out.dontAsk = obj.dontAsk as boolean;
 	}
 	if (obj.contextWindow !== undefined) {
 		if (typeof obj.contextWindow !== "number" || !Number.isFinite(obj.contextWindow) || obj.contextWindow <= 0) {
@@ -359,6 +371,8 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 		...(p.models !== undefined ? { models: { ...u.models, ...p.models } } : u.models !== undefined ? { models: u.models } : {}),
 		...(u.mode !== undefined ? { mode: u.mode } : {}),
 		...(p.mode !== undefined ? { mode: p.mode } : {}),
+		...(u.dontAsk !== undefined ? { dontAsk: u.dontAsk } : {}),
+		...(p.dontAsk !== undefined ? { dontAsk: p.dontAsk } : {}),
 		...(u.contextWindow !== undefined ? { contextWindow: u.contextWindow } : {}),
 		...(p.contextWindow !== undefined ? { contextWindow: p.contextWindow } : {}),
 		...(u.autoCompact !== undefined ? { autoCompact: u.autoCompact } : {}),
@@ -591,14 +605,6 @@ function resolveProfile(name: string, p: ModelProfile): ResolvedModel {
 	// placeholder — the SDKs require SOME string; the endpoint ignores it.
 	const auth = authForProfile(name, p);
 	return auth.type === "oauth" ? { name, profile: p, oauthProviderId: auth.providerId } : { name, profile: p, apiKey: auth.apiKey };
-}
-
-/** Mode: env (KISO_MODE) beats config.mode; the --mode flag is applied by
- *  main before this runs (flags are the top of the chain). */
-export function resolveModeFromConfig(merged: KisoConfig): Mode | undefined {
-	const fromEnv = process.env.KISO_MODE;
-	if (fromEnv !== undefined) return fromEnv as Mode;
-	return merged.mode;
 }
 
 /** Context window: env (KISO_CONTEXT_WINDOW) > config.contextWindow >
