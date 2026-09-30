@@ -101,6 +101,9 @@ export const DONT_ASK_NOTE = "never asks: what would ask is refused and the run 
 /** The read-only tool set (plan): reading is allowed, everything else
  *  denied with the guiding reason. */
 const READ_TOOLS = new Set(["read_file", "list_dir", "search_text", "read_skill"]);
+/** ADR-0058 (3b, D2): stopping a task this session started asks no one —
+ *  stopping is the safe direction — in every tier but manual. */
+const STOP_TOOLS = new Set(["task_stop"]);
 
 let current: Mode = "default";
 
@@ -224,7 +227,7 @@ function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string):
 		// outrank every allow, and a saved allow and the read-only shell allow
 		// must still allow.
 		case "default":
-			if (READ_TOOLS.has(call.name)) return { action: "allow" };
+			if (READ_TOOLS.has(call.name) || STOP_TOOLS.has(call.name)) return { action: "allow" };
 			if (call.name === "write_file" || call.name === "edit_file" || call.name === "shell") return { action: "ask" };
 			// Abstain (ADR-0042): an extension-provided tool is the
 			// EXTENSIONS' business — the tier neither allows nor denies.
@@ -233,14 +236,14 @@ function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string):
 			// finding: "allow"-as-no-opinion auto-approved it).
 			return { action: "abstain" };
 		case "accept-edits":
-			if (READ_TOOLS.has(call.name)) return { action: "allow" };
+			if (READ_TOOLS.has(call.name) || STOP_TOOLS.has(call.name)) return { action: "allow" };
 			// 0.40.0: a write into .git/ or .kiso/ asks even here — both hold
 			// configuration that runs (protected-writes.ts)
 			if (call.name === "write_file" || call.name === "edit_file") return isProtectedWrite(call, workspaceRoot()) ? { action: "ask" } : { action: "allow" };
 			if (call.name === "shell") return { action: "ask" };
 			return { action: "abstain" }; // see "default"
 		case "plan":
-			if (READ_TOOLS.has(call.name)) return { action: "allow" };
+			if (READ_TOOLS.has(call.name) || STOP_TOOLS.has(call.name)) return { action: "allow" };
 			return { action: "deny", reason: "plan mode: read-only" };
 		case "full-access":
 			return { action: "allow" }; // everything — a REAL allow, never an abstain

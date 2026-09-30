@@ -6,6 +6,7 @@
  */
 
 import { type ChildProcess, execFileSync, spawn, type StdioOptions } from "node:child_process";
+import { closeSync, openSync, renameSync, writeSync } from "node:fs";
 
 /** Children whose output has closed — the shell tool's `exited`, kept here
  *  so `killTree` reads the same moment the tool always did. */
@@ -239,5 +240,38 @@ export function processStartTime(pid: number): { kind: "running"; startedAt: str
 		// anything else (no `ps`, a signal, other output) could not tell
 		if (e.status === 1 && String(e.stdout ?? "").trim() === "") return { kind: "gone" };
 		return { kind: "unknown" };
+	}
+}
+
+/** The output file, rotated at the cap so its tail is always kept. */
+export class RotatingOutput {
+	readonly #path: string;
+	readonly #cap: number;
+	#fd: number;
+	#size = 0;
+
+	constructor(path: string, cap: number) {
+		this.#path = path;
+		this.#cap = cap;
+		this.#fd = openSync(path, "a");
+	}
+
+	write(chunk: Buffer): void {
+		if (this.#size > 0 && this.#size + chunk.length > this.#cap) this.#rotate();
+		writeSync(this.#fd, chunk);
+		this.#size += chunk.length;
+	}
+
+	#rotate(): void {
+		closeSync(this.#fd);
+		renameSync(this.#path, this.#path.replace(/\.log$/, ".1.log"));
+		this.#fd = openSync(this.#path, "a");
+		const marker = Buffer.from(`[kiso: output rotated after ${this.#size} bytes — the part before is in output.1.log]\n`);
+		writeSync(this.#fd, marker);
+		this.#size = marker.length;
+	}
+
+	close(): void {
+		closeSync(this.#fd);
 	}
 }

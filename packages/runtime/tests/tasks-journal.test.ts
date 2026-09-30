@@ -41,6 +41,10 @@ describe("ADR-0058 §6 — the verdict table", () => {
 			stopped: true,
 		});
 	});
+	it("terminal with an error → ended, carrying why the command never ran", () => {
+		const terminal: TaskRecord = { type: "terminal", ts: now, exitCode: null, signal: null, error: "spawn bash ENOENT" };
+		expect(verdictOf([planned, runner, started, terminal], false, now)).toEqual({ kind: "ended", exitCode: null, signal: null, stopped: false, error: "spawn bash ENOENT" });
+	});
 	it("a torn last line is dropped, never guessed at", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-journal-"));
 		const file = join(dir, "journal.jsonl");
@@ -101,6 +105,57 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 			["t2", "ended"],
 			["t1", "unknown"],
 		]);
+	});
+
+	it("adopt: a running foreground command becomes a task its owner stops — the owner's pid is never signalled", () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		backend.live.add(4242);
+		const m = new TaskManager({ root, backend });
+		let stops = 0;
+		const t = m.adopt({ command: "npm test", cwd: "/", executionId: "ex-9", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => void (stops += 1) });
+		expect(readRecords(join(root, t.id, "journal.jsonl")).map((r) => r.type)).toEqual(["planned", "runner_started", "command_started"]);
+		expect(readRecords(join(root, t.id, "journal.jsonl"))[0]).toMatchObject({ backend: "foreground", executionId: "ex-9", profile: "oneshot" });
+		expect(m.get(t.id)!.state).toEqual({ kind: "running", ready: false });
+		expect(m.stop(t.id, "model")).toBe(true);
+		expect(stops).toBe(1);
+		expect(backend.stopped).toEqual([]); // never a signal to the owner
+		t.ended(null, "SIGTERM");
+		expect(m.get(t.id)!.state).toEqual({ kind: "ended", exitCode: null, signal: "SIGTERM", stopped: true });
+		expect(m.stop(t.id, "model")).toBe(false);
+		m.close();
+	});
+
+	it("adopt: the real exit code lands; a ready line is recorded once", () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		backend.live.add(4242);
+		const m = new TaskManager({ root, backend });
+		const t = m.adopt({ command: "serve", cwd: "/", readyWhen: "up", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		t.ready("up");
+		t.ready("up");
+		t.ended(3, null);
+		const types = readRecords(join(root, t.id, "journal.jsonl")).map((r) => r.type);
+		expect(types.filter((x) => x === "ready")).toHaveLength(1);
+		expect(m.get(t.id)!.state).toEqual({ kind: "ended", exitCode: 3, signal: null, stopped: false });
+		m.close();
+	});
+
+	it("adopt: when the owner is gone without a terminal — a crash, or a stop it could not confirm — the task is unknown, and nothing can stop it", () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		backend.live.add(4242);
+		const m = new TaskManager({ root, backend });
+		const a = m.adopt({ command: "a", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		const b = m.adopt({ command: "b", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		b.unconfirmed([777]);
+		m.close();
+		backend.live.clear(); // the owning kiso is gone
+		const fresh = new TaskManager({ root, backend });
+		expect(fresh.get(a.id)!.state.kind).toBe("unknown");
+		expect(fresh.get(b.id)!.state.kind).toBe("unknown");
+		expect(readRecords(join(root, b.id, "journal.jsonl")).map((r) => r.type)).toContain("stop_unconfirmed");
+		expect(fresh.stop(a.id, "model")).toBe(false);
 	});
 
 	it("a directory without a journal is not a task", () => {

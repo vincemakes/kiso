@@ -13,6 +13,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
 import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
+import { TaskManager } from "@vincemakes/kiso-runtime/internal";
+import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
@@ -50,8 +52,37 @@ export function codingToolOptions(): {
 	readonly excludeRoots: readonly string[];
 	readonly secretEnvNames: readonly string[];
 	readonly protectedFiles: readonly string[];
+	readonly tasks: (sessionId: string | undefined) => ShellTasks | undefined;
 } {
-	return { workspaceRoot: process.cwd(), excludeRoots: [kisoHome()], secretEnvNames: secretEnvNamesOf(configModels), protectedFiles: protectedFiles() };
+	return { workspaceRoot: process.cwd(), excludeRoots: [kisoHome()], secretEnvNames: secretEnvNamesOf(configModels), protectedFiles: protectedFiles(), tasks: tasksFor };
+}
+
+/** ADR-0058 (3b): one TaskManager per session, its directory beside the
+ *  session's log (`<store dir>/<session>.tasks/`). A call without a session
+ *  — the `!` gesture — has none, and its shell is today's. */
+const taskManagers = new Map<string, TaskManager>();
+let taskBackend: ReturnType<typeof processTaskBackend> | undefined;
+export function tasksFor(sessionId: string | undefined): ShellTasks | undefined {
+	if (sessionId === undefined || activeStoreDir === "") return undefined;
+	let manager = taskManagers.get(sessionId);
+	if (manager === undefined) {
+		taskBackend ??= processTaskBackend();
+		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend });
+		manager.observe();
+		taskManagers.set(sessionId, manager);
+	}
+	return manager;
+}
+
+/** A clean exit stops every live task and waits for its terminal
+ *  (ADR-0058 lifecycle). Asking first is the panel's step (3e). */
+export async function stopAllTasks(): Promise<void> {
+	await Promise.all(
+		[...taskManagers.values()].map(async (manager) => {
+			await manager.stopAll("exit");
+			manager.close();
+		}),
+	);
 }
 
 /** The user config's `protectedPaths`, as read at the agent's build (and

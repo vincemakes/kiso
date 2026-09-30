@@ -182,6 +182,28 @@ describe("ADR-0058 — the caller's death, a stop, the ready signal, the rotatio
 		manager.close();
 	});
 
+	it("the journal is the stop channel: a stop_requested record alone — no signal — stops the task", async () => {
+		// on win32 a signal to the runner is TerminateProcess, so the record
+		// (durable before any signal) is what every platform acts on
+		const { root, cwd, manager } = setup();
+		const t = await manager.start({ command: "sleep 30", cwd });
+		await until(() => manager.get(t.id)!, (i) => i.state.kind === "running");
+		appendRecord(join(root, t.id, "journal.jsonl"), { type: "stop_requested", ts: Date.now(), by: "person" });
+		const ended = await until(() => manager.get(t.id)!, (i) => i.state.kind === "ended");
+		expect(ended.state).toMatchObject({ kind: "ended", stopped: true });
+		manager.close();
+	});
+
+	it("a command that cannot start ends with its error — never an invented exit code", async () => {
+		const { base, manager } = setup();
+		const t = await manager.start({ command: "echo never", cwd: join(base, "no-such-dir") });
+		const ended = await until(() => manager.get(t.id)!, (i) => i.state.kind === "ended");
+		expect(ended.state).toMatchObject({ kind: "ended", exitCode: null, signal: null });
+		expect(ended.state.kind === "ended" && ended.state.error).toMatch(/ENOENT/);
+		expect(readFileSync(ended.outputPath, "utf8")).toMatch(/could not start/);
+		manager.close();
+	});
+
 	it("a runner whose start time cannot be read is not declared dead", () => {
 		const path = process.env.PATH;
 		process.env.PATH = "";

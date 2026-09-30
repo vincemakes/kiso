@@ -11,8 +11,14 @@
  * hosts reach tasks through this one manager — never by searching for a
  * child process themselves.
  *
- * What it does not do (later steps): tell the model (3c), decide whether an
- * idle session wakes (3c), or offer tools (3b).
+ * Two ways in: `start` — a runner owns the command (background work, it
+ * survives kiso); `adopt` — a foreground shell command promoted past its
+ * wait, which the kiso process that spawned it keeps owning. An adopted
+ * task's runner IS that kiso process: if kiso crashes the journal reads
+ * `unknown`, never ended, never re-run (ADR-0058 3b, D1).
+ *
+ * What it does not do (later steps): tell the model (3c), or decide whether
+ * an idle session wakes (3c).
  */
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
@@ -55,6 +61,31 @@ export interface TaskInfo {
 	readonly endedAt?: number;
 }
 
+export interface TaskAdoptOptions {
+	readonly command: string;
+	readonly cwd: string;
+	/** The tool invocation that ran the command. */
+	readonly executionId?: string;
+	readonly readyWhen?: string;
+	/** The process that owns the command from now on — the caller itself:
+	 *  its pid and OS start time ("" when it cannot be read). */
+	readonly runner: { readonly pid: number; readonly startedAt: string };
+	/** True when the ready line is what promoted it. */
+	readonly ready?: boolean;
+	/** Stop the command. The owner then reports `ended` or `unconfirmed`. */
+	readonly stop: () => void;
+}
+
+/** The owner's side of an adopted task: every record it writes is durable. */
+export interface AdoptedTask {
+	readonly id: string;
+	readonly outputPath: string;
+	ready(match: string): void;
+	ended(exitCode: number | null, signal: string | null): void;
+	/** A stop left these pids alive: no terminal — the task stays `unknown`. */
+	unconfirmed(pids: readonly number[]): void;
+}
+
 /** What changed, reported once each: the ready signal, the end, the runner
  *  vanishing without an end, or a start that never ran. */
 export type TaskTransition = "ready" | "ended" | "unknown" | "not_run";
@@ -80,6 +111,8 @@ export class TaskManager {
 	#timer: ReturnType<typeof setInterval> | null = null;
 	/** id → the last observed kind ("ready" for a running task that has signalled) */
 	readonly #seen = new Map<string, string>();
+	/** id → how to stop an adopted task this process owns */
+	readonly #local = new Map<string, () => void>();
 
 	constructor(options: TaskManagerOptions) {
 		this.root = options.root;
@@ -112,6 +145,54 @@ export class TaskManager {
 		return this.get(id)!;
 	}
 
+	/** A running foreground command becomes a task this process owns:
+	 *  `planned`, the owner's identity and `command_started` are durable
+	 *  before this returns. The command is already running; nothing is
+	 *  spawned. */
+	adopt(options: TaskAdoptOptions): AdoptedTask {
+		mkdirSync(this.root, { recursive: true });
+		const id = this.#nextId();
+		const dir = join(this.root, id);
+		mkdirSync(dir);
+		fsyncDir(this.root);
+		const journal = join(dir, JOURNAL);
+		appendRecord(journal, {
+			type: "planned",
+			ts: Date.now(),
+			taskId: id,
+			backend: "foreground",
+			command: options.command,
+			cwd: options.cwd,
+			profile: options.readyWhen !== undefined ? "service" : "oneshot",
+			...(options.executionId !== undefined ? { executionId: options.executionId } : {}),
+			...(options.readyWhen !== undefined ? { readyWhen: options.readyWhen } : {}),
+		});
+		appendRecord(journal, { type: "runner_started", ts: Date.now(), pid: options.runner.pid, startedAt: options.runner.startedAt });
+		appendRecord(journal, { type: "command_started", ts: Date.now() });
+		if (options.ready === true && options.readyWhen !== undefined) appendRecord(journal, { type: "ready", ts: Date.now(), match: options.readyWhen });
+		this.#local.set(id, options.stop);
+		this.#seen.set(id, options.ready === true ? "ready" : "running");
+		this.observe();
+		let readySent = options.ready === true;
+		return {
+			id,
+			outputPath: join(dir, OUTPUT),
+			ready: (match) => {
+				if (readySent) return;
+				readySent = true;
+				appendRecord(journal, { type: "ready", ts: Date.now(), match });
+			},
+			ended: (exitCode, signal) => {
+				if (!this.#local.delete(id)) return;
+				appendRecord(journal, { type: "terminal", ts: Date.now(), exitCode, signal });
+			},
+			unconfirmed: (pids) => {
+				if (!this.#local.delete(id)) return;
+				appendRecord(journal, { type: "stop_unconfirmed", ts: Date.now(), pids });
+			},
+		};
+	}
+
 	/** Every task of the session, oldest first. */
 	list(): TaskInfo[] {
 		return this.#ids().map((id) => this.#info(id)!);
@@ -124,9 +205,21 @@ export class TaskManager {
 	/** Stop a live task: `stop_requested` is durable, then the runner is
 	 *  signalled. False when there is nothing live to stop. */
 	stop(id: string, by: "person" | "model" | "exit"): boolean {
+		if (!ID.test(id)) return false;
 		const records = readRecords(join(this.root, id, JOURNAL));
+		if (records.some((r) => r.type === "terminal")) return false;
+		const planned = records.find((r): r is Extract<TaskRecord, { type: "planned" }> => r.type === "planned");
+		if (planned?.backend === "foreground") {
+			// its runner is a kiso process: never signalled — the owner stops
+			// the command, and only the owner can
+			const stopper = this.#local.get(id);
+			if (stopper === undefined) return false;
+			appendRecord(join(this.root, id, JOURNAL), { type: "stop_requested", ts: Date.now(), by });
+			stopper();
+			return true;
+		}
 		const runner = runnerOf(records);
-		if (runner === undefined || records.some((r) => r.type === "terminal")) return false;
+		if (runner === undefined) return false;
 		if (!this.#backend.alive(runner.pid, runner.startedAt)) return false;
 		appendRecord(join(this.root, id, JOURNAL), { type: "stop_requested", ts: Date.now(), by });
 		this.#backend.signalStop(runner.pid);
