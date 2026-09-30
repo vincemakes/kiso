@@ -45,7 +45,7 @@ import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, 
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers } from "./state.js";
+import { settingsLayers, stopAllTasks } from "./state.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
@@ -1800,6 +1800,8 @@ async function main(): Promise<void> {
 		// variable now). A signal death skips this and leaves the dead-pid
 		// residue — the dead-holder takeover recovers it by design
 		// (ADR-0050); the lock never outlives a live writer either way.
+		// ADR-0058: a clean exit stops the session's tasks first.
+		await stopAllTasks();
 		agent?.close();
 		// v2b: the dock tears down on EVERY exit path — CSI r resets the
 		// scroll region, the cursor lands at the input line, no broken

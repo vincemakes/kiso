@@ -23,7 +23,10 @@ export type TaskRecord =
 			readonly type: "planned";
 			readonly ts: number;
 			readonly taskId: string;
-			readonly backend: "process";
+			/** "process": a runner owns the command (it survives kiso).
+			 *  "foreground": a shell command promoted past its wait — the kiso
+			 *  process that started it owns it (ADR-0058 3b, D1). */
+			readonly backend: "process" | "foreground";
 			readonly command: string;
 			readonly cwd: string;
 			readonly profile: TaskProfile;
@@ -39,7 +42,9 @@ export type TaskRecord =
 	/** A stop the runner could not confirm: these pids may outlive it. No
 	 *  terminal follows — the verdict stays `unknown`. */
 	| { readonly type: "stop_unconfirmed"; readonly ts: number; readonly pids: readonly number[] }
-	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null };
+	/** `error`: the command never started (no shell, a missing cwd) — then
+	 *  there is no exit code and none is invented. */
+	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null; readonly error?: string };
 
 /** Append one record and fsync it before returning — the write-ahead step. */
 export function appendRecord(file: string, record: TaskRecord): void {
@@ -94,7 +99,7 @@ export type TaskState =
 	| { readonly kind: "not_run" }
 	| { readonly kind: "running"; readonly ready: boolean }
 	| { readonly kind: "unknown" }
-	| { readonly kind: "ended"; readonly exitCode: number | null; readonly signal: string | null; readonly stopped: boolean };
+	| { readonly kind: "ended"; readonly exitCode: number | null; readonly signal: string | null; readonly stopped: boolean; readonly error?: string };
 
 /** How long a `planned` without a runner may wait for its runner to speak
  *  before it counts as never run — the runner's first act is its record. */
@@ -103,7 +108,14 @@ export const RUNNER_START_WINDOW_MS = 30_000;
 export function verdictOf(records: readonly TaskRecord[], runnerAlive: boolean, now: number = Date.now()): TaskState {
 	const has = (type: TaskRecord["type"]) => records.some((r) => r.type === type);
 	const terminal = records.find((r): r is Extract<TaskRecord, { type: "terminal" }> => r.type === "terminal");
-	if (terminal !== undefined) return { kind: "ended", exitCode: terminal.exitCode, signal: terminal.signal, stopped: has("stop_requested") };
+	if (terminal !== undefined)
+		return {
+			kind: "ended",
+			exitCode: terminal.exitCode,
+			signal: terminal.signal,
+			stopped: has("stop_requested"),
+			...(terminal.error !== undefined ? { error: terminal.error } : {}),
+		};
 	const planned = records.find((r) => r.type === "planned");
 	if (planned === undefined) return { kind: "not_run" };
 	if (has("command_started")) return runnerAlive ? { kind: "running", ready: has("ready") } : { kind: "unknown" };

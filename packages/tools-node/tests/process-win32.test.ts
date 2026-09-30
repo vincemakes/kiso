@@ -157,9 +157,12 @@ describe("POSIX is unchanged (guards: green before and after P1)", () => {
 		]);
 	});
 
-	it("the shell tool's description names /bin/sh, byte for byte", () => {
+	it("the shell tool's description names /bin/sh, byte for byte (without and with tasks wired)", () => {
 		expect(shellTool({ workspaceRoot: ws() }).description).toBe(
 			"Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
+		);
+		expect(shellTool({ workspaceRoot: ws(), tasks: () => undefined }).description).toBe(
+			"Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. A command still running after foregroundMs is never killed: it continues as a background task, the result gives its id and output path, and you are notified when it ends. Fails loudly on a non-zero exit.",
 		);
 	});
 });
@@ -244,11 +247,12 @@ describe("win32: which bash runs the command", () => {
 });
 
 describe("win32: the shell tool", () => {
-	it("its description says bash, not /bin/sh", () => {
+	it("its description says bash, not /bin/sh (without and with tasks wired)", () => {
 		bareWindows();
-		const d = shellTool({ workspaceRoot: ws() }).description;
-		expect(d).toMatch(/\bbash\b/);
-		expect(d).not.toContain("/bin/sh");
+		for (const d of [shellTool({ workspaceRoot: ws() }).description, shellTool({ workspaceRoot: ws(), tasks: () => undefined }).description]) {
+			expect(d).toMatch(/\bbash\b/);
+			expect(d).not.toContain("/bin/sh");
+		}
 	});
 
 	it("runs the command through bash and returns its output", async () => {

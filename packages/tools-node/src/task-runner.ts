@@ -11,9 +11,15 @@
  *   ready            the first time the output contains `readyWhen`
  *   terminal         the exit code or signal, once the command's output closed
  *
- * The command runs in its own process group; SIGTERM to the runner stops
- * the whole tree (TERM, a grace, then the confirmed sweep of the process
- * module). A stop that cannot confirm every process dead writes NO
+ * The command runs in its own process group. A stop is asked for by the
+ * journal's `stop_requested` record — durable before any signal, and the
+ * one channel every platform has (on win32 a signal to the runner is
+ * TerminateProcess): the runner watches its journal and stops the whole
+ * tree (TERM, a grace, then the confirmed sweep of the process module).
+ * SIGTERM is the same stop, sooner, where signals exist.
+ *
+ * A command that never starts (no shell, a missing cwd) ends with a
+ * `terminal` carrying `error` and no exit code — none is invented. A stop that cannot confirm every process dead writes NO
  * terminal — `stop_unconfirmed` names the survivors and the runner exits,
  * so the journal reads `unknown`, never ended. The output passes
  * through the runner so it can rotate at the cap (64 MiB: the file moves to
@@ -24,12 +30,14 @@
  * and is handed to the command, never recorded.
  */
 
-import { closeSync, fsyncSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, openSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { killTree, processStartTime, startCommand } from "./process.js";
+import { killTree, processStartTime, RotatingOutput, startCommand } from "./process.js";
 
 const OUTPUT_CAP_DEFAULT = 64 * 1024 * 1024;
 const STOP_GRACE_MS = 5_000;
+/** How often the runner looks for a `stop_requested` in its journal. */
+const STOP_POLL_MS = 250;
 
 function append(journal: string, record: Record<string, unknown>): void {
 	const fd = openSync(journal, "a");
@@ -56,39 +64,6 @@ function plannedOf(journal: string): Planned {
 	throw new Error(`no planned record in ${journal}`);
 }
 
-/** The output file, rotated at the cap so its tail is always kept. */
-class RotatingOutput {
-	readonly #path: string;
-	readonly #cap: number;
-	#fd: number;
-	#size = 0;
-
-	constructor(path: string, cap: number) {
-		this.#path = path;
-		this.#cap = cap;
-		this.#fd = openSync(path, "a");
-	}
-
-	write(chunk: Buffer): void {
-		if (this.#size > 0 && this.#size + chunk.length > this.#cap) this.#rotate();
-		writeSync(this.#fd, chunk);
-		this.#size += chunk.length;
-	}
-
-	#rotate(): void {
-		closeSync(this.#fd);
-		renameSync(this.#path, this.#path.replace(/\.log$/, ".1.log"));
-		this.#fd = openSync(this.#path, "a");
-		const marker = Buffer.from(`[kiso: output rotated after ${this.#size} bytes — the part before is in output.1.log]\n`);
-		writeSync(this.#fd, marker);
-		this.#size = marker.length;
-	}
-
-	close(): void {
-		closeSync(this.#fd);
-	}
-}
-
 function main(dir: string): void {
 	const journal = join(dir, "journal.jsonl");
 	const planned = plannedOf(journal);
@@ -112,10 +87,7 @@ function main(dir: string): void {
 	append(journal, { type: "command_started", ts: Date.now() });
 	if (dieAfter === "command_started") process.exit(99);
 
-	const child = startCommand(planned.command, { cwd: planned.cwd, env });
 	const out = new RotatingOutput(join(dir, "output.log"), cap);
-	let seen = "";
-	let ready = false;
 	let finished = false;
 	/** The last record; the output closes first, and nothing is written after. */
 	const finish = (record: Record<string, unknown>): void => {
@@ -125,6 +97,21 @@ function main(dir: string): void {
 		append(journal, record);
 		process.exit(0);
 	};
+	/** The command never started: its reason is the record, and the output says it too. */
+	const notStarted = (err: Error): void => {
+		out.write(Buffer.from(`[kiso: the command could not start: ${err.message}]\n`));
+		finish({ type: "terminal", ts: Date.now(), exitCode: null, signal: null, error: err.message });
+	};
+	let child: ReturnType<typeof startCommand>;
+	try {
+		child = startCommand(planned.command, { cwd: planned.cwd, env });
+	} catch (err) {
+		// win32 without bash throws here (the Windows line's process module)
+		notStarted(err instanceof Error ? err : new Error(String(err)));
+		return;
+	}
+	let seen = "";
+	let ready = false;
 	const onData = (chunk: Buffer): void => {
 		if (finished) return;
 		out.write(chunk);
@@ -138,7 +125,10 @@ function main(dir: string): void {
 	child.stdout?.on("data", onData);
 	child.stderr?.on("data", onData);
 	child.on("error", (err) => {
-		out.write(Buffer.from(`[kiso: the command could not start: ${err.message}]\n`));
+		// a spawn failure (no pid) is a start that never happened; the `close`
+		// that follows would otherwise carry an errno as if it were an exit code
+		if (child.pid === undefined) notStarted(err);
+		else out.write(Buffer.from(`[kiso: ${err.message}]\n`));
 	});
 
 	let exit: { code: number | null; signal: NodeJS.Signals | null } | null = null;
@@ -148,8 +138,8 @@ function main(dir: string): void {
 	const outputClosed = new Promise<void>((resolve) => child.once("close", () => resolve()));
 
 	let stopping = false;
-	process.on("SIGTERM", () => {
-		if (stopping || child.pid === undefined) return;
+	const stop = (): void => {
+		if (stopping || finished || child.pid === undefined) return;
 		stopping = true;
 		void killTree(child, { graceMs: STOP_GRACE_MS }).then(async ({ unconfirmed }) => {
 			const survivors = forceUnconfirmed ? [child.pid!] : unconfirmed;
@@ -163,7 +153,21 @@ function main(dir: string): void {
 			const e = exit as { code: number | null; signal: NodeJS.Signals | null } | null;
 			finish({ type: "terminal", ts: Date.now(), exitCode: e?.code ?? null, signal: e?.signal ?? null });
 		});
-	});
+	};
+	process.on("SIGTERM", stop);
+	// the journal is the stop channel: re-read only when it grew
+	let journalSize = -1;
+	const watch = setInterval(() => {
+		try {
+			const size = statSync(journal).size;
+			if (size === journalSize) return;
+			journalSize = size;
+			if (readFileSync(journal, "utf8").includes('"type":"stop_requested"')) stop();
+		} catch {
+			// a transient read failure is retried on the next tick
+		}
+	}, STOP_POLL_MS);
+	watch.unref();
 
 	// the command ended on its own: the terminal is written once its output closed
 	child.on("close", (code, signal) => {
