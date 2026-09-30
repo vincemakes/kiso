@@ -1173,6 +1173,44 @@ chosen from three designs after a comparison with the reference picker).
   the input is the search field), a git branch column (kiso records no
   branch — a runtime change). Not now: `space` to preview a session.
 
+**8.12 kiso's own questions** (P1b, owner, 2026-09-30). Four panels ask
+the person something kiso itself needs answered, not a tool's approval:
+a cold cache on resume, a call that may have run before kiso stopped, a
+question nobody answered, and the project trust gate. They used the
+approval layout, which said each sentence two or three times (the rule
+line, the title, and again in the gutter) under the generic `needs you`.
+They open on the QUESTION:
+
+```
+─── compact first? · 727k tokens · idle 27 min ────────────────────────
+  The cache expired while the session was idle, so the next request
+  sends all 727k tokens again. Compacting first is one summary call; the
+  turns after it are small.
+› 1 compact first
+  2 keep the full history
+  ↑↓ move · ⏎ or click confirms · 1-2 instant · esc
+───────────────────────────────────────────────────────────────────────
+```
+
+- The band's name is the question (bold gold, §8.1) and its facts follow
+  dim. At most two sentences at the content edge, each said once.
+- The gutter `│` holds only what is quoted verbatim, as in an approval:
+  the shell command that may have run (every line; another call's target
+  as its tool card names it; read from the execution record, no runtime
+  change), the unanswered question(s), the trust gate's files. The
+  execution id is no longer shown.
+- `rerun it? · <tool>`, `ask it again? · never answered` (`ask them
+  again?` for several), `trust this project? · <root, home as ~>` with the
+  answers `trust it` / `not now`.
+- The options, the key row and the closing rule are the approval's own;
+  tool approvals keep the approval layout. The dock-less questions (a pipe,
+  a TTY with no room for a panel) are unchanged, word for word.
+- dontAsk asks nothing: on a dock the cold cache has no line of its own —
+  the compaction row's reason says `cold cache` (§8.7), as it does after
+  `compact first` — and an undecided call is the `UNCERTAIN` meta row
+  (`1 interrupted command left undecided — a mode that asks will ask about
+  it`). A pipe prints both lines as it always did.
+
 ---
 
 ## 9. The transcript viewer
