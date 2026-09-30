@@ -63,7 +63,8 @@ a broken config file fails loudly with the file named.
       "streamIdleMs": 300000                 // the stream watchdog: 5 min of silence before a retry (default 120 s; 0 off)
     }
   },
-  "mode": "default",                         // default/accept-edits/plan/dontAsk/bypass
+  "mode": "default",                         // default/accept-edits/plan/full-access
+  "dontAsk": false,                          // true: never stop for a person — what would ask is refused
   "contextWindow": 160000,                   // tokens
   "autoCompact": { "thresholdRatio": 0.8 },  // opt-in, env KISO_AUTO_COMPACT wins
   "projectTrust": "ask"                      // "ask" | "never" — no "always"
@@ -71,7 +72,7 @@ a broken config file fails loudly with the file named.
 ```
 
 - `"floor": "catastrophe" | "off"` — the catastrophe floor (on by default):
-  in every mode, bypass included, a destructive command whose target cannot be
+  in every mode, full access included, a destructive command whose target cannot be
   recovered is refused (see the README). USER config only — a project config
   that names `floor` fails loudly, because a repository must never lower it.
 - `kiso --model deepseek chat` — the flag beats everything; `provider/model`

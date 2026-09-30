@@ -34,7 +34,7 @@
  */
 
 import { isAdapterEvent, type Adapter, type AbortSignalLike } from "../protocol/adapter.js";
-import type { Continuation, ContinuationEntry, ContinuationScope, ErrorCode, Event, StopReason, StructuredError, Terminal, ToolCallEnd, UserInputVia } from "../protocol/events.js";
+import { isRuntimeInput, type Continuation, type ContinuationEntry, type ContinuationScope, type ErrorCode, type Event, type StopReason, type StructuredError, type Terminal, type ToolCallEnd, type UserInputVia } from "../protocol/events.js";
 import { ERROR_CODES } from "../protocol/error-codes.js";
 import type { ApprovalChain, ChainVerdict } from "../protocol/extension.js";
 import { EventLog } from "./event-log.js";
@@ -269,8 +269,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	}
 	if (hooks.onUserMessage && messages.length > 0) {
 		const last = messages.at(-1);
-		if (last?.role === "user") {
-			const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
+		const inputEvent = [...log.all].reverse().find((e): e is Event & { type: "user_input" } => e.type === "user_input");
+		// ADR-0058 (3c): a wake run's first input is the runtime's — as at an admission site, no hook
+		if (last?.role === "user" && !isRuntimeInput(inputEvent)) {
 			// round 6: the hook runs AT MOST ONCE per input. A replacement that
 			// ALREADY exists (persisted before a crash, or before a resume)
 			// means the hook already spoke for this input — it must never

@@ -108,7 +108,7 @@ describe("ADR-0058 — what the journal proves after a cut", () => {
 		// this test's own pid — alive — recorded with a start time it never had
 		appendRecord(file, { type: "runner_started", ts: Date.now(), pid: process.pid, startedAt: "Thu Jan  1 00:00:00 1970" });
 		appendRecord(file, { type: "command_started", ts: Date.now() });
-		expect(backend.alive(process.pid, "Thu Jan  1 00:00:00 1970")).toBe(false);
+		expect(backend.identify(process.pid, "Thu Jan  1 00:00:00 1970")).toBe("gone");
 		expect(manager.get("t1")!.state.kind).toBe("unknown");
 	});
 });
@@ -204,15 +204,18 @@ describe("ADR-0058 — the caller's death, a stop, the ready signal, the rotatio
 		manager.close();
 	});
 
-	it("a runner whose start time cannot be read is not declared dead", () => {
+	it("a live pid whose start time cannot be read is unverifiable — never read as the runner", () => {
+		// ADR-0058 §6: "When identity cannot be verified, the verdict is the
+		// gone row." A reused pid must never be taken for the runner (or be
+		// signalled as one).
 		const path = process.env.PATH;
 		process.env.PATH = "";
 		try {
-			// `ps` is unreachable: identity cannot be checked, and a live pid stays live
-			expect(backend.alive(process.pid, "Thu Jan  1 00:00:00 1970")).toBe(true);
+			expect(backend.identify(process.pid, "Thu Jan  1 00:00:00 1970")).toBe("unverifiable");
 		} finally {
 			process.env.PATH = path;
 		}
+		expect(backend.identify(process.pid, "")).toBe("unverifiable"); // recorded without a start time
 	});
 
 	it("readyWhen: the task stays running and says it is ready once", async () => {

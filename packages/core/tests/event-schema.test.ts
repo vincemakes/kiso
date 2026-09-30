@@ -179,6 +179,14 @@ describe("isKisoEvent per-variant schema (A group)", () => {
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: { ...via, kind: "macro" } })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: { ...via, name: "" } })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: { kind: "skill", name: "review" } })).toBe(false);
+	});
+
+	it("ADR-0051 Amendment 8: a tasks `via` names each delivered transition; a malformed one is corruption", () => {
+		const via = { kind: "tasks", items: [{ taskId: "t17", transition: "exited" }, { taskId: "t18", transition: "ready" }] };
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: "notice", source: "system", via })).toBe(true);
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: "n", source: "system", via: { kind: "tasks", items: [] } })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: "n", source: "system", via: { kind: "tasks", items: [{ taskId: "t1", transition: "finished" }] } })).toBe(false);
+		expect(isKisoEvent({ seq: 0, type: "user_input", content: "n", source: "system", via: { kind: "tasks", items: [{ transition: "exited" }] } })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: "skill" })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: null })).toBe(false);
 	});
