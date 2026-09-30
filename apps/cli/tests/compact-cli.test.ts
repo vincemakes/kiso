@@ -73,6 +73,7 @@ def driver(cli, env, feeds, workdir, timeout, session, mode_flag):
     winsize(24, 80)
     full = b""
     idx = 0
+    pos = 0
     end = time.time() + timeout
     done = False
     while time.time() < end and not done:
@@ -109,8 +110,15 @@ def driver(cli, env, feeds, workdir, timeout, session, mode_flag):
                 done = True
                 break
             full += data
-            while idx < len(feeds) and feeds[idx][0].encode() in full:
+            # each needle is looked for AFTER the previous one matched: two
+            # feeds that wait on the same words (a second /status) must not
+            # both fire on the first occurrence (Graphite R3e)
+            while idx < len(feeds):
+                at = full.find(feeds[idx][0].encode(), pos)
+                if at < 0:
+                    break
                 os.write(fd, feeds[idx][1].encode())
+                pos = at + len(feeds[idx][0].encode())
                 idx += 1
     try:
         os.kill(pid, signal.SIGTERM)
@@ -208,7 +216,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
 				["/mode to switch", "/status\r"],
-				["ctx ~", "go\r"],
+				["typing goes to the input", "go\r"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
 				// never trigger this feed (that race submitted the /compact
@@ -241,7 +249,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// the record, which is why the needle can be the row.)
 				["exit 0", "/compact\r"],
 				["/mode to switch", "/status\r"],
-				["ctx ~", "exit\r"],
+				["typing goes to the input", "exit\r"],
 			],
 			dir,
 			"kc",
@@ -256,9 +264,10 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// boundary below), the one summary, the savings, and the elapsed.
 		// Graphite §7.12: on the terminal the result is a COMPACTED meta row
 		expect(plain).toMatch(/COMPACTED +5 rounds → 1 summary · saved ~/);
-		// The context DROPPED after the compression: /status printed
-		// "ctx ~N%" twice — before (seeded, ~16%) and after (~7%).
-		const ctxs = [...out.matchAll(/ctx ~(\d+)%/g)].map((m) => Number(m[1]));
+		// The context DROPPED after the compression: /status showed it twice
+		// — before (seeded, ~16%) and after (~7%). Graphite R3e: /status is a
+		// sheet now, its `context` row reading `~N% used`.
+		const ctxs = [...plain.matchAll(/context +~(\d+)% used/g)].map((m) => Number(m[1]));
 		expect(ctxs.length).toBeGreaterThanOrEqual(2);
 		expect(ctxs.at(-1)!).toBeLessThan(ctxs[0]!);
 
@@ -312,7 +321,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				[" compacting · ", "\x1b"],
 				// The honest cancel notice — nothing was persisted (ADR-0044).
 				["cancelled — nothing was persisted", "/status\r"],
-				["ctx ~", "exit\r"],
+				["typing goes to the input", "exit\r"],
 			],
 			dir,
 			"kc",

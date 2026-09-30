@@ -1786,10 +1786,12 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// The switch is the SAME live-extension flip /mode performs; the status
 	// row repaints at once with a one-line notice.
 	input.onModeCycle?.(() => {
-		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(getMode()) + 1) % OFFERED_MODES.length]!;
+		const was = getMode();
+		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(was) + 1) % OFFERED_MODES.length]!;
 		setMode(next);
 		paintIdle();
-		body.notice(`mode → ${next} (shift+tab cycles)`);
+		// Graphite R3e: the MODE row on a terminal (the pipe keeps these words)
+		body.modeNotice(`mode → ${next} (shift+tab cycles)`, was, next);
 	});
 
 	// Recovery first: a session with a dangling pause or uncertain

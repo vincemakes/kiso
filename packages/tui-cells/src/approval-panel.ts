@@ -318,6 +318,9 @@ export interface PickOption {
 	 *  previous selection asked ("effort xhigh \u2192 high: the nearest this
 	 *  model supports"). The caller's sentence, reproduced verbatim. */
 	readonly levelNote?: string;
+	/** Graphite R3e: what the second axis IS, named on its strip and its
+	 *  key hint (`mode:`, `thinking:`); absent, it is the model's `effort`. */
+	readonly axisLabel?: string;
 }
 
 /** The level cursor, CORRECTED at read time: never off the end, never on
@@ -960,7 +963,7 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 				return i === cur ? `${p.bold}[${text}]${p.reset}` : text;
 			});
 			const note = axis.levelNote === undefined ? "" : ` ${p.dim}\u2014 ${escapeTerminal(axis.levelNote)}${p.reset}`;
-			rows.push(`  ${cutLine(`${p.dim}effort: ${p.reset}${cells.join(`${p.dim} \u00b7 ${p.reset}`)}${note}`, room)}`);
+			rows.push(`  ${cutLine(`${p.dim}${escapeTerminal(axis.axisLabel ?? "effort")}: ${p.reset}${cells.join(`${p.dim} \u00b7 ${p.reset}`)}${note}`, room)}`);
 		}
 	}
 	const typing = state.phase === "custom";
@@ -968,7 +971,8 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 		const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
 		rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
 	}
-	rows.push(`  ${p.dim}${cutLine(pickAffordance(state, spec.options[state.cursor]?.levels !== undefined), room)}${p.reset}`);
+	const here = spec.options[state.cursor];
+	rows.push(`  ${p.dim}${cutLine(pickAffordance(state, here?.levels !== undefined ? (here.axisLabel ?? true) : false), room)}${p.reset}`);
 	rows.push(boxBottom(W));
 	return rows;
 }
@@ -1036,7 +1040,7 @@ export function pickStatus(view: PanelView): string {
 	return view.statusText;
 }
 
-export function pickAffordance(state: PickRuntime, axis = false): string {
+export function pickAffordance(state: PickRuntime, axis: boolean | string = false): string {
 	// DC-36 — the row NAMES the arrows. TUI2-R2 ④ bound ↑↓ to the pick's
 	// cursor and the keys sheet has said `panels: ↑↓ move` ever since,
 	// but this row — the one a human is actually looking at while the
@@ -1047,7 +1051,8 @@ export function pickAffordance(state: PickRuntime, axis = false): string {
 	// this row omits is a gesture that goes unused. It appears only when
 	// there is a second axis to walk.
 	if (state.phase === "custom") return "enter commits \u00b7 esc backs out";
-	return axis ? "\u2191\u2193 move \u00b7 \u2190\u2192 effort \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc" : "\u2191\u2193 move \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc";
+	// R3e: the axis names itself (`←→ mode`); `true` is the model's effort
+	return axis !== false ? `\u2191\u2193 move \u00b7 \u2190\u2192 ${axis === true ? "effort" : axis} \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc` : "\u2191\u2193 move \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc";
 }
 
 /** Compose a pick view. The flavor/name/title/args fields exist for the
@@ -1069,6 +1074,21 @@ export function modePickView(spec: PickSpec, statusText: string): PanelView {
 		statusText,
 		args: { kind: "text", lines: [] },
 		fallbackQuestion: "switch mode? (name) ",
+		pick: spec,
+	};
+}
+
+/** Graphite R3e — `/settings` as a pick panel: a row per setting, the
+ *  session's own ones with a second axis to walk. */
+export function settingsPickView(spec: PickSpec, statusText: string): PanelView {
+	return {
+		flavor: "simple",
+		name: "settings",
+		title: "settings",
+		speaker: "you",
+		statusText,
+		args: { kind: "text", lines: [] },
+		fallbackQuestion: "settings: (name) ",
 		pick: spec,
 	};
 }

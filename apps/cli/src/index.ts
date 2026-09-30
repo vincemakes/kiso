@@ -316,6 +316,10 @@ function editorInput(editor: Editor): LineInput {
 		panelCancel() {
 			editor.cancelPanel();
 		},
+		// Graphite R3e: a read-only sheet over the input (`/status`)
+		openSheet(rows) {
+			editor.openSheet(rows);
+		},
 		// TUI2-R2 ②: the session picker — the editor owns the keys (the
 		// selection walk, the filter, enter/esc), the compositor draws the
 		// band, and the id comes back here.
@@ -477,7 +481,7 @@ function makeLineInput(): LineInput {
 		editor.bindAtItems(atFiles); // KC3 §5: the file source — listed per OPEN
 		dock.bindAt(() => editor.atState()); // KC3 §4: the picker's band
 		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
-		dock.bindSheet(() => editor.sheetOpen()); // TUI2-R1 (D): the ? keys sheet
+		dock.bindSheet(() => editor.sheetContent()); // TUI2-R1 (D): the ? keys sheet; R3e: /status
 		dock.bindPick(() => editor.pickState()); // TUI2-R2 ②: the resume picker's band
 		// R5: the transcript viewer. The editor reports whether it is up and
 		// forwards the commands; the STATE lives in the compositor, because

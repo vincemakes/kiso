@@ -383,7 +383,7 @@ export class Body {
 	/** TUI2-R1 (D): the keys sheet's slot read — the editor's boolean.
 	 *  Unbound, the sheet cannot render and every frame is byte-identical
 	 *  to before the round. */
-	#sheetState: (() => boolean) | null = null;
+	#sheetState: (() => boolean | ((W: number) => string[])) | null = null;
 	/** R5 — the transcript viewer's state, or null when it is closed. It
 	 *  lives HERE rather than in the editor because its entries are the
 	 *  compositor's cells; the editor only sends it commands. */
@@ -861,6 +861,25 @@ export class Body {
 		// Graphite §7.12: a meta row on the terminal; the pipe above keeps
 		// the text as written.
 		this.#cells.push({ kind: "notice", text, done: true, ...noticeMeta(text) });
+		this.#mark();
+	}
+
+	/** Graphite R3e (owner, 2026-09-29) — a mode switch: on the terminal
+	 *  `MODE` on a row of its own and `from → to` under it, the new tier
+	 *  bold (bypass in the failure colour, plan in blue) — no explanation:
+	 *  the picker that switched it says what each tier does. A pipe keeps
+	 *  the confirmation it always printed, byte for byte (`text`). */
+	modeNotice(text: string, from: string, to: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		const tone = to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink";
+		this.#cells.push({ kind: "notice", text, done: true, label: "MODE", sentence: `${from} \u2192 ${to}`, mark: { text: to, tone }, stacked: true });
 		this.#mark();
 	}
 
@@ -1742,7 +1761,7 @@ export class Body {
 	/** Bind the editor's slash-command menu state — the MenuSelect slot
 	 *  occupant (the menu replaces the editor's view while open). */
 	/** TUI2-R1 (D): bind the editor's keys-sheet flag. */
-	bindSheet(state: () => boolean): void {
+	bindSheet(state: () => boolean | ((W: number) => string[])): void {
 		this.#sheetState = state;
 		this.#mark();
 	}
@@ -2149,7 +2168,7 @@ export class Body {
 	 *  freezes, #emitScroll is skipped, and the close repaints from
 	 *  #lastSkip. */
 	#noteOverlay(): void {
-		const sheetUp = this.#sheetState?.() === true;
+		const sheetUp = (this.#sheetState?.() ?? false) !== false;
 		const viewerUp = this.#viewer !== null;
 		this.#overlayFrame = sheetUp || this.#sheetWasUp || viewerUp || this.#viewerWasUp;
 		this.#sheetWasUp = sheetUp;
@@ -2170,7 +2189,9 @@ export class Body {
 	#liveRows(W: number, ctx: FrameCtx, cap: number): { lines: string[]; panelSpan: { offset: number; count: number; first: number } | null; pickWin?: { first: number; size: number } | null } {
 		const capped = Math.max(1, cap);
 		if (this.#viewer !== null) return { lines: this.#viewerBand(W).slice(0, capped), panelSpan: null };
-		if (this.#sheetState?.() === true) return { lines: keysSheetRows(W).slice(0, capped), panelSpan: null };
+		// Graphite R3e: the keys sheet, or a sheet of the caller's rows (`/status`)
+		const sheet = this.#sheetState?.() ?? false;
+		if (sheet !== false) return { lines: (sheet === true ? keysSheetRows(W) : sheet(W)).slice(0, capped), panelSpan: null };
 		const panel = this.#panelState?.() ?? null;
 		if (panel !== null) {
 			// W21: the panel's cap is exact, so the force-commit loop never
@@ -3155,7 +3176,7 @@ export class Dock {
 	}
 	/** TUI2-R1 (D): bind the editor's keys-sheet flag — the slot read for
 	 *  the ? overlay (the menu/picker binding pattern). */
-	bindSheet(state: () => boolean): void {
+	bindSheet(state: () => boolean | ((W: number) => string[])): void {
 		if (compositorRef === null) {
 			dockBindings.sheet = state;
 			return;
@@ -3244,6 +3265,6 @@ const dockBindings: {
 	at: (() => AtPanelState | null) | null;
 	pick: (() => SessionPickState | null) | null;
 	panel: (() => PanelState | null) | null;
-	sheet: (() => boolean) | null;
+	sheet: (() => boolean | ((W: number) => string[])) | null;
 	queue: (() => readonly string[]) | null;
 } = { state: null, prompt: "", menu: null, at: null, pick: null, panel: null, sheet: null, queue: null };

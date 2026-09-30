@@ -162,7 +162,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				["plan turn done", ""],
 				["▸ plan · read-only · /mode to switch", ""], // Graphite §8.9: the chip reads `plan · read-only` // W19: the idle row names the read-only posture (the v3 idle state)
 				["▌ ", "/mode default\r"],
-				["mode → default", ""], // the notice cell — the switch is on the record
+				["MODE\x1b[0m", ""], // the notice cell — the switch is on the record (Graphite R3e: the MODE row)
 				["▌ ", "go\r"],
 				// The diff row marks the decision moment — the human sees the
 				// change BEFORE answering (the v2d redraw paints the approval
@@ -183,7 +183,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// is what is asserted — WHICH call was refused, and WHY.
 		expect(clean).toContain("out.txt");
 		expect(clean).toContain("plan mode: read-only");
-		expect(clean).toContain("mode → default");
+		expect(clean).toMatch(/MODE\s+plan → default/); // Graphite R3e: MODE over from → to
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the panel's rule line names the ACT. The tool is still write_file
 		// on the wire, and the dock-less fallbackQuestion still says so.
@@ -237,7 +237,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				// long, and enough of those starve the reporter's RPC
 				// ("Timeout calling onTaskUpdate") — the same trap DC-34's
 				// file hit from the other direction.
-				["mode \u2192 bypass", "exit\r"],
+				["MODE\x1b[0m", "exit\r"], // Graphite R3e: the MODE row
 			],
 			workdir,
 			{ session: "pick" },
@@ -266,7 +266,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// panel as "type the answer".
 		expect(plain, "the pick row does not name the arrows").toContain("↑↓ move");
 		// and choosing switched it — no word was typed
-		expect(plain, "the pick did not take effect").toContain("mode → bypass");
+		expect(plain, "the pick did not take effect").toMatch(/MODE\s+\S+ → bypass/);
 	}, 120_000);
 
 	it("DC-36: with no dock — a PIPE — /mode prints exactly what it always printed", () => {

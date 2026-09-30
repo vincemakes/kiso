@@ -22,6 +22,7 @@ export {
 	PICK_MAX,
 	modePickView,
 	modelPickView,
+	settingsPickView,
 	pickAffordance,
 	pickBlockRows,
 	pickLeadPlain,
@@ -48,7 +49,7 @@ export {
 	type PanelVerdict,
 	type PanelView,
 } from "./approval-panel.js";
-export { Container, foldLine, foldWords, visibleWidth, SPINNER, type Component, type FrameCtx } from "./components.js";
+export { Container, foldLine, foldWords, infoSheetRows, visibleWidth, SPINNER, type Component, type FrameCtx } from "./components.js";
 export {
 	Editor,
 	MENU_ITEMS,

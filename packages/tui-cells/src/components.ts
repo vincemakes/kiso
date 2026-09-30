@@ -30,7 +30,7 @@ import { displayWidth, visibleWidth, widthCut } from "./width.js";
 // TUI2-R2pre ④: the ONE display-verb table (strings.ts, beside
 // KEY_BINDINGS). strings.js imports only render/width here, so this edge
 // adds no cycle.
-import { displayVerb } from "./strings.js";
+import { bandHeader, displayVerb } from "./strings.js";
 import {
 	bannerLines,
 	breathFrame,
@@ -286,7 +286,7 @@ export type BodyCell =
 	/** Graphite §7.12 — `label` and `sentence` are the meta row's two
 	 *  halves, derived from `text` by the compositor; `text` is what a
 	 *  pipe prints, unchanged. */
-	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string }
+	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" }; stacked?: true }
 	/** Graphite §7.11 — the turn's seal: its forms, widest first; the
 	 *  widest that fits is drawn, and the narrowest is cut. */
 	| { kind: "seal"; tiers: readonly string[]; done: true }
@@ -1787,7 +1787,7 @@ const META_FAIL = new Set(["FAILED", "UNCERTAIN"]);
  * whole at the content edge.
  */
 class ErrorLine implements Component {
-	constructor(private readonly cell: { text: string; label?: string; sentence?: string }) {}
+	constructor(private readonly cell: { text: string; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" }; stacked?: true }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
@@ -1800,7 +1800,27 @@ class ErrorLine implements Component {
 		// a label wider than the row's room is cut like any row (invariant ①)
 		if (sentence === "") return [cutLine(head.trimEnd(), W)];
 		const folded = foldWords(sentence, room);
-		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${p.dim}${r}${p.reset}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
+		// Graphite R3e (the MODE row): one word of the sentence carries the
+		// weight — the mode switched to, bold, bypass in the failure colour
+		const m = c.mark;
+		const lit = (r: string): string => {
+			if (m === undefined || !r.includes(m.text)) return `${p.dim}${r}${p.reset}`;
+			const tone = m.tone === "fail" ? p.red : m.tone === "blue" ? p.blue : "";
+			// the word after the arrow (the mode switched TO), not an earlier one
+			const arrow = r.indexOf(`\u2192 ${m.text}`);
+			const at = arrow >= 0 ? arrow + 2 : r.indexOf(m.text);
+			return `${p.dim}${r.slice(0, at)}${p.reset}${p.bold}${tone}${m.text}${p.reset}${p.dim}${r.slice(at + m.text.length)}${p.reset}`;
+		};
+		// Graphite R3e (owner, 2026-09-29): the MODE switch is the person's own
+		// choice, so its label is GOLD — the colour of what the person says —
+		// and its short `from → to` follows two spaces after it on the same
+		// row, not the meta rows' twelve-column label column
+		if (c.stacked === true) {
+			const label = `${EDGE}${p.bold}${p.gold}${c.label}${p.reset}  `;
+			const lead = visibleWidth(label);
+			return foldWords(sentence, Math.max(1, W - lead)).map((r, i) => cutLine(i === 0 ? `${label}${lit(r)}` : `${" ".repeat(lead)}${lit(r)}`, W));
+		}
+		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${lit(r)}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
 	}
 }
 
@@ -2060,6 +2080,23 @@ export function boxTop(W: number): string {
 	// Graphite §7.8: the one rule that carries colour — gold at its left
 	// end, where the person's edge is, fading to the hairline.
 	return fadeRule(W);
+}
+
+/** Graphite R3e — a read-only sheet over the input (`/status`): the band's
+ *  named hairline, one fact per row — its label dim in a column, its value
+ *  folded by word under itself — and the row that says how it closes.
+ *  It closes like the keys sheet, but what is typed after it is typed. */
+export function infoSheetRows(title: string, facts: readonly { readonly label: string; readonly value: string }[], W: number): string[] {
+	const p = palette();
+	const labelW = Math.max(0, ...facts.map((f) => f.label.length)) + 2;
+	const room = Math.max(1, W - 2 - labelW);
+	const rows = [bandHeader(title, W)];
+	for (const f of facts) {
+		const folded = foldWords(escapeTerminal(f.value), room);
+		for (const [i, line] of folded.entries()) rows.push(`  ${i === 0 ? `${p.dim}${f.label.padEnd(labelW)}${p.reset}` : " ".repeat(labelW)}${line}`);
+	}
+	rows.push(`  ${p.dim}esc closes \u00b7 typing goes to the input${p.reset}`);
+	return rows.map((r) => cutLine(r, W));
 }
 
 /** R2 — the same rule below, in the hairline colour (§1.1). Named for its

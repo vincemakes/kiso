@@ -80,12 +80,12 @@ describe("MP-1: the picker opens on the session's own row", () => {
 			ptyRun(["chat", "mp1-c", "--model", "c", "--mode", "plan"], setup(), {
 				feeds: [
 					["/mode to switch", "/mode\r"],
-					["mode → ", "exit\r"],
+					["MODE\x1b[0m", "exit\r"], // Graphite R3e: the MODE row
 				],
 				delays: [[2.6, "\r"]],
 			}),
 		);
-		expect(t).toContain("mode → plan");
-		expect(t).not.toContain("mode → default");
+		expect(t).toMatch(/MODE\s+plan → plan/);
+		expect(t).not.toMatch(/MODE\s+\S+ → default/);
 	}, 240_000);
 });
