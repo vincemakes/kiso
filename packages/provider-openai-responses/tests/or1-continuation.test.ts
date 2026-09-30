@@ -85,6 +85,25 @@ describe("OR-1 continuation — the reasoning item comes back", () => {
 		expect(input[2]).toMatchObject({ type: "message", role: "assistant" });
 	});
 
+	it("an item that carries its reasoning summary replays byte-for-byte — kiso stores and returns it, never interprets it", async () => {
+		const SUMMARIZED = {
+			type: "reasoning",
+			id: "rs_9",
+			summary: [{ type: "summary_text", text: "**Planning the change**\n\nRead the file first, then edit." }],
+			encrypted_content: "ENCRYPTED-PAYLOAD-9",
+		};
+		rig.reply = sseReply(script([SUMMARIZED]));
+		const first = await run([{ role: "user", content: "go" }]);
+		const continuation = (first[first.length - 1] as { continuation?: Continuation }).continuation!;
+		rig.reply = sseReply(script([]));
+		await run([
+			{ role: "user", content: "go" },
+			{ role: "assistant", blocks: [{ type: "text", text: "done" }], reasoning: "thinking", continuation },
+		]);
+		const input = JSON.parse(rig.requests[1]!.body).input as Record<string, unknown>[];
+		expect(JSON.stringify(input[1])).toBe(JSON.stringify(SUMMARIZED));
+	});
+
 	it("a scope change withholds it: another model, another dialect, another provider identity", async () => {
 		const first = await run([{ role: "user", content: "go" }]);
 		const c = (first[first.length - 1] as { continuation?: Continuation }).continuation!;

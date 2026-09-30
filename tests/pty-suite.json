@@ -153,6 +153,7 @@
   "packages/runtime/tests/native-lock-race.test.ts",
   "packages/runtime/tests/session-ids.test.ts",
   "packages/runtime/tests/state-probe-lock.test.ts",
+  "packages/runtime/tests/store-fsync-classes.test.ts",
   "packages/runtime/tests/zombie-holder-lock.test.ts",
   "packages/tools-node/tests/aci2-edit-uniqueness.test.ts",
   "packages/tools-node/tests/aci3-retry-ready.test.ts",

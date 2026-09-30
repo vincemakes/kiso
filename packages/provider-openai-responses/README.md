@@ -6,7 +6,7 @@ new dependency (plain `fetch` plus a hand-rolled SSE reader).
 | target | auth | endpoint | what is different |
 |---|---|---|---|
 | OpenAI first-party | API key (`kiso login openai`, or `OPENAI_API_KEY`) | `https://api.openai.com/v1/responses` | the public Responses API |
-| ChatGPT subscription | the stored OAuth credential (`kiso login chatgpt`) | `https://chatgpt.com/backend-api/codex/responses` | `chatgpt-account-id` / `originator` / `OpenAI-Beta` headers; `store: false`, `include: ["reasoning.encrypted_content"]`, `prompt_cache_key` |
+| ChatGPT subscription | the stored OAuth credential (`kiso login chatgpt`) | `https://chatgpt.com/backend-api/codex/responses` | `chatgpt-account-id` / `originator` / `OpenAI-Beta` headers, and `session-id` (the session's cache lane, the same value as `prompt_cache_key`); `store: false`, `include: ["reasoning.encrypted_content"]`, `prompt_cache_key` |
 
 The target is inferred from the options the factory is handed — an
 `apiKey` builds the first-party adapter, an `oauth` thunk builds the
@@ -27,7 +27,8 @@ LOCAL double (`tests/helpers/rig.ts`); no test reaches a vendor.
 | streaming | ✓ | ✓ | `or1-stream` — the nine adapter events in order, `usage` before `stop`, both from the same terminal frame |
 | tool call + next turn | ✓ | ✓ | `or1-tool-turn` — the emitted `callId` is the `call_id`, and the next request replays it as `function_call_output` |
 | reasoning effort | ✓ | ✓ | `or1-request-rig` shape 3 — `reasoning.effort` carries the level it was handed |
-| reasoning replay (`store: false`) | n/a | ✓ | `or1-continuation` — one `stop.continuation` entry per encrypted reasoning item, replayed on scope match only |
+| reasoning summary | ✓ | ✓ | `or1-request-rig` shapes 3 and 4b — with an effort, `reasoning.summary: "auto"`; the summary streams as `thinking` events (`or1-stream`); no effort, no `reasoning` key |
+| reasoning replay (`store: false`) | n/a | ✓ | `or1-continuation` — one `stop.continuation` entry per encrypted reasoning item, replayed verbatim (its summary included) on scope match only |
 | cancel | ✓ | ✓ | `or1-errors` — an abort ends the turn with an `AbortError`, no `stop`, nothing retryable |
 | error mapping | ✓ | ✓ | `or1-errors` — 429/401/400/503 by status, both `Retry-After` forms in milliseconds |
 | retry authority | ✓ | ✓ | `or1-retry-authority` — exactly one request per stream, on every failure class |

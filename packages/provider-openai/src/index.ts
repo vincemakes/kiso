@@ -146,6 +146,13 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 			const pending = new Map<number, PendingToolCall>();
 			let finishReason: string | null = null;
 			let usageSent = false;
+			// One request, one usage event. A compat channel may report usage
+			// more than once in one stream (two identical chunks after the
+			// finish, or the cumulative figure on every chunk); usage here is
+			// cumulative, so the LAST report is the request's. It is held and
+			// yielded once, after the stream ends and before the stop — a host
+			// adding usage events up bills the request exactly once.
+			let lastUsage: AdapterEvent | null = null;
 			let stopReason: StopReason = "end_turn";
 			// P1-10: the FIRST finish reason is FINAL — later content and
 			// finish reasons are ignored (a provider that emits text after a
@@ -177,7 +184,7 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 							};
 							const details = u.prompt_tokens_details;
 							const reasoning = u.completion_tokens_details?.reasoning_tokens;
-							yield {
+							lastUsage = {
 								seq: 0,
 								type: "usage",
 								inputTokens: chunk.usage.prompt_tokens ?? null,
@@ -298,7 +305,7 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 						// comment saying no provider reports a split — true when
 						// written, false since this vendor shipped one.
 						const reasoning = u.completion_tokens_details?.reasoning_tokens;
-						yield {
+						lastUsage = {
 							seq: 0,
 							type: "usage",
 							inputTokens: chunk.usage.prompt_tokens ?? null,
@@ -348,6 +355,11 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 			// provider answered, we just do not know the word, and it still
 			// stops.
 			if (finishReason === null && !options.signal?.aborted) {
+				// The pending CALLS are withheld (above); a usage the stream
+				// already reported is not a call — a gateway that puts the
+				// cumulative usage on every chunk has billed this attempt, and
+				// that bill is known. It goes out once, before the failure.
+				if (lastUsage !== null) yield lastUsage;
 				throw streamFailure(`[${vendorOf(options.model)}] request failed: the stream ended with no finish reason`);
 			}
 
@@ -371,6 +383,7 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 				};
 			}
 
+			if (lastUsage !== null) yield lastUsage;
 			if (!usageSent) {
 				// Area 6: no usage reported is expressed as UNKNOWN — nulls
 				// and known:false — never faked as a zero-cost turn.

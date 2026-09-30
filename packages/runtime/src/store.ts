@@ -291,7 +291,10 @@ export class SessionStore {
 
 	// ── append: lock, open, repair, CAS, write, fsync ────────────────────
 
-	/** Write-ahead: durable (written + fsynced) before returning. */
+	/** Write-ahead: every correctness-bearing event is durable (written +
+	 *  fsynced) before returning; a streamed fragment is written, and the
+	 *  next synced event makes it durable (ADR-0025 Decision 5 as amended,
+	 *  ADR-0052). */
 	async append(sessionId: string, runId: string, event: Event): Promise<void> {
 		if (this.#closed.has(sessionId)) {
 			throw new Error(`session store is closed for ${sessionId}`);
@@ -352,7 +355,13 @@ export class SessionStore {
 			throw new StaleWriterError(expected, event.seq);
 		}
 		appendFileSync(fd, `${JSON.stringify({ runId, ts: Date.now(), event })}\n`);
-		fsyncSync(fd);
+		// A streamed fragment is not a durability boundary: it belongs to a
+		// turn that is uncommitted until its stop is durable, and the next
+		// synced event (the call's end, the text's end, the stop) flushes
+		// it. Syncing each one cost minutes for a long streamed argument.
+		// A process kill loses nothing either way: the write is already in
+		// the OS page cache.
+		if (!STREAMED_FRAGMENTS.has(event.type)) fsyncSync(fd);
 		// round 5(P1-3): a close() that landed during the write must not
 		// leave our helper behind.
 		if (this.#closed.has(sessionId)) {
@@ -565,6 +574,9 @@ function lastCommittedSeq(fd: number): number | undefined {
 		chunk *= 2;
 	}
 }
+
+/** The streamed fragments the store writes without their own sync. */
+const STREAMED_FRAGMENTS: ReadonlySet<string> = new Set(["text_delta", "thinking", "tool_call_input_delta"]);
 
 /** Durability of directory entries: fsync the directory itself. */
 function fsyncDir(dir: string): void {
