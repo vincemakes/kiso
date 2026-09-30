@@ -115,7 +115,6 @@ export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, 
 export {
 	idColumn,
 	sessionAge,
-	sessionCounterRow,
 	sessionFilter,
 	sessionListFooter,
 	sessionListHeader,
@@ -123,7 +122,6 @@ export {
 	sessionListRow,
 	sessionNote,
 	sessionPickerRows,
-	sessionRow,
 	// 0.40.0: the workspace scope — pure, so `kiso sessions` and the picker
 	// scope by one rule
 	scopeSessions,
