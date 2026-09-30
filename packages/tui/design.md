@@ -1010,7 +1010,7 @@ replace it while they last.
 |---|---|
 | working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
-| compacting | `✸ compacting · manual · 6 rounds · … · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b). A compaction inside a run is the runtime's and says so after the fact, as a meta row |
+| compacting | `✸ compacting · manual · 6 rounds · … · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b), `cold cache` when a resumed session compacts before its first request (P1b, §8.12). A compaction inside a run is the runtime's and says so after the fact, as a meta row |
 | waiting | `❯ needs you · <what>` — `<what>` the open panel's own words (`run paused`, `a question for you`, `uncertain execution`), the `❯` gold. It rides the STATUS row, where the panel's status always was: while a panel is up it holds the live zone itself (R3b) |
 
 The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued
