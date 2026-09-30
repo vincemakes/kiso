@@ -28,13 +28,16 @@ kiso sessions [--all|--current]  list durable sessions, with their state
 kiso help                      this help
 ```
 
-- **Navigation (0.10.0).** `kiso resume` with no id opens a PICKER: one row
-  per session, `↑↓` to walk, type to filter, `⏎` to continue, `esc` to
-  leave. Each row SAYS the state kiso will actually resume into, in words
-  (never a glyph), read from the session's own durable log and nothing
-  else:
+- **Navigation (0.10.0).** `kiso resume` with no id opens a PICKER: a table
+  with one row per session (its title, its state, how long ago, how many
+  turns), `↑↓` to walk, type to filter, `⏎` to continue, `esc` to leave.
+  A finished session's state is left blank; any other says a word
+  (`interrupted`, `1 ask`, `1 uncertain`, `max turns`). The row under the
+  cursor opens into a second row that SAYS the state kiso will actually
+  resume into, in words (never a glyph), read from the session's own
+  durable log and nothing else, then when it started and its profile:
 
-  | the row's note | means | what `kiso resume` will do |
+  | the note | means | what `kiso resume` will do |
   |---|---|---|
   | `completed clean` | the run ended cleanly | continue from a settled session |
   | `failed`, or the outcome (`aborted`, `max turns`) | the run ended some other way | continue from where it stopped |
@@ -350,14 +353,17 @@ kiso resume <id> [prompt]      continue a session in a new process
 kiso sessions [--all|--current]  list durable sessions, with their state
 ```
 
-`kiso resume` with no id opens a picker: one row per session, arrows to walk,
-type to filter, enter to continue. It opens on the sessions that started in
-this directory — only those; tab shows every session, each tagged with where it
-started. Sessions from before 0.40.0 recorded no workspace (no event in their
-log names one); they are counted in one line and listed under tab. Each row
-SAYS the state kiso will resume into, in words:
+`kiso resume` with no id opens a picker: a table with one row per session,
+arrows to walk, type to filter, enter to continue. It shows eight sessions on a
+terminal 30 rows or taller, five below, with `↑` / `↓` in the margin when the
+list goes on. It opens on the sessions that started in this directory — only
+those; tab shows every session, with a column for where each started. Sessions
+from before 0.40.0 recorded no workspace (no event in their log names one);
+the key row counts them with the rest of what tab adds, and tab lists them as
+`unknown`. The row under the cursor opens into a second row that SAYS the
+state kiso will resume into, in words:
 
-| the row's note | means | what `kiso resume` will do |
+| the note | means | what `kiso resume` will do |
 |---|---|---|
 | `completed clean` | the run ended cleanly | continue from a settled session |
 | `failed`, or the outcome (`aborted`, `max turns`) | the run ended some other way | continue from where it stopped |

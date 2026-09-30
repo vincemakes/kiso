@@ -815,7 +815,7 @@ export class Editor {
 	 *  the frame's clamp is the authority. */
 	#visibleRows(lineCount: number): number {
 		const H = process.stdout.rows ?? 24;
-		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#pickInput.rows() + this.#queueState().length;
+		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#pickInput.rows(H) + this.#queueState().length;
 		return Math.max(1, Math.min(lineCount, N_MAX, Math.max(1, H - 3 - bands)));
 	}
 

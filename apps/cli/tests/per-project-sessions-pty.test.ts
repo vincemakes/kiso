@@ -115,8 +115,8 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 		expect(existsSync(join(w.folder(w.alpha), "pp-guessed.jsonl"))).toBe(false);
 
 		// and alpha's picker still opens on alpha, where neither is listed
-		const picker = strip(ptyRun(["--mode", "bypass", "resume"], w.env, { cwd: w.alpha, feeds: [["this workspace 0 of 2", "\x1b"]] }));
-		expect(picker).toContain("sessions · this workspace 0 of 2 · tab all");
+		const picker = strip(ptyRun(["--mode", "bypass", "resume"], w.env, { cwd: w.alpha, feeds: [["this workspace · 0 of 2", "\x1b"]] }));
+		expect(picker).toContain("resume · this workspace · 0 of 2");
 		expect(picker).not.toContain("the pp-lost task");
 	}, 90_000);
 
@@ -196,8 +196,8 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 		const w = world();
 		w.make("pp-alpha", w.alpha);
 		w.make("pp-beta", w.beta);
-		const picker = strip(ptyRun(["--mode", "bypass", "resume"], w.env, { cwd: w.alpha, feeds: [["this workspace 1 of 2", "\x1b"]] }));
-		expect(picker).toContain("sessions · this workspace 1 of 2 · tab all");
+		const picker = strip(ptyRun(["--mode", "bypass", "resume"], w.env, { cwd: w.alpha, feeds: [["this workspace · 1 of 2", "\x1b"]] }));
+		expect(picker).toContain("resume · this workspace · 1 of 2");
 		expect(picker).toContain("the pp-alpha task");
 
 		const chat = strip(
