@@ -227,7 +227,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				// the needle is a NOTE, not the header: the header carries SGR
 				// between its words, and a pty driver scans the raw stream
 				// for a contiguous run (DC-25/DC-29, filed twice already).
-				["never asks: what would ask is refused", "4\r"],
+				["runs without asking — a user deny", "4\r"],
 				// and QUIT. Without it the driver waits out its whole
 				// timeout: `execFileSync` blocks the vitest worker for that
 				// long, and enough of those starve the reporter's RPC
@@ -244,8 +244,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// every tier is offered, each saying what it DOES — the notes are
 		// transcribed from decide(), so a drifting description is a bug
 		for (const tier of ["default", "accept edits", "plan", "full access"]) expect(plain, `${tier} is not on the panel`).toContain(tier);
-		// the switch is the panel's last row, naming its state
-		expect(plain, "the don't-ask row is missing").toContain("don't ask: off");
+		// don't ask is not a tier, and the panel does not offer it beside
+		// them (owner, 2026-09-30)
+		expect(plain, "a don't-ask row was offered").not.toContain("don't ask");
 		// 0.40.0: manual is still accepted, and no longer offered.
 		expect(plain, "manual is still offered").not.toContain(" manual ");
 		// Astra F4: the note now qualifies itself. Assert the WHOLE of it, so a
@@ -254,7 +255,6 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// picker offers, and the tier that never asks.
 		expect(plain).toContain("read-only runs; the rest asks — a saved allow still allows");
 		expect(plain).toContain("read-only, edits run; rest asks — a saved allow still allows");
-		expect(plain).toContain("never asks: what would ask is refused and the run goes on");
 		expect(plain).toContain("reads run; all else is denied — read-only, and a deny wins");
 		expect(plain).toContain("runs without asking — a user deny and the floor still win");
 		expect(plain).toContain("read-only"); // plan's note
@@ -624,7 +624,7 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 		expect(existsSync(join(workdir, "sentinel.txt")), "the refused command never ran").toBe(true);
 	}, 90_000);
 
-	it("the /mode panel's last row flips the switch and leaves the tier", () => {
+	it("the /mode panel lists the tiers alone; with the switch on, its header says so", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-modes-"));
 		const workdir = join(dir, "work");
@@ -632,18 +632,21 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 		const script = join(dir, "faux.json");
 		writeFileSync(script, JSON.stringify([{ events: [{ type: "text_delta", text: "ok" }, { type: "stop", reason: "end_turn" }] }]), "utf8");
 		const out = ptyRun(
-			{ ...env, KISO_FAUX_SCRIPT: script } as NodeJS.ProcessEnv,
+			{ ...env, KISO_FAUX_SCRIPT: script, KISO_DONT_ASK: "1" } as NodeJS.ProcessEnv,
 			[
 				["▌ ", "/mode\r"],
-				["never asks: what would ask is refused", "5\r"],
-				["don't ask \u2192 on", "exit\r"],
+				// the panel is up: keep the tier in force, by its digit
+				["reads run; all else is denied", "3\r"],
+				["mode \u2192 plan", "exit\r"],
 			],
 			workdir,
 			{ modeFlag: "plan", session: "pick-switch" },
 		);
 		const plain = stripANSI(out);
-		expect(plain).toContain("don't ask → on");
-		expect(plain, "the tier moved").not.toContain("mode → ");
+		expect(plain).toContain("mode — current: plan (read-only) · don't ask");
+		expect(plain, "a don't-ask row was offered").not.toMatch(/don't ask: o(n|ff)/);
+		// choosing a tier leaves the switch as it was
+		expect(plain).not.toContain("don't ask → ");
 		expect(plain).toContain("▸ plan (read-only) · don't ask");
 	}, 120_000);
 

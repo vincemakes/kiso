@@ -19,9 +19,9 @@ import { describe, expect, it } from "vitest";
 import { panelRowsOf } from "../src/ask-panel.js";
 import { modePickView, type PickSpec } from "../src/approval-panel.js";
 
-/** The rows the CLI's /mode offers: the four tiers by their labels, then
- *  the don't-ask switch naming its state (the modes round). */
-const TIERS = ["default", "accept edits", "plan", "full access", "don't ask: off"] as const;
+/** The rows the CLI's /mode offers: the four tiers by their labels — the
+ *  don't-ask switch is not a tier and is not a row (owner, 2026-09-30). */
+const TIERS = ["default", "accept edits", "plan", "full access"] as const;
 /** Astra F4 widened the CLI's real notes (each asking tier now says a saved
  *  allow still allows). A fixture SHORTER than the world is the DF-0330-F1
  *  trap — it measures an easier layout than the one that ships — so these
@@ -32,7 +32,6 @@ const NOTES: Readonly<Record<(typeof TIERS)[number], string>> = {
 	"accept edits": "read-only, edits run; rest asks — a saved allow still allows",
 	plan: "reads run; all else is denied — read-only, and a deny wins",
 	"full access": "runs without asking — a user deny and the floor still win",
-	"don't ask: off": "never asks: what would ask is refused and the run goes on",
 };
 const SPEC: PickSpec = {
 	header: "mode — current: default",
@@ -41,7 +40,7 @@ const SPEC: PickSpec = {
 const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 describe("DC-36 — the mode picker", () => {
-	it("offers every OFFERED tier and the switch, and no `t` row: the five rows are the whole world", () => {
+	it("offers every OFFERED tier, and no `t` row: the four are the whole world", () => {
 		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
 		const body = rows.join("\n");
 		for (const t of TIERS) expect(body, `${t} is not offered`).toContain(t);
@@ -63,8 +62,8 @@ describe("DC-36 — the mode picker", () => {
 				.map(plain)
 				.find((r) => r.trimStart().startsWith("→")) ?? "";
 		expect(at(0), "the cursor does not mark the first tier").toContain("default");
-		expect(at(4), "the cursor does not follow the pick state").toContain("don't ask: off");
-		expect(at(0)).not.toBe(at(4));
+		expect(at(3), "the cursor does not follow the pick state").toContain("full access");
+		expect(at(0)).not.toBe(at(3));
 	});
 
 	it("a model picker KEEPS its `t` row — its list is never the whole world", () => {

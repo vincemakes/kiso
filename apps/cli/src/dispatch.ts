@@ -9,7 +9,7 @@ import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escape
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
-import { DONT_ASK_NOTE, MODE_LABEL, MODE_NOTE, OFFERED_MODES, applyModeSetting, getDontAsk, getMode, modeDisplay, parseMode, setDontAsk, type ModeSetting } from "./mode.js";
+import { MODE_LABEL, MODE_NOTE, OFFERED_MODES, applyModeSetting, getDontAsk, getMode, modeDisplay, parseMode, setDontAsk, type ModeSetting } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { protectedBangReason, protectedShellVerdict } from "./protected-shell.js";
 import { agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
@@ -636,14 +636,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						ctx.input.panelAsk!(
 							modePickView(
 								{
+									// the header names the switch when it is on; the
+									// rows are the tiers alone — don't ask is not a tier
+									// and is not offered beside them (owner, 2026-09-30)
 									header: `mode — current: ${modeDisplay()}`,
-									// the four tiers, then the don't-ask switch: a
-									// second question, so it sits under the ladder
-									// and its row names its state
-									options: [
-										...OFFERED_MODES.map((name) => ({ label: MODE_LABEL[name], note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
-										{ label: `don't ask: ${getDontAsk() ? "on" : "off"}`, note: DONT_ASK_NOTE },
-									],
+									options: OFFERED_MODES.map((name) => ({ label: MODE_LABEL[name], note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
 									// MP-1 (0.40.7): the cursor opens on the tier in force
 									...(OFFERED_MODES.indexOf(current) >= 0 ? { initial: OFFERED_MODES.indexOf(current) } : {}),
 								},
@@ -657,14 +654,6 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					if (picked === null) {
 						ctx.input.prompt();
 						return; // esc — nothing switched, nothing said
-					}
-					if ("index" in picked && picked.index === OFFERED_MODES.length) {
-						// the switch row flips the switch and leaves the tier
-						setDontAsk(!getDontAsk());
-						body.notice(`don't ask → ${getDontAsk() ? "on" : "off"}`);
-						ctx.paintIdle();
-						ctx.input.prompt();
-						return;
 					}
 					const chosen = "index" in picked ? (OFFERED_MODES[picked.index] === undefined ? undefined : { mode: OFFERED_MODES[picked.index]! }) : parseMode(picked.custom);
 					if (chosen === undefined) {

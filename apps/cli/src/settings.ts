@@ -84,7 +84,7 @@ function modeRow(i: SettingsInput): Row {
 }
 
 function dontAskRow(i: SettingsInput): Row {
-	const change = "/dont-ask or the /mode panel; --dont-ask; \"dontAsk\": true in ~/.kiso/config.json";
+	const change = "/dont-ask; --dont-ask; \"dontAsk\": true in ~/.kiso/config.json";
 	const on = i.dontAsk === true;
 	const resolved = resolveModeLayers(modeLayers(i));
 	const from = (resolved.dontAsk !== "off") === on ? dontAskFrom(i, resolved.from.dontAsk) : "set in this session";

@@ -145,8 +145,10 @@ tier that decided, exactly like it names the extension.
   unresolved, never guessed; an untrusted project `.kiso` is not loaded and
   not asked about. Every allow still allows — reads, read-only shell, a
   saved allow. Set it with `--dont-ask`, `KISO_DONT_ASK=1`, `"dontAsk": true`
-  in either config, `/dont-ask [on|off]`, or the last row of the `/mode`
-  panel. The old tier name `dontAsk` still works and means `default` with
+  in either config, or `/dont-ask [on|off]`; it is off at every start
+  unless one of those says otherwise. The `/mode` panel lists the tiers
+  alone and names the switch in its header when it is on. The old tier
+  name `dontAsk` still works and means `default` with
   the switch on; a switch that arrived that way leaves when the tier
   changes, as leaving the old tier did.
 - `/mode` prints the current tier and the list; `/mode <name>` switches

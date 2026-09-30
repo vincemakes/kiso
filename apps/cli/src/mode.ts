@@ -95,7 +95,10 @@ export const MODE_NOTE: Readonly<Record<Mode, string>> = {
 	"full-access": "runs without asking — a user deny and the floor still win",
 };
 
-/** The switch's line in the picker, under the same 60-column rule. */
+/** The switch in one line, for a surface that describes it, under the
+ *  same 60-column rule. The /mode panel does not offer it: don't ask is
+ *  not a tier, so it never sits beside them (owner, 2026-09-30) — the
+ *  panel's header names it when it is on. */
 export const DONT_ASK_NOTE = "never asks: what would ask is refused and the run goes on";
 
 /** The read-only tool set (plan): reading is allowed, everything else

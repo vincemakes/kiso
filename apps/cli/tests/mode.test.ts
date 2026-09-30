@@ -101,8 +101,6 @@ describe("Modes: the verdict matrix", () => {
 		// measured on the real PTY: a 61-character note lost its last letter
 		for (const m of OFFERED_MODES) expect(MODE_NOTE[m].length, m).toBeLessThanOrEqual(60);
 		expect(DONT_ASK_NOTE.length).toBeLessThanOrEqual(60);
-		// the switch's picker label carries its state: "don't ask: off"
-		expect("don't ask: off".length).toBeLessThan(19);
 	});
 
 	it("a person reads labels, a config holds values: full access / accept edits", () => {
