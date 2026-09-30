@@ -26,7 +26,7 @@
  */
 
 import { displayWidth } from "./width.js";
-import { boxBottom, cutLine, diffBody, gutterFold, selectionBar, visibleWidth, widthCut } from "./components.js";
+import { boxBottom, cutLine, diffBody, foldWords, gutterFold, selectionBar, visibleWidth, widthCut } from "./components.js";
 // TUI2-R2pre ④: strings.js takes only a TYPE from this module, so the
 // import is erased at compile time and no runtime cycle exists.
 import { bandHeader, displayVerb } from "./strings.js";
@@ -464,6 +464,13 @@ export interface PanelView {
 	/** TUI2-R2 \u2463: the options, when this view is a PICK. Same contract
 	 *  as `ask`, one payload over. */
 	readonly pick?: PickSpec;
+	/** Graphite P1b (owner, 2026-09-30) — kiso's OWN question (a cold
+	 *  cache, a call that may have run, an unanswered question, the trust
+	 *  gate). Present = the panel opens on the question as its band name
+	 *  with the facts dim after it, then at most two sentences at the
+	 *  content edge; the gutter keeps only what is quoted verbatim (`args`).
+	 *  Absent = the approval layout, unchanged. */
+	readonly asked?: { readonly question: string; readonly facts: readonly string[]; readonly prose: string };
 }
 
 export type PanelVerdict =
@@ -639,15 +646,28 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// block, and none of them the composer's. A rule SEPARATES, a gutter
 	// SCOPES — the args keep their gutter because they are a verbatim
 	// block; everything that was drawing a boundary is one rule now.
-	// Graphite §8.1 (R3a): the panel names itself, like every band
-	rows.push(bandHeader("needs you", W));
-	rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
-	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
-	// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
-	// full args — never truncated" is a sentence about the implementation,
-	// addressed to whoever was building the panel; the human reading it
-	// during an approval wants to know what the block below is.
-	rows.push("");
+	// Graphite P1b: kiso's own question names the band itself — the
+	// question, its facts dim — and says its sentence once, at the content
+	// edge. The approval's three rows (the rule, the title, the divider)
+	// would say it three times: the rule line WAS the question, the title
+	// its facts, and the args its sentence again in a gutter that means
+	// "quoted verbatim".
+	const asked = view.asked;
+	const prose = asked === undefined ? [] : foldWords(escapeTerminal(asked.prose), Math.max(1, W - 4)).map((r) => `${gutter}${r}`);
+	if (asked !== undefined) {
+		rows.push(bandHeader([asked.question, ...asked.facts].join(" \u00b7 "), W));
+		rows.push(...prose);
+	} else {
+		// Graphite §8.1 (R3a): the panel names itself, like every band
+		rows.push(bandHeader("needs you", W));
+		rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
+		rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
+		// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
+		// full args — never truncated" is a sentence about the implementation,
+		// addressed to whoever was building the panel; the human reading it
+		// during an approval wants to know what the block below is.
+		rows.push("");
+	}
 	// the args — the bounded block's body: fold, then cap. The └ cut is
 	// ONE row (the W20 discipline): when the args exceed the budget, one
 	// notice row carries the count and where the rest is (the event log).
@@ -668,7 +688,9 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 		// as well as closing with one, and the divider row became a blank.
 		// The count is the same shape it always was: every row the block
 		// spends on itself before the args and the list share what is left.
-		6 +
+		// P1b: kiso's own question spends its band row, its sentences, the
+		// affordance and the closing rule.
+		(asked === undefined ? 6 : 3 + prose.length) +
 		(phase === "options" && note !== undefined ? 1 : 0) +
 		(view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0) +
 		(phase === "asking" ? 1 : 0) +

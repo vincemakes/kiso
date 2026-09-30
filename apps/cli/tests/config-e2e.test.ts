@@ -173,7 +173,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 				["digits pick", "\x1bexit\r"],
 			], workdir),
 		);
-		expect(out).toContain("trust this project's .kiso?"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
+		expect(out).toContain("trust this project"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
 		// MOVED (the picker-surface class, TUI2-R2 ④): the same two facts,
 		// on the panel's header and option row instead of two printed lines
 		expect(out).toContain("current: proj-model-x"); // Graphite §8.1 (R3a): under the `─── model ───` row // the project's model drives the session

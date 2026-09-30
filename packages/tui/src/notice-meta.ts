@@ -28,6 +28,9 @@ const SHAPES: readonly (readonly [RegExp, string, (m: RegExpExecArray) => string
 	[/^✦ window learned — (.*)$/s, "WINDOW", (m) => `learned — ${m[1]!}`],
 	[/^run failed — (.*)$/s, "FAILED", (m) => m[1]!],
 	[/^(\S+) FAILED — (.*)$/s, "UNCERTAIN", (m) => `${m[1]!} — ${m[2]!}`],
+	// Graphite P1b (owner, 2026-09-30): dontAsk leaves an interrupted call
+	// undecided — said as what it is, and when it will be asked
+	[/^\[dontAsk\] (\d+) uncertain executions? left unresolved — resolve them in an asking mode$/s, "UNCERTAIN", (m) => `${m[1]!} interrupted command${m[1] === "1" ? "" : "s"} left undecided — a mode that asks will ask about ${m[1] === "1" ? "it" : "them"}`],
 	[/^(stopped at the .*-turn limit.*)$/s, "LIMIT", (m) => m[1]!],
 	[/^(answer truncated at max_tokens.*)$/s, "LIMIT", (m) => m[1]!],
 	[/^stream interrupted — (.*)$/s, "INTERRUPTED", (m) => m[1]!],

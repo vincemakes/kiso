@@ -270,11 +270,16 @@ function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
 /** Graphite R3d: a name is cut where a derived title is (`sessionTitle`). */
 const NAME_MAX = 60;
 
-/** Graphite §8.7 (R3b): the next /compact was dispatched by the opt-in
- *  auto-compact threshold, not typed — its row says `auto`. */
-let nextCompactAuto = false;
+/** Graphite §8.7 (R3b): the next /compact was dispatched by kiso, not
+ *  typed — its row says why: `auto` (the opt-in threshold), or P1b's
+ *  `cold cache` (a resumed session whose cache expired). Typed, it is
+ *  `manual`. Read once by the next /compact. */
+let nextCompactWhy: string | null = null;
+export function markCompactWhy(why: string): void {
+	nextCompactWhy = why;
+}
 export function markAutoCompact(): void {
-	nextCompactAuto = true;
+	markCompactWhy("auto");
 }
 
 export function dispatch(line: string, ctx: DispatchCtx): void {
@@ -1033,8 +1038,8 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// mid-run, with a hint to wait for the turn to end.
 		// Graphite §8.7 (R3b): the row says why — the person asked, or the
 		// opt-in threshold did (`markAutoCompact`, read once here)
-		const compactWhy = nextCompactAuto ? "auto" : "manual";
-		nextCompactAuto = false;
+		const compactWhy = nextCompactWhy ?? "manual";
+		nextCompactWhy = null;
 		if (ctx.isRunning()) {
 			body.notice("[/compact] a turn is running — wait for it to finish");
 			return;

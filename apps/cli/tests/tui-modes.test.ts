@@ -495,7 +495,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["left unresolved", ""],
+				["left undecided", ""],
 				["▌ ", "go\r"],
 				["turn held", "exit\r"],
 			],
@@ -503,7 +503,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "dontAsk", session: "modes-unc" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("[dontAsk] 1 uncertain execution left unresolved — resolve them in an asking mode");
+		// Graphite P1b (owner, 2026-09-30) — RE-DERIVED: on a terminal the line is
+		// the UNCERTAIN meta row (notice-meta.ts); a pipe keeps the words as written
+		expect(clean).toMatch(/UNCERTAIN\s+1 interrupted command left undecided — a mode that asks will ask/);
 		expect(clean, "no recovery panel opened").not.toContain("rerun");
 		expect(clean).toContain("turn held");
 		// nothing was fabricated: no resolution was recorded
@@ -529,7 +531,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		);
 		const clean = stripANSI(out);
 		expect(clean).toContain("[dontAsk] [project .kiso] found 1 artifact(s)");
-		expect(clean, "no trust panel opened").not.toContain("trust this project's .kiso?");
+		expect(clean, "no trust panel opened").not.toContain("trust this project");
 		// no sticky refusal: a later asking session can still decide
 		const store = join(env.KISO_HOME!, "trust.jsonl");
 		expect(existsSync(store) ? readFileSync(store, "utf8") : "").not.toContain(realpathSync(workdir));
