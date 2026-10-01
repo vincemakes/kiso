@@ -434,7 +434,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "dontAsk", session: "modes-dontask" },
 		);
 		const clean = stripANSI(out);
-		expect(clean, "the one-line notice").toContain("[dontAsk] shell would ask — denied");
+		// the main-sync round (owner, 2026-09-30): on a terminal the refusal is
+		// the dim DENIED meta row; a pipe prints #203's line as written
+		expect(clean, "the one-line notice").toMatch(/DENIED\s+shell would ask — denied/);
 		expect(clean, "the run went on to its end").toContain("dontask done");
 		const decided = decidedEvents(env, "modes-dontask");
 		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "read-only-shell" });
@@ -644,17 +646,20 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 				["▌ ", "/mode\r"],
 				// the panel is up: keep the tier in force, by its digit
 				["reads run; all else is denied", "3\r"],
-				["mode \u2192 plan", "exit\r"],
+				["MODE\x1b[0m", "exit\r"], // Graphite: the MODE row
 			],
 			workdir,
 			{ modeFlag: "plan", session: "pick-switch" },
 		);
 		const plain = stripANSI(out);
-		expect(plain).toContain("mode — current: plan (read-only) · don't ask");
+		// the main-sync round: the panel names itself `mode` on its hairline and
+		// says what is current under it, the switch included
+		expect(plain).toContain("current: plan (read-only) · don't ask");
 		expect(plain, "a don't-ask row was offered").not.toMatch(/don't ask: o(n|ff)/);
-		// choosing a tier leaves the switch as it was
-		expect(plain).not.toContain("don't ask → ");
-		expect(plain).toContain("▸ plan (read-only) · don't ask");
+		// choosing a tier leaves the switch as it was: no DON'T ASK row
+		expect(plain).not.toContain("DON'T ASK");
+		// the bar, off a known ground: the tier, then the switch
+		expect(plain).toContain("▸ plan · read-only · don't ask");
 	}, 120_000);
 
 	it("the old name: a switch that came with dontAsk leaves with it on shift+tab — and says so", () => {
@@ -670,14 +675,15 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 				// the settled first turn is the REPL-ready anchor (R3a)
 				["▌ ", "hi\r"],
 				["What would you like me to inspect", "\x1b[Z"],
-				["don't ask \u2192 off", "exit\r"],
+				["DON'T ASK", "exit\r"], // Graphite: the switch's own row
 			],
 			workdir,
 			{ envMode: "dontAsk", session: "old-name-leaves" },
 		);
 		const plain = stripANSI(out);
 		expect(plain).toContain("▸ default · don't ask");
-		expect(plain).toContain("mode → accept edits (shift+tab cycles)");
-		expect(plain).toContain("don't ask → off");
+		// the main-sync round: the MODE row, then the switch's own row
+		expect(plain).toMatch(/MODE\s+default → accept edits/);
+		expect(plain).toMatch(/DON'T ASK\s+on → off/);
 	}, 120_000);
 });
