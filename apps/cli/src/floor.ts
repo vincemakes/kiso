@@ -43,10 +43,10 @@
 
 import { existsSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, resolve, win32 } from "node:path";
 import type { PolicyCall, PolicyVerdict } from "@vincemakes/kiso-core";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
-import { HOME_SUBTREES, looseCommands, parseShellLooseChecked, resolveShellPath, type LooseNode, type LooseWord } from "./shell-words.js";
+import { homeSubtrees, hostDialect, looseCommands, msysPath, parseShellLooseChecked, resolveShellPath, type LooseNode, type LooseWord } from "./shell-words.js";
 
 export type FloorVerdict = { readonly refused: false } | { readonly refused: true; readonly why: string };
 
@@ -65,6 +65,22 @@ const TEMP_ROOTS = ["/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp", "/va
  *  only the prefix itself; what is inside runs (`brew` put it there and can
  *  again). */
 const SOFTWARE_PREFIXES = ["/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew"];
+
+/** Windows P2: the same tables from the environment, never a hard-coded
+ *  user name. System roots: SystemRoot and the program and data roots;
+ *  the users root works as a mount root (it and each home in it refused);
+ *  the temp family is TEMP/TMP. Every drive root is refused in
+ *  `unrecoverable`. */
+function windowsRoots(home: string): { sys: string[]; mounts: string[]; temps: string[]; prefixes: string[] } {
+	const env = process.env;
+	const set = (values: readonly (string | undefined)[]): string[] => values.filter((v): v is string => v !== undefined && v !== "");
+	return {
+		sys: set([env.SystemRoot, env.ProgramFiles, env["ProgramFiles(x86)"], env.ProgramData]),
+		mounts: [win32.dirname(home)],
+		temps: set([env.TEMP, env.TMP]),
+		prefixes: [],
+	};
+}
 
 interface Named {
 	readonly name: string;
@@ -91,23 +107,26 @@ interface Where {
 const WHERE = new Map<string, Where>();
 
 function where(root: string, home: string): Where {
-	const key = `${root}\0${home}`;
+	const dialect = hostDialect();
+	const key = `${dialect.msys ? "msys" : "posix"}\0${root}\0${home}`;
 	const hit = WHERE.get(key);
 	if (hit !== undefined) return hit;
-	const real = (p: string): string => resolveShellPath(root, "/", p).canonical;
+	const { join } = dialect.path;
+	const real = (p: string): string => resolveShellPath(root, dialect.msys ? root : "/", p, dialect).canonical;
 	const named = (names: readonly string[]): Named[] => names.map((name) => ({ name, real: real(name) }));
 	const rootReal = real(root);
+	const roots = dialect.msys ? windowsRoots(home) : { sys: SYSTEM_ROOTS, mounts: MOUNT_ROOTS, temps: [...TEMP_ROOTS, tmpdir()], prefixes: SOFTWARE_PREFIXES };
 	const w: Where = {
 		root,
 		home,
 		rootReal,
 		homeReal: real(home),
 		gitReal: join(rootReal, ".git"),
-		sys: named(SYSTEM_ROOTS),
-		mounts: named(MOUNT_ROOTS),
-		temps: [...new Set([...TEMP_ROOTS, tmpdir()].map(real))],
-		prefixes: named(SOFTWARE_PREFIXES),
-		subtrees: HOME_SUBTREES.map((name) => ({ name, real: real(join(home, name)) })),
+		sys: named(roots.sys),
+		mounts: named(roots.mounts),
+		temps: [...new Set(roots.temps.map(real))],
+		prefixes: named(roots.prefixes),
+		subtrees: homeSubtrees().map((name) => ({ name, real: real(join(home, name)) })),
 	};
 	WHERE.set(key, w);
 	return w;
@@ -127,43 +146,49 @@ function capCwds(w: Where, list: readonly string[]): string[] {
 
 const canon = (w: Where, cwd: string, p: string): string => resolveShellPath(w.root, cwd, p).canonical;
 const within = (parent: string, p: string): boolean => {
+	const { relative, isAbsolute } = hostDialect().path;
 	const rel = relative(parent, p);
 	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
+/** The same path: case-insensitive on Windows (Windows P2). */
+const same = (a: string, b: string): boolean => (hostDialect().msys ? a.toLowerCase() === b.toLowerCase() : a === b);
 
 /** Why `p` (canonical) is unrecoverable, or null. `over` is true for a
  *  wildcard over `p` rather than `p` itself — the same set, since
  *  emptying a directory is removing everything it held. */
 function unrecoverable(w: Where, p: string, over: boolean): string | null {
 	const what = (s: string): string => (over ? `a wildcard over ${s}` : s);
+	const msys = hostDialect().msys;
 	if (p === "/") return what("/");
-	if (p === w.homeReal) return what("the home directory");
-	if (p === w.rootReal) return what("the workspace root");
+	if (msys && win32.parse(p).root === p) return what(`a drive root (${p})`);
+	if (same(p, w.homeReal)) return what("the home directory");
+	if (same(p, w.rootReal)) return what("the workspace root");
 	if (within(p, w.rootReal)) return what(`a directory above the workspace (${p})`);
 	// R7: the workspace's history — without a remote, gone
 	if (within(w.gitReal, p)) return what("the workspace's .git");
-	for (const sub of w.subtrees) if (within(sub.real, p)) return what(`~/${sub.name}`);
+	// on Windows the temp root sits inside AppData: what is inside it runs
+	for (const sub of w.subtrees) if (within(sub.real, p) && !(msys && w.temps.some((t) => !same(p, t) && within(t, p)))) return what(`~/${sub.name}`);
 	// Inside the workspace or the home directory is the project's and the
 	// person's, never a system root's — or a workspace in /opt, or a root
 	// user's home in /root, would have every rm refused.
 	if ((w.rootReal !== "/" && within(w.rootReal, p)) || within(w.homeReal, p)) return null;
 	for (const t of w.temps) {
-		if (p === t) return what(`a temp root (${t})`);
+		if (same(p, t)) return what(`a temp root (${t})`);
 		if (within(t, p)) return null;
 	}
 	for (const x of w.prefixes) {
-		if (p === x.real) return what(`a software prefix (${x.name})`);
+		if (same(p, x.real)) return what(`a software prefix (${x.name})`);
 		if (within(x.real, p)) return null;
 	}
 	for (const m of w.mounts) {
-		if (p === m.real) return what(`a system root (${m.name})`);
-		if (dirname(p) === m.real) return what(`a mount or home root (${p})`);
+		if (same(p, m.real)) return what(`a system root (${m.name})`);
+		if (same(hostDialect().path.dirname(p), m.real)) return what(`a mount or home root (${p})`);
 		// deeper runs — by RESOLVED path: macOS's /home is
 		// /System/Volumes/Data/home, which the /System rule would refuse
 		if (within(m.real, p)) return null;
 	}
 	for (const s of w.sys) {
-		if (p === s.real) return what(`a system root (${s.name})`);
+		if (same(p, s.real)) return what(`a system root (${s.name})`);
 		if (within(s.real, p)) return what(`a path inside a system root (${s.name})`);
 	}
 	return null;
@@ -183,7 +208,9 @@ function reUnknown(text: string, from: number): { at: number; glob: boolean } {
 /** One target word, from each directory the command might run in. */
 function targetWhy(w: Where, cwds: readonly string[], word: LooseWord): string | null {
 	for (const cwd of cwds) {
-		let text = word.text;
+		// Windows P2: either separator separates (the same length, so the
+		// unknown positions hold)
+		let text = hostDialect().msys ? word.text.replace(/\\/g, "/") : word.text;
 		let at = word.unknownAt;
 		let glob = word.unknownIsGlob;
 		let variableOnly = word.variableOnly;
@@ -200,7 +227,9 @@ function targetWhy(w: Where, cwds: readonly string[], word: LooseWord): string |
 		}
 		if (variableOnly) return `a target that is only a variable (${word.text})`;
 		if (at < 0) {
-			const why = unrecoverable(w, canon(w, cwd, text), false);
+			const target = resolveShellPath(w.root, cwd, text);
+			if (target.opaque !== undefined) return `${word.text}, ${target.opaque}`;
+			const why = unrecoverable(w, target.canonical, false);
 			if (why !== null) return why;
 			continue;
 		}
@@ -209,7 +238,9 @@ function targetWhy(w: Where, cwds: readonly string[], word: LooseWord): string |
 		if (at === 0 && !glob) continue;
 		const prefix = text.slice(0, at);
 		const lastSlash = prefix.lastIndexOf("/");
-		const dir = canon(w, cwd, lastSlash < 0 ? "." : prefix.slice(0, lastSlash + 1) || "/");
+		const over = resolveShellPath(w.root, cwd, lastSlash < 0 ? "." : prefix.slice(0, lastSlash + 1) || "/");
+		if (over.opaque !== undefined) return `a wildcard in ${word.text}, ${over.opaque}`;
+		const dir = over.canonical;
 		const head = prefix.slice(lastSlash + 1); // the literal start of the unknown component
 		const nextSlash = text.indexOf("/", at);
 		const component = text.slice(lastSlash + 1, nextSlash < 0 ? text.length : nextSlash);
@@ -218,7 +249,7 @@ function targetWhy(w: Where, cwds: readonly string[], word: LooseWord): string |
 		// home reaching one by its name (`~/.ssh*`, `~/.c*`)
 		for (const sub of w.subtrees) {
 			if (within(sub.real, dir)) return `a wildcard inside ~/${sub.name}`;
-			if (glob && dir === w.homeReal && head !== "" && sub.name.toLowerCase().startsWith(head.toLowerCase())) return `a wildcard that reaches ~/${sub.name}`;
+			if (glob && same(dir, w.homeReal) && head !== "" && sub.name.toLowerCase().startsWith(head.toLowerCase())) return `a wildcard that reaches ~/${sub.name}`;
 		}
 		// B9: over the directory ONLY when the unknown component is nothing
 		// but glob characters and dots (`*`, `.*`, `**`, `?`), or nothing but
@@ -327,7 +358,8 @@ const SELECTING = new Set([
 
 /** R5: a checkout/restore operand is a path only when path-shaped — a
  *  branch name is never refused. */
-const pathShaped = (t: string): boolean => t === "." || t === "./" || t.startsWith("/") || t.startsWith("~") || t.includes("/") || t.startsWith(":");
+const pathShaped = (t: string): boolean =>
+	t === "." || t === "./" || t.startsWith("/") || t.startsWith("~") || t.includes("/") || t.startsWith(":") || (hostDialect().msys && (t.includes("\\") || /^[A-Za-z]:/.test(t)));
 /** B7: pathspec magic from the top of the repository */
 const topMagic = (t: string): boolean => t.startsWith(":/") || t.startsWith(":(top");
 
@@ -447,7 +479,7 @@ function destructiveTargets(argv: readonly LooseWord[]): Destructive | null {
 function isGitDir(p: string): boolean {
 	try {
 		const st = statSync(p);
-		return st.isFile() || (st.isDirectory() && existsSync(join(p, "HEAD")));
+		return st.isFile() || (st.isDirectory() && existsSync(hostDialect().path.join(p, "HEAD")));
 	} catch {
 		return false;
 	}
@@ -458,12 +490,24 @@ function isGitDir(p: string): boolean {
  *  inside the workspace, the workspace root; outside it, the directory
  *  itself — git would refuse to run there, and the floor does not bet on it. */
 function repoRoot(w: Where, cwd: string): string {
+	const { dirname, join } = hostDialect().path;
 	const start = canon(w, cwd, ".");
 	for (let d = start; ; d = dirname(d)) {
 		if (isGitDir(join(d, ".git"))) return d;
 		if (dirname(d) === d) break;
 	}
 	return within(w.rootReal, start) ? w.rootReal : start;
+}
+
+/** Windows P2: where a cd to an unreadable path lands — every relative
+ *  path from it is unreadable too. */
+const UNREADABLE_DIR = "//?/unreadable";
+
+/** Where `cd text` from `c` lands, as the shell spells it (lexically). */
+function cdTo(c: string, text: string): string {
+	if (!hostDialect().msys) return resolve(c, text);
+	const read = msysPath(text);
+	return "opaque" in read || c === UNREADABLE_DIR ? UNREADABLE_DIR : win32.resolve(c, read.native);
 }
 
 interface CdState {
@@ -541,7 +585,7 @@ export function floorCheck(commandLine: string, workspaceRoot: string, home: str
 				if (name === "popd" || to?.text === "-") dest = state.prev ?? state.cwds;
 				// `cd` with nothing, or with anything unknown, may land at home
 				else if (to === undefined || to.unknownAt >= 0 || to.variableOnly) dest = capCwds(w, [w.home, ...state.cwds]);
-				else dest = capCwds(w, state.cwds.map((c) => resolve(c, tilde(to))));
+				else dest = capCwds(w, state.cwds.map((c) => cdTo(c, tilde(to))));
 				state.prev = state.cwds;
 				state.lastCd = { to: dest, from };
 				continue;
@@ -549,11 +593,11 @@ export function floorCheck(commandLine: string, workspaceRoot: string, home: str
 			const d = destructiveTargets(argv);
 			if (d === null) continue;
 			let here = state.cwds;
-			for (const cd of d.cds ?? []) here = cd.unknownAt >= 0 ? capCwds(w, [...here, w.home]) : here.map((c) => resolve(c, tilde(cd)));
+			for (const cd of d.cds ?? []) here = cd.unknownAt >= 0 ? capCwds(w, [...here, w.home]) : here.map((c) => cdTo(c, tilde(cd)));
 			for (const t of d.targets) {
 				let why: string | null = null;
 				if (t === "repo") {
-					for (const c of here) if ((why = unrecoverable(w, repoRoot(w, c), false)) !== null) break;
+					for (const c of here) if ((why = c === UNREADABLE_DIR ? "a repository in a directory that cannot be read" : unrecoverable(w, repoRoot(w, c), false)) !== null) break;
 				} else why = targetWhy(w, here, t);
 				if (why !== null && d.subtreesOnly === true && !why.includes("~/.")) why = null;
 				if (why !== null) {

@@ -17,7 +17,7 @@
  */
 
 import { existsSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { posix, win32 } from "node:path";
 
 export interface Redirect {
 	/** The descriptor written before the operator (`2>`), null when none
@@ -275,12 +275,84 @@ export function parseShell(src: string): ParseResult {
 export interface ResolvedPath {
 	readonly canonical: string;
 	readonly inside: boolean;
+	/** Windows P2: why the word cannot be read as a path here — never
+	 *  inside, and refused under a destructive verb */
+	readonly opaque?: string;
+}
+
+/**
+ * Windows P2 — how a path word reads. `posix` is every host but Windows,
+ * unchanged. `msys` is Git Bash on win32 (P1 runs commands through it):
+ * `C:\x`, `C:/x` and `/c/x` are `C:\x`, either separator separates, the
+ * disk is case-insensitive, and every form that cannot be read exactly is
+ * opaque (kiso-doc plan-windows-p2-design-2026-10-01.md).
+ */
+export interface PathDialect {
+	readonly msys: boolean;
+	readonly path: typeof posix;
+}
+
+const POSIX_DIALECT: PathDialect = { msys: false, path: posix };
+const MSYS_DIALECT: PathDialect = { msys: true, path: win32 };
+
+/** The dialect of the shell that runs commands here — read per call. */
+export function hostDialect(): PathDialect {
+	return process.platform === "win32" ? MSYS_DIALECT : POSIX_DIALECT;
+}
+
+const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+
+/**
+ * A Git Bash word as a Windows path, `/`-separated (`C:/x`, or relative),
+ * each component as Win32 reads it (trailing dots and spaces dropped) —
+ * or why it cannot be read: another machine, a device or namespace path,
+ * a drive-relative or drive-rooted path, an MSYS mount inside Git's own
+ * tree, a data stream, an 8.3 short name, a device name.
+ */
+export function msysPath(word: string): { readonly native: string } | { readonly opaque: string } {
+	const w = word.replace(/\\/g, "/");
+	if (/^\/\/[?.]\//.test(w)) return { opaque: w[2] === "?" ? "a namespaced path" : "a device path" };
+	if (w.startsWith("//")) return { opaque: "a UNC path (another machine)" };
+	let rest: string;
+	let drive = "";
+	const lettered = /^([A-Za-z]):(.*)$/s.exec(w);
+	const mounted = /^\/([A-Za-z])(\/.*)?$/s.exec(w);
+	if (lettered !== null) {
+		if (!lettered[2]!.startsWith("/")) return { opaque: "a drive-relative path" };
+		drive = `${lettered[1]!.toUpperCase()}:`;
+		rest = lettered[2]!;
+	} else if (mounted !== null) {
+		drive = `${mounted[1]!.toUpperCase()}:`;
+		rest = mounted[2] ?? "/";
+	} else if (w.startsWith("/")) {
+		return { opaque: word.startsWith("\\") ? "a drive-rooted path" : "an MSYS mount (Git's own tree)" };
+	} else rest = w;
+	const parts: string[] = [];
+	for (const part of rest.split("/")) {
+		if (part === "" || part === "." || part === "..") {
+			parts.push(part);
+			continue;
+		}
+		if (part.includes(":")) return { opaque: "an alternate data stream" };
+		if (/~\d/.test(part)) return { opaque: "an 8.3 short name" };
+		const name = part.replace(/[. ]+$/, "");
+		if (name === "") return { opaque: "a name Win32 rewrites" };
+		if (DEVICE_NAME.test(name)) return { opaque: "a device name" };
+		parts.push(name);
+	}
+	return { native: drive + parts.join("/") };
 }
 
 /** The well-known home subtrees that hold credentials or configuration
  *  that runs — one list for both chain members: the read-only allow
  *  never reads or lists under them, the floor never deletes them. */
 export const HOME_SUBTREES: readonly string[] = [".ssh", ".config", ".kiso", ".gnupg", ".aws"];
+
+/** The home subtrees for this host: on Windows, AppData too — credentials
+ *  and configuration that runs live there (Windows P2). */
+export function homeSubtrees(): readonly string[] {
+	return hostDialect().msys ? [...HOME_SUBTREES, "AppData"] : HOME_SUBTREES;
+}
 
 /** A real path in the case the DISK holds it. The JS realpath keeps the
  *  case it was given, so on a case-insensitive disk `.ENV` stayed `.ENV`
@@ -293,16 +365,24 @@ export function realCase(p: string): string {
 	}
 }
 
-export function resolveShellPath(workspaceRoot: string, cwd: string, word: string): ResolvedPath {
+export function resolveShellPath(workspaceRoot: string, cwd: string, word: string, dialect: PathDialect = hostDialect()): ResolvedPath {
+	const { dirname, isAbsolute, join, relative } = dialect.path;
+	if (dialect.msys) {
+		const read = msysPath(word);
+		if ("opaque" in read) return { canonical: word, inside: false, opaque: read.opaque };
+		if (!isAbsolute(read.native) && "opaque" in msysPath(cwd)) return { canonical: word, inside: false, opaque: "relative to a directory that cannot be read" };
+		word = read.native;
+	}
 	// B1 (the lead's review): `..` is taken on the REAL path, one component
 	// at a time — never collapsed as text first. `link-out/..` is the parent
 	// of where link-out POINTS, which is where the shell goes; collapsed as
 	// text it was the workspace, and `cat link-out/../etc/hosts` printed.
-	let current = isAbsolute(word) ? "/" : realCase(cwd);
+	const top = isAbsolute(word) ? dialect.path.parse(word).root : "";
+	let current = top === "" ? realCase(cwd) : dialect.msys ? dialect.path.normalize(top) : top;
 	// past the last component that exists, the rest is text: nothing on
 	// disk can redirect a path that does not exist
 	const missing: string[] = [];
-	for (const part of word.split("/")) {
+	for (const part of word.slice(top.length).split("/")) {
 		if (part === "" || part === ".") continue;
 		if (missing.length > 0) {
 			if (part === "..") missing.pop();

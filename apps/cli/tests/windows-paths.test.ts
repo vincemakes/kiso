@@ -288,6 +288,10 @@ describe("the credential deny under Git Bash", () => {
 		expect(hit(line)).toBe(true);
 	});
 
+	it.each(["cat 'C:\\Users\\me\\.kiso\\*'", "cat ~/.kiso/*.json", "cat C:/Users/me/.KISO/AUTH.*", "cat /c/users/me/.kiso/a*"])("%s reaches the credential store by a wildcard", (line) => {
+		expect(hit(line)).toBe(true);
+	});
+
 	it("from the home directory, a relative spelling with backslashes", () => {
 		expect(hit("cat '.kiso\\auth.json'", HOME)).toBe(true);
 	});
