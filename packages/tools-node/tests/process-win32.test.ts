@@ -40,7 +40,10 @@ const fakeFiles = vi.hoisted(() => new Set<string>());
 
 vi.mock("node:fs", async (importOriginal) => {
 	const real = await importOriginal<typeof import("node:fs")>();
-	return { ...real, existsSync: (p: unknown) => (typeof p === "string" && fakeFiles.has(p)) || real.existsSync(p as string) };
+	// a Windows-spelled path answers from the fake disk alone: on a real
+	// Windows runner the real Git install must not leak into the cases
+	const windowsy = (p: string): boolean => /^[A-Za-z]:/.test(p) || p.includes("\\");
+	return { ...real, existsSync: (p: unknown) => (typeof p === "string" && windowsy(p) ? fakeFiles.has(p) : real.existsSync(p as string)) };
 });
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -150,6 +153,7 @@ afterEach(() => {
 
 describe("POSIX is unchanged (guards: green before and after P1)", () => {
 	it("startCommand spawns the command through the shell, detached into its own group", () => {
+		setPlatform("linux");
 		const cwd = ws();
 		startCommand("echo hi", { cwd, env: { A: "1" } });
 		expect(cp.spawns).toEqual([
@@ -158,6 +162,7 @@ describe("POSIX is unchanged (guards: green before and after P1)", () => {
 	});
 
 	it("the shell tool's description names /bin/sh, byte for byte (without and with tasks wired)", () => {
+		setPlatform("linux");
 		expect(shellTool({ workspaceRoot: ws() }).description).toBe(
 			"Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
 		);
@@ -405,6 +410,7 @@ describe("win32: a task stop is the journal's stop_requested record, never a sig
 	});
 
 	it("POSIX keeps SIGTERM as the fast path (guard)", () => {
+		setPlatform("linux");
 		const kill = vi.spyOn(process, "kill").mockImplementation((() => true) as typeof process.kill);
 		processTaskBackend({ runnerPath: "/nowhere/task-runner.js" }).signalStop(4242);
 		expect(kill).toHaveBeenCalledWith(4242, "SIGTERM");

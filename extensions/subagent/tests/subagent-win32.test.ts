@@ -32,7 +32,10 @@ const fakeFiles = vi.hoisted(() => new Set<string>());
 
 vi.mock("node:fs", async (importOriginal) => {
 	const real = await importOriginal<typeof import("node:fs")>();
-	return { ...real, existsSync: (p: unknown) => (typeof p === "string" && fakeFiles.has(p)) || real.existsSync(p as string) };
+	// a Windows-spelled path answers from the fake disk alone: on a real
+	// Windows runner the real Git install must not leak into the cases
+	const windowsy = (p: string): boolean => /^[A-Za-z]:/.test(p) || p.includes("\\");
+	return { ...real, existsSync: (p: unknown) => (typeof p === "string" && windowsy(p) ? fakeFiles.has(p) : real.existsSync(p as string)) };
 });
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -129,6 +132,7 @@ afterEach(() => {
 
 describe("POSIX is unchanged (guards)", () => {
 	it("a check runs through /bin/sh, detached into its own group", async () => {
+		setPlatform("linux");
 		const dir = ws();
 		const r = await runAcceptance(CHECK[0], CHECK[1], dir, "HEAD", 5_000, undefined);
 		expect(r.exitCode).toBe(0);
@@ -139,6 +143,7 @@ describe("POSIX is unchanged (guards)", () => {
 	});
 
 	it("a timeout kills the whole process group", async () => {
+		setPlatform("linux");
 		cp.autoExit = false;
 		const kills: [number, unknown][] = [];
 		vi.spyOn(process, "kill").mockImplementation(((pid: number, sig?: unknown) => {
