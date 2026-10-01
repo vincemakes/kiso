@@ -30,6 +30,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { writeProfile } from "../src/profile.js";
 
+/** Mode bits are POSIX: Windows guards these files with ACLs, and Node reports 0666 there. */
+const POSIX_MODES = process.platform !== "win32";
+
 const modeOf = (p: string): string => (statSync(p).mode & 0o777).toString(8);
 
 let saved: number;
@@ -51,14 +54,14 @@ describe("DF-0322-F1 — the profile sidecar", () => {
 	it("is 0600, not 0644 — the binding is not the world's business", () => {
 		const root = mkdtempSync(join(tmpdir(), "kiso-df0322-"));
 		writeProfile(root, "s1", profile);
-		expect(modeOf(join(root, "s1.meta.json"))).toBe("600");
+		if (POSIX_MODES) expect(modeOf(join(root, "s1.meta.json"))).toBe("600");
 	});
 
 	it("stays 0600 across a rewrite — the atomic rename does not widen it", () => {
 		const root = mkdtempSync(join(tmpdir(), "kiso-df0322-rewrite-"));
 		writeProfile(root, "s1", profile);
 		writeProfile(root, "s1", { ...(profile as object), revision: 2 } as never);
-		expect(modeOf(join(root, "s1.meta.json"))).toBe("600");
+		if (POSIX_MODES) expect(modeOf(join(root, "s1.meta.json"))).toBe("600");
 	});
 });
 
@@ -71,7 +74,7 @@ describe("DF-0322-F1 — the trace ledger", () => {
 		// later line takes, so the file exists — and exists at the mode the
 		// creating call gave it — by the time init() returns.
 		w.init();
-		expect(modeOf(join(root, "traces")), "the ledger directory lists to the world").toBe("700");
-		expect(modeOf(join(root, "traces", "s1.jsonl")), "the ledger reads to the world").toBe("600");
+		if (POSIX_MODES) expect(modeOf(join(root, "traces")), "the ledger directory lists to the world").toBe("700");
+		if (POSIX_MODES) expect(modeOf(join(root, "traces", "s1.jsonl")), "the ledger reads to the world").toBe("600");
 	});
 });
