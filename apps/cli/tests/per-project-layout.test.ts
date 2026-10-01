@@ -26,7 +26,9 @@ import {
 } from "../src/projects.js";
 import { countPlan, INFER_MIN_MENTIONS, planMigration, reverseMigration, runMigration } from "../src/session-migration.js";
 
-const fresh = (): string => realpathSync(mkdtempSync(join(tmpdir(), "kiso-projects-")));
+// .native, as the product resolves: on Windows it expands an 8.3 short name
+// (the runner's temp dir is RUNNER~1), the JS realpath does not
+const fresh = (): string => realpathSync.native(mkdtempSync(join(tmpdir(), "kiso-projects-")));
 
 /** A repository on disk: the inference maps paths to the nearest `.git`. */
 function repo(root: string, name: string): string {

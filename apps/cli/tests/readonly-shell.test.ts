@@ -455,7 +455,10 @@ describe("the shared resolver — real components, in the disk's case (review B1
 		for (const d of [".ssh", ".config", ".aws", ".gnupg", ".kiso"]) mkdirSync(join(home, d));
 		writeFileSync(join(home, "notes.md"), "x");
 		const saved = process.env.HOME;
+		const savedProfile = process.env.USERPROFILE;
 		process.env.HOME = home;
+		// Windows: the home directory is USERPROFILE (os.homedir reads it)
+		process.env.USERPROFILE = home;
 		try {
 			setMode("default");
 			const ext = readOnlyShellExtension(() => ({ workspaceRoot: home, excludeRoots: [join(home, ".kiso")] }));
@@ -464,6 +467,8 @@ describe("the shared resolver — real components, in the disk's case (review B1
 			expect(await decide("cat notes.md")).toEqual({ action: "allow" });
 		} finally {
 			process.env.HOME = saved;
+			if (savedProfile === undefined) delete process.env.USERPROFILE;
+			else process.env.USERPROFILE = savedProfile;
 		}
 	});
 });

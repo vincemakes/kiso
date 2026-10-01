@@ -113,8 +113,11 @@ describe("E3: projectArtifacts", () => {
 	it("⑪ kisoHome — KISO_HOME first, then HOME, never a hard-coded ~ (finding #11)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-trust-"));
 		const origHome = process.env.HOME;
+		const origProfile = process.env.USERPROFILE;
 		const origKiso = process.env.KISO_HOME;
 		process.env.HOME = join(dir, "fake-home");
+		// Windows: the home directory is USERPROFILE (os.homedir reads it)
+		process.env.USERPROFILE = process.env.HOME;
 		delete process.env.KISO_HOME;
 		try {
 			expect(kisoHome()).toBe(join(process.env.HOME!, ".kiso"));
@@ -125,6 +128,8 @@ describe("E3: projectArtifacts", () => {
 			else process.env.KISO_HOME = origKiso;
 			if (origHome === undefined) delete process.env.HOME;
 			else process.env.HOME = origHome;
+			if (origProfile === undefined) delete process.env.USERPROFILE;
+			else process.env.USERPROFILE = origProfile;
 		}
 	});
 
@@ -141,7 +146,8 @@ describe("E3: projectArtifacts", () => {
 		const cwd = makeProject({ "extensions/a.mjs": "x\n" });
 		const artifacts = await projectArtifacts(cwd);
 		// macOS /tmp → /private/tmp: realpath canonicalizes, the raw join does not.
-		expect(artifacts!.root).toBe(realpathSync(join(cwd, ".kiso")));
+		// .native, as the product resolves (it also expands a Windows 8.3 short name)
+		expect(artifacts!.root).toBe(realpathSync.native(join(cwd, ".kiso")));
 	});
 });
 
