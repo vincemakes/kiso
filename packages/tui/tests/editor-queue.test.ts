@@ -82,3 +82,29 @@ describe("W22: the queue pop keys (the editor's raw-byte routing)", () => {
 		expect(queue).toEqual([]);
 	});
 });
+
+describe("ADR-0057: restore — the steers a stop handed back", () => {
+	it("fills an empty buffer, cursor at the end", () => {
+		const editor = new Editor(() => {});
+		editor.restore("only src/");
+		expect(editor.line()).toBe("only src/");
+		editor.feed(enc(" please"));
+		expect(editor.line()).toBe("only src/ please");
+	});
+
+	it("goes AHEAD of a draft, on its own line, and the draft stays recoverable", () => {
+		const editor = new Editor(() => {});
+		editor.feed(enc("draft"));
+		editor.restore("steer one\nsteer two");
+		expect(editor.line()).toBe("steer one\nsteer two\ndraft");
+		editor.feed(enc("\x1a")); // ctrl+z: undo the restore
+		expect(editor.line()).toBe("draft");
+	});
+
+	it("an empty restore changes nothing", () => {
+		const editor = new Editor(() => {});
+		editor.feed(enc("draft"));
+		editor.restore("");
+		expect(editor.line()).toBe("draft");
+	});
+});

@@ -16,20 +16,35 @@ type SkillsExtension = KisoExtension & { readonly skills?: number; readonly cata
 /** 0.40.0: the same scan, for the CLI's `/skill` and `/skills`. `body` reads
  *  the file at call time and returns the SKILL.md body without its
  *  frontmatter, or the reason it cannot (over the cap, unreadable). */
+export interface SkillsCatalogEntry {
+	readonly name: string;
+	readonly description: string;
+	/** the directory under the skills root the skill was found in */
+	readonly dir: string;
+	readonly path: string;
+	/** false only for `user-invocable: false` — the model may still load it */
+	readonly userInvocable: boolean;
+}
+
 export interface SkillsCatalog {
-	readonly entries: readonly {
-		readonly name: string;
-		readonly description: string;
-		/** the directory under the skills root the skill was found in */
-		readonly dir: string;
-		readonly path: string;
-		/** false only for `user-invocable: false` — the model may still load it */
-		readonly userInvocable: boolean;
-	}[];
+	readonly entries: readonly SkillsCatalogEntry[];
 	/** the loader's own reason per skipped entry — the words the model's warning line uses */
 	readonly broken: readonly { readonly dir: string; readonly reason: string }[];
 	body(name: string): { readonly body: string } | { readonly error: string };
 }
 
-declare const createSkillsExtension: () => SkillsExtension | Promise<SkillsExtension>;
+/** For a host; the CLI passes none, and omitting both keeps the default scan. */
+export interface SkillsExtensionOptions {
+	/** Directories to scan, in order. Given → replaces the default
+	 *  (KISO_SKILLS_DIR, else $KISO_HOME/skills); the env var is not read.
+	 *  A name found twice resolves to the first occurrence (root order,
+	 *  then directory order); later ones are reported in `broken`. */
+	readonly roots?: readonly string[];
+	/** false → the skill is absent from the model's index, from `read_skill`,
+	 *  from the catalog and from the count, which are all built from one
+	 *  filtered list. Runs after duplicates resolve; `broken` is not filtered. */
+	readonly include?: (entry: SkillsCatalogEntry) => boolean;
+}
+
+declare const createSkillsExtension: (options?: SkillsExtensionOptions) => SkillsExtension | Promise<SkillsExtension>;
 export default createSkillsExtension;

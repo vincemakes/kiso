@@ -15,7 +15,8 @@
  * differently), or one of the STALE_AFTER events after it, each of which
  * changes what the next request carries.
  */
-import { estimateTokens, type Event, type Usage } from "@vincemakes/kiso-core";
+import type { Event, Usage } from "@vincemakes/kiso-core";
+import { estimateTokens } from "./estimate-tokens.js";
 
 const STALE_AFTER: ReadonlySet<Event["type"]> = new Set<Event["type"]>([
 	"compacted",

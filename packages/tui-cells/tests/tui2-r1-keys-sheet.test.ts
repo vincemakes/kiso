@@ -49,7 +49,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		expect(sheet.slice(1)).toEqual([
 			"enter send      ctrl+j / shift+⏎ newline   @ files",
 			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
-			"↑↓ history / queue pop              ctrl+o expand cells",
+			"↑↓ history / take back a steer      ctrl+o expand cells",
 			"ctrl+r transcript                   tab complete (menu / @)",
 			"? this sheet                        alt+←→ / ctrl+←→ word motion",
 			"alt+⌫ / alt+d delete word (ctrl+w too) ctrl+x copy the last answer",

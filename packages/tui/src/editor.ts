@@ -609,6 +609,19 @@ export class Editor {
 		this.#queuePop = pop;
 	}
 
+	/** ADR-0057: put text back into the buffer — the steers a stop handed
+	 *  back before they landed. It goes AHEAD of a draft already there, on
+	 *  its own line, and the draft stays recoverable (undo). */
+	restore(text: string): void {
+		if (text === "") return;
+		if (this.#chars.length > 0) this.#checkpoint();
+		const merged = this.#chars.length > 0 ? `${text}\n${this.line()}` : text;
+		this.#chars = [...merged].map((ch) => ch.codePointAt(0)!);
+		this.#cursor = this.#chars.length;
+		this.#verticalGoalCol = null;
+		this.#onRender();
+	}
+
 	/** The whole buffer as text (the CLI's line()/clearLine()). */
 	line(): string {
 		return String.fromCodePoint(...this.#chars);

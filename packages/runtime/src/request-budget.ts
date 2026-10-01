@@ -19,7 +19,7 @@
  */
 
 import type { Message, ToolSpec } from "@vincemakes/kiso-core";
-import { estimateTokens } from "@vincemakes/kiso-core";
+import { estimateTokens } from "./estimate-tokens.js";
 
 export interface RequestParts {
 	readonly systemPrompt?: string;

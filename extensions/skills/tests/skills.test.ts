@@ -325,3 +325,103 @@ describe("RF-2 skills: block and quoted scalars in the frontmatter", () => {
 		expect(ext.systemPrompt?.append).not.toContain("- two");
 	});
 });
+
+describe("a host names the roots and one filter governs every surface", () => {
+	/** Build the extension from host options, with KISO_SKILLS_DIR pointed
+	 *  somewhere else: a host's roots replace the default scan, env included. */
+	async function extFrom(options: Record<string, unknown>, decoy?: string): Promise<KisoExtension> {
+		if (decoy !== undefined) process.env.KISO_SKILLS_DIR = decoy;
+		try {
+			return await createSkillsExtension(options);
+		} finally {
+			delete process.env.KISO_SKILLS_DIR;
+		}
+	}
+	type Catalog = {
+		entries: { name: string; description: string; dir: string; path: string; userInvocable: boolean }[];
+		broken: { dir: string; reason: string }[];
+		body(name: string): { body: string } | { error: string };
+	};
+	const catalogOf = (ext: KisoExtension): Catalog => (ext as unknown as { catalog: Catalog }).catalog;
+
+	it("roots are scanned in the order given, and KISO_SKILLS_DIR is not read", async () => {
+		const first = skillDir();
+		const second = skillDir();
+		const decoy = skillDir();
+		writeSkill(first, "z-dir", "\n# Z\n", { name: "zeta", description: "from the first root" });
+		writeSkill(second, "a-dir", "\n# A\n", { name: "alpha", description: "from the second root" });
+		writeSkill(decoy, "d-dir", "\n# D\n", { name: "decoy", description: "must not appear" });
+		const ext = await extFrom({ roots: [first, second] }, decoy);
+		expect(ext.systemPrompt?.append).toBe(
+			"Available skills (load with read_skill):\n- zeta: from the first root\n- alpha: from the second root",
+		);
+		expect((ext as unknown as { skills: number }).skills).toBe(2);
+	});
+
+	it("an excluded skill is absent from the index, read_skill, the catalog and the count", async () => {
+		const root = skillDir();
+		writeSkill(root, "keep", "\n# Keep\nkept body\n", { description: "kept" });
+		writeSkill(root, "drop", "\n# Drop\ndropped body\n", { description: "dropped" });
+		const ext = await extFrom({ roots: [root], include: (e: { name: string }) => e.name !== "drop" });
+		expect(ext.systemPrompt?.append).toBe("Available skills (load with read_skill):\n- keep: kept");
+		const refused = (await readSkill(ext).execute({ name: "drop" }, ctx)) as { content: string; isError: boolean };
+		expect(refused.isError).toBe(true);
+		expect(refused.content).toBe('[skills] unknown skill "drop" — available: keep');
+		const allowed = (await readSkill(ext).execute({ name: "keep" }, ctx)) as { content: string; isError: boolean };
+		expect(allowed.isError).toBe(false);
+		expect(allowed.content).toContain("kept body");
+		const catalog = catalogOf(ext);
+		expect(catalog.entries.map((e) => e.name)).toEqual(["keep"]);
+		expect(catalog.body("drop")).toEqual({ error: "not installed" });
+		expect(catalog.broken).toEqual([]);
+		expect((ext as unknown as { skills: number }).skills).toBe(1);
+	});
+
+	it("include receives the catalog entry shape", async () => {
+		const root = skillDir();
+		writeSkill(root, "one", "\n# One\n", { name: "one", description: "d", "user-invocable": "false" });
+		const seen: unknown[] = [];
+		await extFrom({ roots: [root], include: (e: unknown) => (seen.push(e), true) });
+		expect(seen).toEqual([{ name: "one", description: "d", dir: "one", path: join(root, "one", "SKILL.md"), userInvocable: false }]);
+	});
+
+	it("a root that does not exist contributes nothing and is never an error", async () => {
+		const root = skillDir();
+		writeSkill(root, "only", "\n# Only\n", { description: "here" });
+		const ext = await extFrom({ roots: [join(root, "missing"), root] });
+		expect(ext.systemPrompt?.append).toBe("Available skills (load with read_skill):\n- only: here");
+	});
+
+	it("a name found twice in one root: the first directory wins, the second is reported, never listed", async () => {
+		const root = skillDir();
+		writeSkill(root, "01-deploy", "\n# First\nfirst body\n", { name: "deploy", description: "the first" });
+		writeSkill(root, "02-deploy", "\n# Second\nsecond body\n", { name: "deploy", description: "the second" });
+		const ext = await extWith(root);
+		expect(ext.systemPrompt?.append).toBe(
+			'Available skills (load with read_skill):\n- deploy: the first\n[skills] skipped 1 broken skill(s): 02-deploy (duplicate name "deploy" — already provided by 01-deploy)',
+		);
+		expect(catalogOf(ext).entries.map((e) => e.dir)).toEqual(["01-deploy"]);
+		expect((ext as unknown as { skills: number }).skills).toBe(1);
+	});
+
+	it("a name found in two roots: the earlier root wins", async () => {
+		const first = skillDir();
+		const second = skillDir();
+		writeSkill(first, "deploy", "\n# First\n", { description: "the first root's" });
+		writeSkill(second, "deploy", "\n# Second\n", { description: "the second root's" });
+		const ext = await extFrom({ roots: [first, second] });
+		expect(ext.systemPrompt?.append).toBe(
+			'Available skills (load with read_skill):\n- deploy: the first root\'s\n[skills] skipped 1 broken skill(s): deploy (duplicate name "deploy" — already provided by deploy in an earlier root)',
+		);
+	});
+
+	it("duplicates resolve before include: excluding the winner does not promote the loser", async () => {
+		const root = skillDir();
+		writeSkill(root, "01-deploy", "\n# First\n", { name: "deploy", description: "the first" });
+		writeSkill(root, "02-deploy", "\n# Second\n", { name: "deploy", description: "the second" });
+		const ext = await extFrom({ roots: [root], include: (e: { dir: string }) => e.dir !== "01-deploy" });
+		expect(catalogOf(ext).entries).toEqual([]);
+		expect(catalogOf(ext).broken.map((b) => b.dir)).toEqual(["02-deploy"]);
+		expect(ext.tools ?? []).toEqual([]);
+	});
+});

@@ -82,6 +82,7 @@ def main():
 	pid, fd = pty.fork()
 	if pid == 0:
 		os.environ["KISO_HOME"] = home
+		os.environ["KISO_SESSIONS_DIR"] = os.path.join(home, "sessions")  # 0.40.0: the pin follows the home
 		os.environ["KISO_FAUX_SCRIPT"] = script
 		ext = os.path.join(home, "ext")
 		os.makedirs(ext, exist_ok=True)
@@ -119,15 +120,15 @@ def main():
 	if not read_until(b"\xe2\x96\x8c ", 25):  # the ▌ input brick
 		print("FAIL: the input brick never appeared")
 		sys.exit(1)
-	os.write(fd, b"go\n")
+	os.write(fd, b"go\r")
 	if not read_until(b"approve edit_file", 30):
 		print("FAIL: the edit approval never appeared")
 		sys.exit(1)
-	os.write(fd, b"y\n")
+	os.write(fd, b"y\r")
 	if not read_until(b"approve shell", 30):
 		print("FAIL: the shell approval never appeared")
 		sys.exit(1)
-	os.write(fd, b"y\n")
+	os.write(fd, b"y\r")
 	# the kill predicate: TWO tool_execution_started on disk — the slow
 	# shell is executing right now
 	deadline = time.time() + 20
@@ -184,6 +185,7 @@ def main():
 	pid, fd = pty.fork()
 	if pid == 0:
 		os.environ["KISO_HOME"] = home
+		os.environ["KISO_SESSIONS_DIR"] = os.path.join(home, "sessions")  # 0.40.0: the pin follows the home
 		os.environ["KISO_FAUX_SCRIPT"] = script
 		ext = os.path.join(home, "ext")
 		os.makedirs(ext, exist_ok=True)
@@ -216,22 +218,22 @@ def main():
 				except OSError:
 					return False
 		return False
-	if not read_until(b"did it apply?", 30):
+	if not read_until(b"rerun it?", 30):
 		print("FAIL: the uncertain verdict question never appeared")
 		sys.exit(1)
-	os.write(fd, b"y\n")  # (y)es — the verdict rerun
+	os.write(fd, b"y\r")  # (y)es — the verdict rerun
 	# answer every question (the rerun shell needs no new approval — its
 	# pre-kill allow is durable — and the third edit's does) until the
 	# process exits on its own; the rerun's 30s sleep bounds the wait
 	end = time.time() + 150
 	while time.time() < end:
-		if b"did it apply?" in buf:
-			buf = buf[buf.find(b"did it apply?") + len(b"did it apply?"):]
-			os.write(fd, b"y\n")
+		if b"rerun it?" in buf:
+			buf = buf[buf.find(b"rerun it?") + len(b"rerun it?"):]
+			os.write(fd, b"y\r")
 			continue
 		if b"approve " in buf:
 			buf = buf[buf.find(b"approve ") + len(b"approve "):]
-			os.write(fd, b"y\n")
+			os.write(fd, b"y\r")
 			continue
 		r, _, _ = select.select([fd], [], [], 0.2)
 		if r:
@@ -258,7 +260,7 @@ run_once() {
 	sid="k9"
 	printf 'OLD' > "$workdir/f1.txt"
 	printf 'OLD' > "$workdir/f3.txt"
-	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","search":"OLD","replace":"NEW"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","search":"OLD","replace":"NEW"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
+	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","search":"OLD","replace":"NEW","expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","search":"OLD","replace":"NEW","expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
 
 	printf '\n=== demo-kill9: run %s (a fresh KISO_HOME) ===\n' "$n"
 	printf '  [%s/2] phase 1 — a real chat, two approvals, SIGKILL mid-execution\n' "$n"
@@ -285,7 +287,7 @@ run_once() {
 	else
 		facts="$(probe "$home/sessions/$sid.jsonl" "$workdir")"
 		local asked
-		asked="$(grep -c 'did it apply?' "$home/phase2.out" || true)"
+		asked="$(grep -c 'rerun it?' "$home/phase2.out" || true)"
 		check "the uncertain is re-presented exactly once" "$( [ "$asked" -eq 1 ]; echo $?)"
 		check "exactly one durable resolution" "$(printf '%s' "$facts" | grep -q 'resolved=1'; echo $?)"
 		check "the terminal landed and is durable" "$(printf '%s' "$facts" | grep -q 'terminal=1'; echo $?)"

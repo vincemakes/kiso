@@ -23,6 +23,7 @@ const service = createSessionService({
 
 const { runId, done } = await service.run("s1", "hello");     // InFlightError | OpenRunError | DrainingError
 const off = await service.subscribe("s1", lastSeqSeen, (ev) => send(ev)); // replay, then live, exactly once
+service.steer("s1", "only the editor tests");                 // → { runId } — NotRunningError | RunClosedError: run() it instead
 await service.approve("s1", decisionId, true);                 // → { needsResume }
 await service.abort("s1");                                     // → idle | parked (who is waited for) | stopped
 await service.drain(20_000);                                   // → { waitedFor, parked, interrupted, timedOut }
@@ -42,6 +43,13 @@ await service.close(5_000);                              // abort what is live, 
   does nothing; `{ force: true }` aborts anyway. "stopped" carries a
   `settled` promise: the kernel does not kill a tool, so a tool that
   ignores the abort keeps its run open until it returns.
+- **Steer, and what never landed** (ADR-0057). `steer()` hands the live
+  run a person's input; the run admits it at its next quiescent boundary.
+  With no run live it refuses (`NotRunningError`); once the run has
+  decided to end, the runtime refuses (`RunClosedError`). Input accepted
+  and never admitted is on `SettledRun.unadmitted`, and the HTTP stream
+  names it in an `unadmitted` frame after the terminal; the service never
+  starts the follow-up run itself — the host does, usually with it.
 - **After the last uncertain verdict** the service does not resume;
   `resolveUncertain` returns `{ remaining }` and the host resumes at zero.
 - **Executing tools** are counted from `tool_execution_started` and the

@@ -6,7 +6,8 @@
  * boundary rule — through that one hook, so what they pin (the append,
  * the yield, the re-derive, the replay) is the kernel's part, unchanged.
  */
-import { estimateTokens, type Event, type EventInput, type Message } from "@vincemakes/kiso-core";
+import type { Event, EventInput, Message } from "@vincemakes/kiso-core";
+import { estimateTokens } from "@vincemakes/kiso-runtime";
 import { microcompactBoundarySeq } from "@vincemakes/kiso-runtime/internal";
 
 export function standingPrune(thresholdTokens: number, keepResults?: number) {

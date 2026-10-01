@@ -14,10 +14,11 @@
  * lands on disk; the original events stay there forever.
  */
 
-import { estimateTokens, DO_NOT_COMPACT, DEFAULT_MAX_RETRIES, RETRY_AFTER_MAX_MS, retryDelayMs } from "@vincemakes/kiso-core";
+import { DO_NOT_COMPACT, DEFAULT_MAX_RETRIES, RETRY_AFTER_MAX_MS, retryDelayMs } from "@vincemakes/kiso-core";
 import type { AbortSignalLike, Adapter, RetryInfo, ToolSpec } from "@vincemakes/kiso-core";
 import type { Event } from "@vincemakes/kiso-core";
 import type { Message } from "@vincemakes/kiso-core";
+import { estimateTokens } from "./estimate-tokens.js";
 import type { RawUsage } from "./usage/canonical.js";
 
 /** K (ADR-0044): the recent ROUNDS kept intact by /compact — a constant,

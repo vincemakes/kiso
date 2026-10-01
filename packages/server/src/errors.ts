@@ -54,3 +54,14 @@ export class DrainingError extends Error {
 		this.name = "DrainingError";
 	}
 }
+
+/** ADR-0057: a steer for a session with no run in flight. The host starts a
+ *  run with the input instead. */
+export class NotRunningError extends Error {
+	readonly sessionId: string;
+	constructor(sessionId: string) {
+		super(`session ${sessionId} has no run in flight — start a run with this input`);
+		this.name = "NotRunningError";
+		this.sessionId = sessionId;
+	}
+}

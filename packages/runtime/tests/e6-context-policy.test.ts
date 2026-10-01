@@ -26,7 +26,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { defineTool, estimateTokens, projectMessages, type Adapter, type AdapterEvent, type StreamOptions } from "@vincemakes/kiso-core";
+import { defineTool, projectMessages, type Adapter, type AdapterEvent, type StreamOptions } from "@vincemakes/kiso-core";
+import { estimateTokens } from "../src/estimate-tokens.js";
 import { createAgent, SessionStore } from "../src/index.js";
 import { DROP_PLACEHOLDER } from "../src/summarize.js";
 

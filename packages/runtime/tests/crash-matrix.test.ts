@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { defineTool, type Adapter, type AdapterEvent, type Event, type Tool } from "@vincemakes/kiso-core";
-import { createAgent, type AgentSession, SessionStore } from "../src/index.js";
+import { createAgent, RunClosedError, type AgentSession, type Run, SessionStore } from "../src/index.js";
 import { deriveRecoveryPlan, type RecoveryAction } from "../src/recovery-plan.js";
 
 // ── the EffectGate ────────────────────────────────────────────────────────
@@ -1068,5 +1068,173 @@ describe("F4 — the mid-stream retry's crash cells", () => {
 		for await (const ev of session2.resume()) events.push(ev);
 		expect(terminalOf(events)).toMatchObject({ outcome: { kind: "completed" } });
 		expect(recordsOf(dir).filter((e) => e.type === "model_output_abandoned")).toHaveLength(2);
+	});
+});
+
+describe("ADR-0057 — the Safe Admission crash rows", () => {
+	const STEER = "only the editor tests";
+	/** A search tool that, while it executes, hands the live run a steer. */
+	function steeringTool(runRef: { run?: Run }): Tool<{ query: string }> {
+		return defineTool<{ query: string }>({
+			name: "web_search",
+			description: "Search",
+			parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+			execute: async (input) => {
+				runRef.run!.steer(STEER);
+				return { content: `results for ${input.query}`, isError: false };
+			},
+		});
+	}
+	const steerInputs = (events: readonly Event[]) => events.filter((e): e is Event & { type: "user_input" } => e.type === "user_input" && e.content === STEER);
+	/** A reopen adapter that records the last message of every request. */
+	function lastMessages(turns: ReadonlyArray<ReadonlyArray<AdapterEvent>>): { adapter: Adapter; last: unknown[] } {
+		const last: unknown[] = [];
+		const { adapter } = scriptedAdapter(turns);
+		return {
+			last,
+			adapter: {
+				stream(options) {
+					last.push(options.messages.at(-1));
+					return adapter.stream(options);
+				},
+			},
+		};
+	}
+
+	it("SA1 — crash after the steer arrived, before admission: nothing about it is durable, and the run recovers as today", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-sa1-"));
+		const gate = new EffectGate();
+		const runRef: { run?: Run } = {};
+		const { adapter } = scriptedAdapter([CALLING_TURN, DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({ model: "faux", store: live, tools: [steeringTool(runRef)], adapter }).session({ id: "s" });
+		gatedSession(session, gate);
+		runRef.run = session.run("go");
+		const it = runRef.run[Symbol.asyncIterator]();
+		await nextEventOfType(it, "tool_result");
+		gate.park("persist");
+		expect(await stepUntilHold(it, gate)).toBe("held");
+		expect(steerInputs(recordsOf(dir))).toHaveLength(0);
+		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
+		await processDeath(it);
+		live.closeAll();
+
+		const reopen = lastMessages([DONE_TURN]);
+		const session2 = await reopenAgent(dir, reopen.adapter);
+		const events: Event[] = [];
+		for await (const ev of session2.resume()) events.push(ev);
+		expect(terminalOf(events)).toMatchObject({ outcome: { kind: "completed" } });
+		expect(steerInputs(recordsOf(dir))).toHaveLength(0);
+	});
+
+	it("SA2 — crash after admission, before the request: CONTINUE_MODEL, and the model answers the steer", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-sa2-"));
+		const gate = new EffectGate();
+		const runRef: { run?: Run } = {};
+		const { adapter } = scriptedAdapter([CALLING_TURN, DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({ model: "faux", store: live, tools: [steeringTool(runRef)], adapter: gatedAdapter(gate, adapter) }).session({ id: "s" });
+		gatedSession(session, gate);
+		runRef.run = session.run("go");
+		const it = runRef.run[Symbol.asyncIterator]();
+		for (;;) {
+			const ev = await nextEventOfType(it, "user_input");
+			if (ev.content === STEER) break;
+		}
+		gate.park("model");
+		expect(await stepUntilHold(it, gate)).toBe("held");
+		expect(gate.peek()).toBe("model");
+		expect(steerInputs(recordsOf(dir))).toHaveLength(1);
+		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
+		await processDeath(it);
+		live.closeAll();
+
+		const reopen = lastMessages([DONE_TURN]);
+		const session2 = await reopenAgent(dir, reopen.adapter);
+		for await (const _ of session2.resume()) {
+			/* drain */
+		}
+		expect(reopen.last[0]).toMatchObject({ role: "user", content: STEER });
+		expect(steerInputs(recordsOf(dir))).toHaveLength(1);
+	});
+
+	it("SA3 — crash between the admitted steer and its hook's replacement: the resume runs the hook ONCE for it", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-sa3-"));
+		const gate = new EffectGate();
+		const runRef: { run?: Run } = {};
+		const hooked: unknown[] = [];
+		const hooks = {
+			onUserMessage: async (msg: { role: "user"; content: unknown }) => {
+				hooked.push(msg.content);
+				return msg.content === STEER ? { ...msg, content: `${STEER} (checked)` } : msg;
+			},
+		};
+		const { adapter } = scriptedAdapter([CALLING_TURN, DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({ model: "faux", store: live, tools: [steeringTool(runRef)], adapter, hooks: hooks as never }).session({ id: "s" });
+		gatedSession(session, gate);
+		runRef.run = session.run("go");
+		const it = runRef.run[Symbol.asyncIterator]();
+		for (;;) {
+			const ev = await nextEventOfType(it, "user_input");
+			if (ev.content === STEER) break;
+		}
+		gate.park("persist");
+		expect(await stepUntilHold(it, gate)).toBe("held");
+		const steerSeq = steerInputs(recordsOf(dir))[0]!.seq;
+		expect(recordsOf(dir).some((e) => e.type === "user_input_replaced" && e.replaces === steerSeq)).toBe(false);
+		await processDeath(it);
+		live.closeAll();
+
+		hooked.length = 0;
+		const reopen = lastMessages([DONE_TURN]);
+		const session2 = await createAgent({ model: "faux", store: new SessionStore(dir), tools: [], adapter: reopen.adapter, hooks: hooks as never }).session({ id: "s" });
+		for await (const _ of session2.resume()) {
+			/* drain */
+		}
+		expect(hooked).toEqual([STEER]);
+		expect(recordsOf(dir).filter((e) => e.type === "user_input_replaced" && e.replaces === steerSeq)).toHaveLength(1);
+		expect(reopen.last[0]).toMatchObject({ role: "user", content: `${STEER} (checked)` });
+	});
+
+	it("SA4 — crash after the seal, before the terminal lands: a steer from onStop was refused, and never reaches the log", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-mx-sa4-"));
+		const gate = new EffectGate();
+		let refused: unknown;
+		let run: Run | undefined;
+		const { adapter } = scriptedAdapter([DONE_TURN]);
+		const live = new SessionStore(dir);
+		const session = await createAgent({
+			model: "faux",
+			store: live,
+			tools: [],
+			adapter,
+			hooks: {
+				onStop: async () => {
+					try {
+						run!.steer(STEER);
+					} catch (e) {
+						refused = e;
+					}
+				},
+			},
+		}).session({ id: "s" });
+		gatedSession(session, gate);
+		run = session.run("go");
+		const it = run[Symbol.asyncIterator]();
+		await nextEventOfType(it, "stop");
+		gate.park("persist");
+		expect(await stepUntilHold(it, gate)).toBe("held");
+		expect(refused).toBeInstanceOf(RunClosedError);
+		expect(terminalOf(recordsOf(dir))).toBeUndefined();
+		await processDeath(it);
+		live.closeAll();
+
+		const session2 = await reopenAgent(dir, scriptedAdapter([DONE_TURN]).adapter);
+		for await (const _ of session2.resume()) {
+			/* drain */
+		}
+		expect(recordsOf(dir).filter((e) => e.type === "terminal")).toHaveLength(1);
+		expect(steerInputs(recordsOf(dir))).toHaveLength(0);
 	});
 });

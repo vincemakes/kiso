@@ -130,7 +130,8 @@ decline`); the body scrolls
   bracketed paste) with the
   kiso brick motif: a bold half-block ▌you> row and a dim dotted ╌
   separator; the sent line renders into the body exactly once, a turn
-  submitted while another runs queues with a live `+N queued` status, and
+  submitted while another runs queues with a live `+N queued` status (since
+  0.45.0 a line sent while a run works STEERS it instead — ADR-0057), and
   Esc aborts. KC1: the input is a MULTI-LINE composer — a paste keeps its
   newlines (LF/CR/CRLF all normalize to one), Ctrl+J (or Shift+Enter where
   the terminal encodes it) inserts a newline, Enter sends the whole block

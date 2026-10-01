@@ -251,7 +251,7 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "esc", what: "stop" },
 	{ keys: "alt+⏎ / ctrl+⏎", what: "redirect" },
 	{ keys: "/", what: "commands" },
-	{ keys: "↑↓", what: "history / queue pop" },
+	{ keys: "↑↓", what: "history / take back a steer" },
 	{ keys: "ctrl+o", what: "expand cells" },
 	// R5 — the transcript viewer. It has to be HERE or it does not exist:
 	// R4a retired the printed key from the fold row on the ground that a

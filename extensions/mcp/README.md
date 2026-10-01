@@ -17,6 +17,11 @@ Servers live in `~/.kiso/mcp.json` (or the project-level `.kiso/mcp.json`
 after the trust gate) — see the kiso README. There is nothing to import;
 the extension reads the config at startup and connects in the background.
 
+A host passes the servers instead: `createMcpExtension({ servers })`, the
+same `mcpServers` map. Then no config file is read and the tool cache is
+not used (it is keyed by server name alone and shared with the CLI), so a
+supplied server's tools appear once it connects.
+
 ## Versioning
 
 The version counter is this package's own. It is pinned exactly by the kiso

@@ -122,7 +122,7 @@ export interface TraceSegment {
 	/** Thin pointer into the event log: [firstSeq, lastSeq] inclusive of the
 	 *  events that produced this segment. null for system/tools (not events). */
 	seqRange: [number, number] | null;
-	estTokens: number; // estimateTokens (chars/4, core compaction.ts:28)
+	estTokens: number; // estimateTokens (chars/4, runtime estimate-tokens.ts)
 	freshness: Freshness; // assembly-time structural estimate, see §1.3
 }
 /** That is the complete set for 1.2.0. */

@@ -12,7 +12,8 @@
 
 import { describe, expect, it } from "vitest";
 import type { Event, EventInput } from "@vincemakes/kiso-core";
-import { estimateTokens, projectMessages } from "@vincemakes/kiso-core";
+import { projectMessages } from "@vincemakes/kiso-core";
+import { estimateTokens } from "../src/estimate-tokens.js";
 import { policyTriggerFromWindow, summaryBoundarySeq, KEEP_TOKENS_DEFAULT } from "../src/summarize.js";
 import { checkpointBoundarySeq } from "../src/checkpoint.js";
 import { requestBudget } from "../src/request-budget.js";

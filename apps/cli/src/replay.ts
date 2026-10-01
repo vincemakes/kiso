@@ -22,6 +22,8 @@
 
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
+import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
+import { taskNoticeRow } from "./task-notice.js";
 
 /** The Body surface the replay drives — the live run's own mutations. */
 export interface ReplayBody {
@@ -80,6 +82,7 @@ function replayTurn(body: ReplayBody, turn: readonly Ev[]): void {
 			case "user_input": {
 				const ask = askOf(e);
 				if (ask !== null) body.userLine(ask);
+				else if ((e.via as { kind?: unknown } | undefined)?.kind === "tasks") body.notice(taskNoticeRow((e.via as { items: readonly TaskDeliveryItem[] }).items));
 				else if (e.source === "system") {
 					body.notice("verification pass");
 					body.notice(`  ${typeof e.content === "string" ? e.content : ""}`);

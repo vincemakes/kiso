@@ -17,6 +17,7 @@ for await (const ev of session.events({ after: -1, until: (e) => e.kind === "eve
   if (ev.kind === "event") render(ev.event);              // a WireEvent under its seq
   else if (ev.event === "billing") bill(ev.data);         // a product frame beside it
 }
+await session.steer("only the editor tests");             // → { runId }; ClientError idle | closed → run() it instead
 const outcome = await session.abort();                    // idle | parked (a reply, not an error) | stopped
 await session.approve(decisionId, true);                  // → { needsResume }
 ```

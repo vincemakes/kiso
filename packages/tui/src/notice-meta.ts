@@ -26,6 +26,9 @@ const SHAPES: readonly (readonly [RegExp, string, (m: RegExpExecArray) => string
 	[/^\[\/compact\] ✦ compacted(?: · )?(.*)$/s, "COMPACTED", (m) => m[1]!],
 	[/^✦ pruned (.*)$/s, "PRUNED", (m) => m[1]!],
 	[/^✦ window learned — (.*)$/s, "WINDOW", (m) => `learned — ${m[1]!}`],
+	// the main-sync round: a background task's delivery (ADR-0058, main's
+	// task-notice.ts) is a session event like the others
+	[/^✦ task (.*)$/s, "TASK", (m) => m[1]!],
 	[/^run failed — (.*)$/s, "FAILED", (m) => m[1]!],
 	[/^(\S+) FAILED — (.*)$/s, "UNCERTAIN", (m) => `${m[1]!} — ${m[2]!}`],
 	// Graphite P1b (owner, 2026-09-30): dontAsk leaves an interrupted call

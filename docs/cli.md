@@ -273,9 +273,9 @@ The facts — the tier, the cache figure, the context estimate and the rate
 — are never dropped and never cut. The shortening is on the row only:
 `/model`, the session log and the request trace all keep the name whole.
 
-**The keys:** `enter` send · `ctrl+j / shift+⏎` newline · `@` files ·
+**The keys:** `enter` send (while a run works: steer, ADR-0057) · `ctrl+j / shift+⏎` newline · `@` files ·
 `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands · `↑↓` history /
-queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this
+take back a steer · `ctrl+o` expand cells · `ctrl+r` transcript · `tab` complete · `?` this
 sheet.
 Panels: digits select · space toggles · `t` types an answer.
 
@@ -452,7 +452,7 @@ because the row ran out of width — the facts never are.
 
 **The keys**, the whole sheet `?` shows: `enter` send · `ctrl+j / shift+⏎`
 newline · `@` files · `esc` stop · `alt+⏎ / ctrl+⏎` redirect · `/` commands ·
-`↑↓` history / queue pop · `ctrl+o` expand cells · `ctrl+r` transcript · `tab`
+`↑↓` history / take back a steer · `ctrl+o` expand cells · `ctrl+r` transcript · `tab`
 complete · `?` this sheet · `alt+←→ / ctrl+←→` word motion · `alt+⌫ / alt+d`
 delete word · `ctrl+x` copy the last answer · `ctrl+z / ctrl+y` undo / redo ·
 `ctrl+v` attach a clipboard image (macOS).

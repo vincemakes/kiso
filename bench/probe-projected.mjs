@@ -9,7 +9,8 @@
 // brings the Nth user input (i.e. after N-1 inputs) — per-boundary
 // measurements for sizing the trigger gap across run-to-run variance.
 import { SessionStore } from "@vincemakes/kiso-runtime";
-import { estimateTokens, projectMessages } from "@vincemakes/kiso-core";
+import { projectMessages } from "@vincemakes/kiso-core";
+import { estimateTokens } from "@vincemakes/kiso-runtime";
 
 const [dir, sid, atInput] = process.argv.slice(2);
 if (dir === undefined || sid === undefined) {

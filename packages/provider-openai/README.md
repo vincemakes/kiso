@@ -5,6 +5,12 @@ DeepSeek, OpenRouter via base_url): reasoning dialects digested into
 thinking, real streaming usage, exhaustive finish-reason mapping,
 connection/timeout/5xx classification.
 
+One request yields exactly one `usage` event, before its `stop`. A
+channel may report usage several times in one stream (twice after the
+finish, or cumulatively on every chunk); the adapter keeps the last
+report and emits it once, so a host that adds usage events up bills each
+request once.
+
 Requires Node >= 22. See the repository README for the framework
 overview.
 

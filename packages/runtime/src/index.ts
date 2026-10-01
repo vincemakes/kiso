@@ -33,7 +33,7 @@ export { PoisonedSessionError, ResumeBlockedError } from "./session.js";
 export type { ApprovalRequest, CompactInfo, ContextPolicy, SessionConfig, SummarizeResult } from "./session.js";
 
 // run
-export { Run } from "./run.js";
+export { Run, RunClosedError } from "./run.js";
 
 // store
 export { SessionStore, StaleWriterError, StoreCorruptionError } from "./store.js";
@@ -60,3 +60,7 @@ export type { ProjectArtifact, ProjectArtifacts, TrustDecision, TrustRecord } fr
 // provider observation; canonicalizeUsage derives at the accounting
 // boundary (R4 Case B — the frozen usage union does not move).
 export { canonicalizeUsage } from "./usage/canonical.js";
+// ADR-0043 Amendment 13: the token estimator is runtime context-accounting
+// policy, not a kernel primitive — it moved here unchanged from the core
+// package, which never called it.
+export { estimateTokens } from "./estimate-tokens.js";

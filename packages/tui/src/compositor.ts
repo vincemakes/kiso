@@ -1723,17 +1723,20 @@ export class Body {
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
 		// lost anywhere.
 		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined, expand: null };
-		// Graphite §8.9: the bar, when the CLI handed one over — the queued
-		// messages are on screen in the band above the input (§8.7), so the
-		// bar does not count them.
+		// Graphite §8.9: the bar, when the CLI handed one over — the steers
+		// are on screen in the band above the input (§8.7), so the bar does
+		// not count them (the main-sync round, owner 2026-09-30: no `+N
+		// steer` on a Graphite bar).
 		if (this.#bar !== null) {
 			const expand = this.#collapsed.length > 0 ? (this.#expandedAll ? "collapse all" : "expand all") : null;
 			return { status: "", hint: undefined, expand, bar: this.#bar };
 		}
-		// W22: while turns wait in the queue, the right hint shows the
-		// count — the chips below carry the lines themselves.
+		// ADR-0057: without a bar, while steers wait for the run's next
+		// quiescent boundary, the right hint counts them — the rows carry the
+		// lines. Short on purpose: the running status shares the row, and a
+		// hint that does not fit is dropped whole.
 		const queued = this.#queueState?.().length ?? 0;
-		if (queued > 0) return { status: this.#status, hint: `+${queued} queued`, expand: null };
+		if (queued > 0) return { status: this.#status, hint: `+${queued} steer`, expand: null };
 		// D-S2-1 (owner-ruled 2026-09-06): the idle hint names the ctrl+o
 		// SWITCH — `expand all` or `collapse all` by its state — and only
 		// while a committed card has something behind the key (#collapsed
@@ -2447,11 +2450,14 @@ export class Body {
 		// chips + one "…N more" row (≤ H−8 rows — the content keeps ≥ 4);
 		// that row carries the count, so the cap hides nothing without
 		// saying so.
+		// the main-sync round (owner, 2026-09-30): a steer waits for an open
+		// approval — it never answers one — and its row says so
+		const waiting = this.#panelState?.()?.view.flavor === "approval" ? "approval" : "step";
 		const keep = Math.max(1, H - 9);
-		if (lines.length <= keep) return pendingQueueRows(lines, W);
+		if (lines.length <= keep) return pendingQueueRows(lines, W, waiting);
 		const p = palette();
 		const hidden = lines.length - keep;
-		return [...pendingQueueRows(lines.slice(0, keep), W), `    ${p.dim}…${hidden} more queued${p.reset}`];
+		return [...pendingQueueRows(lines.slice(0, keep), W, waiting), `  ${p.dim}\u2026${hidden} more${p.reset}`];
 	}
 
 	/**

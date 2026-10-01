@@ -3,6 +3,7 @@ import type {
 	ApproveReply,
 	ResolveUncertainReply,
 	RunReply,
+	SteerReply,
 	SessionState,
 	WireError,
 	WireErrorCode,
@@ -116,6 +117,15 @@ export class SessionClient {
 	/** Start a turn; refusals arrive as ClientError (in_flight, open_run, draining, forbidden). */
 	async run(input: WireInput, options: { source?: WireSource; resumeFirst?: boolean } = {}): Promise<RunReply> {
 		return this.#json<RunReply>(await this.#request("POST", "run", { input, ...options }));
+	}
+
+	/** ADR-0057 — a person's input for the live run, admitted at its next
+	 *  Safe Admission boundary. Throws `ClientError` with code `idle` (no run
+	 *  in flight) or `closed` (the run's ingress sealed): start a run with
+	 *  the input instead. A stream names input that was accepted and never
+	 *  admitted in an `unadmitted` frame after the run's terminal. */
+	async steer(input: WireInput): Promise<SteerReply> {
+		return this.#json<SteerReply>(await this.#request("POST", "steer", { input }));
 	}
 
 	async resume(): Promise<RunReply> {

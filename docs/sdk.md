@@ -7,7 +7,7 @@ the manifest is review-signed and pinned by the surface gate
 (`scripts/api-surface.mjs --check`), so the table below cannot silently
 drift.
 
-## 1. The root manifest (38 names, pinned by the gate)
+## 1. The root manifest (42 names, pinned by the gate)
 
 The curated three-column manifest. `keep` = the SDK surface; `alias` =
 deprecated old names, additive until the next major; `internal` = the
@@ -20,15 +20,17 @@ machinery the SDK deliberately does not expose (see §3).
 | `AgentRuntime` | keep, deprecated alias | `@deprecated` — the canonical name is `Agent` (removed next major) |
 | `AgentSession` | keep, deprecated alias | `@deprecated` — the canonical name is `Session` (removed next major) |
 | `createAgent`, `AgentDefinition` | keep | the agent factory and its config |
-| `Run` | keep | the run handle (`abort()`, async iterable of `Event`) |
+| `Run` | keep | the run handle (`abort()`, `steer()`, `retract()`, `unadmitted()`, async iterable of `Event`) |
+| `RunClosedError` | keep | ADR-0057: `steer()` on a run whose ingress sealed — the host starts a new run with the input |
 | `SessionStore`, `StoreRecord`, `SessionMeta`, `StaleWriterError`, `StoreCorruptionError` | keep | the append-only JSONL store |
 | `PoisonedSessionError`, `ResumeBlockedError` | keep | the two documented session failure modes |
-| `ApprovalRequest`, `CompactInfo`, `SessionConfig`, `SummarizeResult` | keep | session-level types |
+| `ApprovalRequest`, `CompactInfo`, `ContextPolicy`, `SessionConfig`, `SideQueryOptions`, `SummarizeResult` | keep | session-level types |
 | `Event` | keep | the durable event union (§2) |
 | `disposeExtensions`, `loadExtensions`, `loadProjectExtensions`, `KisoExtension` | keep | the extension contract |
 | `executionLedger`, `executionForCallId`, `ExecutionRecord`, `ExecutionStatus` | keep | the durable execution ledger |
 | `kisoHome`, `projectArtifacts`, `recordTrust`, `trustFor`, `TrustRecord`, `TrustDecision`, `ProjectArtifact`, `ProjectArtifacts` | keep | trust decisions, durable |
 | `PermissionPolicy`, `PermissionRule` | keep | the permission gate config |
+| `estimateTokens` | keep | the chars/4 context estimate — runtime policy since ADR-0043 Amendment 13 (moved from `@vincemakes/kiso-core`) |
 | `canonicalizeUsage` | keep | the canonical usage derivation (E2/1.3.0): provider-raw in, canonical out — `input` is FRESH-ONLY, cost at the versioned pricing table (R4b-1: additive minor, signed 2026-08-13) |
 
 Adjudication detail (review rulings, 2026-08-12): `ledger` and `trust`

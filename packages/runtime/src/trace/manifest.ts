@@ -22,7 +22,7 @@
  */
 
 import type { Event, Message, ToolSpec } from "@vincemakes/kiso-core";
-import { estimateTokens } from "@vincemakes/kiso-core";
+import { estimateTokens } from "../estimate-tokens.js";
 import { canonicalJson, hashSystemPrompt, hashToolSpecs, sha256Hex } from "./hash.js";
 import type { TraceSegment } from "./record.js";
 

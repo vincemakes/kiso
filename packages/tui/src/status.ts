@@ -500,7 +500,7 @@ export function workingRow(glyph: string, since: number, outTokens: number | nul
 	const out = outTokens !== null ? ` · ↓ ${kUnit(outTokens)}` : "";
 	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
 	const facts = [`${glyph} working ${elapsedLabel(seconds)}${out}`, ...(tokPerSec !== null ? [`${tokPerSec} tok/s`] : [])].join(" · ");
-	return liveRow(facts, ["esc stop · ⏎ queue · alt+⏎ redirect", "esc stop · ⏎ queue", "esc stop"], W);
+	return liveRow(facts, ["esc stop · ⏎ steer · alt+⏎ redirect", "esc stop · ⏎ steer", "esc stop"], W);
 }
 
 /** §8.7 — a live row: its mark in the mark column (column 0), its facts

@@ -102,11 +102,11 @@ describe("OR-1 request rig — the frozen shapes", () => {
 		expect(rig.requests[0]!.body).not.toContain('"strict"');
 	});
 
-	it("shape 3: a reasoning level and an output cap", async () => {
+	it("shape 3: a reasoning level and an output cap — an effort also asks for the reasoning summary", async () => {
 		await sendKey({ systemPrompt: "sys", reasoning: { effort: "high" }, maxTokens: 4096, temperature: 0.5 });
 		expect(rig.requests[0]!.body).toBe(
 			'{"model":"gpt-5.5","stream":true,"instructions":"sys","input":[{"role":"user","content":[{"type":"input_text","text":"go"}]}],' +
-				'"reasoning":{"effort":"high"},"max_output_tokens":4096,"temperature":0.5}',
+				'"reasoning":{"effort":"high","summary":"auto"},"max_output_tokens":4096,"temperature":0.5}',
 		);
 	});
 
@@ -119,10 +119,27 @@ describe("OR-1 request rig — the frozen shapes", () => {
 		expect(req.headers.originator).toBe("kiso");
 		expect(req.headers["openai-beta"]).toBe("responses=experimental");
 		expect(req.headers.accept).toBe("text/event-stream");
+		// the backend routes a session's requests to one cache by this header;
+		// the body's prompt_cache_key alone left most requests missing the cache
+		expect(req.headers["session-id"]).toBe("sess-7");
 		expect(req.body).toBe(
 			'{"model":"gpt-5.5","stream":true,"instructions":"sys","input":[{"role":"user","content":[{"type":"input_text","text":"go"}]}],' +
 				'"store":false,"include":["reasoning.encrypted_content"],"prompt_cache_key":"sess-7"}',
 		);
+	});
+
+	it("shape 4b: the ChatGPT target with an effort asks for the summary too — one builder, both targets", async () => {
+		await sendOauth({ systemPrompt: "sys", reasoning: { effort: "medium" } }, "sess-7");
+		expect(rig.requests[0]!.body).toBe(
+			'{"model":"gpt-5.5","stream":true,"instructions":"sys","input":[{"role":"user","content":[{"type":"input_text","text":"go"}]}],' +
+				'"reasoning":{"effort":"medium","summary":"auto"},"store":false,"include":["reasoning.encrypted_content"],"prompt_cache_key":"sess-7"}',
+		);
+	});
+
+	it("the ChatGPT target with no cache key sends no session-id: the header names the same lane or nothing", async () => {
+		await sendOauth({ systemPrompt: "sys" });
+		expect(rig.requests[0]!.headers["session-id"]).toBeUndefined();
+		expect(rig.requests[0]!.body).not.toContain("prompt_cache_key");
 	});
 
 	it("the ChatGPT-only headers and body fields are ABSENT on the first-party target", async () => {
@@ -157,6 +174,7 @@ describe("OR-1 request rig — the frozen shapes", () => {
 		const firstParty = rig.requests[0]!;
 		expect(firstParty.body).not.toContain("prompt_cache_key");
 		expect(firstParty.body).not.toContain("sess-first-party");
+		expect(firstParty.headers["session-id"]).toBeUndefined();
 
 		await sendOauth({ systemPrompt: "sys" }, "sess-subscription");
 		const chatgpt = rig.requests[1]!;

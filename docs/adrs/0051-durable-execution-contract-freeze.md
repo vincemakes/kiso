@@ -688,3 +688,47 @@ the person never wrote.
    detection does not read it. No generation row.
 
 Version: **0.40.0** — rule 1 admission ships as a minor (Amendment 1).
+
+## Amendment 8 (2026-09-30): `user_input.via` gains a tasks kind
+
+Ratified with ADR-0058 (its Appendix A, 2026-09-28); landed with step 3c.
+A task delivery (ADR-0058 §7) is ONE `user_input` with `source: "system"`
+whose `via` names the transitions it carries — the durable receipt that
+answers "has t17's end reached the model?".
+
+1. **Optional-field admission (rule 1), widening an existing optional
+   field.** `via` becomes
+
+   ```
+   { kind: "skill"; name: string; line: string }
+   | { kind: "tasks"; items: readonly { taskId: string;
+       transition: "ready" | "exited" | "failed" | "stopped" | "unknown" }[] }
+   ```
+
+   `items` is non-empty. (i) Old logs carry no tasks kind and project
+   byte-identically; (ii) the validator checks the new kind only when
+   present — an empty list, an unknown transition or a missing task id is
+   corruption (`event-schema` cases); (iii) no existing byte changes
+   meaning. The R6 fixture case is added to the prompt-cache
+   byte-discipline gate (`prompt-cache.test.ts` ⑦).
+2. **The meaning of `via` widens — DECLARED.** Amendment 7 defined `via`
+   as "how a PERSON's turn was composed". It now means **how an input
+   entered the trajectory**: a person's skill invocation, or a runtime
+   delivery of task transitions. `source` still says who produced the
+   input (`"system"` for a delivery).
+3. **Display and receipt provenance, never context.** As Amendment 7:
+   the projection copies only `content` and `source`; no byte of `via`
+   reaches a request. The notice's wire marking lives in `content`.
+4. **A runtime input never passes `onUserMessage`** — at an admission
+   site (ADR-0057 §4) and, added here, as the FIRST input of a run: a
+   wake run starts with a task notice, and a person's hook must not
+   rewrite or veto a fact the runtime owes the model. The kernel asks the
+   protocol (`isRuntimeInput`) rather than knowing about tasks. Found by
+   an external review before the build; red on the previous kernel
+   (`safe-admission.test.ts`).
+5. **Rule 5.** An optional field on an existing event; generation
+   detection does not read it. No generation row.
+6. **Cost.** Core 2,185 → 2,192 of 2,200 (`events.ts` +7; `loop.ts`
+   unchanged in length). Owner-approved 2026-09-30.
+
+Version: **0.46.0**, with tasks.

@@ -33,7 +33,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { ContentBlock, Message } from "../src/protocol/messages.js";
 import type { Event } from "../src/protocol/events.js";
-import { estimateTokens } from "../src/kernel/compaction.js";
+import { estimateTokens } from "@vincemakes/kiso-runtime";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { EventLog, loop } from "../src/index.js";
 import { standingPrune } from "./standing-prune.js";

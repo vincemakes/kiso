@@ -1,7 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Event } from "@vincemakes/kiso-core";
+import { RunClosedError } from "@vincemakes/kiso-runtime";
 import type { AbortReply, SessionState, WireError, WireErrorCode, WireFrame, WireInput, WireSource } from "@vincemakes/kiso-protocol";
-import { DrainingError, InFlightError, OpenRunError } from "./errors.js";
+import { DrainingError, InFlightError, NotRunningError, OpenRunError } from "./errors.js";
 import type { SessionService } from "./service.js";
 import { type ProjectionOptions, toWireEvent } from "./wire.js";
 
@@ -19,6 +20,7 @@ import { type ProjectionOptions, toWireEvent } from "./wire.js";
  *   GET  {prefix}/:id/replay     every wire event on the log + the snapshot
  *   POST {prefix}/:id/run        202 { runId } — or the run's own stream with ?stream=1
  *   POST {prefix}/:id/resume     202 { runId } — or the stream with ?stream=1
+ *   POST {prefix}/:id/steer      202 { runId } — 409 idle | closed (ADR-0057)
  *   POST {prefix}/:id/abort      200 idle | stopped — 409 parked (who is waited for)
  *   POST {prefix}/:id/approve    200 { needsResume }
  *   POST {prefix}/:id/uncertain  200 { remaining }
@@ -74,7 +76,7 @@ export interface HttpHandler {
  *  store never did — a nanoid can start with `_` or `-` (about 1 in 32 do)
  *  and every such session answered 404. */
 const SESSION_ID = /^[A-Za-z0-9._-]{1,128}$/;
-const ACTIONS = new Set(["", "state", "events", "replay", "run", "resume", "abort", "approve", "uncertain"]);
+const ACTIONS = new Set(["", "state", "events", "replay", "run", "resume", "steer", "abort", "approve", "uncertain"]);
 
 export function createHttpHandler(service: SessionService, options: HttpHandlerOptions): HttpHandler {
 	const prefix = (options.prefix ?? "/v1/sessions").replace(/\/+$/, "");
@@ -95,6 +97,8 @@ export function createHttpHandler(service: SessionService, options: HttpHandlerO
 		if (err instanceof InFlightError) return fail(res, 409, "in_flight", err.message, err.runId);
 		if (err instanceof OpenRunError) return fail(res, 409, "open_run", err.message, err.runId);
 		if (err instanceof DrainingError) return fail(res, 503, "draining", err.message);
+		if (err instanceof NotRunningError) return fail(res, 409, "idle", err.message);
+		if (err instanceof RunClosedError) return fail(res, 409, "closed", err.message, err.runId);
 		if (err instanceof BadRequest) return fail(res, 400, "bad_request", err.message);
 		fail(res, 500, "internal", err instanceof Error ? err.message : String(err));
 	};
@@ -147,6 +151,12 @@ export function createHttpHandler(service: SessionService, options: HttpHandlerO
 		let out = "";
 		const wire = toWireEvent(event, projection);
 		if (wire !== null) out += `id: ${wire.seq}\nevent: ${wire.type}\ndata: ${JSON.stringify(wire)}\n\n`;
+		// ADR-0057: a 202 steer always has a visible fate — admitted (its
+		// user_input is on the stream) or named here, right after the terminal.
+		if (event.type === "terminal") {
+			const left = service.unadmittedAt(sessionId, event.seq);
+			if (left !== null) out += `event: unadmitted\ndata: ${JSON.stringify(left)}\n\n`;
+		}
 		if (options.augment !== undefined) {
 			for (const frame of await options.augment(event, sessionId)) out += `event: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`;
 		}
@@ -269,6 +279,12 @@ export function createHttpHandler(service: SessionService, options: HttpHandlerO
 				}
 				if (wantsStream) await stream(res, req, sessionId, afterOf(req, url, body), handle.done);
 				else json(res, 202, { runId: handle.runId });
+				return true;
+			}
+			if (action === "steer") {
+				const input = await inputOf(body, req, sessionId, res);
+				if (isHandled(input)) return true; // the product answered; nothing steered
+				json(res, 202, service.steer(sessionId, input));
 				return true;
 			}
 			if (action === "abort") {
