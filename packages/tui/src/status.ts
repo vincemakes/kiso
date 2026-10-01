@@ -376,8 +376,11 @@ export function cacheHitPct(usage: { in: number | null; cache: number | null }):
 export interface BarInput {
 	/** The mode as the chip says it: `default`, `plan · read-only`, … */
 	readonly mode: string;
-	/** Bypass wears the failure colour (§8.9). */
+	/** Full access (the old bypass) wears the failure colour (§8.9). */
 	readonly modeAlert?: boolean;
+	/** The main-sync round (owner, 2026-09-30): the don't-ask switch is on —
+	 *  a second chip, gold (the person's standing choice), beside the tier's. */
+	readonly dontAsk?: boolean;
 	readonly floorOff: boolean;
 	readonly model: string;
 	/** The share of the window USED (0..1), and the compaction tiers as
@@ -436,7 +439,10 @@ export function statusBar(b: BarInput, W: number, expand: "expand all" | "collap
 	const p = palette();
 	const painted = p.washDone !== "";
 	const sep = painted ? "  " : " · ";
-	const chip = painted ? `${b.modeAlert === true ? p.fail : ""}${p.washDone} ${b.mode} ${p.washEnd}${b.modeAlert === true ? p.fgEnd : ""}` : `▸ ${b.mode}`;
+	const tierChip = painted ? `${b.modeAlert === true ? p.fail : ""}${p.washDone} ${b.mode} ${p.washEnd}${b.modeAlert === true ? p.fgEnd : ""}` : `▸ ${b.mode}`;
+	// the switch is not a tier, so it is not in the tier's chip: a chip of its
+	// own, never dropped — it changes what kiso does as much as the tier does
+	const chip = b.dontAsk !== true ? tierChip : painted ? `${tierChip}  ${p.gold}${p.washDone} don't ask ${p.washEnd}${p.fgEnd}` : `${tierChip} · don't ask`;
 	const fail = (s: string): string => (painted ? `${p.fail}${s}${p.fgEnd}` : s);
 	const dim = (s: string): string => `${p.dim}${s}${p.reset}`;
 	// the bar's words are quiet (§1.2: grey chrome); off a known ground each

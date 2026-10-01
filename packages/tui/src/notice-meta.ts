@@ -33,7 +33,11 @@ const SHAPES: readonly (readonly [RegExp, string, (m: RegExpExecArray) => string
 	[/^(\S+) FAILED — (.*)$/s, "UNCERTAIN", (m) => `${m[1]!} — ${m[2]!}`],
 	// Graphite P1b (owner, 2026-09-30): dontAsk leaves an interrupted call
 	// undecided — said as what it is, and when it will be asked
-	[/^\[dontAsk\] (\d+) uncertain executions? left unresolved — resolve them in an asking mode$/s, "UNCERTAIN", (m) => `${m[1]!} interrupted command${m[1] === "1" ? "" : "s"} left undecided — a mode that asks will ask about ${m[1] === "1" ? "it" : "them"}`],
+	[/^\[dontAsk\] (\d+) uncertain executions? left unresolved — resolve them in an asking mode$/s, "UNCERTAIN", (m) => `${m[1]!} interrupted command${m[1] === "1" ? "" : "s"} left undecided — asked once don't ask is off`],
+	// the main-sync round (owner, 2026-09-30): a call refused because the
+	// don't-ask switch is on — the person set this up, so the label is dim,
+	// not a failure's red
+	[/^\[dontAsk\] (\S+) would ask — denied$/s, "DENIED", (m) => `${m[1]!} would ask — denied`],
 	[/^(stopped at the .*-turn limit.*)$/s, "LIMIT", (m) => m[1]!],
 	[/^(answer truncated at max_tokens.*)$/s, "LIMIT", (m) => m[1]!],
 	[/^stream interrupted — (.*)$/s, "INTERRUPTED", (m) => m[1]!],

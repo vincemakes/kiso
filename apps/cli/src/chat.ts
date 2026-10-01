@@ -44,7 +44,7 @@ import { learnedWindowFor } from "./learned-windows.js";
 import { lookupContextWindow, lookupModelMetadata, type ContextWindowSource } from "@vincemakes/kiso-runtime/internal";
 import { addDontAskAgainRule, askPanel, fixHintFor, pendingAsk, resolveUncertains } from "./trust-ui.js";
 import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
-import { OFFERED_MODES, getMode, setMode } from "./mode.js";
+import { MODE_LABEL, OFFERED_MODES, getDontAsk, getMode, modeDisplay, setMode } from "./mode.js";
 
 /** B area: default context window for the ~ctx estimate (config overridable).
  *  CW-1 batch 2: 128,000, down from 200,000 — the figure a model nobody
@@ -329,8 +329,11 @@ export function barFor(session: AgentSession, measured: { readonly tokPerSec: nu
 	const home = homedir();
 	const cwd = process.cwd();
 	return {
-		mode: getMode() === "plan" ? "plan \u00b7 read-only" : getMode(),
-		modeAlert: getMode() === "bypass",
+		// the main-sync round: the tier by its name (#203's MODE_LABEL), full
+		// access in the failure colour, and the don't-ask switch as its own chip
+		mode: getMode() === "plan" ? "plan \u00b7 read-only" : MODE_LABEL[getMode()],
+		modeAlert: getMode() === "full-access",
+		dontAsk: getDontAsk(),
 		floorOff: !floorOn,
 		model: statusModelLabel(session),
 		ctx: tiers === null || window === null || !Number.isFinite(used) ? null : { used, soft: tiers.soft / window, hard: tiers.hard / window },
@@ -1183,7 +1186,7 @@ export async function consumeRun(
 				// denied HERE, at the one place kiso asks, so every allow the
 				// chain gave still stands (a tier deny would outrank them). The
 				// reason is the tool result: the model sees why and goes on.
-				if (getMode() === "dontAsk") {
+				if (getDontAsk()) {
 					body.notice(`[dontAsk] ${escapeTerminal(name)} would ask — denied`);
 					await session.approve(decisionId, false, `dontAsk: ${name} needs a human's approval, and this session never asks — denied`);
 					break;
@@ -1872,10 +1875,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	input.onModeCycle?.(() => {
 		const was = getMode();
 		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(was) + 1) % OFFERED_MODES.length]!;
+		const wasOn = getDontAsk();
 		setMode(next);
 		paintIdle();
 		// Graphite R3e: the MODE row on a terminal (the pipe keeps these words)
-		body.modeNotice(`mode → ${next} (shift+tab cycles)`, was, next);
+		body.modeNotice(`mode → ${MODE_LABEL[next]} (shift+tab cycles)`, MODE_LABEL[was], MODE_LABEL[next]);
+		// the switch came with the old dontAsk tier, and left with it
+		if (getDontAsk() !== wasOn) body.dontAskNotice("don't ask → off", false);
 	});
 
 	// Recovery first: a session with a dangling pause or uncertain
@@ -1901,7 +1907,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// Graphite P1b (owner, 2026-09-30): either way the compaction row
 		// says why it runs — `cold cache` — so on a dock dontAsk needs no line
 		// of its own; off a dock the line is printed as it always was
-		if (getMode() === "dontAsk") {
+		if (getDontAsk()) {
 			if (!dock.active) body.notice(`[dontAsk] ${coldResumeLine(cold.tokens, cold.minutes)} — compacting first`);
 			markCompactWhy("cold cache");
 			dispatch("/compact", dispatchCtx);

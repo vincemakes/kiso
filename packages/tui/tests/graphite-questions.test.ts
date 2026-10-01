@@ -126,8 +126,8 @@ describe("P1b — fit", () => {
 
 describe("P1b — dontAsk leaves a call undecided", () => {
 	it("on a dock the line is the UNCERTAIN meta row, said as what it is", () => {
-		expect(noticeMeta("[dontAsk] 1 uncertain execution left unresolved — resolve them in an asking mode")).toEqual({ label: "UNCERTAIN", sentence: "1 interrupted command left undecided — a mode that asks will ask about it" });
-		expect(noticeMeta("[dontAsk] 3 uncertain executions left unresolved — resolve them in an asking mode")).toEqual({ label: "UNCERTAIN", sentence: "3 interrupted commands left undecided — a mode that asks will ask about them" });
+		expect(noticeMeta("[dontAsk] 1 uncertain execution left unresolved — resolve them in an asking mode")).toEqual({ label: "UNCERTAIN", sentence: "1 interrupted command left undecided — asked once don't ask is off" });
+		expect(noticeMeta("[dontAsk] 3 uncertain executions left unresolved — resolve them in an asking mode")).toEqual({ label: "UNCERTAIN", sentence: "3 interrupted commands left undecided — asked once don't ask is off" });
 	});
 
 	it("a pipe prints the line as it always did", () => {

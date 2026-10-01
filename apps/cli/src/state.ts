@@ -561,9 +561,10 @@ export const settingsLayers: {
 	user: import("./config.js").KisoConfig | null;
 	project: import("./config.js").KisoConfig | null;
 	modeFlag: string | undefined;
+	dontAskFlag: boolean;
 	modelFlag: string | undefined;
 	modelSwitched: boolean;
-} = { user: null, project: null, modeFlag: undefined, modelFlag: undefined, modelSwitched: false };
+} = { user: null, project: null, modeFlag: undefined, dontAskFlag: false, modelFlag: undefined, modelSwitched: false };
 
 export let floorOn = true;
 export function setFloorOn(value: boolean): void {

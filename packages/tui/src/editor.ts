@@ -126,7 +126,8 @@ export interface MenuItem {
 	readonly desc: string;
 }
 export const MENU_ITEMS: readonly MenuItem[] = [
-	{ name: "/mode", desc: "switch the approval tier (default/accept-edits/plan/dontAsk/bypass)" },
+	{ name: "/mode", desc: "switch the approval tier (default/accept-edits/plan/full-access)" },
+	{ name: "/dont-ask", desc: "never stop for you: what would ask is refused (on/off)" },
 	{ name: "/model", desc: "list model profiles; switch with /model <name|provider/model>" },
 	{ name: "/compact", desc: "summarize the older conversation to free context" },
 	// the /resume+/clear mini-spec: the session-navigation pair

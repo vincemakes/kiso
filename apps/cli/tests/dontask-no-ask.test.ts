@@ -1,5 +1,7 @@
 /**
- * 0.40.0 (the owner's dogfood) — dontAsk offers no ask_user.
+ * 0.40.0 (the owner's dogfood) — dontAsk offers no ask_user. Since the
+ * modes round dontAsk is a switch beside the tier, and this holds in every
+ * tier: with the switch on, nothing offers ask_user.
  *
  * A dontAsk session on a TTY loaded the ask extension, the model put four
  * questions to it, and every one was declined. The gate is LIVE
@@ -19,7 +21,7 @@ import { composeToolTable } from "@vincemakes/kiso-runtime/internal";
 import { extensionsBannerText } from "@vincemakes/kiso-tui";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { builtInLayer } from "../src/builtin.js";
-import { getMode, setMode } from "../src/mode.js";
+import { applyModeSetting, getDontAsk, getMode, parseMode, setDontAsk, setMode } from "../src/mode.js";
 
 const ui = { ask: async () => ({ declined: [] }) };
 
@@ -34,42 +36,59 @@ function registryOf(exts: readonly KisoExtension[]): ToolRegistry {
 const specNames = (r: ToolRegistry): string[] => r.snapshot().specs.map((s) => s.name);
 
 const initial = getMode();
-afterEach(() => setMode(initial));
+const initialSwitch = getDontAsk();
+afterEach(() => {
+	setMode(initial);
+	setDontAsk(initialSwitch);
+});
 
 describe("dontAsk — the tool table never offers ask_user", () => {
-	it("in dontAsk, a TTY session's table and specs are byte-identical to the pipe path's", async () => {
+	it("with the switch on, a TTY session's table and specs are byte-identical to the pipe path's", async () => {
 		const pipe = registryOf(await builtInLayer([], []));
 		const tty = registryOf(await builtInLayer([], [], ui));
-		setMode("dontAsk");
+		setDontAsk(true);
 		expect(specNames(tty)).not.toContain("ask_user");
 		expect(composeToolTable(tty)).toBe(composeToolTable(pipe));
 		expect(JSON.stringify(tty.snapshot().specs)).toBe(JSON.stringify(pipe.snapshot().specs));
 		expect(composeToolTable(tty)).not.toMatch(/ask_user/);
 	});
 
-	it("the gate is live: leaving dontAsk brings ask_user back on the SAME registry, entering it takes it away", async () => {
+	it("the gate is live: turning the switch off brings ask_user back on the SAME registry, turning it on takes it away", async () => {
 		const tty = registryOf(await builtInLayer([], [], ui));
-		setMode("dontAsk");
+		setDontAsk(true);
 		expect(specNames(tty)).not.toContain("ask_user");
-		setMode("default");
+		setDontAsk(false);
 		expect(specNames(tty)).toContain("ask_user");
 		expect(composeToolTable(tty)).toMatch(/- ask_user — /);
 		expect(tty.get("ask_user")).toBeDefined();
-		setMode("dontAsk");
+		setDontAsk(true);
 		expect(specNames(tty)).not.toContain("ask_user");
 		expect(tty.get("ask_user")).toBeUndefined();
 	});
 
-	it("every other asking tier keeps ask_user", async () => {
+	it("the switch decides, not the tier: off, every tier keeps ask_user; on, none offers it — full-access included", async () => {
 		const tty = registryOf(await builtInLayer([], [], ui));
-		for (const m of ["default", "accept-edits", "plan", "bypass"] as const) {
+		for (const m of ["default", "accept-edits", "plan", "full-access"] as const) {
 			setMode(m);
+			setDontAsk(false);
 			expect(specNames(tty), m).toContain("ask_user");
+			setDontAsk(true);
+			expect(specNames(tty), `${m} · don't ask`).not.toContain("ask_user");
 		}
 	});
 
+	it("the old name: `dontAsk` takes ask_user away, and leaving that tier brings it back, as it always did", async () => {
+		const tty = registryOf(await builtInLayer([], [], ui));
+		setDontAsk(false);
+		applyModeSetting(parseMode("dontAsk")!);
+		expect(getMode()).toBe("default");
+		expect(specNames(tty)).not.toContain("ask_user");
+		setMode("default");
+		expect(specNames(tty)).toContain("ask_user");
+	});
+
 	it("the extension stays loaded and named — only its tool goes", async () => {
-		setMode("dontAsk");
+		setDontAsk(true);
 		const built = await builtInLayer([], [], ui);
 		expect(built.map((e) => e.name)).toEqual(["mcp", "skills", "subagent", "ask"]);
 		expect(built.find((e) => e.name === "ask")!.tools).toEqual([]);

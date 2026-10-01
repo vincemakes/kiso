@@ -866,7 +866,8 @@ export class Body {
 
 	/** Graphite R3e (owner, 2026-09-29) — a mode switch: on the terminal
 	 *  `MODE` on a row of its own and `from → to` under it, the new tier
-	 *  bold (bypass in the failure colour, plan in blue) — no explanation:
+	 *  bold (full access — the old bypass — in the failure colour, plan in
+	 *  blue) — no explanation:
 	 *  the picker that switched it says what each tier does. A pipe keeps
 	 *  the confirmation it always printed, byte for byte (`text`). */
 	modeNotice(text: string, from: string, to: string): void {
@@ -878,8 +879,28 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		const tone = to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink";
+		// the main-sync round: `full access` (the old bypass) keeps the failure colour
+		const tone = to === "full access" || to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink";
 		this.#cells.push({ kind: "notice", text, done: true, label: "MODE", sentence: `${from} \u2192 ${to}`, mark: { text: to, tone }, stacked: true });
+		this.#mark();
+	}
+
+	/** The main-sync round (owner, 2026-09-30) — the don't-ask switch, the
+	 *  MODE row's sibling: `DON'T ASK` gold (the person's choice) and
+	 *  `off → on` with the new state bold. It is a switch on top of the tier,
+	 *  not a tier, so it has a row of its own. A pipe keeps #203's words
+	 *  (`don't ask → on`), byte for byte. */
+	dontAskNotice(text: string, on: boolean): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		const to = on ? "on" : "off";
+		this.#cells.push({ kind: "notice", text, done: true, label: "DON'T ASK", sentence: `${on ? "off" : "on"} \u2192 ${to}`, mark: { text: to, tone: "ink" }, stacked: true });
 		this.#mark();
 	}
 

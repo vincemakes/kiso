@@ -40,5 +40,6 @@ prefer otherwise.
 ## What is out of scope
 
 - Behaviour of the model providers themselves.
-- Issues that require the user to run kiso with `--mode bypass` and then rely on the
-  absence of approvals: bypass is the documented opt-out.
+- Issues that require the user to run kiso with `--mode full-access` (formerly
+  `bypass`) and then rely on the absence of approvals: full-access is the
+  documented opt-out.

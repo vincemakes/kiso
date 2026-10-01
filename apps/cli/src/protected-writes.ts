@@ -12,8 +12,8 @@
  * So a write_file or edit_file whose path — as written, or once symlinks
  * are followed — passes through a `.git` or `.kiso` directory asks in
  * every asking tier: accept-edits' allow does not cover it, and neither
- * does a saved allow. dontAsk therefore denies it; plan denies it anyway;
- * bypass runs it, as bypass's shell could.
+ * does a saved allow. With the don't-ask switch on it is therefore denied;
+ * plan denies it anyway; full-access runs it, as full-access's shell could.
  */
 
 import { relative, sep } from "node:path";

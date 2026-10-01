@@ -110,7 +110,12 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			// was to read the source. The computed stop does not move:
 			// `/compact` is eight characters and `/context` is eight.
 			"/context     show where the context went — the per-request rent ledger",
-			"/mode        show the approval tier; /mode <name> switches (default/accept-edits/plan/dontAsk/bypass)",
+			"/mode        show the approval tier; /mode <name> switches (default/accept-edits/plan/full-access)",
+			// the modes round — a DECLARED ADDITION in the same class: the
+			// don't-ask switch sits beside the tiers it composes with. The
+			// computed stop does not move: `/dont-ask` is nine characters, as
+			// `/settings` is.
+			"/dont-ask    never stop for you: what would ask is refused — /dont-ask off undoes it",
 			"/model       list model profiles; /model <name|provider/model> switches",
 			"/compact     summarize the older conversation to free context",
 			"/clear       start a fresh conversation (the old session stays resumable)",
@@ -156,7 +161,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(24); // Graphite R3d (declared addition): + /name // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's ctrl+t + §2.4's ctrl+g + §2.5's /reload + 0.39.1's /context repair + 0.40.0's three skill rows
+		expect(helpRows()).toHaveLength(25); // the main-sync round: Graphite R3d's /name and the modes round's /dont-ask, both declared // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's command rows
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 
