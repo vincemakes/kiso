@@ -44,7 +44,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
+      # --force until P6: kiso-code's "os" field still refuses win32 (the
+      # install gate), and npm ci applies it to a workspace too
+      - run: npm ci --force
       - run: npm run build
       - run: npm run typecheck
       - run: node scripts/windows-probe.mjs
