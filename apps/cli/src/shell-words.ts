@@ -307,7 +307,8 @@ const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
  * each component as Win32 reads it (trailing dots and spaces dropped) —
  * or why it cannot be read: another machine, a device or namespace path,
  * a drive-relative or drive-rooted path, an MSYS mount inside Git's own
- * tree, a data stream, an 8.3 short name, a device name.
+ * tree, a data stream, a device name. (An 8.3 short name is judged in
+ * `resolveShellPath`, where the disk can say whether it exists.)
  */
 export function msysPath(word: string): { readonly native: string } | { readonly opaque: string } {
 	const w = word.replace(/\\/g, "/");
@@ -334,7 +335,6 @@ export function msysPath(word: string): { readonly native: string } | { readonly
 			continue;
 		}
 		if (part.includes(":")) return { opaque: "an alternate data stream" };
-		if (/~\d/.test(part)) return { opaque: "an 8.3 short name" };
 		const name = part.replace(/[. ]+$/, "");
 		if (name === "") return { opaque: "a name Win32 rewrites" };
 		if (DEVICE_NAME.test(name)) return { opaque: "a device name" };
@@ -397,6 +397,9 @@ export function resolveShellPath(workspaceRoot: string, cwd: string, word: strin
 		if (existsSync(next)) current = realCase(next);
 		else missing.push(part);
 	}
+	// an existing 8.3 short name was expanded by the real path above; one
+	// for a path that does not exist yet would dodge every name rule
+	if (dialect.msys && missing.some((part) => /~\d/.test(part))) return { canonical: word, inside: false, opaque: "an 8.3 short name" };
 	const canonical = missing.length > 0 ? join(current, ...missing) : current;
 	const rel = relative(realCase(workspaceRoot), canonical);
 	return { canonical, inside: rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)) };

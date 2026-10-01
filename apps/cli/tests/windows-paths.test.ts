@@ -46,10 +46,14 @@ const disk = vi.hoisted(() => {
 		"C:\\Program Files (x86)",
 		"C:\\ProgramData",
 	];
-	const files = ["C:\\work\\proj\\src\\a.ts", "C:\\Users\\me\\notes.txt"];
+	const files = ["C:\\work\\proj\\src\\a.ts", "C:\\Users\\me\\notes.txt", "C:\\Users\\runneradmin\\ws\\a.ts"];
+	dirs.push("C:\\Users\\runneradmin", "C:\\Users\\runneradmin\\ws");
 	const key = (p: string): string => p.replace(/\//g, "\\").replace(/(?<=[^:\\])\\+$/, "").toLowerCase();
 	const byKey = new Map<string, { path: string; dir: boolean; ino: number }>();
 	[...dirs, ...files].forEach((path, i) => byKey.set(key(path), { path, dir: dirs.includes(path), ino: 9000 + i }));
+	// an existing directory's 8.3 short spelling resolves to its long name (the
+	// Windows runner's temp dir is C:\Users\RUNNER~1\…)
+	for (const [short, long] of [["C:\\Users\\RUNNER~1", "C:\\Users\\runneradmin"], ["C:\\Users\\RUNNER~1\\ws", "C:\\Users\\runneradmin\\ws"], ["C:\\Users\\RUNNER~1\\ws\\a.ts", "C:\\Users\\runneradmin\\ws\\a.ts"]] as const) byKey.set(key(short), byKey.get(key(long))!);
 	const windowsy = (p: unknown): p is string => typeof p === "string" && (/^[A-Za-z]:/.test(p) || p.includes("\\"));
 	return { byKey, key, windowsy };
 });
@@ -135,6 +139,13 @@ describe("resolveShellPath under Git Bash: the forms it reads", () => {
 		["C:\\WORK\\PROJ\\SRC\\A.TS"],
 	])("%s is the workspace's src\\a.ts", (word) => {
 		expect(at(word)).toMatchObject({ canonical: A_TS, inside: true });
+	});
+
+	it("a workspace spelled with an EXISTING 8.3 short name reads normally (the runner's RUNNER~1)", () => {
+		const r = resolveShellPath("C:\\Users\\RUNNER~1\\ws", "C:\\Users\\RUNNER~1\\ws", "a.ts");
+		expect(r).toMatchObject({ canonical: "C:\\Users\\runneradmin\\ws\\a.ts", inside: true });
+		expect(r.opaque).toBeUndefined();
+		expect(classifyReadOnly("cat a.ts", "C:\\Users\\RUNNER~1\\ws").allow).toBe(true);
 	});
 
 	it("a missing file inside keeps its spelling, inside", () => {
