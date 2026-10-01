@@ -10,7 +10,7 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import createSkillsExtension from "../dist/kiso-skills.mjs";
 import type { KisoExtension, Tool } from "@vincemakes/kiso-core";
@@ -169,7 +169,7 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 
 describe("⑤ safe-defaults (the round's only change outside extensions/)", () => {
 	it("read_skill joins the allow list — local user-installed docs, read_file trust", async () => {
-		const mod = (await import(pathToFileURL(join(new URL("../../../examples", import.meta.url).pathname, "extensions", "safe-defaults.mjs")).href)) as {
+		const mod = (await import(pathToFileURL(join(fileURLToPath(new URL("../../../examples", import.meta.url)), "extensions", "safe-defaults.mjs")).href)) as {
 			default: KisoExtension;
 		};
 		const decide = mod.default.approvals![0]!.decide;
