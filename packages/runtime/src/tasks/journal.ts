@@ -51,6 +51,20 @@ export function appendRecord(file: string, record: TaskRecord): void {
 	const fd = openSync(file, "a");
 	try {
 		writeSync(fd, `${JSON.stringify(record)}\n`);
+		if (process.platform === "win32") syncFile(file);
+		else fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+/** Windows: an append handle cannot be flushed (FlushFileBuffers needs
+ *  write access, which append mode drops), and the append must stay an
+ *  append (the runner and the manager both write the journal) — so the
+ *  flush goes through a read-write handle of its own. */
+export function syncFile(file: string): void {
+	const fd = openSync(file, "r+");
+	try {
 		fsyncSync(fd);
 	} finally {
 		closeSync(fd);
@@ -59,6 +73,8 @@ export function appendRecord(file: string, record: TaskRecord): void {
 
 /** fsync a directory, so a file created in it survives a power loss too. */
 export function fsyncDir(dir: string): void {
+	// Windows opens no directory as a file; NTFS journals the entry itself
+	if (process.platform === "win32") return;
 	const fd = openSync(dir, "r");
 	try {
 		fsyncSync(fd);

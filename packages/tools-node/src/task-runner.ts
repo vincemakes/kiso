@@ -43,7 +43,16 @@ function append(journal: string, record: Record<string, unknown>): void {
 	const fd = openSync(journal, "a");
 	try {
 		writeSync(fd, `${JSON.stringify(record)}\n`);
-		fsyncSync(fd);
+		// Windows: an append handle cannot be flushed; the flush goes
+		// through a read-write handle (the runtime journal's syncFile)
+		if (process.platform === "win32") {
+			const sync = openSync(journal, "r+");
+			try {
+				fsyncSync(sync);
+			} finally {
+				closeSync(sync);
+			}
+		} else fsyncSync(fd);
 	} finally {
 		closeSync(fd);
 	}

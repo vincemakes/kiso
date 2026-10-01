@@ -154,18 +154,23 @@ function writeTenants(root: string, sessionId: string, tenants: Record<string, u
 		// this file comes into existence. Existing files are not migrated —
 		// R6's choice, kept.
 		writeFileSync(tmp, `${JSON.stringify(tenants, null, "\t")}\n`, { mode: 0o600 });
-		const fd = openSync(tmp, "r");
+		// Windows: only a write-capable handle can be flushed, and no
+		// directory opens as a file (NTFS journals the rename itself)
+		const windows = process.platform === "win32";
+		const fd = openSync(tmp, windows ? "r+" : "r");
 		try {
 			fsyncSync(fd);
 		} finally {
 			closeSync(fd);
 		}
 		renameSync(tmp, path);
-		const dirFd = openSync(dirname(path), "r");
-		try {
-			fsyncSync(dirFd);
-		} finally {
-			closeSync(dirFd);
+		if (!windows) {
+			const dirFd = openSync(dirname(path), "r");
+			try {
+				fsyncSync(dirFd);
+			} finally {
+				closeSync(dirFd);
+			}
 		}
 	} finally {
 		rmSync(tmpDir, { recursive: true, force: true });
