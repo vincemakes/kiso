@@ -126,8 +126,8 @@ kiso help                      this help
 
 ## Modes — the five built-in approval tiers
 
-`/mode` switches the whole session's approval posture. Five tiers, built
-ON the extension chain above — the kernel is untouched: each tier is an
+`/mode` switches the whole session's approval posture. Four offered
+tiers (and `manual`, still accepted), built ON the extension chain above — the kernel is untouched: each tier is an
 in-process `mode:<name>` extension (chain head), so its automated
 verdicts record `decidedBy: "mode:<name>"` — the audit trail names the
 tier that decided, exactly like it names the extension.
@@ -138,9 +138,22 @@ tier that decided, exactly like it names the extension.
 | `manual` | EVERY tool asks the human (a saved allow still allows). Still accepted in config and by `--mode`; no longer offered by `/mode` or shift+tab |
 | `accept-edits` | `default` + write_file/edit_file allow — except a write into `.git/` or `.kiso/` (as written or through a symlink), which asks in every asking tier and is never carried by a saved allow: both hold configuration that runs |
 | `plan` | read/list/search/read_skill allow; everything else denied with `plan mode: read-only` (the deny reason guides the model to output a plan; the startup prompt adds a plan directive) |
-| `bypass` | everything allows — but a user extension's `deny` still wins (the chain's deny>allow>ask composition; a deny wins over every tier, bypass included) |
-| `dontAsk` | decides as `default`; the chain's final ASK is denied at the ask endpoint with a one-line notice (the reason is the tool result, and the run goes on), and a model's `ask_user` question is declined. Every allow still allows — reads, read-only shell, a saved allow. The unattended / CI tier |
+| `full-access` | everything allows — but a user extension's `deny` still wins (the chain's deny>allow>ask composition; a deny wins over every tier, full-access included), and so does the catastrophe floor. Its old name `bypass` is still accepted |
 
+- **The don't-ask switch** is a second setting, not a tier: whether kiso
+  may stop for a person. It composes with every tier and changes no tier's
+  decision. On, the chain's final ASK is denied at the ask endpoint with a
+  one-line notice (the reason is the tool result, and the run goes on);
+  `ask_user` leaves the tool table; an uncertain execution is left
+  unresolved, never guessed; an untrusted project `.kiso` is not loaded and
+  not asked about. Every allow still allows — reads, read-only shell, a
+  saved allow. Set it with `--dont-ask`, `KISO_DONT_ASK=1`, `"dontAsk": true`
+  in either config, or `/dont-ask [on|off]`; it is off at every start
+  unless one of those says otherwise. The `/mode` panel lists the tiers
+  alone and names the switch in its header when it is on. The old tier
+  name `dontAsk` still works and means `default` with
+  the switch on; a switch that arrived that way leaves when the tier
+  changes, as leaving the old tier did.
 - `/mode` prints the current tier and the list; `/mode <name>` switches
   immediately (the change applies to the next tool call), leaving a
   notice line in the session body. Startup: `--mode <name>` or
@@ -399,7 +412,7 @@ asks. The file is allow-only by design — it can never deny or ask — so the m
 and safe-defaults moats keep their teeth. It never carries a destructive command
 or a write into `.git/` or `.kiso/`: those reach you every time.
 
-**The catastrophe floor.** In every mode, bypass included, kiso refuses a
+**The catastrophe floor.** In every mode, full access included, kiso refuses a
 destructive command (`rm`, `git clean -f`, `git reset --hard`,
 `git checkout -- <paths>` / `.` / `-f`, `git restore`, `git switch -f`,
 `find … -delete` with no selecting primary) whose target cannot be recovered:
@@ -408,7 +421,7 @@ directory, the workspace root or anything above it, the workspace's `.git`,
 `~/.ssh`, `~/.config`, `~/.kiso`, `~/.gnupg`, `~/.aws` or anything inside them,
 a wildcard over any of those, or a target that is only a variable
 (`rm -rf $DIR/`). Everything else runs as the mode says — `rm -rf /tmp/probe`
-runs in bypass. A refusal is recorded as `decidedBy: floor`, and the model is
+runs in full access. A refusal is recorded as `decidedBy: floor`, and the model is
 told why. The floor reads the command line; it is not a sandbox. `"floor": "off"`
 in `~/.kiso/config.json` turns it off — a project config cannot — and the status
 row then says `floor off`.
@@ -445,7 +458,8 @@ and the same turn once it settles:
 
 Both blocks are rows lifted from a real 100-column screen, not typed: a live
 call carries its output while it runs and settles into a record of it. The
-session is in `bypass`, which is why the command ran without the pause the
+session is in full access (`bypass` on the row is its old name — the
+capture predates the rename), which is why the command ran without the pause the
 approval bullet below describes. `186 tok/s` is the decode rate of the last
 call that could be measured, and the model name is shortened in its middle
 because the row ran out of width — the facts never are.

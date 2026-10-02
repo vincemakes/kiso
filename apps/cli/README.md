@@ -32,7 +32,8 @@ kiso
 Named model profiles live in `~/.kiso/config.json` (the config stores
 the NAME of the env var holding each key, never the key itself); switch
 in-session with `/model`. Approval tiers: `--mode
-manual|default|accept-edits|plan|bypass` or `/mode` in-session.
+default|accept-edits|plan|full-access` or `/mode` in-session; `--dont-ask`
+(or `/dont-ask`) never stops for a person.
 
 ## The commands
 

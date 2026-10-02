@@ -193,7 +193,8 @@ export interface BannerExtension {
 	readonly name: string;
 	readonly connecting?: boolean;
 	/** A fact about the extension in this session, printed in parentheses
-	 *  after its name — "ask (off in dontAsk)". `connecting` wins. */
+	 *  after its name — "ask (off in dontAsk)", with the don't-ask switch
+	 *  on. `connecting` wins. */
 	readonly note?: string;
 }
 
@@ -529,7 +530,11 @@ const HELP_TABLE: readonly (readonly [string, string])[] = [
 	// been dispatchable since TUI2-R1 slice 6 and was never listed here,
 	// so the only way to learn it existed was to read the source.
 	["/context", "show where the context went — the per-request rent ledger"],
-	["/mode", "show the approval tier; /mode <name> switches (default/accept-edits/plan/dontAsk/bypass)"],
+	["/mode", "show the approval tier; /mode <name> switches (default/accept-edits/plan/full-access)"],
+	// the modes round: the don't-ask switch, beside the tiers it composes
+	// with. `/dont-ask` is nine characters, as `/settings` is, so the
+	// computed stop does not move.
+	["/dont-ask", "never stop for you: what would ask is refused — /dont-ask off undoes it"],
 	["/model", "list model profiles; /model <name|provider/model> switches"],
 	["/compact", "summarize the older conversation to free context"],
 	["/clear", "start a fresh conversation (the old session stays resumable)"],

@@ -37,9 +37,12 @@ describe("§7.12 — kiso's notices become meta rows", () => {
 	});
 
 	it("a command's confirmation has no kind of its own: no label, the sentence whole", () => {
-		for (const text of ["mode → plan (shift+tab cycles)", "[/compact] nothing to compact — fewer than 5 rounds yet", "[dontAsk] shell would ask — denied", "[exit queued — closing after the current run completes]", "model → ds (deepseek-v4-flash · max)"]) {
+		for (const text of ["mode → plan (shift+tab cycles)", "[/compact] nothing to compact — fewer than 5 rounds yet", "[exit queued — closing after the current run completes]", "model → ds (deepseek-v4-flash · max)"]) {
 			expect(noticeMeta(text), text).toEqual({ sentence: text });
 		}
+		// RE-DERIVED (the main-sync round, owner 2026-09-30): a call the
+		// don't-ask switch refused is a session event of its own — DENIED, dim
+		expect(noticeMeta("[dontAsk] shell would ask — denied")).toEqual({ label: "DENIED", sentence: "shell would ask — denied" });
 		expect(noticeMeta("✦ something else"), "the seal's mark comes off").toEqual({ sentence: "something else" });
 	});
 

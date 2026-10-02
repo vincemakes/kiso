@@ -40,7 +40,7 @@ import { reverseMigration } from "./session-migration.js";
 import { defaultTrashRoot, findEmptySessions, moveToTrash } from "./empty-sessions.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemakes/kiso-tools-node";
-import { MODES, OFFERED_MODES, getMode, modeFromEnv, setMode } from "./mode.js";
+import { OFFERED_MODES, applyModeState, envModeLayer, getDontAsk, modeDisplay, parseMode, resolveModeLayers, type ModeLayer } from "./mode.js";
 import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
@@ -513,10 +513,10 @@ function bannerExtensionText(): string {
 	// terminal layer (extensionsBannerText — a pure function of the three
 	// name lists, including the "(connecting…)" in-flight label). Which
 	// lists exist is the CLI's fact and stays here.
-	// 0.40.0: in dontAsk the ask extension is loaded but offers no tool
-	// (builtin.ts offInDontAsk) — the banner says so beside the tier that
-	// turns it off, rather than listing it as if it could ask.
-	const builtIn = builtInExtensions.map((e) => (e.name === "ask" && getMode() === "dontAsk" ? { name: e.name, note: "off in dontAsk" } : e));
+	// 0.40.0: with the don't-ask switch on the ask extension is loaded but
+	// offers no tool (builtin.ts offInDontAsk) — the banner says so, rather
+	// than listing it as if it could ask.
+	const builtIn = builtInExtensions.map((e) => (e.name === "ask" && getDontAsk() ? { name: e.name, note: "off in dontAsk" } : e));
 	return extensionsBannerText(builtIn, userExtensions, projectExtensions);
 }
 
@@ -1291,22 +1291,30 @@ async function main(): Promise<void> {
 		}
 		args.splice(modelArgIdx, 2);
 	}
-	// Modes: --mode wins over KISO_MODE, which wins over the USER config's
-	// mode (the project config's mode applies later — after the trust gate,
-	// inside createCodingAgent — unless a higher layer already decided).
+	// Modes: flag > env > project config > user config > default, for the
+	// tier and the don't-ask switch each (mode.ts resolveModeLayers). The
+	// project config exists only once the trust gate has passed, so it joins
+	// later (applyConfigMode); until then the other three decide.
+	const flagLayer: { mode?: string; dontAsk?: boolean } = {};
 	const modeFlag = args.indexOf("--mode");
 	if (modeFlag !== -1) {
-		const m = MODES.find((x) => x === args[modeFlag + 1]);
-		if (m === undefined) {
-			console.error(`unknown mode: ${args[modeFlag + 1]} (tiers: ${OFFERED_MODES.join(", ")})`);
+		const raw = args[modeFlag + 1];
+		if (raw === undefined || parseMode(raw) === undefined) {
+			console.error(`unknown mode: ${raw} (tiers: ${OFFERED_MODES.join(", ")})`);
 			process.exit(2);
 		}
-		setMode(m);
-		settingsLayers.modeFlag = m;
+		flagLayer.mode = raw;
+		settingsLayers.modeFlag = raw;
 		args.splice(modeFlag, 2);
-	} else {
-		setMode(modeFromEnv() ?? loadUserConfig()?.mode ?? "default");
 	}
+	const dontAskFlag = args.indexOf("--dont-ask");
+	if (dontAskFlag !== -1) {
+		flagLayer.dontAsk = true;
+		settingsLayers.dontAskFlag = true;
+		args.splice(dontAskFlag, 1);
+	}
+	const modeLayers = (project: ModeLayer | null): Parameters<typeof resolveModeLayers>[0] => ({ flag: flagLayer, env: envModeLayer(), project, user: loadUserConfig() });
+	applyModeState(resolveModeLayers(modeLayers(null)));
 	// CX-1 F5: --task-file <path> — the file is the ONE user turn (the
 	// structured child entry). Read BEFORE any session exists: an
 	// unreadable file is a usage error with nothing executed.
@@ -1470,9 +1478,9 @@ async function main(): Promise<void> {
 	try {
 		// merge round B: the project config's mode applies AFTER the trust gate
 		// (its verdict decides whether the project config exists at all) —
-		// unless a higher layer (--mode flag / KISO_MODE) already decided.
+		// under whatever a higher layer (the flags, the env) already decided.
 		const applyConfigMode = (): void => {
-			if (modeFlag === -1 && process.env.KISO_MODE === undefined && mergedConfig.mode !== undefined) setMode(mergedConfig.mode);
+			applyModeState(resolveModeLayers(modeLayers(settingsLayers.project)));
 		};
 		if (printPrompt !== undefined) {
 			// the -p flow: recovery-first one-shot, the resume() machinery
@@ -1772,7 +1780,8 @@ async function main(): Promise<void> {
 						"  kiso help               this help\n\n" +
 						"flags (any position):\n" +
 						"  --model <profile|provider/model>   pick the model (also /model in-session)\n" +
-						"  --mode <tier>            approval tier: default|accept-edits|plan|dontAsk|bypass\n" +
+						"  --mode <tier>            approval tier: default|accept-edits|plan|full-access\n" +
+						"  --dont-ask               never stop for a person: what would ask is refused\n" +
 						"  --version                print the version\n\n" +
 						"configuration:\n" +
 						"  no key                   keyless faux demo (a scripted four-round session)\n" +

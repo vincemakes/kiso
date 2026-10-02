@@ -127,7 +127,7 @@ describe("the credential store never reaches a model, on the real CLI", () => {
 		const r = runCli(["chat", "store-proj", "--task-file", task], { ...w.env, KISO_MODE: "bypass", KISO_FAUX_SCRIPT: faux }, { cwd: join(w.home, "proj"), timeout: 60_000 });
 		expect(r.status, r.stderr).toBe(0);
 		const { raw, evs } = events(w.sessions, "store-proj");
-		expect(decided(evs, "s1")).toMatchObject({ decision: "approved", decidedBy: "mode:bypass" });
+		expect(decided(evs, "s1")).toMatchObject({ decision: "approved", decidedBy: "mode:full-access" });
 		expect(raw).toContain(ORDINARY);
 	}, 90_000);
 

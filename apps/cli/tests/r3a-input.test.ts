@@ -127,7 +127,7 @@ describe("R3a — cross-session history", () => {
 });
 
 describe("R3a — Shift+Tab cycles the tier", () => {
-	it("CSI Z at the composer flips default → accept-edits, with the notice", () => {
+	it("CSI Z at the composer flips default → accept edits, with the notice", () => {
 		const { env } = isolatedEnv();
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-r3a-st-"));
 		// the cycle callback registers inside chat() — a CSI Z fired at the
@@ -139,7 +139,8 @@ describe("R3a — Shift+Tab cycles the tier", () => {
 			["MODE\x1b[0m", "exit\r"],
 		], workdir));
 		// Graphite R3e (owner, 2026-09-29): the switch is `MODE` over
-		// `from → to`, nothing else
-		expect(out).toMatch(/MODE\s+default → accept-edits/);
+		// `from → to`, nothing else — the tiers by their names since the
+		// modes round (#203)
+		expect(out).toMatch(/MODE\s+default → accept edits/);
 	});
 });
