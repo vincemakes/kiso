@@ -1,6 +1,6 @@
 /** The built artifact has no .d.ts — declare its exports for the tests. */
 declare module "*.mjs" {
-	const factory: () => Promise<import("@vincemakes/kiso-core").KisoExtension>;
+	const factory: (host?: import("../index.js").SubagentHost) => Promise<import("@vincemakes/kiso-core").KisoExtension>;
 	export default factory;
 	export function rolePolicyContent(role: string, scope?: { root: string; globs: readonly string[] }): string;
 	export function extractChildResult(
