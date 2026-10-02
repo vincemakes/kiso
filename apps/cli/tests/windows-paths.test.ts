@@ -49,7 +49,7 @@ const disk = vi.hoisted(() => {
 		"C:\\Users\\me\\AppData\\Local\\Temp\\home2",
 		"C:\\Users\\me\\AppData\\Local\\Temp\\home2\\.ssh",
 	];
-	const files = ["C:\\work\\proj\\src\\a.ts", "C:\\Users\\me\\notes.txt", "C:\\Users\\runneradmin\\ws\\a.ts"];
+	const files = ["C:\\work\\proj\\src\\a.ts", "C:\\Users\\me\\notes.txt", "C:\\Users\\runneradmin\\ws\\a.ts", "C:\\Users\\me\\.kiso\\auth.json"];
 	dirs.push("C:\\Users\\runneradmin", "C:\\Users\\runneradmin\\ws");
 	const key = (p: string): string => p.replace(/\//g, "\\").replace(/(?<=[^:\\])\\+$/, "").toLowerCase();
 	const byKey = new Map<string, { path: string; dir: boolean; ino: number }>();
@@ -57,10 +57,16 @@ const disk = vi.hoisted(() => {
 	// an existing directory's 8.3 short spelling resolves to its long name (the
 	// Windows runner's temp dir is C:\Users\RUNNER~1\…)
 	for (const [short, long] of [["C:\\Users\\RUNNER~1", "C:\\Users\\runneradmin"], ["C:\\Users\\RUNNER~1\\ws", "C:\\Users\\runneradmin\\ws"], ["C:\\Users\\RUNNER~1\\ws\\a.ts", "C:\\Users\\runneradmin\\ws\\a.ts"], ["C:\\Users\\me\\SSH~1", "C:\\Users\\me\\.ssh"], ["C:\\PROGRA~1", "C:\\Program Files"]] as const) byKey.set(key(short), byKey.get(key(long))!);
-	// links (a symlink or a junction): the real path is the target's
-	for (const [link, target] of [["C:\\work\\proj\\link", "C:\\Users\\me\\.kiso"], ["C:\\work\\proj\\deeplink", "C:\\Users\\me\\.kiso\\deep"]] as const) byKey.set(key(link), byKey.get(key(target))!);
+	// links (a symlink or a junction): the real path is the target's, and
+	// the system follows one for whatever lies below it
+	const links: (readonly [string, string])[] = [["C:\\work\\proj\\link", "C:\\Users\\me\\.kiso"], ["C:\\work\\proj\\deeplink", "C:\\Users\\me\\.kiso\\deep"]];
+	for (const [link, target] of links) byKey.set(key(link), byKey.get(key(target))!);
+	const follow = (k: string): string => {
+		for (const [link, target] of links) if (k.startsWith(`${key(link)}\\`)) return key(target) + k.slice(key(link).length);
+		return k;
+	};
 	const windowsy = (p: unknown): p is string => typeof p === "string" && (/^[A-Za-z]:/.test(p) || p.includes("\\"));
-	return { byKey, key, windowsy };
+	return { byKey, key: (p: string): string => follow(key(p)), windowsy };
 });
 
 vi.mock("node:fs", async (importOriginal) => {

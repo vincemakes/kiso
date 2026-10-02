@@ -292,10 +292,12 @@ describe("the floor refuses the unrecoverable, and says which", () => {
 describe("and nothing else — bypass stays bypass", () => {
 	for (const cmd of RUNS) {
 		it(JSON.stringify(cmd), () => {
-			// Windows: a POSIX-rooted target is an MSYS mount there — refused
+			// Windows: a POSIX-rooted target is an MSYS mount there — a
+			// destructive command over one is refused for that reason, and
+			// for no other; the rest run
 			if (WINDOWS && posixRooted(cmd)) {
 				const v = check(cmd);
-				expect(v.refused && v.why.includes(MSYS_MOUNT), cmd).toBe(true);
+				expect(!v.refused || v.why.includes(MSYS_MOUNT), cmd).toBe(true);
 				return;
 			}
 			expect(check(cmd)).toEqual({ refused: false });

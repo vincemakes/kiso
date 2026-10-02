@@ -240,9 +240,11 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 				}
 				const st = statAt(at(cwd, t));
 				if (st?.isFile() === true && probe.files.has(inode(st))) return true;
-				if (dialect.msys) {
-					// Windows: the lexical reading above, and the real-path one —
-					// a `..` after a link the two read apart falls back to names
+				if (dialect.msys && t.split("/").includes("..")) {
+					// Windows: the lexical reading above, and — for a `..`, where
+					// they can differ — the real-path one; a `..` after a link the
+					// two read apart falls back to names. One more reading charged.
+					charge();
 					const real = resolveShellPath(cwd, cwd, t, dialect);
 					if (real.opaque !== undefined) {
 						if (namesProtected(t)) return true;
