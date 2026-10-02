@@ -191,6 +191,10 @@
  ],
  "exempt": [
   {
+   "file": "packages/tools-node/tests/crlf-edit.test.ts",
+   "reason": "spawns nothing. It drives edit_file on files in a temp directory; the classifier follows the import of ../src/index.js, whose shell tool spawns when it runs — this file never calls it. Verified: no child_process, no spawn, no pty helper in the file."
+  },
+  {
    "file": "extensions/subagent/tests/subagent-win32.test.ts",
    "reason": "spawns nothing. It exercises the subagent's win32 branch, and pins its copy of the bash rule to the process module, on every OS by setting process.platform per case and replacing node:child_process with a scripted fake (vi.mock): spawn and execFileSync only record their arguments and return canned answers, and process.kill is a spy. The classifier follows the imports of the subagent bundle and ../src/process.js, which spawn when they run for real. Verified: every child_process entry point they use is mocked; no pty helper."
   },
