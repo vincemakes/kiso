@@ -13,8 +13,28 @@ user-layer loader accepts exactly this shape.
 
 ## Configuration
 
-None. Every delegation is asked of the human (no auto-allow); depth is
-guarded so children can never nest.
+None for a user. Every delegation is asked of the human (no auto-allow);
+depth is guarded so children can never nest.
+
+## Background children (ADR-0058)
+
+A host that passes its per-session task manager gets
+`delegate({ …, background: true })`:
+
+```ts
+createSubagentExtension({
+	tasks: (sessionId) => managerFor(sessionId), // the runtime's TaskManager
+	backgroundMax: 20, // live background children per session (default)
+	backgroundMaxTurns: 32, // a child's model requests before its wrap-up (default)
+});
+```
+
+Explorer and reviewer only. Each child is an agent task under the task
+runner — it outlives the parent — and the call returns at once; the
+runtime's task delivery tells the model when the turn's children have all
+ended, with each child's answer (`result.md` beside its task). Without
+`tasks`, the schema and behaviour are the foreground's, byte for byte. The
+CLI wires it.
 
 ## Versioning
 
