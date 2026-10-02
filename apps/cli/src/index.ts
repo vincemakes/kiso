@@ -45,7 +45,8 @@ import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, 
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers, stopAllTasks } from "./state.js";
+import { settingsLayers, setChildTurnBudget, stopAllTasks } from "./state.js";
+import { finishChild, type ChildEnd } from "./child-result.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
@@ -850,6 +851,10 @@ class CliUsageError extends Error {
 	readonly exitCode = 2;
 }
 
+/** ADR-0058 3d: set when this process is a background child (its budget
+ *  and where its answer goes) — finished once its turn is done. */
+let childEnd: ChildEnd | null = null;
+
 /** The /resume+/clear mini-spec — the chat LOOP: chat() ends with a
  *  directive; a switch re-enters it on another session with the SAME
  *  editor. First entry paints the banner; a switch paints one notice
@@ -1131,7 +1136,10 @@ async function chatLoop(
 			...(process.stdin.isTTY ? { pick: () => pickSession(agent, input) } : {}),
 		};
 		const end = await chat(session, currentFaux, input, autoCompact, nav, seed);
-		if (end.next === "exit") return;
+		if (end.next === "exit") {
+			if (childEnd !== null) await finishChild(session, childEnd);
+			return;
+		}
 		// DC-57: the lines that arrived with the switch command ride INTO the
 		// next entry — they were aimed at the session being asked for.
 		seed = end.lines ?? [];
@@ -1319,6 +1327,28 @@ async function main(): Promise<void> {
 			}
 			args.splice(i, 2);
 		}
+	}
+	// ADR-0058 3d: a background child's --max-turns N (its budget, D6) and
+	// --result-file <path> (where its answer goes). Child-only: without
+	// --task-file they are refused — the interactive door has no turn
+	// limit (R3e).
+	{
+		const end: { maxTurns?: number; resultFile?: string } = {};
+		for (const flag of ["--max-turns", "--result-file"] as const) {
+			const i = args.indexOf(flag);
+			if (i === -1) continue;
+			const value = args[i + 1];
+			if (taskFile === undefined) throw new CliUsageError(`${flag} needs --task-file — it is for a delegated child only`);
+			if (value === undefined || value.startsWith("--")) throw new CliUsageError(`${flag} needs a value`);
+			if (flag === "--max-turns") {
+				const n = Number(value);
+				if (!Number.isInteger(n) || n < 1) throw new CliUsageError(`--max-turns: expected a whole number of at least 1, got ${value}`);
+				end.maxTurns = n;
+			} else end.resultFile = value;
+			args.splice(i, 2);
+		}
+		if (end.maxTurns !== undefined || end.resultFile !== undefined) childEnd = end;
+		setChildTurnBudget(end.maxTurns);
 	}
 	// 0.40.0: `kiso sessions --all | --current` — the one command that takes
 	// them. Parsed only there, so neither ever becomes a session id. Absent
