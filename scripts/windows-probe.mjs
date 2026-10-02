@@ -1,4 +1,4 @@
-// Windows P5 — the process module and the safety checks' path reading on a real Windows machine (the CI's
+// Windows P5 — the process module, the safety checks' path reading and the small spawns on a real Windows machine (the CI's
 // windows-latest runner, which ships Git for Windows). The unit tests pin
 // the win32 branches with a scripted child_process on every OS; this probe
 // runs them for real: Git Bash runs the command, taskkill takes the tree
@@ -13,6 +13,8 @@ import { NO_BASH, killTree, processStartTime, startCommand } from "../packages/t
 import { floorCheck } from "../apps/cli/dist/floor.js";
 import { classifyReadOnly } from "../apps/cli/dist/readonly-shell.js";
 import { resolveShellPath } from "../apps/cli/dist/shell-words.js";
+import { viaCmd } from "../apps/cli/dist/launch.js";
+import { spawnSync } from "node:child_process";
 
 if (process.platform !== "win32") {
 	console.log("[windows-probe] skipped: not win32");
@@ -139,6 +141,37 @@ writeFileSync(join(outside, "secret.txt"), "s");
 		check("C:/PROGRA~1 reads as the directory it names", r.canonical.toLowerCase() === long.toLowerCase() && r.opaque === undefined, `${JSON.stringify(r)} vs ${long}`);
 		check("the floor refuses `rm -rf C:/PROGRA~1`", floorCheck("rm -rf C:/PROGRA~1", ws, base).refused === true);
 	}
+}
+
+// ── P3: the small spawns through cmd.exe ─────────────────────────────────
+/** What a program started by viaCmd receives as its arguments. */
+const received = (bin, args) => {
+	const l = viaCmd(bin, args);
+	const r = spawnSync(l.file, l.args, { encoding: "utf8", windowsVerbatimArguments: true });
+	try {
+		return JSON.parse(r.stdout.trim().split("\n").at(-1));
+	} catch {
+		return { stdout: r.stdout, stderr: r.stderr, status: r.status };
+	}
+};
+
+// 9. an executable gets every argument exactly, metacharacters and all
+{
+	const args = ["a b", "x&y", "c^d", "50%PATH%", "(z)", 'say "hi"', "C:\\dir\\", "a|b<c>d", "!bang!", "semi;colon,comma"];
+	const got = received(process.execPath, ["-e", "console.log(JSON.stringify(process.argv.slice(1)))", ...args]);
+	check("viaCmd hands an executable every argument exactly", JSON.stringify(got) === JSON.stringify(args), JSON.stringify(got));
+}
+
+// 10. a .cmd shim in a directory with spaces, & and parentheses gets a
+// path with the same (the editor's case: code.cmd and the draft's path)
+{
+	const dir = join(base, "dir with space & (x)");
+	mkdirSync(dir, { recursive: true });
+	const shim = join(dir, "echoargs.cmd");
+	writeFileSync(shim, `@"${process.execPath}" -e "console.log(JSON.stringify(process.argv.slice(1)))" %*\r\n`);
+	const draft = join(dir, "message.md");
+	const got = received(shim, [draft]);
+	check("viaCmd starts a .cmd shim from a path with spaces, & and ( ), and it gets the draft's path", JSON.stringify(got) === JSON.stringify([draft]), JSON.stringify(got));
 }
 
 console.log(failed === 0 ? "[windows-probe] all probes passed" : `[windows-probe] ${failed} probe(s) failed`);
