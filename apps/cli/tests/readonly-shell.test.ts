@@ -365,7 +365,9 @@ describe("the adversarial corpus — never allowed, and for the stated reason", 
 			expect(v.allow, cmd).toBe(false);
 			// Windows (P2): a POSIX-rooted path is an MSYS mount under Git Bash —
 			// never read, and named so rather than "outside"
-			if (process.platform === "win32" && why === "outside" && v.allow === false && v.why.includes("an MSYS mount")) return;
+			// (and a `..` after a link, read apart by Win32 and the real path, is
+			// not read either)
+			if (process.platform === "win32" && why === "outside" && v.allow === false && /an MSYS mount|after a link/.test(v.why)) return;
 			expect(v.allow === false ? v.why : "", cmd).toContain(why);
 		});
 	}
@@ -429,8 +431,11 @@ describe("the lexer — the words the shell would pass, or a refusal", () => {
 describe("the shared resolver — real components, in the disk's case (review B1, B2)", () => {
 	it("`..` after a symlink is the parent of its TARGET", () => {
 		const r = resolveShellPath(root, root, "out-dir/..");
-		expect(r.canonical).toBe(realCase(join(root, "..")));
 		expect(r.inside).toBe(false);
+		// Windows (P2): Win32 takes `..` as text and this walk takes it on the
+		// target — the two land apart, so the word is not read at all
+		if (process.platform === "win32") expect(r.opaque).toMatch(/after a link/);
+		else expect(r.canonical).toBe(realCase(join(root, "..")));
 	});
 
 	it.skipIf(!CASE_INSENSITIVE)("an existing name comes back in the case the disk holds it", () => {
