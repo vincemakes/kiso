@@ -24,6 +24,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { launchCommand } from "./launch.js";
 
 /**
  * Run `bin` on `text` and return what came back, or `null` when the edit
@@ -45,7 +46,9 @@ export function runExternalEditor(bin: string, root: string, text: string, onFai
 	const file = join(dir, "message.md"); // .md so the editor lights it up
 	try {
 		writeFileSync(file, text, { encoding: "utf8", mode: 0o600 });
-		const r = spawnSync(bin, [file], { stdio: "inherit", shell: false });
+		// Windows: an editor is often a .cmd shim (code.cmd) — through cmd.exe
+		const l = launchCommand(bin, [file]);
+		const r = spawnSync(l.file, [...l.args], { stdio: "inherit", shell: false, ...(l.windowsVerbatimArguments === true ? { windowsVerbatimArguments: true } : {}) });
 		if (r.error !== undefined || (r.status !== null && r.status !== 0)) {
 			onFailure(`[ctrl+g] ${bin} exited ${r.status ?? "abnormally"} — the composer is unchanged`);
 			return null;

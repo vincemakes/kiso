@@ -379,6 +379,9 @@ async function inodeReadPolicy(root: string, full: string): Promise<string | nul
 	const st = statSync(full);
 	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
 	if (st.nlink <= 1) return null;
+	// Windows: no find can list a file's links (find there is the system's
+	// text search) — refused without a scan, and the refusal says why
+	if (process.platform === "win32") return `file has ${st.nlink} hard links, and on Windows kiso cannot check where they all are — refusing to read (${full})`;
 	const key = `${st.dev}:${st.ino}`;
 	const cached = inodeVerdict.get(key);
 	if (cached !== undefined) return cached;
