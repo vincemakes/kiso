@@ -32,7 +32,7 @@
 
 import { closeSync, fsyncSync, openSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { killTree, processStartTime, RotatingOutput, startCommand } from "./process.js";
+import { killTree, processStartTime, RotatingOutput, startCommand, startExec } from "./process.js";
 
 const OUTPUT_CAP_DEFAULT = 64 * 1024 * 1024;
 const STOP_GRACE_MS = 5_000;
@@ -53,6 +53,8 @@ interface Planned {
 	readonly command: string;
 	readonly cwd: string;
 	readonly readyWhen?: string;
+	/** 3d: an argv launch — no shell; `command` is then the label */
+	readonly launch?: { readonly kind: "exec"; readonly file: string; readonly args: readonly string[] };
 }
 
 function plannedOf(journal: string): Planned {
@@ -104,7 +106,7 @@ function main(dir: string): void {
 	};
 	let child: ReturnType<typeof startCommand>;
 	try {
-		child = startCommand(planned.command, { cwd: planned.cwd, env });
+		child = planned.launch?.kind === "exec" ? startExec(planned.launch.file, planned.launch.args, { cwd: planned.cwd, env }) : startCommand(planned.command, { cwd: planned.cwd, env });
 	} catch (err) {
 		// win32 without bash throws here (the Windows line's process module)
 		notStarted(err instanceof Error ? err : new Error(String(err)));

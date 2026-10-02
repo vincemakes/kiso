@@ -33,6 +33,27 @@ export function startCommand(
 }
 
 /**
+ * Start `file` with exactly `args` — no shell, so nothing is split, quoted
+ * or expanded (ADR-0058 3d: a child kiso is launched this way). Its own
+ * process group, like `startCommand`.
+ */
+export function startExec(
+	file: string,
+	args: readonly string[],
+	opts: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly stdio?: StdioOptions },
+): ChildProcess {
+	const child = spawn(file, [...args], {
+		shell: false,
+		detached: true,
+		cwd: opts.cwd,
+		stdio: opts.stdio ?? ["ignore", "pipe", "pipe"],
+		env: opts.env,
+	});
+	child.once("close", () => closed.add(child));
+	return child;
+}
+
+/**
  * Kill the whole tree and CONFIRM it exited (rounds 8/11):
  *
  * 1. FREEZE the root (SIGSTOP) FIRST — a stopped shell cannot fork new
