@@ -232,7 +232,9 @@ describe("protectedPaths: user config only, loud everywhere else", () => {
 	});
 
 	it("the user config names files kiso guards — absolute or ~/", () => {
-		expect(parseConfig(JSON.stringify({ protectedPaths: ["/srv/keys.env", "~/notes/secret.md"] }), "~/.kiso/config.json").protectedPaths).toEqual(["/srv/keys.env", "~/notes/secret.md"]);
+		// an absolute path for the platform (a drive path on Windows)
+		const KEYS = process.platform === "win32" ? "C:\\srv\\keys.env" : "/srv/keys.env";
+		expect(parseConfig(JSON.stringify({ protectedPaths: [KEYS, "~/notes/secret.md"] }), "~/.kiso/config.json").protectedPaths).toEqual([KEYS, "~/notes/secret.md"]);
 	});
 
 	it("a project config naming it fails loudly, whatever it holds — a project must never change what kiso guards", () => {

@@ -23,7 +23,8 @@ let STORE = "";
 let PROJ = "";
 
 beforeEach(() => {
-	H = realpathSync(mkdtempSync(join(tmpdir(), "kiso-protected-shell-")));
+	// .native, as the product resolves: it also expands a Windows 8.3 short name
+	H = realpathSync.native(mkdtempSync(join(tmpdir(), "kiso-protected-shell-")));
 	mkdirSync(join(H, ".kiso"));
 	STORE = join(H, ".kiso", "auth.json");
 	writeFileSync(STORE, "{}\n", { mode: 0o600 });

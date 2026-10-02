@@ -120,7 +120,10 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		mkdirSync(join(fakeHome, ".kiso", "skills", "home-skill"), { recursive: true });
 		writeFileSync(join(fakeHome, ".kiso", "skills", "home-skill", "SKILL.md"), "---\ndescription: from home\n---\nbody\n", "utf8");
 		const origHome = process.env.HOME;
+		const origProfile = process.env.USERPROFILE;
 		process.env.HOME = fakeHome;
+		// Windows: the home directory is USERPROFILE (os.homedir reads it)
+		process.env.USERPROFILE = fakeHome;
 		delete process.env.KISO_HOME;
 		delete process.env.KISO_SKILLS_DIR;
 		try {
@@ -130,6 +133,8 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 			delete process.env.KISO_HOME;
 			if (origHome === undefined) delete process.env.HOME;
 			else process.env.HOME = origHome;
+			if (origProfile === undefined) delete process.env.USERPROFILE;
+			else process.env.USERPROFILE = origProfile;
 		}
 	});
 

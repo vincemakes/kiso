@@ -421,6 +421,8 @@ describe("the task runner's detached spawn is hidden (no console window on Windo
 	it("windowsHide: true beside detached: true", async () => {
 		const dir = ws();
 		writeFileSync(join(dir, "journal.jsonl"), `${JSON.stringify({ type: "runner_started", pid: 1, startedAt: "" })}\n`);
+		// on a Windows runner this path is Windows-spelled: the fake disk answers for it
+		fakeFiles.add(join(dir, "journal.jsonl"));
 		await processTaskBackend({ runnerPath: "/nowhere/task-runner.js" }).spawn({ dir, env: {} });
 		expect(cp.spawns).toHaveLength(1);
 		expect(cp.spawns[0]!.options).toMatchObject({ detached: true, windowsHide: true });

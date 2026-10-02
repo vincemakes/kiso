@@ -363,6 +363,9 @@ describe("the adversarial corpus — never allowed, and for the stated reason", 
 		it(JSON.stringify(cmd), () => {
 			const v = verdict(cmd);
 			expect(v.allow, cmd).toBe(false);
+			// Windows (P2): a POSIX-rooted path is an MSYS mount under Git Bash —
+			// never read, and named so rather than "outside"
+			if (process.platform === "win32" && why === "outside" && v.allow === false && v.why.includes("an MSYS mount")) return;
 			expect(v.allow === false ? v.why : "", cmd).toContain(why);
 		});
 	}
