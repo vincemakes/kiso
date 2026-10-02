@@ -1221,9 +1221,15 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// against the first one's output. Still all or nothing: nothing is
 				// written unless every hunk resolves, and each must match exactly
 				// once in the text it meets (ACI-2).
-				let edited = text;
+				// Windows P3: a uniformly CRLF file is matched on its LF form and
+				// written back CRLF — the model's search text uses LF, and an edit
+				// never changes the file's endings. A file mixing the two keeps
+				// exact matching: normalizing it would rewrite untouched lines.
+				const crlf = text.includes("\r\n") && !/(^|[^\r])\n/.test(text);
+				const lf = (t: string): string => (crlf ? t.replace(/\r\n/g, "\n") : t);
+				let edited = lf(text);
 				for (let i = 0; i < hunks.length; i += 1) {
-					const h = hunks[i]!;
+					const h = { search: lf(hunks[i]!.search), replace: lf(hunks[i]!.replace) };
 					const { count, offsets } = occurrencesOf(edited, h.search);
 					const which = hunks.length === 1 && edits === undefined ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, after ${i === 1 ? "hunk 1" : `hunks 1–${i}`} applied)`;
 					if (count === 0) {
@@ -1255,7 +1261,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// E group: safe replacement — never rewrite a shared external inode via a hard link.
 				// round 8: the edited file keeps its mode.
 				preservedMode = statSync(full).mode & 0o7777;
-				writeFileSync(tmp, edited, "utf8");
+				writeFileSync(tmp, crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
 				chmodSync(tmp, preservedMode);
 				// WR-1A ③: revalidate against the citation right before the
 				// replacement commits.
