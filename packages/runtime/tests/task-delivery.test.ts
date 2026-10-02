@@ -154,10 +154,26 @@ describe("ADR-0058 §7 — a summary tells only what the model was told", () => 
 		end(manager, job.id);
 		const delivery = new TaskDelivery({ manager, events: () => [], liveRun: () => undefined });
 		const started = { seq: 3, type: "tool_execution_started", executionId: "ex-7" } as unknown as Event;
-		expect(delivery.snapshot([started])).toBe("Background tasks, as you were last told: t1 running — npm test.");
+		const result = { seq: 4, type: "tool_result", callId: "c", content: "started background task t1.", isError: false, executionId: "ex-7" } as unknown as Event;
+		expect(delivery.snapshot([started, result])).toBe("Background tasks, as you were last told: t1 running — npm test.");
 		const told = { seq: 9, type: "user_input", content: "n", source: "system", via: { kind: "tasks", items: [{ taskId: "t1", transition: "exited" }] } } as unknown as Event;
-		expect(delivery.snapshot([started, told])).toBe("Background tasks, as you were last told: t1 exited — npm test.");
+		expect(delivery.snapshot([started, result, told])).toBe("Background tasks, as you were last told: t1 exited — npm test.");
 		expect(delivery.snapshot([])).toBe(""); // the model never saw it start
+		delivery.close();
+		manager.close();
+	});
+
+	it("a start the model was never told of is not in the snapshot: no result yet, or a result that failed", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-snapshot-"));
+		const manager = new TaskManager({ root: join(dir, "s.tasks"), backend: fakeBackend() });
+		await manager.start({ command: "npm test", cwd: "/", executionId: "ex-7" });
+		const delivery = new TaskDelivery({ manager, events: () => [], liveRun: () => undefined });
+		// the crash window: the execution started, its result was never written
+		const started = { seq: 3, type: "tool_execution_started", executionId: "ex-7" } as unknown as Event;
+		expect(delivery.snapshot([started])).toBe("");
+		// resolved after the crash: the model was told the attempt is NOT applied
+		const resolved = { seq: 5, type: "tool_result", callId: "c", content: "interrupted execution — rerun approved", isError: true, errorKind: "precondition", executionId: "ex-7" } as unknown as Event;
+		expect(delivery.snapshot([started, resolved])).toBe("");
 		delivery.close();
 		manager.close();
 	});

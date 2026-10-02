@@ -586,3 +586,18 @@ it changed:
    adapters send them as they are (contract rigs); each dialect accepts
    it (the Messages API combines consecutive same-role turns). No
    wire-level merge is needed.
+
+## Amendment 3 — a start the model was told of (2026-10-01)
+
+An external review of 3c, after it merged. Amendment 2 item 5 derived the
+summary snapshot from "the tool executions that started tasks", and 3c
+read that as the execution's durable START. A start is not what the model
+was told: in the crash window the execution started and no result was
+ever written, and an execution resolved after a crash is answered with
+"not applied". Either way the summary named a task the model never heard
+of — the second, unreceipted channel item 5 forbids.
+
+The rule, exactly: a task is in the snapshot only when the log holds a
+successful `tool_result` for the execution that started it (the
+model-facing result, by `executionId`; its text is never parsed). A task
+the model was never told of reaches it only as a delivered notice.

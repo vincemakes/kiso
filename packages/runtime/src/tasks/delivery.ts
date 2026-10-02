@@ -107,10 +107,13 @@ export class TaskDelivery {
 	}
 
 	/** The conversation's view of its tasks for a summary: a task the model
-	 *  saw start, at the last transition it was TOLD about. Empty when the
-	 *  model knows of no task. */
+	 *  was told started, at the last transition it was TOLD about. Empty
+	 *  when the model knows of no task. Told started = a durable, successful
+	 *  tool_result for the execution that started it — a started execution
+	 *  with no result (the crash window), or one resolved as not applied,
+	 *  never told the model a task exists. */
 	snapshot(events: readonly Event[]): string {
-		const started = new Set(events.filter((e): e is Event & { type: "tool_execution_started" } => e.type === "tool_execution_started").map((e) => e.executionId));
+		const started = new Set(events.filter((e): e is Event & { type: "tool_result" } => e.type === "tool_result" && !e.isError && e.executionId !== undefined).map((e) => e.executionId));
 		const told = new Map<string, string>();
 		for (const e of events) {
 			if (e.type !== "user_input" || e.via?.kind !== "tasks") continue;
