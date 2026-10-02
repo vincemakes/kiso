@@ -307,8 +307,8 @@ const DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
  * each component as Win32 reads it (trailing dots and spaces dropped) —
  * or why it cannot be read: another machine, a device or namespace path,
  * a drive-relative or drive-rooted path, an MSYS mount inside Git's own
- * tree, a data stream, a device name. (An 8.3 short name is judged in
- * `resolveShellPath`, where the disk can say whether it exists.)
+ * tree, a data stream, a device name. (An 8.3 short name needs no rule:
+ * Windows resolves an existing one, and the real path expands it.)
  */
 export function msysPath(word: string): { readonly native: string } | { readonly opaque: string } {
 	const w = word.replace(/\\/g, "/");
@@ -397,10 +397,14 @@ export function resolveShellPath(workspaceRoot: string, cwd: string, word: strin
 		if (existsSync(next)) current = realCase(next);
 		else missing.push(part);
 	}
-	// an existing 8.3 short name was expanded by the real path above; one
-	// for a path that does not exist yet would dodge every name rule
-	if (dialect.msys && missing.some((part) => /~\d/.test(part))) return { canonical: word, inside: false, opaque: "an 8.3 short name" };
 	const canonical = missing.length > 0 ? join(current, ...missing) : current;
+	// Windows: a `..` after a link — Win32 takes `..` as text, the POSIX
+	// walk above takes it on the real path. Where the two land apart, the
+	// word is not read at all.
+	if (dialect.msys && word.split("/").includes("..")) {
+		const lexical = resolveShellPath(workspaceRoot, cwd, dialect.path.resolve(realCase(cwd), word), dialect);
+		if (lexical.canonical.toLowerCase() !== canonical.toLowerCase()) return { canonical: word, inside: false, opaque: "a `..` after a link (Windows and Git Bash may read it apart)" };
+	}
 	const rel = relative(realCase(workspaceRoot), canonical);
 	return { canonical, inside: rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)) };
 }

@@ -166,8 +166,9 @@ function unrecoverable(w: Where, p: string, over: boolean): string | null {
 	if (within(p, w.rootReal)) return what(`a directory above the workspace (${p})`);
 	// R7: the workspace's history — without a remote, gone
 	if (within(w.gitReal, p)) return what("the workspace's .git");
-	// on Windows the temp root sits inside AppData: what is inside it runs
-	for (const sub of w.subtrees) if (within(sub.real, p) && !(msys && w.temps.some((t) => !same(p, t) && within(t, p)))) return what(`~/${sub.name}`);
+	// on Windows the temp root sits inside AppData: what is inside a temp
+	// root that lies inside the subtree runs
+	for (const sub of w.subtrees) if (within(sub.real, p) && !(msys && w.temps.some((t) => within(sub.real, t) && !same(p, t) && within(t, p)))) return what(`~/${sub.name}`);
 	// Inside the workspace or the home directory is the project's and the
 	// person's, never a system root's — or a workspace in /opt, or a root
 	// user's home in /root, would have every rm refused.

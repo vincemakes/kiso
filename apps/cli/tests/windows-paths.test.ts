@@ -45,6 +45,9 @@ const disk = vi.hoisted(() => {
 		"C:\\Program Files\\Git",
 		"C:\\Program Files (x86)",
 		"C:\\ProgramData",
+		"C:\\Users\\me\\.kiso\\deep",
+		"C:\\Users\\me\\AppData\\Local\\Temp\\home2",
+		"C:\\Users\\me\\AppData\\Local\\Temp\\home2\\.ssh",
 	];
 	const files = ["C:\\work\\proj\\src\\a.ts", "C:\\Users\\me\\notes.txt", "C:\\Users\\runneradmin\\ws\\a.ts"];
 	dirs.push("C:\\Users\\runneradmin", "C:\\Users\\runneradmin\\ws");
@@ -53,7 +56,9 @@ const disk = vi.hoisted(() => {
 	[...dirs, ...files].forEach((path, i) => byKey.set(key(path), { path, dir: dirs.includes(path), ino: 9000 + i }));
 	// an existing directory's 8.3 short spelling resolves to its long name (the
 	// Windows runner's temp dir is C:\Users\RUNNER~1\…)
-	for (const [short, long] of [["C:\\Users\\RUNNER~1", "C:\\Users\\runneradmin"], ["C:\\Users\\RUNNER~1\\ws", "C:\\Users\\runneradmin\\ws"], ["C:\\Users\\RUNNER~1\\ws\\a.ts", "C:\\Users\\runneradmin\\ws\\a.ts"]] as const) byKey.set(key(short), byKey.get(key(long))!);
+	for (const [short, long] of [["C:\\Users\\RUNNER~1", "C:\\Users\\runneradmin"], ["C:\\Users\\RUNNER~1\\ws", "C:\\Users\\runneradmin\\ws"], ["C:\\Users\\RUNNER~1\\ws\\a.ts", "C:\\Users\\runneradmin\\ws\\a.ts"], ["C:\\Users\\me\\SSH~1", "C:\\Users\\me\\.ssh"], ["C:\\PROGRA~1", "C:\\Program Files"]] as const) byKey.set(key(short), byKey.get(key(long))!);
+	// links (a symlink or a junction): the real path is the target's
+	for (const [link, target] of [["C:\\work\\proj\\link", "C:\\Users\\me\\.kiso"], ["C:\\work\\proj\\deeplink", "C:\\Users\\me\\.kiso\\deep"]] as const) byKey.set(key(link), byKey.get(key(target))!);
 	const windowsy = (p: unknown): p is string => typeof p === "string" && (/^[A-Za-z]:/.test(p) || p.includes("\\"));
 	return { byKey, key, windowsy };
 });
@@ -148,6 +153,19 @@ describe("resolveShellPath under Git Bash: the forms it reads", () => {
 		expect(classifyReadOnly("cat a.ts", "C:\\Users\\RUNNER~1\\ws").allow).toBe(true);
 	});
 
+	it("an 8.3 short name: an existing one is expanded, a missing one is only a missing name", () => {
+		expect(at("C:/PROGRA~1/Git")).toMatchObject({ canonical: "C:\\Program Files\\Git", inside: false });
+		expect(at("src\\PROGRA~1\\x")).toMatchObject({ canonical: "C:\\work\\proj\\src\\PROGRA~1\\x", inside: true });
+		expect(at("HEAD~1")).toMatchObject({ canonical: "C:\\work\\proj\\HEAD~1", inside: true });
+	});
+
+	it("a `..` after a link that the two readings land apart is opaque; one they agree on is read", () => {
+		const r = at("link\\..\\notes.txt");
+		expect(r.inside).toBe(false);
+		expect(r.opaque).toEqual(expect.any(String));
+		expect(at("src\\..\\src\\a.ts")).toMatchObject({ canonical: A_TS, inside: true });
+	});
+
 	it("a missing file inside keeps its spelling, inside", () => {
 		expect(at("src\\new file.txt")).toMatchObject({ canonical: "C:\\work\\proj\\src\\new file.txt", inside: true });
 	});
@@ -181,7 +199,6 @@ describe("resolveShellPath under Git Bash: the forms it reads", () => {
 		["/tmp/x", "MSYS mount"],
 		["/", "MSYS mount"],
 		["src/a.ts:secret", "data stream"],
-		["src\\PROGRA~1\\x", "short name"],
 		["NUL", "device name"],
 		["src\\con.txt", "device name"],
 		["src\\COM1", "device name"],
@@ -205,6 +222,8 @@ describe("the read-only allow under Git Bash", () => {
 		"cat 'C:\\WORK\\PROJ\\SRC\\A.TS'",
 		"cat src/a.ts 2>/dev/null",
 		"head -n 3 'src\\a.ts'",
+		"git diff --stat HEAD~1",
+		"git log HEAD~3..HEAD --oneline",
 	])("%s runs unasked (inside the workspace)", (cmd) => {
 		expect(allow(cmd)).toBe(true);
 	});
@@ -217,7 +236,7 @@ describe("the read-only allow under Git Bash", () => {
 		"cat /etc/hosts",
 		"cat 'C:src\\a.ts'",
 		"cat 'src/a.ts:secret'",
-		"cat 'src\\PROGRA~1\\x'",
+		"cat 'link\\..\\notes.txt'",
 		"cat NUL",
 		"cat 'src\\.env'",
 		"cat 'src\\.env.'",
@@ -261,7 +280,9 @@ describe("the catastrophe floor under Git Bash", () => {
 		["rm -rf '\\x'", "opaque: drive-rooted"],
 		["rm -rf /tmp/x", "opaque: an MSYS mount"],
 		["rm -rf 'src/a.ts:s'", "opaque: a data stream"],
-		["rm -rf 'src\\PROGRA~1'", "opaque: a short name"],
+		["rm -rf ~/SSH~1", "~/.ssh by its short name"],
+		["rm -rf C:/PROGRA~1/Git", "inside ProgramFiles, by its short name"],
+		["rm -rf link/..", "opaque: a `..` after a link"],
 	])("%s is refused (%s)", (cmd) => {
 		expect(refused(cmd)).toBe(true);
 	});
@@ -273,8 +294,17 @@ describe("the catastrophe floor under Git Bash", () => {
 		"rm -rf /c/work/proj/src/old",
 		"rm -rf C:/Users/me/AppData/Local/Temp/build",
 		"rm 'src\\a.ts'",
+		"rm -rf 'src\\PROGRA~1'",
 	])("%s runs (inside the workspace, or inside the temp root)", (cmd) => {
 		expect(refused(cmd)).toBe(false);
+	});
+});
+
+describe("the floor when the home directory sits inside the temp root (the CI runner's layout)", () => {
+	it("rm -rf ~/.ssh is still refused: only AppData's temp root is exempt, never another subtree", () => {
+		const home2 = "C:\\Users\\me\\AppData\\Local\\Temp\\home2";
+		expect(floorCheck("rm -rf ~/.ssh", ROOT, home2).refused).toBe(true);
+		expect(floorCheck(`rm -rf '${home2}\\.ssh'`, ROOT, home2).refused).toBe(true);
 	});
 });
 
@@ -301,6 +331,11 @@ describe("the credential deny under Git Bash", () => {
 
 	it.each(["cat 'C:\\Users\\me\\.kiso\\*'", "cat ~/.kiso/*.json", "cat C:/Users/me/.KISO/AUTH.*", "cat /c/users/me/.kiso/a*"])("%s reaches the credential store by a wildcard", (line) => {
 		expect(hit(line)).toBe(true);
+	});
+
+	it("through a link to the store's directory, and a `..` after one", () => {
+		expect(hit("cat 'link\\auth.json'")).toBe(true);
+		expect(hit("cat deeplink/../auth.json")).toBe(true);
 	});
 
 	it("from the home directory, a relative spelling with backslashes", () => {

@@ -40,7 +40,7 @@ import { basename } from "node:path";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { protectedIdentity, PROTECTED_REFUSAL, type ProtectedIdentity } from "@vincemakes/kiso-tools-node";
 import { innerLines, unwrap } from "./floor.js";
-import { hostDialect, msysPath, parseShellLooseChecked, type LooseNode, type LooseWord, type PathDialect } from "./shell-words.js";
+import { hostDialect, msysPath, parseShellLooseChecked, resolveShellPath, type LooseNode, type LooseWord, type PathDialect } from "./shell-words.js";
 
 /** A hit names the word that reached a protected file — or, `unread`,
  *  says why the line could not be read to the end. */
@@ -240,6 +240,19 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 				}
 				const st = statAt(at(cwd, t));
 				if (st?.isFile() === true && probe.files.has(inode(st))) return true;
+				if (dialect.msys) {
+					// Windows: the lexical reading above, and the real-path one —
+					// a `..` after a link the two read apart falls back to names
+					const real = resolveShellPath(cwd, cwd, t, dialect);
+					if (real.opaque !== undefined) {
+						if (namesProtected(t)) return true;
+						continue;
+					}
+					const low = real.canonical.toLowerCase();
+					if (paths.some((pf) => low === pf || low.startsWith(`${pf}.`))) return true;
+					const rst = statAt(real.canonical);
+					if (rst?.isFile() === true && probe.files.has(inode(rst))) return true;
+				}
 				continue;
 			}
 			const g = t.search(/[*?[]/);
