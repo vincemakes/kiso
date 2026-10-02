@@ -908,10 +908,16 @@ export class AgentSession {
 	 *  OpenAI-compatible family as `image_url` with a data URI. Only this
 	 *  signature narrowed it to text, which is why no caller could ever
 	 *  send one. */
-	run(input: string | readonly import("@vincemakes/kiso-core").ContentBlock[], options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource; via?: import("@vincemakes/kiso-core").UserInputVia }): Run {
+	run(
+		input: string | readonly import("@vincemakes/kiso-core").ContentBlock[],
+		// ADR-0058 3d: `maxTurns` bounds THIS run only (a background child's
+		// wrap-up gets one request), over the session's own limit
+		options?: { signal?: AbortSignalLike; source?: import("@vincemakes/kiso-core").MessageSource; via?: import("@vincemakes/kiso-core").UserInputVia; maxTurns?: number },
+	): Run {
 		this.ensureHealthy();
 		if (this.#profilePending) this.#recordProfile(); // XP-1: legacy revision 1, before the first request
-		return new Run(this.#store, this.#learning(this.#adapter), this.#effectiveConfig(), this, input, options?.signal, false, options?.source, options?.via);
+		const config = options?.maxTurns !== undefined ? { ...this.#effectiveConfig(), maxTurns: options.maxTurns } : this.#effectiveConfig();
+		return new Run(this.#store, this.#learning(this.#adapter), config, this, input, options?.signal, false, options?.source, options?.via);
 	}
 
 	/**
