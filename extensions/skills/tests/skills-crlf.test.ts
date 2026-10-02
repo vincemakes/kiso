@@ -18,7 +18,8 @@ async function indexOf(skillMd: string): Promise<string | undefined> {
 	writeFileSync(join(dir, "deploy", "SKILL.md"), skillMd, "utf8");
 	process.env.KISO_SKILLS_DIR = dir;
 	try {
-		return (await createSkillsExtension()).systemPrompt?.append;
+		const append = (await createSkillsExtension()).systemPrompt?.append;
+		return typeof append === "function" ? append() : append;
 	} finally {
 		delete process.env.KISO_SKILLS_DIR;
 	}
