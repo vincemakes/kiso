@@ -191,6 +191,14 @@
  ],
  "exempt": [
   {
+   "file": "apps/cli/tests/windows-launch.test.ts",
+   "reason": "spawns nothing. It pins how the small spawns start (cmd.exe for a shim, rundll32 for a URL) and drives the external editor with node:child_process mocked (vi.mock: spawnSync only records its arguments). The classifier follows the import of ../src/external-editor.js, which spawns when it runs for real. Verified: the one child_process entry point it reaches is mocked; no pty helper."
+  },
+  {
+   "file": "packages/tools-node/tests/windows-hardlink.test.ts",
+   "reason": "spawns nothing. Its cases run with process.platform set to win32, where the hard-link guard refuses without a scan, or read a single-link file, which needs none. The classifier follows the import of ../src/index.js, whose POSIX guard runs find. Verified: no child_process, no spawn, no pty helper in the file."
+  },
+  {
    "file": "packages/tools-node/tests/crlf-edit.test.ts",
    "reason": "spawns nothing. It drives edit_file on files in a temp directory; the classifier follows the import of ../src/index.js, whose shell tool spawns when it runs — this file never calls it. Verified: no child_process, no spawn, no pty helper in the file."
   },
