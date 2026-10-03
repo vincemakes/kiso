@@ -1344,6 +1344,9 @@ export interface ShellTasks {
 	};
 	stop(id: string, by: "model"): boolean;
 	get(id: string): { readonly state: { readonly kind: string } } | undefined;
+	/** 3e: a running foreground command that can be moved to the background
+	 *  now (the person's key, a steer) — registered while it runs. */
+	registerDetachable?(executionId: string, detachable: { readonly startedAt: number; detach(by: "person" | "steer"): void }): () => void;
 }
 
 type ShellInput = { command: string; timeoutMs?: number; foregroundMs?: number; background?: boolean; readyWhen?: string };
@@ -1441,6 +1444,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				let promoted: { readonly task: ReturnType<ShellTasks["adopt"]>; readonly out: RotatingOutput } | null = null;
 				let stopping = false;
 				let readySeen = false;
+				/** 3e: the unregister of this command's detach — while it runs in the foreground */
+				let undetachable = (): void => {};
 				let recent = ""; // the tail readyWhen is matched against
 				const matchReady = (text: string): boolean => {
 					if (readyWhen === undefined || readySeen) return false;
@@ -1481,6 +1486,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				const settle = (result: { content: string; isError: boolean; errorKind?: "fatal" }): void => {
 					if (settled) return;
 					settled = true;
+					undetachable();
 					dropProgress();
 					clearTimeout(timer);
 					// E group: the abort listener is removed once settled — it
@@ -1559,7 +1565,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				ctx.signal.addEventListener("abort", onAbort);
 				/** ADR-0058 §3: the wait is over — the command continues as a
 				 *  task this process owns; nothing is killed. */
-				const promote = (reason: "waited" | "ready"): void => {
+				const promote = (reason: "waited" | "ready" | "person" | "steer"): void => {
 					if (settled || killing || promoted !== null || tasks === undefined) return;
 					const task = tasks.adopt({
 						command,
@@ -1577,7 +1583,13 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					const tail = sofar.length > 2048 ? `…${sofar.slice(-2048)}` : sofar;
 					settle({
 						content:
-							(reason === "ready" ? `ready — the output contains "${readyWhen}"; ` : `still running after ${timeout} ms; `) +
+							(reason === "ready"
+								? `ready — the output contains "${readyWhen}"; `
+								: reason === "person"
+									? "moved to the background by the person; "
+									: reason === "steer"
+										? "moved to the background so the person's message could land; "
+										: `still running after ${timeout} ms; `) +
 							`continued as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath)}` +
 							(tail !== "" ? `\nOutput so far:\n${tail}` : ""),
 						isError: false,
@@ -1606,6 +1618,11 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 						promoted.task.ended(e?.code ?? null, e?.signal ?? null);
 					});
 				};
+				// 3e: while it runs in the foreground, the person (ctrl+b) or a
+				// steer may move it to the background — through the manager
+				if (tasks?.registerDetachable !== undefined && ctx.executionId !== undefined) {
+					undetachable = tasks.registerDetachable(ctx.executionId, { startedAt: Date.now(), detach: (by) => promote(by) });
+				}
 				const timer = setTimeout(() => {
 					if (tasks !== undefined) {
 						promote("waited");

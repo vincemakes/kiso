@@ -175,6 +175,12 @@ describe("KC1 T-P1 — a pasted 3-line CRLF block is ONE multi-line turn (real P
 	}, 180_000);
 });
 
+/** ADR-0058 3e: since a steer detaches a foreground command once it is 2 s
+ *  old, these fixtures — which hold a steer PENDING behind a long command
+ *  to test what esc, a redirect or the queue chip do with it — raise that
+ *  age through the rigs' knob. The detach itself is tasks-cli-3e-pty's. */
+const HOLD_STEERS = { KISO_AUTO_DETACH_MS: "600000" };
+
 describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued multi-line chip shows ⏎×2", () => {
 	it("three Ctrl+J lines render three rows, the submit returns one row, and the queued turn's chip carries its first line + ⏎×2", () => {
 		const { env, dirs } = isolatedEnv();
@@ -186,7 +192,7 @@ describe("KC1 T-P2 — Ctrl+J grows the box; the submit collapses it; a queued m
 			{ events: [{ type: "text_delta", text: "first turn done" }, { type: "stop", reason: "end_turn" }] },
 			{ events: [{ type: "text_delta", text: "second turn done" }, { type: "stop", reason: "end_turn" }] },
 		]);
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc1p2", [
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass", ...HOLD_STEERS }, "kc1p2", [
 			["/ commands · \u2191 history", "one\x0atwo\x0athree", 2], // Ctrl+J ×2 — the composer grows LIVE
 			["three", "\r", 4], // Enter — the submit collapses it and starts the run
 			["one", "queued one\x0aqueued two\x0aqueued three", 6], // typed WHILE the shell sleeps
