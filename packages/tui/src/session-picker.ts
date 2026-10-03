@@ -18,7 +18,7 @@
 
 import { escapeTerminal, palette } from "./lines.js";
 import { selectionBar, visibleWidth, widthCut } from "./components.js";
-import { atEmbed, bandHeader, longestRun } from "./at-picker.js";
+import { atEmbed, bandHeader, bandVisible, bandWindow, longestRun } from "./at-picker.js";
 
 /** The projected card — structurally what apps/cli/src/session-cards.ts
  *  produces. Declared here as the tui's INPUT contract (the package
@@ -333,7 +333,7 @@ export interface SessionPickState {
 /** How many sessions the band shows: eight on a terminal 30 rows or
  *  taller, five below (owner, 2026-09-30). */
 export function resumeVisible(height: number): number {
-	return height >= 30 ? 8 : 5;
+	return bandVisible(height); // Graphite P2: one window rule for every band
 }
 
 /** The window over the matches, with a scroll-off of one: while more lies
@@ -341,8 +341,7 @@ export function resumeVisible(height: number): number {
  *  carries a more-mark is never the selected one. Stateless, like
  *  atWindow: the same (total, selected) always draws the same window. */
 export function resumeWindow(total: number, selected: number, visible: number): { first: number; count: number } {
-	const count = Math.min(total, visible);
-	return { first: Math.max(0, Math.min(selected - count + 2, total - count)), count };
+	return bandWindow(total, selected, visible);
 }
 
 /** The row's state word — empty for the quiet default, a finished session. */

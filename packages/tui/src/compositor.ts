@@ -55,7 +55,7 @@ import { panelFrameOf, panelLeadOf, panelStatusOf } from "./ask-panel.js";
 import { MOUSE_OFF } from "./editor.js";
 import { pickWindowOf } from "./approval-panel.js";
 import type { PanelState } from "./approval-panel.js";
-import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
+import { atPanelRows, bandHeader, bandKeyRow, bandVisible, bandWindow, moreMark, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker's rows — the band's third occupant.
 import { RESUME_FILTER_HINT, sessionPickerRows, type SessionPickState } from "./session-picker.js";
 
@@ -75,7 +75,6 @@ import {
 	boxBottom,
 	boxTop,
 	cellComponent,
-	gutterCut,
 	cutLine,
 	pendingQueueRows,
 	selectionBar,
@@ -84,6 +83,7 @@ import {
 	type BodyCell,
 	type FrameCtx,
 	breathFrame,
+	widthCut,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./lines.js";
 import { oneRow } from "@vincemakes/kiso-tui-cells/render";
@@ -147,7 +147,6 @@ const CHROME_ROWS = 4; // box top + input + box bottom + status — the design �
 const LIVE_ACT_HEADS = 3;
 /** R8 — the command band's window: five rows plus a counter, the same
  *  budget the composer's own ceiling can afford above it. */
-const MENU_WINDOW = 5;
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
  *  REQUIRED and keeps its exact meaning (the cursor line's visible
@@ -396,7 +395,7 @@ export class Body {
 	#overlayFrame = false;
 	#inputState: () => InputState = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
-	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
+	#menuState: (() => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null) | null = null;
 	// KC3 §4: the @ picker's bound state — the SAME band as the menu
 	// (see #menuRows: the two are mutually exclusive by construction).
 	#atState: (() => AtPanelState | null) | null = null;
@@ -1790,7 +1789,7 @@ export class Body {
 		this.#mark();
 	}
 
-	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
+	bindMenu(state: () => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null): void {
 		this.#menuState = state;
 	}
 
@@ -2505,7 +2504,7 @@ export class Body {
 		const pick = this.#pickState?.() ?? null;
 		if (pick !== null) return sessionPickerRows(pick, W, Date.now(), this.#opts.height());
 		const at = this.#atState?.() ?? null;
-		if (at !== null) return atPanelRows(at, W);
+		if (at !== null) return atPanelRows(at, W, this.#opts.height());
 		const menu = this.#menuState?.();
 		if (menu === null || menu === undefined || menu.items.length === 0) return [];
 		const p = palette();
@@ -2531,28 +2530,45 @@ export class Body {
 		//  - a description is CUT, never folded — a folded row would
 		//    break the window's height, which is the thing being bought.
 		const items = menu.items;
-		const col = MENU_ITEMS.reduce((n: number, m: MenuItem) => Math.max(n, m.name.length - 1), 0);
-		const windowed = items.length > MENU_WINDOW;
-		// the window's top is derived from the selection alone (this
-		// method is re-entered per frame and keeps no state): centre it,
-		// clamped to the ends.
-		const top = windowed ? Math.max(0, Math.min(menu.selected - ((MENU_WINDOW - 1) >> 1), items.length - MENU_WINDOW)) : 0;
-		const rows: string[] = [bandHeader("commands", W)];
-		for (let i = top; i < Math.min(items.length, top + MENU_WINDOW); i += 1) {
+		// Graphite P2 (owner, 2026-10-03): the list takes /resume's shape —
+		// the count in the band, the window (eight rows from a 30-row
+		// terminal, five below) with its more-marks, the typed prefix gold,
+		// and one key row with the counter. The selected row keeps R3a's gold
+		// `›` in column 1 (owner: kept).
+		const total = menu.total ?? items.length;
+		const query = menu.query ?? "";
+		const col = Math.max(menu.nameCol ?? 0, ...items.map((m) => m.name.length - 1));
+		const rows: string[] = [bandHeader(`commands \u00b7 ${query === "" ? `${total}` : `${items.length} of ${total} match`}`, W)];
+		const { first, count } = bandWindow(items.length, menu.selected, bandVisible(this.#opts.height()));
+		for (let i = first; i < first + count; i += 1) {
 			const item = items[i]!;
-			const label = `${item.name.slice(1).padEnd(col)} ${item.desc}`;
-			// Graphite §8.2 (R3a): the selected command wears the one selected
-			// row every list has (its `→` is the gold `›` in column 1, the name
-			// from the content edge) — DECLARED REVERSAL of this list's bold `▸`
-			if (i === menu.selected) {
-				// W − 2: the bar spends a cell at each end off a known ground
-				const text = cutLine(`${p.bold}\u2192${label}${p.reset}`, Math.max(1, W - 2));
-				rows.push(selectionBar(text, visibleWidth(text), W));
-			} else rows.push(...gutterCut("  ", `${p.dim}${label}${p.reset}`, W));
+			const name = item.name.slice(1);
+			const selected = i === menu.selected;
+			// the prefix the person typed, gold — the filter is a prefix match
+			// (off a known ground the warn tint stands in, as in the @ band)
+			const typed = Math.min(query.length, name.length);
+			const gold = p.gold !== "" ? p.gold : p.warn;
+			const shownName = `${typed > 0 ? `${p.reset}${p.bold}${gold}${name.slice(0, typed)}${p.reset}${selected ? p.bold : ""}` : ""}${name.slice(typed)}`;
+			// THE FIX (found capturing the real terminal, 2026-10-03): the
+			// description is cut as TEXT, by cells, before it is styled. It was
+			// cut after — by a cutter that counts escape bytes as cells — so
+			// Graphite's 19-byte dim took 19 cells off every row, and a cut that
+			// landed inside the reset left a bare ESC in the output.
+			const room = Math.max(0, W - 2 - col - 2 - 1);
+			const desc = visibleWidth(item.desc) <= room ? item.desc : room <= 1 ? "" : `${widthCut(item.desc, room - 1)}\u2026`;
+			const label = `${shownName}${" ".repeat(Math.max(0, col - name.length))}  ${p.reset}${p.dim}${desc}${p.reset}`;
+			const width = col + 2 + visibleWidth(desc);
+			if (selected) {
+				// Graphite §8.2 (R3a): the selected command wears the one selected
+				// row every list has — its `→` is the gold `›` in column 1, the
+				// name from the content edge
+				rows.push(selectionBar(`${p.bold}\u2192${label}`, width + 1, W));
+			} else {
+				const mark = moreMark(i, first, count, items.length);
+				rows.push(`${mark === null ? " " : `${p.dim}${mark}${p.reset}`} ${label}`);
+			}
 		}
-		// the counter earns its row only when the list is CUT — over a
-		// list you can see all of, it says nothing the rows do not.
-		if (windowed) rows.push(`  ${p.dim}(${menu.selected + 1}/${items.length})${p.reset}`);
+		rows.push(bandKeyRow(["\u2191\u2193 move", "\u23ce completes", "esc"], menu.selected, items.length, W));
 		return rows;
 	}
 
@@ -3242,7 +3258,7 @@ export class Dock {
 		}
 		compositorRef.bindInput(state, prompt);
 	}
-	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
+	bindMenu(state: () => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null): void {
 		if (compositorRef === null) {
 			dockBindings.menu = state;
 			return;
@@ -3299,7 +3315,7 @@ let compositorRef: Body | null = null;
 const dockBindings: {
 	state: (() => InputState) | null;
 	prompt: string;
-	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
+	menu: (() => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null) | null;
 	at: (() => AtPanelState | null) | null;
 	pick: (() => SessionPickState | null) | null;
 	panel: (() => PanelState | null) | null;

@@ -258,7 +258,10 @@ describe("TUI v6 — the one compositor", () => {
 		// R8: the rows dropped the leading `/` (it is on the input line
 		// directly below). The needle is the row's own shape, which is
 		// no less specific than the name it replaced.
-		expect(rows[19], "the menu row was erased by the gap").toContain("\u2192mode ");
+		// Graphite P2: the band closes with its key row, which sits where the
+		// command row did; both must survive the gap
+		expect(rows[18], "the menu row was erased by the gap").toContain("\u2192mode ");
+		expect(rows[19], "the menu's key row was erased by the gap").toContain("\u23ce completes");
 	});
 
 	it("a done cell's lines emit EXACTLY once — the freeze frame writes them, later frames never re-emit", () => {
