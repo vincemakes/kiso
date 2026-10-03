@@ -169,6 +169,10 @@ function summaryReasoning(model: string, baseUrl: string | undefined): { reasoni
 	return r.ok && r.wire.thinking !== undefined ? { reasoning: r.wire } : {};
 }
 
+/** ADR-0057 §5 (3e D1): a steer detaches a foreground command only once it
+ *  is this old — a command about to end on its own is left to end. */
+export const AUTO_DETACH_MIN_AGE_MS = 2_000;
+
 export class AgentSession {
 	readonly id: string;
 	readonly log: EventLog;
@@ -361,18 +365,46 @@ export class AgentSession {
 	// ── ADR-0058 (3c): the session's tasks reach the model ────────────────
 
 	#delivery: TaskDelivery | undefined;
+	#tasks: TaskManager | undefined;
+	#autoDetachMinAgeMs = AUTO_DETACH_MIN_AGE_MS;
 
 	/** Deliver this session's task transitions to the model: into a live
 	 *  run at its next safe point, or — idle — held for the next run, or one
 	 *  continuation run through `onWake` (off with `wake: false`). */
-	useTasks(manager: TaskManager, options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs"> = {}): () => void {
+	useTasks(
+		manager: TaskManager,
+		// autoDetachMinAgeMs (3e D1): how old a foreground command must be
+		// before a steer detaches it — default AUTO_DETACH_MIN_AGE_MS
+		options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs"> & { readonly autoDetachMinAgeMs?: number } = {},
+	): () => void {
 		this.#delivery?.close();
-		const delivery = new TaskDelivery({ ...options, manager, events: () => this.log.all, liveRun: () => [...this.#activeRuns][0] });
+		const { autoDetachMinAgeMs, ...deliveryOptions } = options;
+		const delivery = new TaskDelivery({ ...deliveryOptions, manager, events: () => this.log.all, liveRun: () => [...this.#activeRuns][0] });
 		this.#delivery = delivery;
+		this.#tasks = manager;
+		this.#autoDetachMinAgeMs = autoDetachMinAgeMs ?? AUTO_DETACH_MIN_AGE_MS;
 		return () => {
 			delivery.close();
 			if (this.#delivery === delivery) this.#delivery = undefined;
+			if (this.#tasks === manager) this.#tasks = undefined;
 		};
+	}
+
+	/** ADR-0057 §5 (3e D1) — a person's steer arrived: the foreground
+	 *  commands running NOW stop holding it back. Each is detached once it is
+	 *  `autoDetachMinAgeMs` old — at once if it already is — so a command
+	 *  about to end anyway is not turned into a task. Commands started after
+	 *  the steer are never touched; a command that ends first unregistered
+	 *  itself, and its detach is a no-op. Called by the run. */
+	detachForSteer(): void {
+		const manager = this.#tasks;
+		if (manager === undefined) return;
+		const now = Date.now();
+		for (const { executionId, startedAt } of manager.detachable()) {
+			const wait = Math.max(0, this.#autoDetachMinAgeMs - (now - startedAt));
+			if (wait === 0) manager.detach(executionId, "steer");
+			else (setTimeout(() => manager.detach(executionId, "steer"), wait) as { unref?: () => void }).unref?.();
+		}
 	}
 
 	/** A summary carries the tasks as the model was last told of them —
