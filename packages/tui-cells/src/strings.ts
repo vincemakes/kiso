@@ -496,6 +496,8 @@ const HELP_TABLE: readonly (readonly [string, string])[] = [
 	// re-wrapped in place (ADR-0046) — this appends it re-folded.
 	["/rewrap", "re-print the recent prose at the current width"],
 	["/copy", "copy the last answer (raw markdown) — ctrl+x does the same"],
+	// ADR-0058 (3e): the session's tasks, and the key that makes one
+	["/tasks", "list this session's background tasks; stop one or show its output"],
 	["/status", "show session id, event count, and context estimate"],
 	// 0.40.6: what kiso runs with, and where each value came from
 	["/settings", "show the settings in force, each value's source, and how to change it"],
@@ -527,6 +529,9 @@ const HELP_TABLE: readonly (readonly [string, string])[] = [
 	// §2.3: the switch belongs beside ctrl+o's job, and a gesture the
 	// sheet does not name is a gesture nobody uses (DC-30, DC-36).
 	["ctrl+t", "hide thinking to one line, and show it again (remembered)"],
+	// ADR-0058 (3e): beside ctrl+t — the running row teaches it when it
+	// applies; this is where it can be found the rest of the time
+	["ctrl+b", "move the running command to the background (twice inside tmux)"],
 	// §2.4: the composer, in your own editor. It names the variables
 	// because that is what a reader has to set for it to work.
 	["ctrl+g", "edit the composer in $VISUAL or $EDITOR — the text comes back unsent"],

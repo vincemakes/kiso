@@ -1068,6 +1068,21 @@ export function modePickView(spec: PickSpec, statusText: string): PanelView {
 	};
 }
 
+/** ADR-0058 (3e): the `/tasks` list, a task's actions, and the exit
+ *  question — the same pick panel as /mode and /model, under its name. */
+export function namedPickView(name: string, spec: PickSpec, statusText: string, fallbackQuestion: string): PanelView {
+	return {
+		flavor: "simple",
+		name,
+		title: name,
+		speaker: "you",
+		statusText,
+		args: { kind: "text", lines: [] },
+		fallbackQuestion,
+		pick: spec,
+	};
+}
+
 export function modelPickView(spec: PickSpec, statusText: string): PanelView {
 	return {
 		flavor: "simple",

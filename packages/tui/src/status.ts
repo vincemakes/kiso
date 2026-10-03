@@ -180,7 +180,39 @@ export function retrySegment(r: RetryOnRow): string {
 	return r.remainingMs > 0 ? `${head} · ${Math.ceil(r.remainingMs / 1000)}s` : head;
 }
 
-export function runningStatus(glyph: string, since: number, outTokens: number | null, ctxRatio: number, tokPerSec: number | null = null, W?: number, retry?: RetryOnRow | null): string {
+/** ADR-0058 (3e): the session's tasks, as the status rows count them. */
+export interface TaskCountsOnRow {
+	/** running or starting */
+	readonly running: number;
+	/** an outcome that cannot be known, not yet looked at in `/tasks` */
+	readonly unknown: number;
+}
+
+/** `● 2 tasks running · ◌ 1 unknown`, `◌ 1 task unknown` — or nothing.
+ *  An unknown task is never hidden behind the panel: it is the one that
+ *  needs the person most. */
+export function tasksSegment(c: TaskCountsOnRow | undefined): string {
+	if (c === undefined) return "";
+	const n = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
+	if (c.running > 0 && c.unknown > 0) return `● ${n(c.running, "task")} running · ◌ ${c.unknown} unknown`;
+	if (c.running > 0) return `● ${n(c.running, "task")} running`;
+	if (c.unknown > 0) return `◌ ${n(c.unknown, "task")} unknown`;
+	return "";
+}
+
+export function runningStatus(
+	glyph: string,
+	since: number,
+	outTokens: number | null,
+	ctxRatio: number,
+	tokPerSec: number | null = null,
+	W?: number,
+	retry?: RetryOnRow | null,
+	// 3e: the session's tasks, and whether a running command can be moved
+	// to the background now (the row teaches ctrl+b exactly then)
+	tasks?: TaskCountsOnRow,
+	detachable = false,
+): string {
 	const out = outTokens !== null ? ` ↓ ${kUnit(outTokens)} tokens` : "";
 	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
 	return composeRow(`${glyph} working ${elapsedLabel(seconds)}${out}`, [
@@ -194,7 +226,9 @@ export function runningStatus(glyph: string, since: number, outTokens: number | 
 		// honest rule spelled as a default — the recovery flow has no
 		// per-call timing state, so its row says nothing rather than guessing.
 		tokPerSec !== null ? { kind: "fact", text: `${tokPerSec} tok/s` } : null,
+		{ kind: "fact", text: tasksSegment(tasks) },
 		{ kind: "hint", text: "esc stop" },
+		detachable ? { kind: "hint", text: "ctrl+b background" } : null,
 		{ kind: "hint", text: "alt+⏎ redirect" },
 		{ kind: "fact", text: ctxSegment(ctxRatio) },
 	], W);
@@ -333,12 +367,14 @@ function elideMiddle(text: string, max: number): string {
  * No `W` means no dropping, which is what the callers that do not know
  * their width should get: today's row, unchanged.
  */
-export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter, W?: number, floorOff = false): string {
+export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter, W?: number, floorOff = false, tasks?: TaskCountsOnRow): string {
 	return composeRow(`▸ ${tier}`, [
 		// 0.40.0: the catastrophe floor is on by default and says nothing;
 		// OFF is the state worth seeing, and a fact beside the tier it
 		// changes the meaning of.
 		floorOff ? { kind: "fact", text: "floor off" } : null,
+		// 3e: work still going on (or gone unknown) after the turn ended
+		{ kind: "fact", text: tasksSegment(tasks) },
 		{ kind: "hint", text: "/mode to switch" },
 		{ kind: "label", text: model },
 		meter?.cacheHitPct != null ? { kind: "fact", text: `CH ${Math.round(meter.cacheHitPct)}%` } : null,
