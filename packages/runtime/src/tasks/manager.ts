@@ -23,7 +23,7 @@
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
+import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type TaskAgent, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
 
 /** Whether a recorded runner is still that process (ADR-0058 §6):
  *  "verified" — the pid is live AND its OS start time is the recorded one;
@@ -57,6 +57,11 @@ export interface TaskStartOptions {
 	readonly executionId?: string;
 	/** A literal substring of the output that means "ready" (ADR-0058 §3). */
 	readonly readyWhen?: string;
+	/** ADR-0058 3d: start `file` with exactly `args` — no shell; `command`
+	 *  is then the label. Given the task's directory, before it is planned. */
+	readonly exec?: (dir: string) => { readonly file: string; readonly args: readonly string[] };
+	/** ADR-0058 §5: the task is a child agent (its role and session). */
+	readonly agent?: TaskAgent;
 }
 
 export interface TaskInfo {
@@ -69,6 +74,8 @@ export interface TaskInfo {
 	readonly executionId?: string;
 	/** Who asked for its stop, when someone did. */
 	readonly stoppedBy?: "person" | "model" | "exit";
+	/** An agent task's role and child session (ADR-0058 §5). */
+	readonly agent?: TaskAgent;
 	readonly state: TaskState;
 	readonly outputPath: string;
 	readonly startedAt: number;
@@ -163,6 +170,7 @@ export class TaskManager {
 	/** Start a task. `planned` is durable before the runner is spawned. */
 	async start(options: TaskStartOptions): Promise<TaskInfo> {
 		const { id, dir } = this.#newTaskDir();
+		const exec = options.exec?.(dir);
 		appendRecord(join(dir, JOURNAL), {
 			type: "planned",
 			ts: Date.now(),
@@ -173,6 +181,8 @@ export class TaskManager {
 			profile: options.profile ?? "oneshot",
 			...(options.executionId !== undefined ? { executionId: options.executionId } : {}),
 			...(options.readyWhen !== undefined ? { readyWhen: options.readyWhen } : {}),
+			...(exec !== undefined ? { launch: { kind: "exec" as const, file: exec.file, args: [...exec.args] } } : {}),
+			...(options.agent !== undefined ? { agent: options.agent } : {}),
 		});
 		// the journal's own directory entry: without it, a power loss could
 		// erase a `planned` whose runner was spawned — "no planned ⇒ never
@@ -351,6 +361,7 @@ export class TaskManager {
 			backend: planned?.backend ?? "process",
 			...(planned?.executionId !== undefined ? { executionId: planned.executionId } : {}),
 			...(stop !== undefined ? { stoppedBy: stop.by } : {}),
+			...(planned?.agent !== undefined ? { agent: planned.agent } : {}),
 			state: verdictOf(records, verified),
 			outputPath: join(this.root, id, OUTPUT),
 			startedAt: planned?.ts ?? 0,

@@ -69,6 +69,30 @@ function resolveBash(env: NodeJS.ProcessEnv): string {
 }
 
 /**
+ * Start `file` with exactly `args` — no shell, so nothing is split, quoted
+ * or expanded (ADR-0058 3d: a child kiso is launched this way). Its own
+ * process group, like `startCommand`. On win32 it stays detached (a
+ * background child outlives its parent) and opens no console window; it
+ * never goes through bash or cmd.exe.
+ */
+export function startExec(
+	file: string,
+	args: readonly string[],
+	opts: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly stdio?: StdioOptions },
+): ChildProcess {
+	const child = spawn(file, [...args], {
+		shell: false,
+		detached: true,
+		...(process.platform === "win32" ? { windowsHide: true } : {}),
+		cwd: opts.cwd,
+		stdio: opts.stdio ?? ["ignore", "pipe", "pipe"],
+		env: opts.env,
+	});
+	child.once("close", () => closed.add(child));
+	return child;
+}
+
+/**
  * Kill the whole tree and CONFIRM it exited (rounds 8/11):
  *
  * 1. FREEZE the root (SIGSTOP) FIRST — a stopped shell cannot fork new

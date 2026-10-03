@@ -71,7 +71,7 @@ describe("④ subagent: guard and role policies", () => {
 		expect(rolePolicyContent("explorer")).not.toContain("ask");
 		expect(rolePolicyContent("implementer")).not.toContain("ask");
 		expect(rolePolicyContent("reviewer")).not.toContain("ask");
-		expect(rolePolicyContent("tester")).not.toContain("ask");
+		expect(rolePolicyContent("verifier")).not.toContain("ask");
 	});
 
 	it("③ the result is extracted from the child's session JSONL, never stdout", async () => {
@@ -122,7 +122,7 @@ describe("④ subagent: real child processes", () => {
 		const ext = await createSubagentExtension();
 		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
 		const started = Date.now();
-		const r = (await delegate.execute({ tasks: [{ role: "tester", task: "slow work" }] }, ctx)) as { content: string; isError: boolean };
+		const r = (await delegate.execute({ tasks: [{ role: "verifier", task: "slow work" }] }, ctx)) as { content: string; isError: boolean };
 		expect(r.isError).toBe(true);
 		expect(String(r.content)).toContain("timed out");
 		// 0.40.0: the settled row's marker says WHY it failed
@@ -131,7 +131,7 @@ describe("④ subagent: real child processes", () => {
 		// The child process group is dead.
 		await sleep(500);
 		const ps = execFileSync("ps", ["-eo", "pid=,command="], { encoding: "utf8" });
-		expect(ps).not.toMatch(/chat sub-parent-1-tester/);
+		expect(ps).not.toMatch(/chat sub-parent-1-verifier/);
 	}, 60_000);
 
 	it("⑤ six tasks run at most CONCURRENCY (4) at once — the cap holds", async () => {
@@ -198,7 +198,7 @@ describe("④ subagent: real child processes", () => {
 			}
 			return { logPeak, psPeak, snapshot, psSnapshot };
 		})();
-		const tasks = Array.from({ length: 6 }, (_, i) => ({ role: "tester", task: `task ${i + 1}` }));
+		const tasks = Array.from({ length: 6 }, (_, i) => ({ role: "verifier", task: `task ${i + 1}` }));
 		const r = (await delegate.execute({ tasks }, ctx)) as { content: string; isError: boolean };
 		running = false;
 		const { logPeak, psPeak, snapshot, psSnapshot } = await probe;

@@ -586,3 +586,68 @@ it changed:
    adapters send them as they are (contract rigs); each dialect accepts
    it (the Messages API combines consecutive same-role turns). No
    wire-level merge is needed.
+
+## Amendment 3 — a start the model was told of (2026-10-01)
+
+An external review of 3c, after it merged. Amendment 2 item 5 derived the
+summary snapshot from "the tool executions that started tasks", and 3c
+read that as the execution's durable START. A start is not what the model
+was told: in the crash window the execution started and no result was
+ever written, and an execution resolved after a crash is answered with
+"not applied". Either way the summary named a task the model never heard
+of — the second, unreceipted channel item 5 forbids.
+
+The rule, exactly: a task is in the snapshot only when the log holds a
+successful `tool_result` for the execution that started it (the
+model-facing result, by `executionId`; its text is never parsed). A task
+the model was never told of reaches it only as a delivered notice.
+
+## Amendment 4 — background subagents, as built (3d, 2026-10-02, owner-approved)
+
+The 3d plan after two external reviews; the owner approved which roles
+and the turn budget's default. Beyond §5:
+
+1. **Which roles.** A role runs in the background only once its
+   unattended contract is defined; in 0.46 only explorer and reviewer
+   have one. An implementer's worktree, patch collection and acceptance,
+   and a tester's worktree, are held by the parent run; with no parent
+   run, who keeps, collects and removes them is not yet defined. A
+   background child reads the live workspace, not a snapshot: its
+   findings describe the workspace as it observed it.
+2. **The launch.** An agent task's `planned` record carries
+   `launch: { kind: "exec", file, args }` and the runner starts it with no
+   shell — the arguments a foreground child gets, plus its budget and its
+   result file; `command` is the label. The child's inputs (task file,
+   role policy, manifest) are fsynced before its task is planned.
+3. **The cap.** Live agent tasks + slots reserved by calls still starting
+   + the batch ≤ the host's `backgroundMax` (default 20), checked and
+   reserved in one synchronous step; a batch that does not fit starts
+   nothing.
+4. **No deadline: a turn budget.** §5's "the child's own turn and token
+   limits" did not exist — a child is `kiso chat --task-file`, and the
+   interactive door has no turn limit (R3e). A background child is bounded
+   by `--max-turns`, the host's `backgroundMaxTurns` (default 32, about
+   twice the longest real explorer measured — 17 requests; 3f tunes it).
+   The kernel stops the run at a model boundary; then ONE wrap-up request
+   (a system input, in a run limited to one request) asks for the answer
+   from what was found. The outcome is `incomplete`, never a plain
+   failure. `background` with `timeoutMs` is refused; `--max-turns` and
+   `--result-file` exist for a delegated child only.
+5. **The result.** The child writes its answer — the last assistant text
+   of its own session — to `result.md` beside its task, and
+   `{ outcome, requests, budget }` to `result.json`, atomically, before it
+   exits, so both exist when the runner records the end; a failed child
+   exits non-zero. `output.log` stays the child's printed run, for
+   diagnosis. (The plan had the delivery write `result.md` from the
+   child's session; the child writing its own projection is the same
+   source, needs no parse in the parent, and exists before any notice can
+   name it.)
+6. **The group.** The agent tasks started by the calls of one model turn.
+   It closes when that turn has ended and every call in it has its
+   result; only a closed group whose members have all ended (ended,
+   stopped or unknown) is delivered — ONE notice with every member's line
+   and excerpts of the answers within 4 KiB each and 16 KiB together;
+   members delivered before are named `reported="earlier"`, and only the
+   rest are receipted. Nothing new, no wake. A failure goes into a live
+   run at once and never wakes on its own; a restart notifies, never
+   wakes.

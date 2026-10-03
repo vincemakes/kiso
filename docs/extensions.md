@@ -221,8 +221,8 @@ Configuration: `$KISO_MCP_CONFIG` (default `~/.kiso/mcp.json`):
   child's timeout, output capped, killed on abort); a check's exit code
   proves the command ran on the tree as the child left it, only an
   evaluator proves correctness; `model` — a configured profile name;
-  `after` — a completed implementer's child id (tester only; the tester
-  runs in that worktree); `timeoutMs`. Every child sees the parent's
+  `after` — a completed implementer's child id (verifier only; the
+  verifier runs in a copy of that worktree); `timeoutMs`. Every child sees the parent's
   `HEAD` — uncommitted parent changes are not visible, and the section
   says so. Each task writes `<sessions>/subagent/<childId>.result.json`
   (status, changed files from `git diff --numstat` / `--name-status`,
@@ -265,12 +265,14 @@ child kiso processes (the same binary), at most 4 concurrently:
 |---|---|---|---|
 | explorer | read/list/search | parent's cwd | role policy |
 | reviewer | read/list/search | parent's cwd | role policy |
-| tester | all six | a `git worktree` — the implementer's kept one when `after` names it, else fresh from HEAD | role policy |
+| verifier | all six | a `git worktree` — a copy of the implementer's kept one when `after` names it, else fresh from HEAD; removed after the run | role policy |
 | implementer | all six | a detached `git worktree` | diff comes back |
 
 - **Role policies are generated per child** (a temporary extensions dir):
   only allow/deny — never ask (a headless child cannot answer an approval
-  prompt). Explorer/reviewer may only read; implementer/tester may change.
+  prompt). Explorer/reviewer may only read; implementer/verifier may
+  change files — only an implementer's changes come back (a verifier runs
+  checks and reports evidence; it was called tester before 0.46.0).
 - **implementer isolation**: the child works in a detached `git worktree`
   (parent must be a git repo — otherwise the task fails honestly); after
   the child exits, `git diff` (with its `--stat` header) comes back in the

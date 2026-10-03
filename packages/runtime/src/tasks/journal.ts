@@ -18,6 +18,19 @@ import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } f
 
 export type TaskProfile = "oneshot" | "service";
 
+/** A launch without a shell: the file and its arguments, verbatim. */
+export interface TaskLaunch {
+	readonly kind: "exec";
+	readonly file: string;
+	readonly args: readonly string[];
+}
+
+/** Who an agent task is: its role and the child's session id. */
+export interface TaskAgent {
+	readonly role: string;
+	readonly session: string;
+}
+
 export type TaskRecord =
 	| {
 			readonly type: "planned";
@@ -34,6 +47,11 @@ export type TaskRecord =
 			readonly executionId?: string;
 			/** A literal substring of the output that means "ready". */
 			readonly readyWhen?: string;
+			/** ADR-0058 3d: an argv launch — the runner starts `file` with
+			 *  exactly `args`, no shell; `command` is then only the label. */
+			readonly launch?: TaskLaunch;
+			/** ADR-0058 §5: an agent task — a child kiso and its own session. */
+			readonly agent?: TaskAgent;
 	  }
 	| { readonly type: "runner_started"; readonly ts: number; readonly pid: number; readonly startedAt: string }
 	| { readonly type: "command_started"; readonly ts: number }
