@@ -54,6 +54,29 @@ describe("edit_file on a CRLF file", () => {
 	});
 });
 
+describe("the revision an edit returns is the file's revision on disk", () => {
+	/** The [rev:…] a tool result ends on. */
+	const revIn = (content: unknown): string => /\[(rev:[0-9a-f]+)\]\s*$/.exec(String(content))![1]!;
+
+	it("a CRLF file: the returned revision is the written bytes', so a second edit can cite it without a read", async () => {
+		const { root, path } = file("one\r\ntwo\r\nthree\r\n");
+		const first = await edit(root, path, { search: "one\ntwo", replace: "ONE\nTWO" });
+		expect(first.isError).toBe(false);
+		const rev = revIn(first.content);
+		expect(rev).toBe(revOf(path));
+		const second = await editFileTool({ workspaceRoot: root }).execute({ path: "f.txt", search: "TWO\nthree", replace: "TWO\n3", expectedRevision: rev } as never, CTX);
+		expect(second.isError).toBe(false);
+		expect(readFileSync(path, "utf8")).toBe("ONE\r\nTWO\r\n3\r\n");
+		expect(revIn(second.content)).toBe(revOf(path));
+	});
+
+	it("an LF file: the same (guard)", async () => {
+		const { root, path } = file("one\ntwo\n");
+		const first = await edit(root, path, { search: "one", replace: "ONE" });
+		expect(revIn(first.content)).toBe(revOf(path));
+	});
+});
+
 describe("unchanged elsewhere (guards)", () => {
 	it("an LF file: the edit is exact, and stays LF", async () => {
 		const { root, path } = file("one\ntwo\nthree\n");
