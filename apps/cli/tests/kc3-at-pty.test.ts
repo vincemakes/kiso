@@ -137,7 +137,8 @@ describe("KC3 T-A4 — the acceptance run", () => {
 			ws,
 			[
 				["/mode to switch", "look at @ra", 2], // typed, NOT submitted — the picker opens
-				["(1/", "\t", 3], // the counter proves the panel is up; Tab accepts
+				// Graphite P2: the band's key row proves the panel is up; Tab accepts
+				["tab inserts", "\t", 3],
 				["@src/range.js", "\r", 4], // the completed line submits
 			],
 			40,
@@ -167,14 +168,17 @@ describe("KC3 T-A4 — the acceptance run", () => {
 			ws,
 			[
 				["/mode to switch", "look at @ra", 2],
-				["(1/", "\t", 3],
+				["tab inserts", "\t", 3],
 				["@src/range.js", "\r", 4],
 			],
 			40,
 			["chrome check answered"],
 		);
 		// the panel rendered: the counter row and the selection band
-		expect(out).toContain("(1/");
+		// MOVED (Graphite P2, the band-shape class — DECLARED): the counter is
+		// the key row's right edge, and the band's name carries the count
+		expect(out).toMatch(/tab inserts \u00b7 esc +1\/1/);
+		expect(out).toContain("files \u00b7 1");
 		// MOVED (R1.5 slice 8, the picker-row class — DECLARED THIS ROUND):
 		// the selection is a full-width inverse BAR, not a two-cell marker,
 		// and the directory rides beside the name instead of at the band's
@@ -187,7 +191,10 @@ describe("KC3 T-A4 — the acceptance run", () => {
 		// The only match here is the selected one, so what the stream must
 		// carry is the qualifier itself — and what it must never carry is
 		// dim opened on top of the bar.
-		expect(out).toContain("  — src/"); // the directory, adjacent
+		// DECLARED REVERSAL (Graphite P2, owner-approved 2026-10-03): the em
+		// dash is gone; the folder is a column one gap after the widest name
+		// in the list (here `editor.ts`, so `range.js` takes three spaces)
+		expect(out).toMatch(/nge\.js(?:\u001b\[[0-9;]*m)* {3}src\//); // the directory, adjacent
 		expect(out).not.toContain("\u001b[7m\u001b[2m"); // never dim ON the bar
 		expect(out).toContain("files"); // R1.5 7(b): the band names itself
 		// the chrome is intact afterwards: the box, the lead, the status
@@ -198,7 +205,7 @@ describe("KC3 T-A4 — the acceptance run", () => {
 		expect(out).toContain("/mode to switch"); // Graphite §8.9: the status bar
 		expect(out).toContain("chrome check answered");
 		// and the picker is GONE once the line was sent
-		expect(out.lastIndexOf("chrome check answered")).toBeGreaterThan(out.lastIndexOf("(1/"));
+		expect(out.lastIndexOf("chrome check answered")).toBeGreaterThan(out.lastIndexOf("tab inserts"));
 		expect(durable(dirs.home, "kc3a4b").length).toBeGreaterThan(0);
 	}, 180_000);
 });

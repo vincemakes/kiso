@@ -176,69 +176,105 @@ export function atWindow(total: number, selected: number, visible = AT_VISIBLE):
 /** The path split into the two columns the panel draws: the file's own
  *  name, and the directory that qualifies it. A path with no slash is
  *  all name and no directory. */
+/** The cells a file's NAME takes in its row — the measure the band's name
+ *  column is laid over (escaped as the row draws it, so the column a
+ *  wide or control-character name asks for is the one it gets). */
+export function atNameWidth(path: string): number {
+	return visibleWidth(splitPath(escapeTerminal(path)).name);
+}
+
 function splitPath(path: string): { dir: string; name: string } {
 	const cut = path.lastIndexOf("/");
 	return cut === -1 ? { dir: "", name: path } : { dir: path.slice(0, cut + 1), name: path.slice(cut + 1) };
 }
 
 /**
- * KC3 §4 — ONE row of the panel.
- *
- * Two columns: the file's NAME on the left with its matched characters
- * bold, and the DIRECTORY dim on the right, pushed to the far edge.
- * The name is what the user is aiming at; the directory is what tells
- * two same-named files apart, which is why it is present but quiet.
- *
- * The selected row carries `→` on the inverse band (SGR 7, closed with
- * 27 — never SGR 0, so it composes inside the row's own spans).
- *
- * The `hit` indices are over the FULL path, so they are shifted by the
- * directory's length to land on the name. A hit that falls INSIDE the
- * directory is simply not drawn bold — the directory column is
- * uniformly dim by design (a bold fragment in a right-aligned dim
- * column reads as damage, not as information).
- *
- * The row never exceeds W: the name cuts first (it is the flexible
- * column), and the directory is dropped entirely before the name is
- * cut to nothing.
+ * Graphite P2 (owner, 2026-10-03) — the band's window, shared by the file
+ * picker, the command list and the session picker: EIGHT rows on a
+ * terminal 30 rows or taller, five below.
  */
-export function atRow(match: AtMatch, selected: boolean, W: number): string {
+export function bandVisible(height: number): number {
+	return height >= 30 ? 8 : 5;
+}
+
+/** The window over a list, with a scroll-off of one: while more lies past
+ *  an edge the cursor stays a row inside it, so the edge row that carries
+ *  a more-mark is never the selected one. Stateless, like atWindow. */
+export function bandWindow(total: number, selected: number, visible: number): { first: number; count: number } {
+	const count = Math.min(total, visible);
+	return { first: Math.max(0, Math.min(selected - count + 2, total - count)), count };
+}
+
+/** The more-mark for row `i` of a window: `↑` on its first row when the
+ *  list goes on above, `↓` on its last when it goes on below. */
+export function moreMark(i: number, first: number, count: number, total: number): string | null {
+	return i === first && first > 0 ? "↑" : i === first + count - 1 && first + count < total ? "↓" : null;
+}
+
+/** The key row that closes a band: what the keys do, then the selection's
+ *  place in the list at the right edge. The keys give way from the least
+ *  needed (the first in `keys`); the counter stays. */
+export function bandKeyRow(keys: readonly string[], selected: number, total: number, W: number): string {
+	const p = palette();
+	const count = total === 0 ? "0/0" : `${selected + 1}/${total}`;
+	let kept = [...keys];
+	while (kept.length > 0 && 2 + visibleWidth(kept.join(" · ")) + 2 + count.length + 1 > W) kept = kept.slice(1);
+	const text = kept.join(" · ");
+	const gap = Math.max(1, W - 1 - 2 - visibleWidth(text) - count.length);
+	return `${p.dim}${widthCut(`  ${text}${" ".repeat(gap)}${count}`, Math.max(0, W))}${p.reset}`;
+}
+
+/** Text with the given code-unit positions in bold gold — what the person
+ *  typed, in the colour of what the person says — and the rest in `base`. */
+function goldHits(text: string, hits: ReadonlySet<number>, base: string): string {
+	const p = palette();
+	// off a known ground there is no gold: the warn tint carries it (as
+	// /resume's title does), so a selected row — bold throughout — still
+	// shows which letters matched
+	const gold = p.gold !== "" ? p.gold : p.warn;
+	// one span per RUN of hits, not per letter: a typed prefix is a run
+	let out = "";
+	let inHit: boolean | null = null;
+	let i = 0;
+	for (const ch of text) {
+		const hit = hits.has(i);
+		if (hit !== inHit) out += hit ? `${p.reset}${p.bold}${gold}` : `${inHit === null ? "" : p.reset}${base}`;
+		inHit = hit;
+		out += ch;
+		i += ch.length;
+	}
+	return `${out}${p.reset}`;
+}
+
+/**
+ * KC3 §4, Graphite P2 (owner, 2026-10-03) — ONE row of the panel: the
+ * file's NAME, padded to the name column, then its FOLDER as a dim column,
+ * so the folders line up. The letters the query matched are gold in both.
+ *
+ * DECLARED REVERSAL of TUI2-R1.5 ⑧ (VD-9) in two parts: the folder no
+ * longer trails each name after an em dash — it is a column one gap after
+ * the longest name in the list (never the far edge, which was VD-9's
+ * complaint), so twenty rows read as a table; and a match inside the
+ * folder is drawn, gold, because the person typed it.
+ *
+ * The name is the flexible column when the row is short: the folder gives
+ * way first, then the name is cut with an ellipsis.
+ */
+export function atRow(match: AtMatch, selected: boolean, W: number, nameCol = 0, mark: string | null = null): string {
 	const p = palette();
 	const { dir, name } = splitPath(escapeTerminal(match.path));
-	// the name's own matched positions, mapped out of the full path
-	const marks = new Set(match.hit.filter((i) => i >= dir.length).map((i) => i - dir.length));
-	// TUI2-R1.5 ⑧ (VD-9): the directory rides NEXT TO the name it
-	// qualifies. It used to be right-aligned to the band's far edge, which
-	// on a 100-column terminal put `src/` some eighty columns from the
-	// `parser.ts` it belongs to: the eye had to cross the whole row to
-	// learn which parser.ts this was, and the column read as a second list.
-	// Adjacent and dim, it is what it always meant to be — a qualifier.
-	// the name is the flexible column and the qualifier gives way first: a
-	// narrow window keeps the thing being aimed at.
-	const room = Math.max(1, W - 2);
-	const suffix = dir === "" ? "" : widthCut(`  — ${dir}`, Math.max(0, room - 4));
-	const nameRoom = Math.max(1, room - visibleWidth(suffix));
-	const shownName = widthCut(name, nameRoom);
-	let painted = "";
-	for (let i = 0; i < shownName.length; i += 1) {
-		painted += marks.has(i) ? `${p.bold}${shownName[i]}${p.reset}` : shownName[i];
-	}
-	const text = `${painted}${suffix === "" ? "" : `${p.dim}${suffix}${p.reset}`}`;
-	const width = visibleWidth(shownName) + visibleWidth(suffix);
-	if (!selected) return `  ${text}`;
-	// TUI2-R1.5 ⑧ (VD-9): the selection is a FULL-ROW bar — the W16 chip
-	// mechanism, which the user chip and the turn fold already use. A
-	// two-cell `→ ` marker on the inverse band is one character of
-	// highlight in an eighty-column row, and the walkthrough could barely
-	// find it. The bar spans the row's whole width so the selection is
-	// visible from anywhere on the line. Mono discipline: reverse video,
-	// no new colours.
-	//
-	// R2: the composition is selectionBar's — one copy, and with it the
-	// §2.1 rule that dim never sits on the wash (the directory column was
-	// rendering grey-on-grey inside the bar, i.e. the half of the row the
-	// selection was meant to help you read).
-	return selectionBar(`${painted}${suffix === "" ? "" : `${p.dim}${suffix}${p.reset}`}`, width, W);
+	const nameHits = new Set(match.hit.filter((i) => i >= dir.length).map((i) => i - dir.length));
+	const dirHits = new Set(match.hit.filter((i) => i < dir.length));
+	const room = Math.max(1, W - 3); // the two-cell lead and one cell of margin
+	const col = Math.min(Math.max(nameCol, visibleWidth(name)), room);
+	const shownName = visibleWidth(name) <= col ? name : col <= 1 ? widthCut(name, col) : `${widthCut(name, col - 1)}…`;
+	const dirRoom = room - col - 2;
+	const shownDir = dir === "" || dirRoom < 4 ? "" : visibleWidth(dir) <= dirRoom ? dir : `${widthCut(dir, dirRoom - 1)}…`;
+	const pad = shownDir === "" ? "" : " ".repeat(col - visibleWidth(shownName) + 2);
+	const text = `${goldHits(shownName, nameHits, selected ? p.bold : "")}${pad}${shownDir === "" ? "" : goldHits(shownDir, dirHits, p.dim)}`;
+	const width = visibleWidth(shownName) + pad.length + visibleWidth(shownDir);
+	if (selected) return selectionBar(` ${text}`, width + 1, W);
+	return mark === null ? `  ${text}` : `${p.dim}${mark}${p.reset} ${text}`;
 }
 
 /**
@@ -250,6 +286,8 @@ export function atRow(match: AtMatch, selected: boolean, W: number): string {
  * When the source list was truncated the row SAYS SO. A file picker
  * that quietly lists 2,000 of 40,000 files and shows a confident
  * "(3/1998)" is lying by omission; this one admits the horizon.
+ * (Graphite P2: the band's own rows no longer use it — the count rides
+ * the key row and the horizon the band's name.)
  */
 export function atCounterRow(selected: number, total: number, capped: boolean, W: number): string {
 	const p = palette();
@@ -257,22 +295,38 @@ export function atCounterRow(selected: number, total: number, capped: boolean, W
 	return `${p.dim}${widthCut(text, W)}${p.reset}`;
 }
 
+/** The band's state as the editor hands it over. `query`, `total` and
+ *  `nameCol` (the widest file name in the whole list, so the folder
+ *  column never moves while the person types) are Graphite P2's; absent,
+ *  the band still draws. */
+export interface AtPanelState {
+	readonly matches: readonly AtMatch[];
+	readonly selected: number;
+	readonly capped: boolean;
+	readonly query?: string;
+	readonly total?: number;
+	readonly nameCol?: number;
+}
+
 /**
- * KC3 §4 — the whole band: at most AT_VISIBLE windowed rows, then the
+ * KC3 §4, Graphite P2 — the whole band: the named hairline with the count
+ * (`files · 8`, `2 of 8 match`, and `first 2000 only` when the walk was
+ * cut), the windowed rows with their more-marks, and the key row with the
  * counter. Returned as plain strings for the menu-rows channel, which
- * already accounts them in chromeRows — the picker needs no geometry
- * of its own, which is the entire reason it rides that channel.
+ * already accounts them in chromeRows — the picker needs no geometry of
+ * its own, which is the entire reason it rides that channel.
  */
-export function atPanelRows(state: { matches: readonly AtMatch[]; selected: number; capped: boolean }, W: number): string[] {
-	const { first, count } = atWindow(state.matches.length, state.selected);
-	// TUI2-R1.5 ⑦(b) (VD-8): the band NAMES itself. It renders frameless
-	// directly above the composer, so with scrollback behind it there was
-	// nothing to say where the surface began — the rows read as more
-	// history. One dim row is enough to make it UI. Mono discipline: dim
-	// text, no rule, no colour.
-	const rows: string[] = [bandHeader("files", W)];
-	for (let i = first; i < first + count; i += 1) rows.push(atRow(state.matches[i]!, i === state.selected, W));
-	rows.push(atCounterRow(state.selected, state.matches.length, state.capped, W));
+export function atPanelRows(state: AtPanelState, W: number, height = 24): string[] {
+	const total = state.total ?? state.matches.length;
+	const query = state.query ?? "";
+	const facts = `${query === "" ? `${total}` : `${state.matches.length} of ${total} match`}${state.capped ? ` · first ${AT_CAP} only` : ""}`;
+	// TUI2-R1.5 ⑦(b) (VD-8): the band NAMES itself — with scrollback behind
+	// it, nothing else says where the surface begins
+	const rows: string[] = [bandHeader(`files · ${facts}`, W)];
+	const { first, count } = bandWindow(state.matches.length, state.selected, bandVisible(height));
+	const nameCol = state.nameCol ?? 0;
+	for (let i = first; i < first + count; i += 1) rows.push(atRow(state.matches[i]!, i === state.selected, W, nameCol, moreMark(i, first, count, state.matches.length)));
+	rows.push(bandKeyRow(["↑↓ move", "tab inserts", "esc"], state.selected, state.matches.length, W));
 	return rows;
 }
 

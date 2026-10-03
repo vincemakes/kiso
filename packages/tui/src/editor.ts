@@ -31,7 +31,7 @@ import { type PanelState, type PanelVerdict, type PanelView, type SaferAnswer } 
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
 import { panelLead } from "./ask-panel.js";
-import { AT_VISIBLE, atFilter, type AtItem, type AtMatch } from "./at-picker.js";
+import { AT_CAP, atFilter, atNameWidth, bandVisible, type AtItem, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker — the band's THIRD occupant. Its filter
 // is the @ picker's rank aimed at the session id; the editor owns the
 // keys, the compositor draws the rows.
@@ -411,6 +411,9 @@ export class Editor {
 	// bit with no token under the cursor is inert by construction — the
 	// next open re-snapshots, so a stale list can never be shown.
 	#atList: readonly AtItem[] | null = null;
+	/** Graphite P2: the widest file name in the list, in cells — measured
+	 *  once per open, as the list is listed */
+	#atNameCol = 0;
 	#atItems: (() => readonly AtItem[]) | null = null;
 	// TUI2-R2 ② — the session picker. Two fields: the bound source (its
 	// presence IS "the picker is up") and the selection. The query, like
@@ -829,7 +832,7 @@ export class Editor {
 	 *  the frame's clamp is the authority. */
 	#visibleRows(lineCount: number): number {
 		const H = process.stdout.rows ?? 24;
-		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#pickInput.rows(H) + this.#queueState().length;
+		const bands = (this.#menuOpen ? Math.min(this.#menuFiltered().length, bandVisible(H)) + 2 : 0) + this.#atRows() + this.#pickInput.rows(H) + this.#queueState().length;
 		return Math.max(1, Math.min(lineCount, N_MAX, Math.max(1, H - 3 - bands)));
 	}
 
@@ -870,9 +873,19 @@ export class Editor {
 	}
 
 	/** v3 §04: the menu's visible state for the dock — null when closed. */
-	menuState(): { items: readonly MenuItem[]; selected: number } | null {
+	menuState(): { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null {
 		if (!this.#menuOpen) return null;
-		return { items: this.#menuFiltered(), selected: this.#menuSel };
+		// Graphite P2: the whole list's size and its widest name (the column
+		// never moves while the person types), and the typed prefix
+		const all = this.#menuAll();
+		return { items: this.#menuFiltered(), selected: this.#menuSel, total: all.length, query: this.line().slice(1), nameCol: all.reduce((n, m) => Math.max(n, m.name.length - 1), 0) };
+	}
+
+	/** Every entry the menu can show: the built-ins, then the extras that do
+	 *  not shadow one (0.40.1's rule, shared with #menuFiltered). */
+	#menuAll(): MenuItem[] {
+		const builtins = new Set(MENU_ITEMS.map((m) => m.name));
+		return [...MENU_ITEMS, ...this.#menuExtras().filter((m) => !builtins.has(m.name))];
 	}
 
 	/** v3 §04: the filtered command list for the current buffer.
@@ -892,9 +905,7 @@ export class Editor {
 		// 0.40.1: the built-ins first, then the extras (skills) — and a
 		// built-in WINS a shared name, so a skill named like a command is
 		// never listed twice and never shadows it (the dispatcher's rule)
-		const builtins = new Set(MENU_ITEMS.map((m) => m.name));
-		const all = [...MENU_ITEMS, ...this.#menuExtras().filter((m) => !builtins.has(m.name))];
-		return all.filter((m) => m.name.startsWith(line));
+		return this.#menuAll().filter((m) => m.name.startsWith(line));
 	}
 
 	/** 0.40.1 — bind the menu's extra entries (the CLI binds the installed
@@ -978,10 +989,13 @@ export class Editor {
 
 	/** KC3 §4 — the picker's visible state for the dock; null when
 	 *  closed. The compositor windows it and draws the counter. */
-	atState(): { matches: readonly AtMatch[]; selected: number; capped: boolean } | null {
+	atState(): { matches: readonly AtMatch[]; selected: number; capped: boolean; query: string; total: number; nameCol: number } | null {
 		const view = this.#atView();
 		if (view === null) return null;
-		return { matches: view.matches, selected: view.selected, capped: view.capped };
+		// Graphite P2: the band counts the whole list and lays its name column
+		// over it, so the folder column never moves while the person types
+		const total = Math.min(this.#atList?.length ?? 0, AT_CAP);
+		return { matches: view.matches, selected: view.selected, capped: view.capped, query: this.#atToken()?.query ?? "", total, nameCol: this.#atNameCol };
 	}
 
 	/** KC3 §3 — arm the picker at a freshly typed `@`. The gate is the
@@ -1001,6 +1015,8 @@ export class Editor {
 		this.#atOpen = true;
 		this.#atSel = 0;
 		this.#atList = this.#atItems(); // §5: listed per OPEN, never per keystroke
+		this.#atNameCol = 0;
+		for (const item of this.#atList.slice(0, AT_CAP)) this.#atNameCol = Math.max(this.#atNameCol, atNameWidth(item.path));
 		this.#syncMouse();
 	}
 
@@ -1008,6 +1024,7 @@ export class Editor {
 		this.#atOpen = false;
 		this.#atSel = 0;
 		this.#atList = null;
+		this.#atNameCol = 0;
 		this.#syncMouse();
 	}
 
@@ -1042,7 +1059,8 @@ export class Editor {
 	 *  plus the counter row. */
 	#atRows(): number {
 		const view = this.#atView();
-		return view === null ? 0 : Math.min(view.matches.length, AT_VISIBLE) + 1;
+		// Graphite P2: the band's name, its window, its key row
+		return view === null ? 0 : Math.min(view.matches.length, bandVisible(process.stdout.rows ?? 24)) + 2;
 	}
 
 	// ── TUI2-R2 ② — the session picker ───────────────────────────────
