@@ -8,6 +8,7 @@
   "apps/cli/tests/auth-cli.test.ts",
   "apps/cli/tests/auth-tty.test.ts",
   "apps/cli/tests/background-delegate-cli.test.ts",
+  "apps/cli/tests/b1-effort-memory-pty.test.ts",
   "apps/cli/tests/bang-command-pty.test.ts",
   "apps/cli/tests/banner.test.ts",
   "apps/cli/tests/bare-command-faux-label.test.ts",

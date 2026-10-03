@@ -40,6 +40,12 @@ export interface AgentDefinition {
 	/** 0.40.0: the config profile that named this binding, recorded per
 	 *  revision for display. Never part of drift. */
 	readonly profileName?: string;
+	/** B1: a NEW session's initial reasoning (the CLI passes the effort last
+	 *  picked for the profile). Recorded in the session's first profile
+	 *  revision; never read for a session that has a recorded profile — its
+	 *  own wins, and a changed binding resets to defaults as before.
+	 *  `setModelBinding` stays the one way to change a live binding. */
+	readonly reasoning?: import("./provider/metadata.js").ReasoningSetting;
 	/** `Tool<any>` like the registry: typed tools register without casts. */
 	readonly tools: readonly Tool<any>[];
 	readonly store: SessionStore;
@@ -244,7 +250,11 @@ export class AgentRuntime {
 			...((restored !== null ? restored.scope : startupScope) !== undefined
 				? { continuationScope: (restored !== null ? restored.scope : startupScope)! }
 				: {}),
-			...(restored !== null ? { reasoning: restored.reasoning } : {}),
+			...(restored !== null
+				? { reasoning: restored.reasoning }
+				: newSession !== null && this.#definition.reasoning !== undefined
+					? { reasoning: this.#definition.reasoning }
+					: {}),
 			...(profilePending ? { profilePending: true } : {}),
 			...(newSession !== null ? { newSession } : {}),
 			...(this.#definition.profileName !== undefined ? { profileName: this.#definition.profileName } : {}),
