@@ -121,6 +121,12 @@ export interface TaskManagerOptions {
 	readonly onTransition?: TaskListener;
 	/** How often live tasks are re-read. Default 500 ms. */
 	readonly pollMs?: number;
+	/** How long a live runner's identity is reused before it is checked
+	 *  again. Default 5 s. Each check starts a process (`ps`; a PowerShell
+	 *  on win32), so it is not repeated on every read; the journal still is,
+	 *  so an end is seen at once. The cost: a runner that dies WITHOUT a
+	 *  terminal reads `unknown` up to this long after it died. */
+	readonly identifyEveryMs?: number;
 }
 
 const JOURNAL = "journal.jsonl";
@@ -132,6 +138,9 @@ export class TaskManager {
 	readonly #backend: TaskBackend;
 	readonly #listeners = new Set<TaskListener>();
 	readonly #pollMs: number;
+	readonly #identifyEveryMs: number;
+	/** id → the last identity verdict for its runner (pid + start time). */
+	readonly #identity = new Map<string, { readonly key: string; readonly verdict: RunnerIdentity; readonly at: number }>();
 	#timer: ReturnType<typeof setInterval> | null = null;
 	/** id → the last observed kind ("ready" for a running task that has signalled) */
 	readonly #seen = new Map<string, string>();
@@ -143,6 +152,20 @@ export class TaskManager {
 		this.#backend = options.backend;
 		if (options.onTransition !== undefined) this.#listeners.add(options.onTransition);
 		this.#pollMs = options.pollMs ?? 500;
+		this.#identifyEveryMs = options.identifyEveryMs ?? 5_000;
+	}
+
+	/** A runner's identity (Windows P6): "gone" is final — that pid and
+	 *  start time never come back; any other verdict is reused for
+	 *  `identifyEveryMs`. `fresh` always checks (a stop must never signal a
+	 *  pid that is someone else's now). */
+	#identityOf(id: string, runner: { readonly pid: number; readonly startedAt: string }, fresh = false): RunnerIdentity {
+		const key = `${runner.pid}:${runner.startedAt}`;
+		const cached = this.#identity.get(id);
+		if (cached !== undefined && cached.key === key && (cached.verdict === "gone" || (!fresh && Date.now() - cached.at < this.#identifyEveryMs))) return cached.verdict;
+		const verdict = this.#backend.identify(runner.pid, runner.startedAt);
+		this.#identity.set(id, { key, verdict, at: Date.now() });
+		return verdict;
 	}
 
 	/** Hear every transition (delivery, the terminal, telemetry — any number
@@ -269,7 +292,7 @@ export class TaskManager {
 		}
 		const runner = runnerOf(records);
 		if (runner === undefined) return false;
-		const identity = this.#backend.identify(runner.pid, runner.startedAt);
+		const identity = this.#identityOf(id, runner, true);
 		if (identity === "gone") return false;
 		appendRecord(join(this.root, id, JOURNAL), { type: "stop_requested", ts: Date.now(), by });
 		if (identity === "verified") this.#backend.signalStop(runner.pid);
@@ -348,11 +371,12 @@ export class TaskManager {
 		const records = readRecords(join(this.root, id, JOURNAL));
 		const planned = records.find((r): r is Extract<TaskRecord, { type: "planned" }> => r.type === "planned");
 		const runner = runnerOf(records);
-		// an adopted task this very process still owns needs no identity
-		// check: the owner is here, holding the child
-		const verified =
-			this.#local.has(id) || (runner !== undefined && this.#backend.identify(runner.pid, runner.startedAt) === "verified");
 		const terminal = records.find((r) => r.type === "terminal");
+		// an adopted task this very process still owns needs no identity
+		// check: the owner is here, holding the child; and an ended task's
+		// verdict is its terminal — identity cannot change it (Windows P6)
+		const verified =
+			this.#local.has(id) || (terminal === undefined && runner !== undefined && this.#identityOf(id, runner) === "verified");
 		const stop = records.find((r): r is Extract<TaskRecord, { type: "stop_requested" }> => r.type === "stop_requested");
 		return {
 			id,

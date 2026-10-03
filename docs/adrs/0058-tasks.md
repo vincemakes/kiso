@@ -651,3 +651,19 @@ and the turn budget's default. Beyond §5:
    rest are receipted. Nothing new, no wake. A failure goes into a live
    run at once and never wakes on its own; a restart notifies, never
    wakes.
+
+## Amendment 5 — identity is checked less often (Windows P6, 2026-10-03, owner-approved)
+
+Checking a runner's identity starts a process — `ps` on POSIX, a
+PowerShell on win32 — and the TaskManager checked it on every read of every
+task, ended ones included, although an ended task's verdict is its
+terminal. A session that had run thirty tasks started thirty processes per
+listing, and the delivery lists several times per transition.
+
+The rule: a task whose journal has a terminal is never identified; "gone"
+is final for a pid and start time; any other verdict is reused for
+`identifyEveryMs` (default 5 s). The journal is still read on every poll,
+so an end is seen at once. **The worst case, stated:** a runner that dies
+WITHOUT a terminal reads `unknown` up to `identifyEveryMs` after it died,
+not within one poll. A stop always checks afresh: it never signals a pid
+that is someone else's now.
