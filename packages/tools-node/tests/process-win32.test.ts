@@ -107,7 +107,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 	};
 });
 
-const { killTree, processStartTime, startCommand } = await import("../src/process.js");
+const { killTree, processStartTime, startCommand, startExec } = await import("../src/process.js");
 const { shellTool } = await import("../src/index.js");
 const { processTaskBackend } = await import("../src/process-backend.js");
 
@@ -248,6 +248,26 @@ describe("win32: which bash runs the command", () => {
 		fakeFiles.add(WSL_LAUNCHER);
 		expect(() => startCommand("true", { cwd: ws(), env: {} })).toThrow(/Git for Windows[\s\S]*KISO_BASH|KISO_BASH[\s\S]*Git for Windows/);
 		expect(cp.spawns).toHaveLength(0);
+	});
+});
+
+describe("startExec: a child kiso by argv — never through bash or cmd.exe", () => {
+	it("win32: the file and its args exactly, no shell, detached (a background child outlives its parent), no console window — with no bash anywhere", () => {
+		bareWindows();
+		const cwd = ws();
+		startExec("C:\\node\\node.exe", ["C:\\kiso\\cli.js", "chat", "a b&c"], { cwd, env: { A: "1" } });
+		expect(cp.spawns).toHaveLength(1);
+		const [s] = cp.spawns;
+		expect(s!.file).toBe("C:\\node\\node.exe");
+		expect(s!.args).toEqual(["C:\\kiso\\cli.js", "chat", "a b&c"]);
+		expect(s!.options).toMatchObject({ shell: false, detached: true, windowsHide: true, cwd, env: { A: "1" } });
+	});
+
+	it("POSIX: the same call, as main made it (guard)", () => {
+		setPlatform("linux");
+		const cwd = ws();
+		startExec("/usr/bin/node", ["cli.js"], { cwd, env: { A: "1" } });
+		expect(cp.spawns[0]).toEqual({ file: "/usr/bin/node", args: ["cli.js"], options: { shell: false, detached: true, cwd, stdio: ["ignore", "pipe", "pipe"], env: { A: "1" } } });
 	});
 });
 
