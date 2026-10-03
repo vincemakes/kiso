@@ -161,6 +161,7 @@
   "packages/runtime/tests/store-fsync-classes.test.ts",
   "packages/runtime/tests/task-delivery-agents.test.ts",
   "packages/runtime/tests/task-delivery.test.ts",
+  "packages/runtime/tests/tasks-identity-cache.test.ts",
   "packages/runtime/tests/tasks-journal.test.ts",
   "packages/runtime/tests/zombie-holder-lock.test.ts",
   "packages/tools-node/tests/aci2-edit-uniqueness.test.ts",
