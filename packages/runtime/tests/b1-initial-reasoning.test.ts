@@ -26,7 +26,9 @@ const HIGH = { thinking: "default", effort: "high" } as const;
 const LOW = { thinking: "default", effort: "low" } as const;
 
 async function oneTurn(dir: string, reasoning?: typeof HIGH | typeof LOW): Promise<{ reasoning: unknown }> {
-	const agent = createAgent({ model: "faux", store: new SessionStore(dir), tools: [], adapter: answering, ...(reasoning !== undefined ? { reasoning } : {}) });
+	// a model the registry knows, so the effort resolves at request time
+	// (an unknown model refuses any setting but default/default)
+	const agent = createAgent({ model: "deepseek-v4-flash", store: new SessionStore(dir), tools: [], adapter: answering, ...(reasoning !== undefined ? { reasoning } : {}) });
 	const session = await agent.session({ id: "s" });
 	for await (const _ of session.run("go")) void _;
 	const r = { reasoning: session.reasoning };

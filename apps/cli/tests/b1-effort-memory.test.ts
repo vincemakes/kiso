@@ -72,6 +72,6 @@ describe("startingEffort — the picker's fallback, at startup", () => {
 	it("nothing remembered, or default remembered, or a model the registry does not know: nothing", () => {
 		expect(startingEffort(ds, undefined)).toBeNull();
 		expect(startingEffort(ds, "default")).toBeNull();
-		expect(startingEffort({ kind: "openai-compat", model: "some-unlisted-model" }, "high")).toBeNull();
+		expect(startingEffort({ model: "some-unlisted-model" }, "high")).toBeNull();
 	});
 });
