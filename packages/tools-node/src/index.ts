@@ -1264,7 +1264,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// E group: safe replacement — never rewrite a shared external inode via a hard link.
 				// round 8: the edited file keeps its mode.
 				preservedMode = statSync(full).mode & 0o7777;
-				writeFileSync(tmp, crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
+				// ONE buffer is written and hashed: the revision returned is the
+				// file's on disk, CRLF or not (the review's finding)
+				const bytesOut = Buffer.from(crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
+				writeFileSync(tmp, bytesOut);
 				chmodSync(tmp, preservedMode);
 				// WR-1A ③: revalidate against the citation right before the
 				// replacement commits.
@@ -1279,7 +1282,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					// WR-1A ①: post-effect — fatal, the rename already landed.
 					return postEffectEscape("edit", path);
 				}
-				return { content: `edited ${path}\n[${contentRevision(Buffer.from(edited, "utf8"))}]`, isError: false };
+				return { content: `edited ${path}\n[${contentRevision(bytesOut)}]`, isError: false };
 			} catch (err) {
 				// round 8: a failed edit never leaves a temp file behind.
 				try {
