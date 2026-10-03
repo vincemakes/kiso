@@ -73,7 +73,10 @@ export function syncFile(file: string): void {
 
 /** fsync a directory, so a file created in it survives a power loss too. */
 export function fsyncDir(dir: string): void {
-	// Windows opens no directory as a file; NTFS journals the entry itself
+	// Windows opens no directory as a file, so the entry is not flushed
+	// here: a process crash loses nothing, but the entry's power-loss
+	// ordering is not the guarantee POSIX's directory fsync gives (the
+	// Windows durability contract is P6's to state)
 	if (process.platform === "win32") return;
 	const fd = openSync(dir, "r");
 	try {
