@@ -664,6 +664,7 @@ The rule: a task whose journal has a terminal is never identified; "gone"
 is final for a pid and start time; any other verdict is reused for
 `identifyEveryMs` (default 5 s). The journal is still read on every poll,
 so an end is seen at once. **The worst case, stated:** a runner that dies
-WITHOUT a terminal reads `unknown` up to `identifyEveryMs` after it died,
-not within one poll. A stop always checks afresh: it never signals a pid
+WITHOUT a terminal keeps reading as `running` for up to `identifyEveryMs`
+after it died (its cached verdict is still "verified"), and only then
+reads `unknown` — not within one poll. A stop always checks afresh: it never signals a pid
 that is someone else's now.

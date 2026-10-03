@@ -5,7 +5,7 @@
  * verdict cannot depend on it), "gone" is final, and a live verdict is
  * reused for `identifyEveryMs`. The journal itself is still read every
  * time, so an end is seen at once. The stated worst case: a runner that
- * dies WITHOUT a terminal reads `unknown` only once its cached verdict
+ * dies WITHOUT a terminal keeps reading as running until its cached verdict
  * expires. A stop always checks afresh — it must never signal a pid that
  * is someone else's now.
  */

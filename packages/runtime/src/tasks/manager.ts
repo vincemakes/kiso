@@ -125,7 +125,8 @@ export interface TaskManagerOptions {
 	 *  again. Default 5 s. Each check starts a process (`ps`; a PowerShell
 	 *  on win32), so it is not repeated on every read; the journal still is,
 	 *  so an end is seen at once. The cost: a runner that dies WITHOUT a
-	 *  terminal reads `unknown` up to this long after it died. */
+	 *  terminal keeps reading as `running` for up to this long after it
+	 *  died (its cached verdict is still "verified"), then `unknown`. */
 	readonly identifyEveryMs?: number;
 }
 
