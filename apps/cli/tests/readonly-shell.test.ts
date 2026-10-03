@@ -363,6 +363,11 @@ describe("the adversarial corpus — never allowed, and for the stated reason", 
 		it(JSON.stringify(cmd), () => {
 			const v = verdict(cmd);
 			expect(v.allow, cmd).toBe(false);
+			// Windows (P2): a POSIX-rooted path is an MSYS mount under Git Bash —
+			// never read, and named so rather than "outside"
+			// (and a `..` after a link, read apart by Win32 and the real path, is
+			// not read either)
+			if (process.platform === "win32" && why === "outside" && v.allow === false && /an MSYS mount|after a link/.test(v.why)) return;
 			expect(v.allow === false ? v.why : "", cmd).toContain(why);
 		});
 	}
@@ -426,8 +431,11 @@ describe("the lexer — the words the shell would pass, or a refusal", () => {
 describe("the shared resolver — real components, in the disk's case (review B1, B2)", () => {
 	it("`..` after a symlink is the parent of its TARGET", () => {
 		const r = resolveShellPath(root, root, "out-dir/..");
-		expect(r.canonical).toBe(realCase(join(root, "..")));
 		expect(r.inside).toBe(false);
+		// Windows (P2): Win32 takes `..` as text and this walk takes it on the
+		// target — the two land apart, so the word is not read at all
+		if (process.platform === "win32") expect(r.opaque).toMatch(/after a link/);
+		else expect(r.canonical).toBe(realCase(join(root, "..")));
 	});
 
 	it.skipIf(!CASE_INSENSITIVE)("an existing name comes back in the case the disk holds it", () => {
@@ -455,7 +463,10 @@ describe("the shared resolver — real components, in the disk's case (review B1
 		for (const d of [".ssh", ".config", ".aws", ".gnupg", ".kiso"]) mkdirSync(join(home, d));
 		writeFileSync(join(home, "notes.md"), "x");
 		const saved = process.env.HOME;
+		const savedProfile = process.env.USERPROFILE;
 		process.env.HOME = home;
+		// Windows: the home directory is USERPROFILE (os.homedir reads it)
+		process.env.USERPROFILE = home;
 		try {
 			setMode("default");
 			const ext = readOnlyShellExtension(() => ({ workspaceRoot: home, excludeRoots: [join(home, ".kiso")] }));
@@ -464,6 +475,8 @@ describe("the shared resolver — real components, in the disk's case (review B1
 			expect(await decide("cat notes.md")).toEqual({ action: "allow" });
 		} finally {
 			process.env.HOME = saved;
+			if (savedProfile === undefined) delete process.env.USERPROFILE;
+			else process.env.USERPROFILE = savedProfile;
 		}
 	});
 });

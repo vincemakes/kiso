@@ -36,11 +36,11 @@
  */
 
 import { readdirSync, realpathSync, statSync, type Stats } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename } from "node:path";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { protectedIdentity, PROTECTED_REFUSAL, type ProtectedIdentity } from "@vincemakes/kiso-tools-node";
 import { innerLines, unwrap } from "./floor.js";
-import { parseShellLooseChecked, type LooseNode, type LooseWord } from "./shell-words.js";
+import { hostDialect, msysPath, parseShellLooseChecked, resolveShellPath, type LooseNode, type LooseWord, type PathDialect } from "./shell-words.js";
 
 /** A hit names the word that reached a protected file — or, `unread`,
  *  says why the line could not be read to the end. */
@@ -137,7 +137,8 @@ interface Probe {
 	readonly targets: readonly string[];
 }
 
-function probeFor(id: ProtectedIdentity): Probe {
+function probeFor(id: ProtectedIdentity, { msys, path }: PathDialect): Probe {
+	const { basename, dirname, join } = path;
 	const files = new Set<string>();
 	const dirs = new Set<string>();
 	const targets: string[] = [];
@@ -146,7 +147,7 @@ function probeFor(id: ProtectedIdentity): Probe {
 		const base = basename(pf);
 		targets.push(pf);
 		try {
-			for (const name of readdirSync(dir)) if (name.startsWith(`${base}.`)) targets.push(`${dir}/${name}`);
+			for (const name of readdirSync(dir)) if (name.startsWith(`${base}.`)) targets.push(msys ? join(dir, name) : `${dir}/${name}`);
 		} catch {
 			// no directory yet — nothing in it to serve
 		}
@@ -166,8 +167,10 @@ function probeFor(id: ProtectedIdentity): Probe {
 /** The pure check: does any word of the line name a protected file? */
 export function protectedShellCheck(line: string, workspaceRoot: string, id: ProtectedIdentity, env: ProtectedShellEnv): ProtectedVerdict {
 	if (id.paths.length === 0) return { hit: false };
-	const probe = probeFor(id);
-	const names = id.paths.map((p) => basename(p).toLowerCase());
+	const dialect = hostDialect();
+	const P = dialect.path;
+	const probe = probeFor(id, dialect);
+	const names = id.paths.map((p) => P.basename(p).toLowerCase());
 	const paths = id.paths.map((p) => p.toLowerCase());
 	const namesProtected = (t: string): boolean => {
 		const low = t.toLowerCase();
@@ -193,7 +196,16 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 		seenStat.set(p, st);
 		return st;
 	};
-	const at = (cwd: string, t: string): string => (t.startsWith("/") ? t : `${cwd}/${t}`);
+	// on Windows the system normalizes a path lexically before it opens it,
+	// so the lexical resolution is what a command opens there
+	const at = (cwd: string, t: string): string => (dialect.msys ? P.resolve(cwd, t) : t.startsWith("/") ? t : `${cwd}/${t}`);
+	/** Windows P2: a word as Git Bash's command sees the path — or null
+	 *  when it cannot be read (only its spelling can be checked). */
+	const native = (t: string): string | null => {
+		if (!dialect.msys) return t;
+		const read = msysPath(t);
+		return "opaque" in read ? null : read.native;
+	};
 	const regexes = new Map<string, RegExp>();
 	const realOf = new Map<string, string>();
 	/** Whether a word's last component is a protected file's name, or one
@@ -209,10 +221,12 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 		return out.replace(/\$\{KISO_HOME\}|\$KISO_HOME(?![A-Za-z0-9_])/g, env.kisoHome);
 	};
 	/** One literal-or-glob path text, read from each candidate directory. */
-	const pathHits = (t: string, s: CdState): boolean => {
-		if (t === "") return false;
-		if (/[$`]/.test(t)) return namesProtected(t);
-		if (s.lossy && !t.startsWith("/") && namesProtected(t)) return true;
+	const pathHits = (word: string, s: CdState): boolean => {
+		if (word === "") return false;
+		if (/[$`]/.test(word)) return namesProtected(word);
+		const t = native(word);
+		if (t === null) return namesProtected(word);
+		if (s.lossy && !P.isAbsolute(t) && namesProtected(t)) return true;
 		const glob = /[*?[]/.test(t);
 		for (const cwd of s.cwds) {
 			charge();
@@ -221,11 +235,26 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 				// not exist yet) — only when the last component could be the
 				// file's name — then by inode
 				if (named(t)) {
-					const spelled = resolve(cwd, t).toLowerCase();
+					const spelled = P.resolve(cwd, t).toLowerCase();
 					if (paths.some((pf) => spelled === pf || spelled.startsWith(`${pf}.`))) return true;
 				}
 				const st = statAt(at(cwd, t));
 				if (st?.isFile() === true && probe.files.has(inode(st))) return true;
+				if (dialect.msys && t.split("/").includes("..")) {
+					// Windows: the lexical reading above, and — for a `..`, where
+					// they can differ — the real-path one; a `..` after a link the
+					// two read apart falls back to names. One more reading charged.
+					charge();
+					const real = resolveShellPath(cwd, cwd, t, dialect);
+					if (real.opaque !== undefined) {
+						if (namesProtected(t)) return true;
+						continue;
+					}
+					const low = real.canonical.toLowerCase();
+					if (paths.some((pf) => low === pf || low.startsWith(`${pf}.`))) return true;
+					const rst = statAt(real.canonical);
+					if (rst?.isFile() === true && probe.files.has(inode(rst))) return true;
+				}
 				continue;
 			}
 			const g = t.search(/[*?[]/);
@@ -250,10 +279,13 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 				}
 				realOf.set(dirText, real);
 			}
-			const pattern = `${real.endsWith("/") ? real : `${real}/`}${rest}`;
+			// Windows: one separator, one case, on both sides of the match
+			const fold = (p: string): string => (dialect.msys ? p.replace(/\\/g, "/").toLowerCase() : p);
+			const dirReal = fold(real);
+			const pattern = `${dirReal.endsWith("/") ? dirReal : `${dirReal}/`}${dialect.msys ? rest.toLowerCase() : rest}`;
 			let re = regexes.get(pattern);
 			if (re === undefined) regexes.set(pattern, (re = globRegex(pattern)));
-			if (probe.targets.some((p) => re.test(p))) return true;
+			if (probe.targets.some((p) => re.test(fold(p)))) return true;
 		}
 		return false;
 	};
@@ -269,8 +301,10 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 	/** A directory holding a protected file — the file's own, or any
 	 *  directory above it — by inode. */
 	const holds = (w: LooseWord, s: CdState): boolean => {
-		const t = expand(w.text, w.tilde);
-		if (t === "" || /[$`*?[]/.test(t) || (w.tilde && /^~[^/]/.test(w.text))) return false;
+		const spelled = expand(w.text, w.tilde);
+		if (spelled === "" || /[$`*?[]/.test(spelled) || (w.tilde && /^~[^/]/.test(w.text))) return false;
+		const t = native(spelled);
+		if (t === null) return false;
 		return s.cwds.some((cwd) => {
 			charge();
 			const st = statAt(at(cwd, t));
@@ -334,8 +368,9 @@ export function protectedShellCheck(line: string, workspaceRoot: string, id: Pro
 					s.pending = cap(s, [...s.cwds, env.home, workspaceRoot]);
 				} else if (to === undefined) s.pending = [env.home];
 				else {
-					const t = expand(to.text, to.tilde);
-					if (/[$`*?[]/.test(t) || (to.tilde && /^~[^/]/.test(to.text))) {
+					const spelled = expand(to.text, to.tilde);
+					const t = native(spelled);
+					if (t === null || /[$`*?[]/.test(spelled) || (to.tilde && /^~[^/]/.test(to.text))) {
 						s.lossy = true;
 						s.pending = cap(s, [env.home, ...s.cwds]);
 					} else s.pending = cap(s, s.cwds.map((c) => at(c, t)));

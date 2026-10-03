@@ -31,7 +31,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Default per-child timeout (ms) — a subagent must never hang the parent. */
@@ -708,9 +708,51 @@ export function parseChangedFiles(numstat, nameStatus) {
 const ACCEPTANCE_OUTPUT_CAP = 64 * 1024;
 const ACCEPTANCE_TAIL = 2 * 1024;
 
+/** A child in its own process group, so a timeout or an abort kills it
+ *  whole; win32 has no groups — the child is hidden, and its tree dies by
+ *  taskkill /T (which walks it by parent). */
+const ownGroup = () => (process.platform === "win32" ? { windowsHide: true } : { detached: true });
+
+function killGroup(child) {
+	try {
+		if (process.platform === "win32") execFileSync("taskkill", ["/T", "/F", "/PID", String(child.pid)], { stdio: "ignore", windowsHide: true });
+		else process.kill(-child.pid, "SIGKILL");
+	} catch {
+		// already gone
+	}
+}
+
+/** The bash a check runs through on win32 — this build's own copy of the
+ *  process module's rule (tools-node `process.ts`; zero dependencies here),
+ *  pinned to it by subagent-win32.test.ts. */
+function resolveBash(env) {
+	const fail = (message) => {
+		throw Object.assign(new Error(message), { code: "KISO_NO_BASH" });
+	};
+	const override = env.KISO_BASH;
+	if (override !== undefined && override !== "") {
+		if (!/^bash(\.exe)?$/i.test(win32.basename(override))) {
+			fail(`KISO_BASH must name a bash executable (bash.exe), not ${win32.basename(override)}: kiso's shell commands are POSIX shell`);
+		}
+		if (!existsSync(override)) fail(`KISO_BASH is set to ${override}, which does not exist`);
+		return override;
+	}
+	for (const root of [env.ProgramFiles ?? "C:\\Program Files", env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)"]) {
+		const candidate = win32.join(root, "Git", "bin", "bash.exe");
+		if (existsSync(candidate)) return candidate;
+	}
+	const system32 = win32.join(env.SystemRoot ?? "C:\\Windows", "System32").toLowerCase();
+	for (const dir of (env.PATH ?? "").split(win32.delimiter)) {
+		if (dir === "" || win32.join(dir, ".").toLowerCase() === system32) continue;
+		const candidate = win32.join(dir, "bash.exe");
+		if (existsSync(candidate)) return candidate;
+	}
+	return fail("no bash found — kiso runs shell commands through Git Bash on Windows: install Git for Windows, or set KISO_BASH to the path of bash.exe");
+}
+
 /** DT-1a R2.3: the parent runs the acceptance in the worktree — a configured check
- *  through /bin/sh (user-authored), or the evaluator binary with the worktree as
- *  its argument. Own process group (the abort and the timeout kill it whole), the
+ *  through /bin/sh (bash on win32; user-authored), or the evaluator binary with the
+ *  worktree as its argument. Own process group (the abort and the timeout kill it whole), the
  *  output capped, the tail kept. The exit code proves the command RAN on the tree
  *  as the child left it (patchSha256 names that state); only an evaluator proves
  *  correctness — the child can edit a check's tests. */
@@ -726,7 +768,16 @@ export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout,
 	} catch {
 		// a non-git worktree: the state hash stays the empty one
 	}
-	const child = kind === "check" ? spawn("/bin/sh", ["-c", command], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] }) : spawn(command, [worktree], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+	let child;
+	try {
+		const options = { cwd: worktree, ...ownGroup(), stdio: ["ignore", "pipe", "pipe"] };
+		child = kind === "check" ? spawn(process.platform === "win32" ? resolveBash(process.env) : "/bin/sh", ["-c", command], options) : spawn(command, [worktree], options);
+	} catch (err) {
+		// win32 with no usable bash: the check fails with a message the model can act on
+		if (err?.code !== "KISO_NO_BASH") throw err;
+		const name = kind === "check" ? { name: acceptance.check, command } : { evaluator: command };
+		return { kind, ...name, exitCode: null, passed: false, tail: err.message, durationMs: Date.now() - started, patchSha256, baseRev };
+	}
 	let output = "";
 	const capture = (d) => {
 		if (output.length < ACCEPTANCE_OUTPUT_CAP) output += String(d).slice(0, ACCEPTANCE_OUTPUT_CAP - output.length);
@@ -734,20 +785,13 @@ export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout,
 	child.stdout.on("data", capture);
 	child.stderr.on("data", capture);
 	let killed = null;
-	const killGroup = () => {
-		try {
-			process.kill(-child.pid, "SIGKILL");
-		} catch {
-			// already gone
-		}
-	};
 	const timer = setTimeout(() => {
 		killed = "timeout";
-		killGroup();
+		killGroup(child);
 	}, timeout);
 	const onAbort = () => {
 		killed = "abort";
-		killGroup();
+		killGroup(child);
 	};
 	if (signal?.aborted) onAbort();
 	else signal?.addEventListener("abort", onAbort, { once: true });
@@ -814,7 +858,7 @@ function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, mod
 	const child = spawn(process.execPath, childArgs(bin, childId, taskPath, model), {
 		cwd,
 		env: childEnv(policyDir, sessionsDir),
-		detached: true,
+		...ownGroup(),
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	child.stdin.end(); // CX-1 F5: nothing rides stdin — the task is the file
@@ -826,20 +870,13 @@ function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, mod
 		child.on("exit", (code, sig) => resolve({ code: code ?? -1, signal: sig }));
 	});
 	let killed = null;
-	const killGroup = () => {
-		try {
-			process.kill(-child.pid, "SIGKILL");
-		} catch {
-			// already gone
-		}
-	};
 	const timer = setTimeout(() => {
 		killed = "timeout";
-		killGroup();
+		killGroup(child);
 	}, timeout);
 	const onAbort = () => {
 		killed = "abort";
-		killGroup();
+		killGroup(child);
 	};
 	if (signal?.aborted) onAbort();
 	else signal?.addEventListener("abort", onAbort, { once: true });

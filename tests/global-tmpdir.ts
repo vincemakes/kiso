@@ -75,6 +75,8 @@ export default function setup(): () => void {
 	reapStaleRoots(host);
 	const root = mkdtempSync(join(host, ROOT_PREFIX));
 	process.env.TMPDIR = root;
+	// Windows: os.tmpdir() reads TEMP / TMP, never TMPDIR
+	if (process.platform === "win32") process.env.TEMP = process.env.TMP = root;
 	return () => {
 		rmSync(root, { recursive: true, force: true });
 	};

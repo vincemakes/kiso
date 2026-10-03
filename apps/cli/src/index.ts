@@ -38,6 +38,7 @@ import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
 import { defaultTrashRoot, findEmptySessions, moveToTrash } from "./empty-sessions.js";
+import { browserCommand, launchCommand } from "./launch.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemakes/kiso-tools-node";
 import { OFFERED_MODES, applyModeState, envModeLayer, getDontAsk, modeDisplay, parseMode, resolveModeLayers, type ModeLayer } from "./mode.js";
@@ -78,13 +79,13 @@ export { applyProjectMerges } from "./trust-ui.js";
  *  path's exact semantics (auto-denied asks, no chips, no pops). */
 /** OR-4: hand a URL to the platform's opener, detached, and never let a
  *  missing or failing opener touch the sign-in — the printed URL is the
- *  path that always works. macOS `open`, Linux `xdg-open`; elsewhere the
- *  URL stays printed (Windows is unsupported by the CLI as a whole). */
+ *  path that always works. macOS `open`, Linux `xdg-open`, Windows
+ *  rundll32's URL handler (launch.ts); elsewhere the URL stays printed. */
 function openInBrowser(url: string): void {
-	const opener = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : null;
+	const opener = browserCommand(url);
 	if (opener === null) return;
 	try {
-		spawn(opener, [url], { detached: true, stdio: "ignore" }).unref();
+		spawn(opener[0], [...opener[1]], { detached: true, stdio: "ignore" }).unref();
 	} catch {
 		// the URL is on screen; opening it is the person's fallback
 	}
@@ -1604,7 +1605,7 @@ async function main(): Promise<void> {
 						console.log(`${n(empty.length, "empty session")} — a sidecar and no log; none of them ever ran:`);
 						for (const s of empty) console.log(`  ${basename(s.dir)}/${s.id}`);
 						console.log("kiso sessions --prune-empty --yes moves them to the Trash");
-					} else console.log(`moved ${n(empty.length, "empty session")} to ${moveToTrash(empty, defaultTrashRoot())}`);
+					} else console.log(`moved ${n(empty.length, "empty session")} to ${moveToTrash(empty, defaultTrashRoot(kisoHome()))}`);
 					if (inUse > 0) console.log(`skipped ${n(inUse, "empty session")} in use — a live process holds the lock`);
 					break;
 				}
@@ -1761,7 +1762,9 @@ async function main(): Promise<void> {
 				// npm's to explain; the message names the manual command so
 				// the person can run it with whatever their setup needs.
 				const [bin, ...installArgs] = INSTALL_COMMAND;
-				const r = spawnSync(bin, installArgs, { stdio: "inherit" });
+				// Windows: npm is npm.cmd — through cmd.exe (launch.ts)
+				const l = launchCommand(bin, installArgs);
+				const r = spawnSync(l.file, [...l.args], { stdio: "inherit", ...(l.windowsVerbatimArguments === true ? { windowsVerbatimArguments: true } : {}) });
 				if (r.error !== undefined || r.status !== 0) {
 					const why = r.error !== undefined ? `could not run npm (${r.error.message})` : `npm exited ${r.status ?? "on a signal"}`;
 					process.stderr.write(`kiso update: ${why} — run it yourself: ${INSTALL_COMMAND.join(" ")}\n`);

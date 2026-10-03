@@ -46,6 +46,7 @@
 import {
 	appendFileSync,
 	closeSync,
+	constants,
 	existsSync,
 	fsyncSync,
 	fstatSync,
@@ -56,6 +57,7 @@ import {
 	readFileSync,
 	readdirSync,
 	readSync,
+	writeSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
@@ -355,7 +357,11 @@ export class SessionStore {
 		if (event.seq !== expected) {
 			throw new StaleWriterError(expected, event.seq);
 		}
-		appendFileSync(fd, `${JSON.stringify({ runId, ts: Date.now(), event })}\n`);
+		const line = `${JSON.stringify({ runId, ts: Date.now(), event })}\n`;
+		// Windows: the log is open read-write (see fd()), so the append is a
+		// write at the end — the lock makes this the only writer
+		if (process.platform === "win32") writeSync(fd, line, fstatSync(fd).size);
+		else appendFileSync(fd, line);
 		// A streamed fragment is not a durability boundary: it belongs to a
 		// turn that is uncommitted until its stop is durable, and the next
 		// synced event (the call's end, the text's end, the stop) flushes
@@ -383,7 +389,10 @@ export class SessionStore {
 		const path = this.pathFor(sessionId);
 		// R6: the mode applies at CREATION only — an existing log keeps
 		// whatever it has, which is the not-migrated rule above.
-		const fd = openSync(path, "a+", 0o600);
+		// Windows: a handle opened for append can be neither flushed nor
+		// truncated (FlushFileBuffers and SetEndOfFile need the write access
+		// append mode drops), so the log opens read-write there
+		const fd = openSync(path, process.platform === "win32" ? constants.O_RDWR | constants.O_CREAT : "a+", 0o600);
 		repairTornTail(fd);
 		fsyncDir(dirname(path));
 		this.#fds.set(sessionId, fd);

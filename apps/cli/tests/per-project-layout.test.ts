@@ -26,7 +26,9 @@ import {
 } from "../src/projects.js";
 import { countPlan, INFER_MIN_MENTIONS, planMigration, reverseMigration, runMigration } from "../src/session-migration.js";
 
-const fresh = (): string => realpathSync(mkdtempSync(join(tmpdir(), "kiso-projects-")));
+// .native, as the product resolves: on Windows it expands an 8.3 short name
+// (the runner's temp dir is RUNNER~1), the JS realpath does not
+const fresh = (): string => realpathSync.native(mkdtempSync(join(tmpdir(), "kiso-projects-")));
 
 /** A repository on disk: the inference maps paths to the nearest `.git`. */
 function repo(root: string, name: string): string {
@@ -105,6 +107,12 @@ describe("the folder of a project", () => {
 	});
 });
 
+/** The one-time move sorts pre-0.40 legacy sessions by the POSIX paths
+ *  their tool calls name. A Windows install never held a legacy session
+ *  (Windows was install-refused before and after 0.40), so its inference
+ *  cases are POSIX-only; the move's file handling runs everywhere. */
+const LEGACY_POSIX = process.platform === "win32";
+
 describe("the one-time move", () => {
 	function world() {
 		const root = fresh();
@@ -124,7 +132,7 @@ describe("the one-time move", () => {
 		return { root, home, alpha, beta };
 	}
 
-	it("places recorded, inferred and unknown sessions, skips a live lock, and a child follows its parent", () => {
+	it.skipIf(LEGACY_POSIX)("places recorded, inferred and unknown sessions, skips a live lock, and a child follows its parent", () => {
 		const { home, alpha, beta } = world();
 		const plan = planMigration(home, { userHome: home });
 		const by = new Map(plan.map((p) => [p.id, p]));
@@ -146,7 +154,7 @@ describe("the one-time move", () => {
 		expect(plan.findIndex((p) => p.id.startsWith("sub-"))).toBeLessThan(plan.findIndex((p) => p.id === "inf"));
 	});
 
-	it("a linked worktree's paths belong to its main repository", () => {
+	it.skipIf(LEGACY_POSIX)("a linked worktree's paths belong to its main repository", () => {
 		const root = fresh();
 		const home = join(root, "kiso-home");
 		const main = repo(root, "main");
@@ -157,7 +165,7 @@ describe("the one-time move", () => {
 		expect(planMigration(home, { userHome: home })[0]).toMatchObject({ reason: "inferred", workspace: main, evidence: { mentions: 3, total: 3 } });
 	});
 
-	it("moves trace, sidecar and log into the folder; a re-run finds only the open session; nothing is deleted", () => {
+	it.skipIf(LEGACY_POSIX)("moves trace, sidecar and log into the folder; a re-run finds only the open session; nothing is deleted", () => {
 		const { home, alpha, beta } = world();
 		const result = runMigration(home, planMigration(home, { userHome: home }))!;
 		expect(result.moved).toBe(8);

@@ -24,7 +24,7 @@ import { appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, readdirSync
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import type { SearchReply, SearchRequest } from "./search-worker.js";
-import { killTree, processStartTime, RotatingOutput, startCommand } from "./process.js";
+import { killTree, NO_BASH, processStartTime, RotatingOutput, startCommand } from "./process.js";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -379,6 +379,9 @@ async function inodeReadPolicy(root: string, full: string): Promise<string | nul
 	const st = statSync(full);
 	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
 	if (st.nlink <= 1) return null;
+	// Windows: no find can list a file's links (find there is the system's
+	// text search) — refused without a scan, and the refusal says why
+	if (process.platform === "win32") return `file has ${st.nlink} hard links, and on Windows kiso cannot check where they all are — refusing to read (${full})`;
 	const key = `${st.dev}:${st.ino}`;
 	const cached = inodeVerdict.get(key);
 	if (cached !== undefined) return cached;
@@ -1221,9 +1224,15 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// against the first one's output. Still all or nothing: nothing is
 				// written unless every hunk resolves, and each must match exactly
 				// once in the text it meets (ACI-2).
-				let edited = text;
+				// Windows P3: a uniformly CRLF file is matched on its LF form and
+				// written back CRLF — the model's search text uses LF, and an edit
+				// never changes the file's endings. A file mixing the two keeps
+				// exact matching: normalizing it would rewrite untouched lines.
+				const crlf = text.includes("\r\n") && !/(^|[^\r])\n/.test(text);
+				const lf = (t: string): string => (crlf ? t.replace(/\r\n/g, "\n") : t);
+				let edited = lf(text);
 				for (let i = 0; i < hunks.length; i += 1) {
-					const h = hunks[i]!;
+					const h = { search: lf(hunks[i]!.search), replace: lf(hunks[i]!.replace) };
 					const { count, offsets } = occurrencesOf(edited, h.search);
 					const which = hunks.length === 1 && edits === undefined ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, after ${i === 1 ? "hunk 1" : `hunks 1–${i}`} applied)`;
 					if (count === 0) {
@@ -1255,7 +1264,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// E group: safe replacement — never rewrite a shared external inode via a hard link.
 				// round 8: the edited file keeps its mode.
 				preservedMode = statSync(full).mode & 0o7777;
-				writeFileSync(tmp, edited, "utf8");
+				// ONE buffer is written and hashed: the revision returned is the
+				// file's on disk, CRLF or not (the review's finding)
+				const bytesOut = Buffer.from(crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
+				writeFileSync(tmp, bytesOut);
 				chmodSync(tmp, preservedMode);
 				// WR-1A ③: revalidate against the citation right before the
 				// replacement commits.
@@ -1270,7 +1282,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					// WR-1A ①: post-effect — fatal, the rename already landed.
 					return postEffectEscape("edit", path);
 				}
-				return { content: `edited ${path}\n[${contentRevision(Buffer.from(edited, "utf8"))}]`, isError: false };
+				return { content: `edited ${path}\n[${contentRevision(bytesOut)}]`, isError: false };
 			} catch (err) {
 				// round 8: a failed edit never leaves a temp file behind.
 				try {
@@ -1350,11 +1362,13 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 	// ADR-0058 (3b): the task-aware contract exists only where tasks are
 	// wired; a host without them keeps today's schema byte for byte.
 	const withTasks = opts.tasks !== undefined;
+	// Windows P1: commands run through Git Bash there, /bin/sh elsewhere
+	const sh = process.platform === "win32" ? "bash" : "/bin/sh";
 	return defineTool<ShellInput>({
 		name: "shell",
 		description: withTasks
-			? "Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. A command still running after foregroundMs is never killed: it continues as a background task, the result gives its id and output path, and you are notified when it ends. Fails loudly on a non-zero exit."
-			: "Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
+			? `Run a shell command through ${sh} with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. A command still running after foregroundMs is never killed: it continues as a background task, the result gives its id and output path, and you are notified when it ends. Fails loudly on a non-zero exit.`
+			: `Run a shell command through ${sh} with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.`,
 		parameters: withTasks
 			? {
 					type: "object",
@@ -1408,7 +1422,15 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
 				// not just the outer shell (Area 4). cwd is the workspace.
-				const child = startCommand(command, { cwd: opts.workspaceRoot, env });
+				let child: ReturnType<typeof startCommand>;
+				try {
+					child = startCommand(command, { cwd: opts.workspaceRoot, env });
+				} catch (err) {
+					// win32 with no usable bash: an answer the model can act on
+					if ((err as { code?: string }).code !== NO_BASH) throw err;
+					resolvePromise({ content: `shell failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" });
+					return;
+				}
 				let stdout = "";
 				let stderr = "";
 				let stdoutDropped = 0;

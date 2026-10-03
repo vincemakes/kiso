@@ -11,6 +11,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isKisoEvent, projectMessages, type Event } from "@vincemakes/kiso-core";
 import { deriveRecoveryPlan } from "../src/recovery-plan.js";
@@ -73,7 +74,7 @@ function openScope(events: readonly Event[]): Event[] {
 }
 
 function loadEvents(file: string): Event[] {
-	const lines = readFileSync(join(FIXTURE_DIR.pathname, file), "utf8").split("\n").filter(Boolean);
+	const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), file), "utf8").split("\n").filter(Boolean);
 	return lines.map((line) => JSON.parse(line).event as Event);
 }
 
@@ -92,12 +93,12 @@ describe("R-H 0.1.49 — the generation gate (R4a: real logs, every promised gen
 	}
 
 	it("the fixture table equals the files on disk — an orphan fixture is a drift red", () => {
-		const onDisk = readdirSync(FIXTURE_DIR.pathname).filter((f) => f.endsWith(".jsonl")).sort();
+		const onDisk = readdirSync(fileURLToPath(FIXTURE_DIR)).filter((f) => f.endsWith(".jsonl")).sort();
 		expect(onDisk).toEqual([...CORPUS].sort());
 	});
 
 	it("every fixture has a PROVENANCE.md row and every row names a fixture", () => {
-		const provenance = readFileSync(join(FIXTURE_DIR.pathname, "PROVENANCE.md"), "utf8");
+		const provenance = readFileSync(join(fileURLToPath(FIXTURE_DIR), "PROVENANCE.md"), "utf8");
 		for (const f of CORPUS) expect(provenance).toContain(`| \`${f}\``);
 		// Order-independent: the manifest's row order is not the contract's
 		// table order — membership is.

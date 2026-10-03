@@ -1,41 +1,79 @@
 /**
  * How a command starts, how a process tree dies, and a process's start
  * time — the one place the shell tool and the task runner (ADR-0058) both
- * stand on. The Windows line adds its win32 branches here, behind the same
- * contracts; everything below is the POSIX path.
+ * stand on. The win32 branches sit behind the same contracts: kiso's shell
+ * commands use POSIX shell syntax, and on Windows they run through Git
+ * Bash, so the shell safety checks keep reading the language that runs.
  */
 
 import { type ChildProcess, execFileSync, spawn, type StdioOptions } from "node:child_process";
-import { closeSync, openSync, renameSync, writeSync } from "node:fs";
+import { closeSync, existsSync, openSync, renameSync, writeSync } from "node:fs";
+import { win32 } from "node:path";
 
 /** Children whose output has closed — the shell tool's `exited`, kept here
  *  so `killTree` reads the same moment the tool always did. */
 const closed = new WeakSet<ChildProcess>();
 
+/** The code on the error `startCommand` throws when win32 has no usable bash. */
+export const NO_BASH = "KISO_NO_BASH";
+
 /**
  * Start `command` through the shell. `detached`: the command gets its OWN
  * process group, so a stop can kill the WHOLE TREE (children included), not
- * just the outer shell (Area 4).
+ * just the outer shell (Area 4). On win32: `bash -c` with no shell of
+ * Node's own and no process group (`killTree` walks the tree by parent);
+ * no usable bash throws an error whose `code` is `NO_BASH`.
  */
 export function startCommand(
 	command: string,
 	opts: { readonly cwd: string; readonly env: NodeJS.ProcessEnv; readonly stdio?: StdioOptions },
 ): ChildProcess {
-	const child = spawn(command, {
-		shell: true,
-		detached: true,
-		cwd: opts.cwd,
-		stdio: opts.stdio ?? ["ignore", "pipe", "pipe"],
-		env: opts.env,
-	});
+	const stdio = opts.stdio ?? ["ignore", "pipe", "pipe"];
+	const child =
+		process.platform === "win32"
+			? spawn(resolveBash(process.env), ["-c", command], { shell: false, windowsHide: true, cwd: opts.cwd, stdio, env: opts.env })
+			: spawn(command, { shell: true, detached: true, cwd: opts.cwd, stdio, env: opts.env });
 	child.once("close", () => closed.add(child));
 	return child;
 }
 
 /**
+ * The bash a command runs through on win32: `KISO_BASH` (it must name a
+ * bash — never a door to PowerShell or cmd — and must exist: no silent
+ * fallback), then Git for Windows in Program Files and its x86 twin, then
+ * `bash.exe` on PATH, skipping the legacy WSL launcher in System32.
+ */
+function resolveBash(env: NodeJS.ProcessEnv): string {
+	const fail = (message: string): never => {
+		throw Object.assign(new Error(message), { code: NO_BASH });
+	};
+	const override = env.KISO_BASH;
+	if (override !== undefined && override !== "") {
+		if (!/^bash(\.exe)?$/i.test(win32.basename(override))) {
+			fail(`KISO_BASH must name a bash executable (bash.exe), not ${win32.basename(override)}: kiso's shell commands are POSIX shell`);
+		}
+		if (!existsSync(override)) fail(`KISO_BASH is set to ${override}, which does not exist`);
+		return override;
+	}
+	for (const root of [env.ProgramFiles ?? "C:\\Program Files", env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)"]) {
+		const candidate = win32.join(root, "Git", "bin", "bash.exe");
+		if (existsSync(candidate)) return candidate;
+	}
+	const system32 = win32.join(env.SystemRoot ?? "C:\\Windows", "System32").toLowerCase();
+	for (const dir of (env.PATH ?? "").split(win32.delimiter)) {
+		if (dir === "" || win32.join(dir, ".").toLowerCase() === system32) continue;
+		const candidate = win32.join(dir, "bash.exe");
+		if (existsSync(candidate)) return candidate;
+	}
+	return fail("no bash found — kiso runs shell commands through Git Bash on Windows: install Git for Windows, or set KISO_BASH to the path of bash.exe");
+}
+
+/**
  * Start `file` with exactly `args` — no shell, so nothing is split, quoted
  * or expanded (ADR-0058 3d: a child kiso is launched this way). Its own
- * process group, like `startCommand`.
+ * process group, like `startCommand`. On win32 it stays detached (a
+ * background child outlives its parent) and opens no console window; it
+ * never goes through bash or cmd.exe.
  */
 export function startExec(
 	file: string,
@@ -45,6 +83,7 @@ export function startExec(
 	const child = spawn(file, [...args], {
 		shell: false,
 		detached: true,
+		...(process.platform === "win32" ? { windowsHide: true } : {}),
 		cwd: opts.cwd,
 		stdio: opts.stdio ?? ["ignore", "pipe", "pipe"],
 		env: opts.env,
@@ -73,6 +112,7 @@ export function startExec(
  * its parent exits is still found.
  */
 export function killTree(child: ChildProcess, opts: { readonly graceMs?: number } = {}): Promise<{ unconfirmed: number[] }> {
+	if (process.platform === "win32") return killTreeWin32(child);
 	const grace = opts.graceMs ?? 0;
 	const pid = child.pid;
 	if (grace <= 0 || pid === undefined || pid <= 0 || closed.has(child) || child.exitCode !== null || child.signalCode !== null) {
@@ -184,6 +224,25 @@ function sweep(child: ChildProcess, seen: ReadonlySet<number>): Promise<{ unconf
 }
 
 /**
+ * win32: no process groups, no SIGSTOP, and no TERM a console tree hears —
+ * so no grace: `taskkill /T /F` walks the tree from the root by parent and
+ * forces it. The root is `unconfirmed` when taskkill cannot start, exits
+ * non-zero (some process in the tree survived it), or the root is still
+ * alive afterwards.
+ */
+function killTreeWin32(child: ChildProcess): Promise<{ unconfirmed: number[] }> {
+	const pid = child.pid;
+	if (pid === undefined || pid <= 0) return Promise.resolve({ unconfirmed: [] });
+	let killed = true;
+	try {
+		execFileSync("taskkill", ["/T", "/F", "/PID", String(pid)], { stdio: "ignore", windowsHide: true });
+	} catch {
+		killed = false;
+	}
+	return waitAllDead([pid]).then((alive) => ({ unconfirmed: killed && alive.length === 0 ? [] : [pid] }));
+}
+
+/**
  * All live pids whose ancestor chain includes `pid`, from the pid table
  * (round 8: `ps -axo pid=,ppid=` — the ONLY way to see a setsid()-escaped
  * process, which is in its own group and invisible to a group kill).
@@ -248,10 +307,25 @@ function waitAllDead(pids: readonly number[]): Promise<number[]> {
  * ADR-0058 §6 — a process's identity is its pid AND the time the OS started
  * it: after a runner dies its pid can be handed to an unrelated process, and
  * a live pid alone would then "prove" a task is running. `ps -o lstart=`
- * gives the start time on macOS and Linux alike. "Cannot ask" is `unknown`,
- * never `gone`: a failed query is not evidence of death.
+ * gives the start time on macOS and Linux alike; on win32 a CIM query does,
+ * and says `gone` in so many words. "Cannot ask" is `unknown`, never
+ * `gone`: a failed query is not evidence of death.
  */
 export function processStartTime(pid: number): { kind: "running"; startedAt: string } | { kind: "gone" } | { kind: "unknown" } {
+	if (process.platform === "win32") {
+		const query = `$p = Get-CimInstance Win32_Process -Filter 'ProcessId=${pid}' -ErrorAction Stop; if ($p) { $p.CreationDate.ToUniversalTime().ToString('o') } else { 'gone' }`;
+		try {
+			const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", query], {
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+				windowsHide: true,
+			}).trim();
+			if (out === "gone") return { kind: "gone" };
+			return /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(out) ? { kind: "running", startedAt: out } : { kind: "unknown" };
+		} catch {
+			return { kind: "unknown" };
+		}
+	}
 	try {
 		const startedAt = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 		return startedAt === "" ? { kind: "gone" } : { kind: "running", startedAt };

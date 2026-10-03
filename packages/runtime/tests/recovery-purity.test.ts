@@ -13,6 +13,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import type { Event } from "@vincemakes/kiso-core";
 import { deriveRecoveryPlan } from "../src/recovery-plan.js";
@@ -42,11 +43,11 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 function loadEvents(file: string): Event[] {
-	const lines = readFileSync(join(FIXTURE_DIR.pathname, file), "utf8").split("\n").filter(Boolean);
+	const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), file), "utf8").split("\n").filter(Boolean);
 	return lines.map((line) => JSON.parse(line).event as Event);
 }
 
-const CORPUS_FILES = () => readdirSync(FIXTURE_DIR.pathname).filter((f) => f.endsWith(".jsonl")).sort();
+const CORPUS_FILES = () => readdirSync(fileURLToPath(FIXTURE_DIR)).filter((f) => f.endsWith(".jsonl")).sort();
 
 describe("R-H 0.1.49 — the derivation purity gate (R7: derivation never reads the trace)", () => {
 	it("probe 1: trace data present and byte-different → the identical action", () => {
@@ -80,7 +81,7 @@ describe("R-H 0.1.49 — the derivation purity gate (R7: derivation never reads 
 	it("probe 3: lineage is absent from the session surface — no parent* fields in the corpus", () => {
 		const LINEAGE_KEYS = ["parentSessionId", "parentRunId", "parentInvocationSeq"];
 		for (const f of CORPUS_FILES()) {
-			const lines = readFileSync(join(FIXTURE_DIR.pathname, f), "utf8").split("\n").filter(Boolean);
+			const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), f), "utf8").split("\n").filter(Boolean);
 			for (const line of lines) {
 				const event = JSON.parse(line).event as Record<string, unknown>;
 				for (const key of LINEAGE_KEYS) expect(key in event).toBe(false);

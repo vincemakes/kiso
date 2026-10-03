@@ -195,6 +195,26 @@
  ],
  "exempt": [
   {
+   "file": "apps/cli/tests/windows-launch.test.ts",
+   "reason": "spawns nothing. It pins how the small spawns start (cmd.exe for a shim, rundll32 for a URL) and drives the external editor with node:child_process mocked (vi.mock: spawnSync only records its arguments). The classifier follows the import of ../src/external-editor.js, which spawns when it runs for real. Verified: the one child_process entry point it reaches is mocked; no pty helper."
+  },
+  {
+   "file": "packages/tools-node/tests/windows-hardlink.test.ts",
+   "reason": "spawns nothing. Its cases run with process.platform set to win32, where the hard-link guard refuses without a scan, or read a single-link file, which needs none. The classifier follows the import of ../src/index.js, whose POSIX guard runs find. Verified: no child_process, no spawn, no pty helper in the file."
+  },
+  {
+   "file": "packages/tools-node/tests/crlf-edit.test.ts",
+   "reason": "spawns nothing. It drives edit_file on files in a temp directory; the classifier follows the import of ../src/index.js, whose shell tool spawns when it runs — this file never calls it. Verified: no child_process, no spawn, no pty helper in the file."
+  },
+  {
+   "file": "extensions/subagent/tests/subagent-win32.test.ts",
+   "reason": "spawns nothing. It exercises the subagent's win32 branch, and pins its copy of the bash rule to the process module, on every OS by setting process.platform per case and replacing node:child_process with a scripted fake (vi.mock): spawn and execFileSync only record their arguments and return canned answers, and process.kill is a spy. The classifier follows the imports of the subagent bundle and ../src/process.js, which spawn when they run for real. Verified: every child_process entry point they use is mocked; no pty helper."
+  },
+  {
+   "file": "packages/tools-node/tests/process-win32.test.ts",
+   "reason": "spawns nothing. It exercises the process module's win32 branches on every OS by setting process.platform per case and replacing node:child_process with a scripted fake (vi.mock): spawn, execFileSync, spawnSync and execFile only record their arguments and return canned answers, and process.kill is a spy. The classifier follows the import of ../src/process.js, which spawns when it runs for real. Verified: every child_process entry point is mocked; no pty helper."
+  },
+  {
    "file": "packages/tui/tests/dc48-invariant-fallback.test.ts",
    "reason": "spawns nothing and drives the compositor in process. The classifier reads SOURCE TEXT, and this file's comments name isolated-cli.mjs to say where KISO_INVARIANTS=throw is set for PTY children — prose about a helper, not an import of one. Verified: no child_process, no spawn, no pty helper."
   },

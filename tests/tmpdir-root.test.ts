@@ -15,7 +15,7 @@ describe("the per-run TMPDIR root (unit pool)", () => {
 	test("os.tmpdir() is this run's own root, and mkdtemp lands inside it", () => {
 		const root = tmpdir();
 		expect(basename(root).startsWith(ROOT_PREFIX)).toBe(true);
-		expect(process.env.TMPDIR).toBe(root);
+		expect(process.platform === "win32" ? process.env.TEMP : process.env.TMPDIR).toBe(root);
 		const d = mkdtempSync(join(tmpdir(), "kiso-tmpdir-probe-"));
 		expect(dirname(d)).toBe(root);
 		expect(existsSync(d)).toBe(true);

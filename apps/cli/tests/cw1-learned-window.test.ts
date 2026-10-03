@@ -6,6 +6,9 @@ import { contextWindowTokens, knownContextWindow, statedContextWindow, windowLea
 import { learnedKey, learnedWindowFor, recordLearnedWindow, resetLearnedWindows, useLearnedWindows } from "../src/learned-windows.js";
 import { setAgentModel, setConfigModels, setConfiguredWindow } from "../src/state.js";
 
+/** Mode bits are POSIX: Windows guards these files with ACLs, and Node reports 0666 there. */
+const POSIX_MODES = process.platform !== "win32";
+
 /**
  * CW-1 batch 2 — the CLI half: a refusal's cap is kept in
  * `<KISO_HOME>/learned-windows.json` and read first in the window chain,
@@ -38,7 +41,7 @@ describe("the file keeps a refusal's cap, and only ever lowers it", () => {
 	it("a new key is kept, privately; a larger figure changes nothing; a smaller one lowers it", () => {
 		useLearnedWindows(file);
 		expect(recordLearnedWindow("deepseek-v4.1-flash", FORWARDER, 1_048_576, DAY)).toBe(true);
-		expect(statSync(file).mode & 0o777).toBe(0o600);
+		if (POSIX_MODES) expect(statSync(file).mode & 0o777).toBe(0o600);
 		expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ [learnedKey("deepseek-v4.1-flash", FORWARDER)]: { tokens: 1_048_576, observedAt: "2026-09-23" } });
 		expect(recordLearnedWindow("deepseek-v4.1-flash", FORWARDER, 2_000_000, DAY)).toBe(false);
 		expect(learnedWindowFor("deepseek-v4.1-flash", FORWARDER)?.tokens).toBe(1_048_576);

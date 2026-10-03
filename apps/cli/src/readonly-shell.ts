@@ -33,12 +33,12 @@
 
 import { statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, relative } from "node:path";
+import { join } from "node:path";
 import type { PolicyVerdict } from "@vincemakes/kiso-core";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { isCredentialName, isCredentialPath } from "@vincemakes/kiso-tools-node";
 import { getMode, type Mode } from "./mode.js";
-import { HOME_SUBTREES, parseShell, realCase, resolveShellPath, type Redirect, type SimpleCommand } from "./shell-words.js";
+import { homeSubtrees, hostDialect, parseShell, realCase, resolveShellPath, type Redirect, type SimpleCommand } from "./shell-words.js";
 
 export type ReadOnlyVerdict = { readonly allow: true } | { readonly allow: false; readonly why: string };
 
@@ -61,14 +61,15 @@ interface Ctx {
 function scope(ctx: Ctx, word: string): string | null {
 	if (word === "-") return null; // stdin
 	for (const cwd of ctx.cwds) {
-		const { canonical, inside } = resolveShellPath(ctx.root, cwd, word);
+		const { canonical, inside, opaque } = resolveShellPath(ctx.root, cwd, word);
+		if (opaque !== undefined) return `${word} is ${opaque}`;
 		if (!inside) return `${word} is outside the workspace`;
 		// B4: under a protected directory NOTHING is read or listed unasked —
 		// kiso's own home, and ~/.ssh ~/.config ~/.aws ~/.gnupg ~/.kiso when
 		// the workspace is the home directory. Over-asking is an ask.
 		for (const p of ctx.protectedRoots) {
-			const rel = relative(p, canonical);
-			if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return `${word} is inside a protected directory (${p})`;
+			const rel = hostDialect().path.relative(p, canonical);
+			if (rel === "" || (!rel.startsWith("..") && !hostDialect().path.isAbsolute(rel))) return `${word} is inside a protected directory (${p})`;
 		}
 	}
 	return null;
@@ -78,7 +79,7 @@ function scope(ctx: Ctx, word: string): string | null {
  *  the file tools ask ONE rule — names (`isCredentialName`) and the
  *  directory-scoped paths (`isCredentialPath`) — on the canonical path. */
 function shellCredential(canonical: string): boolean {
-	return isCredentialName(basename(canonical).toLowerCase()) || isCredentialPath(canonical);
+	return isCredentialName(hostDialect().path.basename(canonical).toLowerCase()) || isCredentialPath(canonical);
 }
 
 function content(ctx: Ctx, word: string): string | null {
@@ -87,10 +88,10 @@ function content(ctx: Ctx, word: string): string | null {
 	if (word === "-") return null;
 	// B2: the disk is case-insensitive and the names are not — `.ENV` and
 	// `ID_RSA` are `.env` and `id_rsa` to the file system, so to the rule
-	if (isCredentialName(basename(word).toLowerCase())) return `${word} is a credential file`;
+	if (isCredentialName(hostDialect().path.basename(word).toLowerCase())) return `${word} is a credential file`;
 	for (const cwd of ctx.cwds) {
 		const { canonical } = resolveShellPath(ctx.root, cwd, word);
-		if (isCredentialName(basename(canonical).toLowerCase()) || shellCredential(canonical)) return `${word} leads to a credential file`;
+		if (isCredentialName(hostDialect().path.basename(canonical).toLowerCase()) || shellCredential(canonical)) return `${word} leads to a credential file`;
 	}
 	return null;
 }
@@ -638,7 +639,7 @@ export function readOnlyShellExtension(roots: () => { readonly workspaceRoot: st
 					const command = call.input.command;
 					if (typeof command !== "string") return ABSTAIN;
 					const { workspaceRoot, excludeRoots } = roots();
-					const protectedRoots = [...excludeRoots, ...HOME_SUBTREES.map((s) => join(homedir(), s))];
+					const protectedRoots = [...excludeRoots, ...homeSubtrees().map((s) => join(homedir(), s))];
 					return classifyReadOnly(command, workspaceRoot, protectedRoots).allow ? { action: "allow" } : ABSTAIN;
 				},
 			},

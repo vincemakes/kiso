@@ -18,6 +18,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionStore } from "../src/index.js";
 
+/** Mode bits are POSIX: Windows guards these files with ACLs, and Node reports 0666 there. */
+const POSIX_MODES = process.platform !== "win32";
+
 const modeOf = (p: string): string => (statSync(p).mode & 0o777).toString(8);
 
 let saved: number;
@@ -39,7 +42,7 @@ describe("R6 — private modes on a fresh home", () => {
 		const again = new SessionStore(root);
 		await again.append("s1", "r2", { seq: 1, type: "user_input", content: "second" } as never);
 		again.closeAll();
-		expect(modeOf(join(root, "s1.jsonl")), "kiso does not reverse a deliberate choice").toBe("644");
+		if (POSIX_MODES) expect(modeOf(join(root, "s1.jsonl")), "kiso does not reverse a deliberate choice").toBe("644");
 	});
 
 	it("the sessions directory is 0700 and a session log is 0600", async () => {
@@ -47,7 +50,7 @@ describe("R6 — private modes on a fresh home", () => {
 		const store = new SessionStore(root);
 		await store.append("s1", "r1", { seq: 0, type: "user_input", content: "private words" } as never);
 		store.closeAll();
-		expect(modeOf(root), "the directory does not list to the world").toBe("700");
-		expect(modeOf(join(root, "s1.jsonl")), "nor does the transcript read to it").toBe("600");
+		if (POSIX_MODES) expect(modeOf(root), "the directory does not list to the world").toBe("700");
+		if (POSIX_MODES) expect(modeOf(join(root, "s1.jsonl")), "nor does the transcript read to it").toBe("600");
 	});
 });
