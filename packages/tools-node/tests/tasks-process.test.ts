@@ -65,6 +65,19 @@ describe("ADR-0058 — a task outlives its caller and ends with the truth", () =
 		manager.close();
 	});
 
+	it("an argv launch (3d): the runner starts the file with exactly its arguments — no shell splits or expands them", async () => {
+		const { root, cwd, manager } = setup();
+		const args = ["-e", "process.stdout.write(JSON.stringify(process.argv.slice(1)))", "a b", '"quoted"', "$HOME", "it's; echo x"];
+		const t = await manager.start({ command: "node: print argv", cwd, exec: (dir) => ({ file: process.execPath, args: [...args, dir] }) });
+		const done = await until(() => manager.get(t.id)!, (i) => i.state.kind === "ended");
+		expect(done.state).toMatchObject({ kind: "ended", exitCode: 0 });
+		expect(JSON.parse(readFileSync(t.outputPath, "utf8"))).toEqual(["a b", '"quoted"', "$HOME", "it's; echo x", join(root, t.id)]);
+		const planned = JSON.parse(readFileSync(join(root, t.id, "journal.jsonl"), "utf8").split("\n")[0]!) as { command: string; launch: unknown };
+		expect(planned.command).toBe("node: print argv"); // the label
+		expect(planned.launch).toEqual({ kind: "exec", file: process.execPath, args: [...args, join(root, t.id)] });
+		manager.close();
+	});
+
 	it("ids are t1, t2, … and survive a new manager on the same directory", async () => {
 		const { root, cwd, manager } = setup();
 		await manager.start({ command: "true", cwd });

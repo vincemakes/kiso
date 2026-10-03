@@ -430,6 +430,14 @@ export function setSessionStore(value: { load(id: string): readonly StoreRecord[
 /** The folder createCodingAgent built the store on — written there and by
  *  the resume picker's folder switch, read by the listings. */
 export let activeStoreDir = "";
+
+/** ADR-0058 3d (D6): a background child's turn budget (`--max-turns`, with
+ *  `--task-file` only) — the agent's maxTurns. Unset everywhere else: the
+ *  interactive door has no turn limit (R3e). */
+export let childTurnBudget: number | undefined;
+export function setChildTurnBudget(n: number | undefined): void {
+	childTurnBudget = n;
+}
 export function setActiveStoreDir(value: string): void {
 	activeStoreDir = value;
 }

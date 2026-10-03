@@ -20,9 +20,20 @@
  *
  * The summary snapshot is what the MODEL was told, never the live journal:
  * a compaction must not reveal a transition that has not been delivered.
+ *
+ * Background children (ADR-0058 3d) arrive as a GROUP: the agent tasks
+ * started by the calls of one model turn. The group closes once that turn
+ * has ended and every call in it has its result — before that, a fast
+ * child's end says nothing about the group. A closed group whose members
+ * have all ended is delivered ONCE: every member's line, then excerpts of
+ * the answers (result.md, which the child wrote) within 4 KiB each and
+ * 16 KiB together; members already delivered are named as reported, and
+ * only the rest are receipted. A failure goes into a live run at once and
+ * never wakes on its own; idle, it waits for its group.
  */
 
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { isRuntimeInput, type Event, type TaskDeliveryItem, type UserInputVia } from "@vincemakes/kiso-core";
 import { NOTICE_FOOTER as FOOTER, type Run, type TaskNotice } from "../run.js";
 import type { TaskInfo, TaskManager, TaskTransition } from "./manager.js";
@@ -54,6 +65,10 @@ interface Pending {
 
 const key = (i: TaskDeliveryItem): string => `${i.taskId}:${i.transition}`;
 
+/** ADR-0058 3d (D3): a child's excerpt, and a group's excerpts together. */
+const CHILD_EXCERPT_BYTES = 4_096;
+const GROUP_EXCERPT_BYTES = 16_384;
+
 export class TaskDelivery {
 	readonly #o: TaskDeliveryOptions;
 	readonly #receipts = new Set<string>();
@@ -65,6 +80,9 @@ export class TaskDelivery {
 	#pending: Pending[] = [];
 	/** a wake was asked for and its run has not begun: no second wake */
 	#waking = false;
+	/** ended agent tasks waiting for their group (restart: heard at startup) */
+	readonly #ended = new Map<string, { readonly restart: boolean }>();
+	#recheck: ReturnType<typeof setTimeout> | null = null;
 	readonly #unsubscribe: () => void;
 
 	constructor(options: TaskDeliveryOptions) {
@@ -77,15 +95,19 @@ export class TaskDelivery {
 		for (const task of this.#safeList()) {
 			const item = itemOf(task);
 			if (item === null || item.transition === "ready" || this.#receipts.has(key(item))) continue;
-			missed.push({ item, line: this.#line(task, item) });
+			if (task.agent !== undefined) this.#ended.set(task.id, { restart: true });
+			else missed.push({ item, line: this.#line(task, item) });
 		}
 		if (missed.length > 0) this.#pending.push({ notice: { lines: missed.map((m) => m.line), items: missed.map((m) => m.item) }, wake: false });
+		if (this.#ended.size > 0) this.#groups();
 	}
 
 	close(): void {
 		this.#unsubscribe();
 		if (this.#timer !== null) clearTimeout(this.#timer);
 		this.#timer = null;
+		if (this.#recheck !== null) clearTimeout(this.#recheck);
+		this.#recheck = null;
 	}
 
 	/** A run a person started: pending notices ride its first admission. */
@@ -102,6 +124,8 @@ export class TaskDelivery {
 			this.#pending.push({ notice, wake: notice.items.some((i) => this.#wakes(i)) });
 		}
 		this.#scan();
+		// its turns have all ended: a group held open by one may close
+		if (this.#ended.size > 0) this.#groups();
 		// never start a run from inside the settling one
 		setTimeout(() => this.#pump(), 0);
 	}
@@ -130,6 +154,7 @@ export class TaskDelivery {
 	#hear(task: TaskInfo, transition: TaskTransition): void {
 		const item = itemOf(task, transition);
 		if (item === null) return;
+		if (task.agent !== undefined && item.transition !== "ready") return this.#agentEnded(task, item);
 		const mode = this.#modeOf(task, item);
 		if (mode === "silent") return;
 		this.#buffer.push({ item, line: this.#line(task, item), mode });
@@ -161,9 +186,9 @@ export class TaskDelivery {
 		this.#o.onWake({ content, via: { kind: "tasks", items } });
 	}
 
-	#hand(run: Run, notice: TaskNotice): boolean {
+	#hand(run: Run, notice: TaskNotice, wake?: boolean): boolean {
 		if (!run.notify(notice)) {
-			this.#pending.push({ notice, wake: notice.items.some((i) => this.#wakes(i)) });
+			this.#pending.push({ notice, wake: wake ?? notice.items.some((i) => this.#wakes(i)) });
 			return false;
 		}
 		for (const i of notice.items) this.#inFlight.add(key(i));
@@ -197,7 +222,137 @@ export class TaskDelivery {
 		if (item.transition !== "exited" && item.transition !== "failed") return false;
 		const task = this.#o.manager.get(item.taskId);
 		if (task === undefined || task.executionId === undefined || task.profile === "service") return false;
+		// a child wakes only with its whole group (D2): never on its own
+		if (task.agent !== undefined && !this.#complete(this.#groupOf(task))) return false;
 		return !this.#startedInWakeRun(task.executionId);
+	}
+
+	/** ADR-0058 3d: an agent task has ended — a failure goes into a live run
+	 *  at once; every end waits for its group. */
+	#agentEnded(task: TaskInfo, item: TaskDeliveryItem): void {
+		if (this.#known(key(item)) || this.#ended.has(task.id)) return;
+		const run = this.#o.liveRun();
+		if (item.transition === "failed" && run !== undefined) this.#hand(run, { lines: [`${this.#agentTag(task, item)}${excerptOf(task, CHILD_EXCERPT_BYTES).text}`], items: [item] });
+		this.#ended.set(task.id, { restart: false });
+		this.#groups();
+	}
+
+	/** Deliver every closed group whose members have all ended; look again
+	 *  later while a group is still open. */
+	#groups(): void {
+		if (this.#recheck !== null) clearTimeout(this.#recheck);
+		this.#recheck = null;
+		this.#scan();
+		let open = false;
+		const seen = new Set<string>();
+		for (const id of [...this.#ended.keys()]) {
+			if (seen.has(id) || !this.#ended.has(id)) continue;
+			const task = this.#o.manager.get(id);
+			if (task === undefined) {
+				this.#ended.delete(id);
+				continue;
+			}
+			const group = this.#groupOf(task);
+			for (const m of group.members) seen.add(m);
+			if (!group.closed) open = true;
+			else if (this.#complete(group)) this.#deliverGroup(group.members);
+		}
+		if (open) {
+			this.#recheck = setTimeout(() => this.#groups(), this.#o.windowMs ?? 1_000);
+			(this.#recheck as { unref?: () => void }).unref?.();
+		}
+	}
+
+	/** The group an agent task belongs to — derived from the log, never
+	 *  stored: the model turn holding the call that started it. Closed once
+	 *  that turn has ended and every call in it has its result — or the run
+	 *  that held it has ended, when no more results can come. A call an
+	 *  abandoned attempt voided never runs and is not waited for. A task the
+	 *  log cannot place is a group of one. */
+	#groupOf(task: TaskInfo): { readonly closed: boolean; readonly members: readonly string[] } {
+		const alone = { closed: true, members: [task.id] };
+		if (task.executionId === undefined) return alone;
+		const events = this.#o.events();
+		const started = events.find((e): e is Event & { type: "tool_execution_started" } => e.type === "tool_execution_started" && e.executionId === task.executionId);
+		const at = started?.invocationSeq === undefined ? -1 : events.findIndex((e) => e.seq === started.invocationSeq);
+		if (at < 0) return alone;
+		const boundary = (e: Event): boolean => e.type === "stop" || e.type === "terminal";
+		let from = at;
+		while (from > 0 && !boundary(events[from - 1]!) && events[from - 1]!.type !== "user_input") from--;
+		let to = at;
+		while (to < events.length && !boundary(events[to]!)) to++;
+		const voided = events.filter((e): e is Event & { type: "model_output_abandoned" } => e.type === "model_output_abandoned").map((e) => [e.voidFromSeq, e.seq] as const);
+		const calls = new Set(events.slice(from, to).filter((e) => e.type === "tool_call_end" && !voided.some(([lo, hi]) => e.seq > lo && e.seq <= hi)).map((e) => e.seq));
+		const runEnded = events.slice(to).some((e) => e.type === "terminal");
+		const answered = new Set(events.filter((e): e is Event & { type: "tool_result" } => e.type === "tool_result").map((e) => e.invocationSeq));
+		const executions = new Set(events.filter((e): e is Event & { type: "tool_execution_started" } => e.type === "tool_execution_started" && e.invocationSeq !== undefined && calls.has(e.invocationSeq)).map((e) => e.executionId));
+		const members = this.#safeList()
+			.filter((t) => t.agent !== undefined && t.executionId !== undefined && executions.has(t.executionId))
+			.map((t) => t.id);
+		return { closed: to < events.length && (runEnded || [...calls].every((c) => answered.has(c))), members: members.includes(task.id) ? members : [...members, task.id] };
+	}
+
+	#complete(group: { readonly closed: boolean; readonly members: readonly string[] }): boolean {
+		return group.closed && group.members.every((id) => {
+			const kind = this.#o.manager.get(id)?.state.kind;
+			return kind === undefined || kind === "ended" || kind === "unknown" || kind === "not_run";
+		});
+	}
+
+	/** ONE notice for a complete group: every member's line, excerpts within
+	 *  the budget, receipts only for what was not delivered before. */
+	#deliverGroup(members: readonly string[]): void {
+		const restart = members.some((id) => this.#ended.get(id)?.restart === true);
+		for (const id of members) this.#ended.delete(id);
+		const tasks = members.map((id) => this.#o.manager.get(id)).filter((t): t is TaskInfo => t !== undefined);
+		const fresh: { task: TaskInfo; item: TaskDeliveryItem }[] = [];
+		const lines: string[] = [];
+		for (const task of tasks) {
+			const item = itemOf(task);
+			if (item === null) continue;
+			if (this.#receipts.has(key(item)) || this.#inFlight.has(key(item))) {
+				lines.push(`<kiso-task id="${task.id}" kind="agent" role="${task.agent?.role ?? ""}" status="${item.transition}" reported="earlier"/>`);
+				continue;
+			}
+			this.#unpend(key(item)); // held for the next run: it rides this notice instead
+			fresh.push({ task, item });
+		}
+		if (fresh.length === 0) return;
+		let budget = GROUP_EXCERPT_BYTES;
+		for (const { task, item } of fresh) {
+			const excerpt = excerptOf(task, Math.min(CHILD_EXCERPT_BYTES, budget));
+			budget -= excerpt.bytes;
+			lines.push(`${this.#agentTag(task, item)}${excerpt.text}`);
+		}
+		const items = fresh.map((f) => f.item);
+		const notice: TaskNotice = { lines, items };
+		const wake = !restart && items.some((i) => this.#wakes(i));
+		const run = this.#o.liveRun();
+		if (run !== undefined && this.#hand(run, notice, wake)) return;
+		if (run === undefined) this.#pending.push({ notice, wake });
+		this.#pump();
+	}
+
+	/** handed to a run, or held for one, or already in the log */
+	#known(k: string): boolean {
+		return this.#receipts.has(k) || this.#inFlight.has(k) || this.#pending.some((p) => p.notice.items.some((i) => key(i) === k));
+	}
+
+	/** A pending notice holding only `k` (a child's failure held for the
+	 *  next run) is dropped: its group's notice carries it now. */
+	#unpend(k: string): void {
+		this.#pending = this.#pending.filter((p) => !(p.notice.items.length === 1 && key(p.notice.items[0]!) === k));
+	}
+
+	#agentTag(task: TaskInfo, item: TaskDeliveryItem): string {
+		const attrs = [`id="${task.id}"`, `kind="agent"`, `role="${task.agent?.role ?? ""}"`, `status="${item.transition}"`];
+		const outcome = outcomeOf(task);
+		if (outcome !== undefined) attrs.push(`outcome="${outcome}"`);
+		if (task.agent !== undefined) attrs.push(`session="${task.agent.session}"`);
+		if (task.endedAt !== undefined) attrs.push(`duration="${duration(task.endedAt - task.startedAt)}"`);
+		const result = resultPath(task);
+		attrs.push(existsSync(result) ? `result="${result}"` : `output="${task.outputPath}"`);
+		return `<kiso-task ${attrs.join(" ")}/>`;
 	}
 
 	/** Lineage depth 1: the run that started the task began with a notice. */
@@ -250,6 +405,37 @@ function itemOf(task: TaskInfo, transition?: TaskTransition): TaskDeliveryItem |
 	if (s.kind === "unknown") return t("unknown");
 	if (s.kind === "not_run") return t("failed");
 	return null;
+}
+
+const resultPath = (task: TaskInfo): string => join(dirname(task.outputPath), "result.md");
+
+/** The child's outcome, as it wrote it beside its answer. */
+function outcomeOf(task: TaskInfo): string | undefined {
+	try {
+		const parsed = JSON.parse(readFileSync(join(dirname(task.outputPath), "result.json"), "utf8")) as { outcome?: unknown };
+		return typeof parsed.outcome === "string" ? parsed.outcome : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** A child's answer (result.md) cut to `bytes`, or — with no answer — the
+ *  tail of what it printed. `bytes` counts the excerpt, never the pointer. */
+function excerptOf(task: TaskInfo, bytes: number): { readonly text: string; readonly bytes: number } {
+	const path = resultPath(task);
+	let answer: string;
+	try {
+		answer = readFileSync(path, "utf8").trimEnd();
+	} catch {
+		const tail = bytes > 0 ? readTail(task, Math.min(bytes, 2_048)) : "";
+		return tail === "" ? { text: "", bytes: 0 } : { text: `\n${tail}`, bytes: Buffer.byteLength(tail) };
+	}
+	if (answer === "") return { text: "", bytes: 0 };
+	const size = Buffer.byteLength(answer);
+	if (size <= bytes) return { text: `\n${answer}`, bytes: size };
+	if (bytes <= 0) return { text: `\n[the whole answer: ${path}]`, bytes: 0 };
+	const cut = Buffer.from(answer).subarray(0, bytes).toString("utf8").replace(/\uFFFD+$/, "");
+	return { text: `\n${cut}\n… [truncated; the whole answer: ${path}]`, bytes: Buffer.byteLength(cut) };
 }
 
 function duration(ms: number): string {

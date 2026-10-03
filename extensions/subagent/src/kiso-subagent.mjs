@@ -16,11 +16,20 @@
  * finding #8: this extension holds NO persistent resources — children are
  * spawned per call and exit on their own, the role-policy temp dirs are
  * cleaned in runChild's finally — so NO dispose is needed, explicitly.
+ *
+ * ADR-0058 3d — background children: a host that passes its task manager
+ * (`tasks`) gets `delegate({ …, background: true })`. Each child is then an
+ * agent TASK — the same child kiso, launched by argv under the task runner,
+ * so it outlives this process — and the call returns at once; the host's
+ * delivery tells the model when the children have ended. Explorer and
+ * reviewer only (D1), the whole batch within the session's cap or nothing
+ * (D4), no timeoutMs (D5), and a turn budget instead of a deadline (D6).
+ * Without `tasks` the schema and behaviour are exactly the foreground's.
  */
 
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +38,13 @@ import { fileURLToPath } from "node:url";
 const TIMEOUT_MS = 10 * 60 * 1000;
 /** Max simultaneous children — the concurrency cap (mapLimited). */
 const CONCURRENCY = 4;
+/** ADR-0058 3d (D4): live background children per session, by default. */
+const BACKGROUND_MAX = 20;
+/** ADR-0058 3d (D6): a background child's model requests, by default — about
+ *  twice the longest real explorer measured (17); 3f tunes it. */
+const BACKGROUND_MAX_TURNS = 32;
+/** ADR-0058 3d (D1): the roles whose unattended contract is defined. */
+const BACKGROUND_ROLES = ["explorer", "reviewer"];
 
 const SIX_TOOLS = ["read_file", "list_dir", "search_text", "write_file", "edit_file", "shell"];
 const READ_ONLY = ["read_file", "list_dir", "search_text"];
@@ -41,7 +57,7 @@ const ROLES = ["explorer", "implementer", "reviewer", "tester"];
 // check and profile names are written into the schema when the extension
 // loads (the tool table is snapshotted per request — F7b — so this is the
 // table the model reads).
-const delegateParameters = (cfg) => ({
+const delegateParameters = (cfg, background) => ({
 	type: "object",
 	properties: {
 		tasks: {
@@ -80,24 +96,45 @@ const delegateParameters = (cfg) => ({
 				additionalProperties: false,
 			},
 		},
+		// ADR-0058 3d: present only when the host wired tasks — without them
+		// the schema is byte-for-byte the foreground one
+		...(background
+			? {
+					background: {
+						type: "boolean",
+						description:
+							"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+					},
+				}
+			: {}),
 	},
 	required: ["tasks"],
 	additionalProperties: false,
 });
 
-export default async function createSubagentExtension() {
+/**
+ * @param {{ tasks?: (sessionId: string | undefined) => any, backgroundMax?: number, backgroundMaxTurns?: number }} [host]
+ *   ADR-0058 3d: the host's per-session task manager (the runtime's
+ *   TaskManager satisfies it structurally — no dependency), the cap on live
+ *   background children per session, and a background child's turn budget.
+ */
+export default async function createSubagentExtension(host = {}) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
 	if (depth >= 1) return { name: "subagent", tools: [] }; // depth guard — no nesting
+	const tasksOf = typeof host.tasks === "function" ? host.tasks : undefined;
+	const background = tasksOf === undefined ? undefined : { tasksOf, max: host.backgroundMax ?? BACKGROUND_MAX, maxTurns: host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS, reserved: new Map() };
 	return {
 		name: "subagent",
 		tools: [
 			{
 				name: "delegate",
 				description: "run subagent tasks (explorer/implementer/reviewer/tester) in child kiso processes",
-				parameters: delegateParameters(delegationConfig()),
+				parameters: delegateParameters(delegationConfig(), background !== undefined),
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
 					if (tasks.length === 0) return { content: "delegate: no tasks", isError: true, errorKind: "precondition" };
+					const inBackground = (input ?? {}).background === true;
+					if (inBackground && background === undefined) return { content: "delegate: background is not available here — run the delegation in the foreground", isError: true, errorKind: "precondition" };
 					// 0.40.0: the parent's own folder (one per project), handed over
 					// by the CLI; a pinned KISO_SESSIONS_DIR, or the legacy folder,
 					// when no CLI said (a direct load)
@@ -130,6 +167,7 @@ export default async function createSubagentExtension() {
 						// applied" banner (loop.ts keys that banner on errorKind !== "precondition")
 						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true, errorKind: "precondition" };
 					}
+					if (inBackground) return startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir });
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({
 							childId: `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`,
@@ -161,6 +199,104 @@ export default async function createSubagentExtension() {
 			},
 		],
 	};
+}
+
+const refuse = (why) => ({ content: `delegate: refused — ${why}`, isError: true, errorKind: "precondition" });
+
+/**
+ * ADR-0058 3d — start the children as agent tasks and return at once.
+ *
+ * Everything up to the reservation is synchronous: the check that the
+ * whole batch fits (live agent tasks + slots reserved by calls still
+ * starting + this batch ≤ max) and the reservation are one step, so two
+ * calls can never both fit into the last slots (D4). Each child's inputs —
+ * its task file, role policy and manifest — are written and fsynced before
+ * its task is planned (the runner and the child need nothing a `finally`
+ * here could remove). The child is the same invocation a foreground child
+ * runs, launched by argv (no shell), with its turn budget and its result
+ * file beside its task (D6).
+ */
+async function startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir }) {
+	for (const task of tasks) {
+		if (!BACKGROUND_ROLES.includes(task.role)) return refuse(`background is not supported for the ${task.role} role in this release; run this delegation in the foreground`);
+		if (task.timeoutMs !== undefined) return refuse("timeoutMs applies to a foreground delegation; a background child has no wall-clock kill — task_stop stops one");
+	}
+	const manager = background.tasksOf(ctx.sessionId);
+	if (manager === undefined) return refuse("background is not available here — run the delegation in the foreground");
+	const key = ctx.sessionId ?? "";
+	const live = manager.list().filter((t) => t.agent !== undefined && t.state.kind !== "ended" && t.state.kind !== "not_run").length + (background.reserved.get(key) ?? 0);
+	if (live + tasks.length > background.max) {
+		return refuse(`${live} background children are running in this session and the cap is ${background.max}; this call asks for ${tasks.length}. Do not retry — wait for some to end, or stop one with task_stop`);
+	}
+	background.reserved.set(key, (background.reserved.get(key) ?? 0) + tasks.length);
+	let unstarted = tasks.length;
+	const release = (n) => background.reserved.set(key, Math.max(0, (background.reserved.get(key) ?? 0) - n));
+	const lines = [];
+	let failures = 0;
+	try {
+		for (let i = 0; i < tasks.length; i += 1) {
+			const task = tasks[i];
+			const childId = `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`;
+			try {
+				const inputs = writeChildInputs(manifestDir, childId, task, { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now() });
+				const started = await manager.start({
+					command: `${task.role}: ${task.task.split("\n")[0].slice(0, 80)}`,
+					cwd: process.cwd(),
+					env: childEnv(inputs.policyDir, sessionsDir),
+					...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
+					agent: { role: task.role, session: childId },
+					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, task.model), "--max-turns", String(background.maxTurns), "--result-file", join(dir, "result.md")] }),
+				});
+				lines.push(`${started.id} ${task.role} (session ${childId})`);
+			} catch (err) {
+				failures += 1;
+				lines.push(`task ${i + 1} (${task.role}) did not start: ${msg(err)}`);
+			}
+			unstarted -= 1;
+			release(1);
+		}
+	} finally {
+		release(unstarted);
+	}
+	const n = tasks.length - failures;
+	const content =
+		`started ${n} background ${n === 1 ? "child" : "children"}: ${lines.join(", ")}. ` +
+		"They read the workspace as it is while they run. You will be told when all of them have ended; task_stop stops one.";
+	return { content, isError: n === 0 };
+}
+
+/** The durable inputs of a background child: the task file (the fixed
+ *  UNRESOLVED trailer included), its role policy, its manifest — fsynced
+ *  with their directories before the task is planned. */
+function writeChildInputs(manifestDir, childId, task, manifest) {
+	const taskPath = join(manifestDir, `${childId}.task`);
+	const policyDir = join(manifestDir, `${childId}.policy`);
+	mkdirSync(policyDir, { recursive: true });
+	writeDurable(join(policyDir, "policy.mjs"), rolePolicyContent(task.role, undefined));
+	writeDurable(taskPath, `${task.task}\n\n${UNRESOLVED_INSTRUCTION}\n`);
+	writeDurable(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task: task.task, background: true, ...(task.model !== undefined ? { model: task.model } : {}) })}\n`);
+	fsyncPath(policyDir);
+	fsyncPath(manifestDir);
+	return { taskPath, policyDir };
+}
+
+function writeDurable(path, content) {
+	const fd = openSync(path, "w");
+	try {
+		writeSync(fd, content);
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+function fsyncPath(dir) {
+	const fd = openSync(dir, "r");
+	try {
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
 }
 
 /**
@@ -636,25 +772,31 @@ export function childArgs(bin, childId, taskPath, model) {
 	return [bin, ...(model !== undefined ? ["--model", model] : []), "chat", childId, "--task-file", taskPath];
 }
 
-function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, model, sessionsDir) {
+/** A child's environment — the parent's, plus the depth guard, its role
+ *  policy and the sessions folder (the foreground and background share it). */
+function childEnv(policyDir, sessionsDir) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
+	return {
+		...process.env,
+		KISO_SUBAGENT_DEPTH: String(depth + 1),
+		KISO_EXTENSIONS_DIR: policyDir,
+		// 0.40.0: the child writes its log beside its parent's — the
+		// parent reads it back from there — whatever cwd it runs in
+		KISO_SESSIONS_DIR: sessionsDir,
+		// Modes: a headless child has no human — the mode tiers'
+		// ask would stall it. Bypass is the neutral tier here; the
+		// role policy dir (allow/deny only — a child must never
+		// see an ask) stays the child's ONLY gate, exactly as
+		// before the mode tiers existed (deny>ask>allow honors its
+		// denials; the mode's all-allow never overrides them).
+		KISO_MODE: "bypass",
+	};
+}
+
+function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, model, sessionsDir) {
 	const child = spawn(process.execPath, childArgs(bin, childId, taskPath, model), {
 		cwd,
-		env: {
-			...process.env,
-			KISO_SUBAGENT_DEPTH: String(depth + 1),
-			KISO_EXTENSIONS_DIR: policyDir,
-			// 0.40.0: the child writes its log beside its parent's — the
-			// parent reads it back from there — whatever cwd it runs in
-			KISO_SESSIONS_DIR: sessionsDir,
-			// Modes: a headless child has no human — the mode tiers'
-			// ask would stall it. Bypass is the neutral tier here; the
-			// role policy dir (allow/deny only — a child must never
-			// see an ask) stays the child's ONLY gate, exactly as
-			// before the mode tiers existed (deny>ask>allow honors its
-			// denials; the mode's all-allow never overrides them).
-			KISO_MODE: "bypass",
-		},
+		env: childEnv(policyDir, sessionsDir),
 		detached: true,
 		stdio: ["pipe", "pipe", "inherit"],
 	});
