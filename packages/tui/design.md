@@ -904,13 +904,22 @@ on the hairline. With scrollback behind it, nothing else says where the
 surface begins. Off a known ground the row is one dim span, the same
 words.
 
-**8.2 A band is a WINDOW, not the whole list.** Five rows and a
-counter (the resume picker's own window is §8.11) — and the counter appears only when the list is actually cut,
-because over rows you can all see it says nothing they do not. Rows
-are a table: the name column padded to the longest entry in the WHOLE
-list so the descriptions do not shift as the window scrolls, and a
-long description CUT rather than folded, since a fold would break the
-height the window buys. The selected row — in every list that asks the
+**8.2 A band is a WINDOW, not the whole list.** Eight rows on a terminal
+30 rows or taller, five below — one rule for the command list, the files
+and the sessions (P2, owner, 2026-10-03). The band's name carries the
+count: `commands · 18`, and once something is typed `2 of 18 match`. A
+dim `↑` or `↓` in column 0 of the first or last row says the list goes on,
+and the window keeps the cursor one row inside its edges while more lies
+past them, so a marked row is never the selected one. One key row closes
+the band: the keys, and the selection's place in the list at the right
+margin (`3/18`); narrow, the keys give way from the first, and the
+counter stays. DECLARED REVERSAL of R8's counter that appeared only when
+the list was cut (P2): the key row is always there, so the counter rides
+it. Rows are a table: the name column padded to the longest entry in the
+WHOLE list so nothing shifts as the window scrolls or the person types,
+and a long description CUT by cells with an ellipsis rather than folded,
+since a fold would break the height the window buys. What the person
+typed is bold gold wherever it shows. The selected row — in every list that asks the
 person to pick: the approval, the question, `/model`, `/mode`, the
 commands, the files, the sessions — is a card's head in the colour that
 waits for the person: its `askEdge` cell in column 0 (a background, §1.5),
@@ -1219,6 +1228,44 @@ They open on the QUESTION:
   it`). A pipe prints both lines as it always did.
 
 ---
+
+**8.13 The command list and the file picker** (P2, owner, 2026-10-03,
+approved with two changes: the selected command keeps its gold `›`, and
+the list is not grouped). Both take the resume picker's shape (§8.2):
+
+```
+─── commands · 18 ──────────────────────────────────────────────────────
+  mode      switch the approval tier (default/accept-edits/plan/full-a…
+  dont-ask  never stop for you: what would ask is refused (on/off)
+▌›model     list model profiles; switch with /model <name|provider/mod…    selected
+  compact   summarize the older conversation to free context
+↓ think     show the last full thinking block
+  ↑↓ move · ⏎ completes · esc                                      3/18
+─── files · 3 of 11 match ──────────────────────────────────────────────
+▌ compositor.ts              packages/tui/src/                             selected
+  components.ts              packages/tui-cells/src/
+  compositor-kc3-at.test.ts  packages/tui/tests/
+  ↑↓ move · tab inserts · esc                                       1/3
+```
+
+- The commands: one list in the order the editor keeps (the built-ins,
+  then the skills that do not shadow one) — no groups. The filter is a
+  prefix, so the gold is the name's first letters. The selected row keeps
+  §8.2's gold `›` in column 1.
+- The files: the NAME, then the FOLDER as a dim column one gap after the
+  widest name in the whole list (measured in cells, so a wide name does
+  not break it), so a long list reads as a table and the folders line
+  up. DECLARED REVERSAL of R1.5 ⑧ (VD-9) in two parts: the em dash
+  between name and folder is gone, and a typed letter that lands in the
+  folder is drawn gold, because the person typed it — the folder's other
+  letters stay dim. Never at the far edge, which was VD-9's complaint.
+  The selected row carries no `›`: the files have no marker column.
+- A list cut at the 2,000-file horizon says so in the band's name: `files
+  · 3 of 2000 match · first 2000 only`.
+- Off a known ground the gold falls back to the warn tint, as the resume
+  picker's does, so a bold selected row still shows which letters matched.
+- Left out, and why: groups in the command list (owner), and a preview of
+  the file (the band is a picker, not a viewer).
 
 ## 9. The transcript viewer
 
