@@ -2,7 +2,7 @@
  * DT-1a — the delegation task contract, end to end on real child kiso
  * processes (faux provider, scripted tool calls).
  *
- * scope ⇒ no shell + normalized path checks (R2.1); the tester gets a
+ * scope ⇒ no shell + normalized path checks (R2.1); the verifier gets a
  * worktree (R2.2); acceptance names a configured check or a parent-held
  * evaluator — never a model-supplied command — and the PARENT runs it in
  * the worktree after a completed child (R2.3); the result file carries
@@ -77,11 +77,25 @@ describe("DT1a-F1/F2 (owner dogfood 2026-09-08): a refusal before any child is a
 		fauxEnv();
 		const scoped = (await delegateWith([{ role: "explorer", task: "look", scope: ["src/**"] }], home)) as { content: string; isError: boolean; errorKind?: string };
 		expect(scoped.isError).toBe(true);
-		expect(scoped.content).toContain("scope applies to implementer and tester tasks only");
+		expect(scoped.content).toContain("scope applies to implementer and verifier tasks only");
 		expect(scoped.errorKind).toBe("precondition");
 		const unknown = (await delegateWith([{ role: "implementer", task: "do", acceptance: { check: "nope" } }], home)) as { content: string; isError: boolean; errorKind?: string };
 		expect(unknown.isError).toBe(true);
 		expect(unknown.errorKind).toBe("precondition");
+	});
+
+	it("ADR-0032 Amendment 1: the role is verifier — tester is not in the schema, and a direct call is told it was renamed", async () => {
+		const { home } = repo();
+		fauxEnv();
+		const ext = await createSubagentExtension();
+		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
+		const role = (delegate.parameters as { properties: { tasks: { items: { properties: { role: { enum: string[] } } } } } }).properties.tasks.items.properties.role;
+		expect(role.enum).toEqual(["explorer", "implementer", "reviewer", "verifier"]);
+		expect(JSON.stringify(delegate.parameters)).not.toContain("tester");
+		expect(delegate.description).toBe("run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes");
+		const old = (await delegateWith([{ role: "tester", task: "run the tests" }], home)) as { content: string; isError: boolean; errorKind?: string };
+		expect(old).toMatchObject({ isError: true, errorKind: "precondition" });
+		expect(old.content).toContain('unknown role "tester" — it is called "verifier" since 0.46.0');
 	});
 
 	it("the delegate schema tells the model where scope and acceptance apply, and names the configured checks", async () => {
@@ -89,7 +103,7 @@ describe("DT1a-F1/F2 (owner dogfood 2026-09-08): a refusal before any child is a
 		const ext = await createSubagentExtension();
 		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
 		const props = (delegate.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties;
-		expect(props.scope!.description).toMatch(/implementer|tester/);
+		expect(props.scope!.description).toMatch(/implementer and verifier/);
 		expect(props.scope!.description).toMatch(/explorer|reviewer/);
 		expect(props.acceptance!.description).toContain("test");
 		expect(props.acceptance!.description).toContain("lint");
@@ -240,8 +254,8 @@ describe("DT-1a — the result file's honest fields", () => {
 	});
 });
 
-describe("DT-1a — the tester's worktree", () => {
-	it("a tester with `after` runs in the implementer's kept worktree; a tester without one gets a fresh worktree from HEAD; the section says the child saw HEAD", async () => {
+describe("DT-1a — the verifier's worktree", () => {
+	it("a verifier with `after` runs in a COPY of the implementer's kept worktree (ADR-0032 Amendment 1) — it sees the implementer's change, its own writes never reach the kept worktree, and the copy is removed; a verifier without `after` gets a fresh worktree from HEAD", async () => {
 		const { dir, home } = repo();
 		const script = join(dir, "faux.json");
 		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/impl.ts", content: "x\n", expectedRevision: "absent" }), finish("done")]), "utf8");
@@ -251,27 +265,34 @@ describe("DT-1a — the tester's worktree", () => {
 		expect(impl.isError, impl.content).toBe(false);
 		const implRes = (resultFiles(home) as { identity: { childId: string }; worktree: string; baseRev: string }[])[0]!;
 		expect(existsSync(join(implRes.worktree, "src", "impl.ts"))).toBe(true);
+		writeFileSync(script, JSON.stringify([call("r", "read_file", { path: "src/impl.ts" }), call("s", "write_file", { path: "src/scratch.ts", content: "probe\n", expectedRevision: "absent" }), finish("tested")]), "utf8");
+		const verifier = await delegateWith([{ role: "verifier", task: "run the tests", after: implRes.identity.childId }], home);
+		expect(verifier.isError, verifier.content).toBe(false);
+		type Res = { identity: { childId: string }; worktree: string; baseRev: string; after?: string };
+		const verifiers = (resultFiles(home) as Res[]).filter((x) => x.identity.childId.endsWith("-verifier"));
+		const afterRes = verifiers.find((x) => x.after === implRes.identity.childId)!;
+		expect(afterRes.worktree).not.toBe(implRes.worktree); // a copy, never the kept worktree itself
+		expect(afterRes.baseRev).toBe(implRes.baseRev);
+		expect(existsSync(afterRes.worktree)).toBe(false); // the copy is removed after the run
+		expect(existsSync(join(implRes.worktree, "src", "scratch.ts"))).toBe(false); // the kept worktree is untouched
+		expect(readFileSync(join(implRes.worktree, "src", "impl.ts"), "utf8")).toBe("x\n");
+		expect(verifier.content).toMatch(/child saw HEAD [0-9a-f]{7}/);
 		writeFileSync(script, JSON.stringify([call("r", "read_file", { path: "src/impl.ts" }), finish("tested")]), "utf8");
-		const tester = await delegateWith([{ role: "tester", task: "run the tests", after: implRes.identity.childId }], home);
-		expect(tester.isError, tester.content).toBe(false);
-		const testerRes = (resultFiles(home) as { identity: { childId: string }; worktree: string }[]).find((x) => x.identity.childId.endsWith("-tester"))!;
-		expect(testerRes.worktree).toBe(implRes.worktree); // the implementer's result, not the parent's tree
-		expect(tester.content).toMatch(/child saw HEAD [0-9a-f]{7}/);
-		const fresh = await delegateWith([{ role: "tester", task: "smoke" }], home);
+		const fresh = await delegateWith([{ role: "verifier", task: "smoke" }], home);
 		expect(fresh.isError, fresh.content).toBe(false);
-		const freshRes = (resultFiles(home) as { identity: { childId: string }; worktree: string; baseRev: string }[]).filter((x) => x.identity.childId.endsWith("-tester")).find((x) => x.worktree !== implRes.worktree)!;
+		const freshRes = (resultFiles(home) as Res[]).find((x) => x.identity.childId.endsWith("-verifier") && x.after === undefined)!;
 		expect(freshRes.worktree).not.toBe(dir); // its own worktree, never the parent's tree
 		expect(freshRes.baseRev).toBe(implRes.baseRev); // from HEAD
-		expect(existsSync(freshRes.worktree)).toBe(false); // a clean tester's worktree is removed after the run
-		// the child logs are the proof of WHAT each tester saw: the `after`
-		// tester read the implementer's file; the fresh one, at HEAD, could not
+		expect(existsSync(freshRes.worktree)).toBe(false); // a clean verifier's worktree is removed after the run
+		// the child logs are the proof of WHAT each verifier saw: the `after`
+		// verifier read the implementer's file; the fresh one, at HEAD, could not
 		const readResult = (childId: string): { isError: boolean; content: string } => {
 			const lines = readFileSync(join(home, "sessions", `${childId}.jsonl`), "utf8").split("\n").filter((l) => l !== "");
 			const ev = lines.map((l) => (JSON.parse(l) as { event: { type: string; isError?: boolean; content?: string } }).event).find((e) => e.type === "tool_result")!;
 			return { isError: ev.isError === true, content: String(ev.content ?? "") };
 		};
-		expect(readResult(testerRes.identity.childId)).toMatchObject({ isError: false });
-		expect(readResult(testerRes.identity.childId).content).toContain("x");
+		expect(readResult(afterRes.identity.childId)).toMatchObject({ isError: false });
+		expect(readResult(afterRes.identity.childId).content).toContain("x");
 		expect(readResult(freshRes.identity.childId).isError).toBe(true); // src/impl.ts does not exist at HEAD
 	});
 
@@ -279,7 +300,7 @@ describe("DT-1a — the tester's worktree", () => {
 		const { dir, home } = repo();
 		fauxEnv({ KISO_HOME: home, KISO_DELEGATION_CONFIG_JSON: JSON.stringify({ checks: {}, profiles: ["deepseek"] }) });
 		process.chdir(dir);
-		const a = await delegateWith([{ role: "tester", task: "x", after: "sub-nope" }], home);
+		const a = await delegateWith([{ role: "verifier", task: "x", after: "sub-nope" }], home);
 		expect(a.isError).toBe(true);
 		const m = await delegateWith([{ role: "explorer", task: "x", model: "unknown-profile" }], home);
 		expect(m.isError).toBe(true);

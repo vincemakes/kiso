@@ -48,7 +48,9 @@ const BACKGROUND_ROLES = ["explorer", "reviewer"];
 
 const SIX_TOOLS = ["read_file", "list_dir", "search_text", "write_file", "edit_file", "shell"];
 const READ_ONLY = ["read_file", "list_dir", "search_text"];
-const ROLES = ["explorer", "implementer", "reviewer", "tester"];
+// verifier: runs checks and reports evidence; its changes are never
+// collected (ADR-0032 Amendment 1 — it was called tester until 0.46.0)
+const ROLES = ["explorer", "implementer", "reviewer", "verifier"];
 
 // DT1a-F2 (owner dogfood 2026-09-08): the model's first delegate call was
 // refused twice — `scope` on an explorer, then an `acceptance` naming no
@@ -74,22 +76,22 @@ const delegateParameters = (cfg, background) => ({
 					// acceptance names a configured check ({ check }) or a parent-held
 					// evaluator ({ evaluator: absolute path outside the project }) —
 					// never a command; model names a configured profile; after names
-					// a completed implementer's childId (tester only): the tester runs
-					// in that worktree.
+					// a completed implementer's childId (verifier only): the verifier
+					// runs in a copy of that worktree.
 					scope: {
 						type: "array",
 						items: { type: "string", minLength: 1 },
 						maxItems: 32,
-						description: "implementer and tester tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
+						description: "implementer and verifier tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
 					},
 					acceptance: {
 						type: "object",
 						properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } },
 						additionalProperties: false,
-						description: `optional; implementer and tester only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
+						description: `optional; implementer and verifier only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
 					},
 					model: { type: "string", minLength: 1, description: `a model profile configured by the user (configured now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
-					after: { type: "string", minLength: 1, description: "tester only: the earlier task (by its index, 1-based) whose worktree this tester runs in" },
+					after: { type: "string", minLength: 1, description: "verifier only: the earlier task (by its index, 1-based) whose worktree this verifier runs in a copy of" },
 					timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" },
 				},
 				required: ["role", "task"],
@@ -128,7 +130,7 @@ export default async function createSubagentExtension(host = {}) {
 		tools: [
 			{
 				name: "delegate",
-				description: "run subagent tasks (explorer/implementer/reviewer/tester) in child kiso processes",
+				description: "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
 				parameters: delegateParameters(delegationConfig(), background !== undefined),
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
@@ -349,20 +351,34 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 	}
 	// Isolation (DT-1a R2.2): implementer → its own detached worktree from
 	// the parent's HEAD (the parent's UNCOMMITTED changes are not visible —
-	// the section says so); tester → the implementer's kept worktree when
-	// `after` names one, else a fresh worktree from HEAD; explorer and
-	// reviewer → the parent's tree under a read-only policy. Non-git
-	// parents fail the task HONESTLY.
+	// the section says so); verifier → a COPY of the implementer's kept
+	// worktree when `after` names one (a fresh worktree at the same base
+	// with the implementer's changes applied — the kept worktree the
+	// parent was handed is never touched), else a fresh worktree from HEAD;
+	// explorer and reviewer → the parent's tree under a read-only policy.
+	// Non-git parents fail the task HONESTLY.
 	let worktree = null;
 	let baseRev = null;
 	let childCwd = parentCwd;
 	let ownsWorktree = false;
-	if (role === "tester" && after !== undefined) {
+	if (role === "verifier" && after !== undefined) {
 		const prior = readResultFile(manifestDir, after);
-		worktree = prior.worktree;
 		baseRev = prior.baseRev;
-		childCwd = worktree;
-	} else if (role === "implementer" || role === "tester") {
+		worktree = mkdtempSync(join(tmpdir(), "kiso-subagent-wt-"));
+		ownsWorktree = true;
+		try {
+			execFileSync("git", ["-C", parentCwd, "worktree", "add", "--detach", worktree, baseRev ?? "HEAD"], { stdio: "ignore" });
+			// the implementer's state against its base — committed or not,
+			// new files included (intent-to-add), binary-safe
+			execFileSync("git", ["-C", prior.worktree, "add", "-N", "."], { stdio: "ignore" });
+			const patch = execFileSync("git", ["-C", prior.worktree, "diff", "--binary", baseRev ?? "HEAD"], { maxBuffer: 256 * 1024 * 1024 });
+			if (patch.length > 0) execFileSync("git", ["-C", worktree, "apply", "--binary", "--whitespace=nowarn"], { input: patch, stdio: ["pipe", "ignore", "pipe"] });
+			childCwd = worktree;
+		} catch (err) {
+			removeWorktree(parentCwd, worktree);
+			return failSection(childId, role, task, `the verifier could not copy the implementer's worktree: ${msg(err)}`);
+		}
+	} else if (role === "implementer" || role === "verifier") {
 		worktree = mkdtempSync(join(tmpdir(), "kiso-subagent-wt-"));
 		ownsWorktree = true;
 		try {
@@ -403,8 +419,8 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			lines.push(`  FAILED: ${extraction.reason}${extraction.diag !== "" ? `\n${extraction.diag}` : ""}`);
 		}
 		const unresolved = parseUnresolved(extraction.text);
-		// the collection (implementers only — a tester's worktree is the
-		// implementer's or a throwaway; its changes are not its result)
+		// the collection (implementers only — a verifier's worktree is a
+		// throwaway copy; its changes are not its result)
 		let changedFiles = null;
 		let patchPath = null;
 		let patchBytes = null;
@@ -552,11 +568,12 @@ function artifactDir(home, sessionsDir) {
 /** DT-1a: every task's inputs are judged BEFORE any child runs; a string is the refusal. */
 export function validateTask(task, cfg, parentCwd, manifestDir) {
 	if (task === null || typeof task !== "object") return "a task must be an object";
+	if (task.role === "tester") return 'unknown role "tester" — it is called "verifier" since 0.46.0';
 	if (!ROLES.includes(task.role)) return `unknown role ${JSON.stringify(task.role)}`;
 	if (typeof task.task !== "string" || task.task.trim() === "") return "task must be a non-empty string";
 	if (task.scope !== undefined) {
 		if (!Array.isArray(task.scope) || task.scope.length === 0 || task.scope.some((g) => typeof g !== "string" || g === "" || isAbsolute(g) || g.split("/").includes(".."))) return "scope must be a non-empty list of relative globs (no absolute paths, no ..)";
-		if (task.role !== "implementer" && task.role !== "tester") return "scope applies to implementer and tester tasks only";
+		if (task.role !== "implementer" && task.role !== "verifier") return "scope applies to implementer and verifier tasks only";
 	}
 	if (task.acceptance !== undefined) {
 		const a = task.acceptance;
@@ -585,7 +602,7 @@ export function validateTask(task, cfg, parentCwd, manifestDir) {
 	}
 	if (task.model !== undefined && !cfg.profiles.includes(task.model)) return `refused: unknown model profile ${JSON.stringify(task.model)} (configured: ${cfg.profiles.join(", ") || "none"})`;
 	if (task.after !== undefined) {
-		if (task.role !== "tester") return "refused: `after` is for tester tasks";
+		if (task.role !== "verifier") return "refused: `after` is for verifier tasks";
 		let prior;
 		try {
 			prior = readResultFile(manifestDir, task.after);
@@ -836,10 +853,10 @@ function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, mod
 }
 
 /** The role policy: read-only for explorer/reviewer, the full six for
- *  implementer/tester. Only allow/deny — NEVER ask (a headless child cannot
+ *  implementer/verifier. Only allow/deny — NEVER ask (a headless child cannot
  *  answer an approval prompt; ask would deadlock). */
 export function rolePolicyContent(role, scope) {
-	const allowed = role === "implementer" || role === "tester" ? SIX_TOOLS : READ_ONLY;
+	const allowed = role === "implementer" || role === "verifier" ? SIX_TOOLS : READ_ONLY;
 	if (scope === undefined) {
 		return `export default { name: "subagent-${role}", approvals: [{
 	decide(call) {

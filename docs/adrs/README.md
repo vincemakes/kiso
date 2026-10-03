@@ -37,7 +37,8 @@ that has not finished speaking.
   Accepted
 - 0031 — Credential boundaries — strip by default, pass explicitly under
   human approval — Accepted
-- 0032 — Subagents are durable sessions — Accepted
+- 0032 — Subagents are durable sessions — Accepted (Amendment 1,
+  2026-10-03: the tester role is the verifier; `after` works on a copy)
 - 0033 — Skills load progressively through existing surfaces — Accepted
 - 0034 — npm identity — a personal scope, the pi pattern — Accepted
 - 0035 — The upgrade contract is quarantine, not seamless rolling —

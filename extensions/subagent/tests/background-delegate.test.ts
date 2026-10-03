@@ -97,10 +97,10 @@ describe("ADR-0058 3d — a background call", () => {
 		expect(started[0]!.exec.args[started[0]!.exec.args.indexOf("--max-turns") + 1]).toBe("5");
 	});
 
-	it("D1: an implementer or tester is refused, nothing starts", async () => {
+	it("D1: an implementer or verifier is refused, nothing starts", async () => {
 		const { manager, started } = fakeTasks(0);
 		const delegate = await delegateOf({ tasks: () => manager });
-		for (const role of ["implementer", "tester"]) {
+		for (const role of ["implementer", "verifier"]) {
 			const r = (await delegate.execute({ tasks: [explorer(), { role, task: "x" }], background: true }, ctx() as never)) as { content: string; isError: boolean; errorKind?: string };
 			expect(r).toMatchObject({ isError: true, errorKind: "precondition" });
 			expect(r.content).toContain(`background is not supported for the ${role} role in this release; run this delegation in the foreground`);
