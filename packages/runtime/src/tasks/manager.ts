@@ -107,6 +107,19 @@ export interface AdoptedTask {
 	unconfirmed(pids: readonly number[]): void;
 }
 
+/** Who moved a running foreground command to the background (3e). */
+export type DetachBy = "person" | "steer";
+
+/** A running foreground execution that can become a task now (ADR-0058
+ *  §2 ways 3 and 4; 3e). Its owner registers it while it runs. */
+export interface Detachable {
+	/** When the command started (ms since the epoch): a steer detaches
+	 *  only a command old enough (ADR-0057 §5; 3e D1). */
+	readonly startedAt: number;
+	/** Promote it now — the owner's own promotion (3b), with the reason. */
+	detach(by: DetachBy): void;
+}
+
 /** What changed, reported once each: the ready signal, the end, the runner
  *  vanishing without an end, or a start that never ran. */
 export type TaskTransition = "ready" | "ended" | "unknown" | "not_run";
@@ -147,6 +160,8 @@ export class TaskManager {
 	readonly #seen = new Map<string, string>();
 	/** id → how to stop an adopted task this process owns */
 	readonly #local = new Map<string, () => void>();
+	/** executionId → a running foreground command that can be detached (3e) */
+	readonly #detachable = new Map<string, Detachable>();
 
 	constructor(options: TaskManagerOptions) {
 		this.root = options.root;
@@ -300,9 +315,43 @@ export class TaskManager {
 		return true;
 	}
 
-	/** A clean exit: stop every live task and wait for their terminals, up
-	 *  to `graceMs`. Returns the ids still without a terminal. */
-	async stopAll(by: "person" | "exit" = "exit", graceMs = 8_000): Promise<string[]> {
+	/** 3e: a running foreground command that can become a task now —
+	 *  registered by its owner while it runs; returns the unregister. Every
+	 *  detach goes through here (ADR-0058 §6): the person's key, a steer. */
+	registerDetachable(executionId: string, detachable: Detachable): () => void {
+		this.#detachable.set(executionId, detachable);
+		return () => {
+			if (this.#detachable.get(executionId) === detachable) this.#detachable.delete(executionId);
+		};
+	}
+
+	/** Detach one registered execution. It is unregistered BEFORE it is
+	 *  asked, so a second detach — two steers, a key racing a pending
+	 *  auto-detach — is a no-op: one promotion, one task. */
+	detach(executionId: string, by: DetachBy): boolean {
+		const d = this.#detachable.get(executionId);
+		if (d === undefined) return false;
+		this.#detachable.delete(executionId);
+		d.detach(by);
+		return true;
+	}
+
+	/** Detach every registered execution; the ids that were detached. */
+	detachAll(by: DetachBy): string[] {
+		return [...this.#detachable.keys()].filter((id) => this.detach(id, by));
+	}
+
+	/** What can be detached now, with when each started. */
+	detachable(): { readonly executionId: string; readonly startedAt: number }[] {
+		return [...this.#detachable].map(([executionId, d]) => ({ executionId, startedAt: d.startedAt }));
+	}
+
+	/** A clean exit: stop every live task — or, `which: "moved"`, only the
+	 *  ones this process owns (promoted foreground commands; a runner's task
+	 *  is left running) — and wait for their terminals, up to `graceMs`.
+	 *  Returns the ids still without a terminal: a stop REQUESTED, never
+	 *  confirmed (3e). */
+	async stopAll(by: "person" | "exit" = "exit", graceMs = 8_000, which: "all" | "moved" = "all"): Promise<string[]> {
 		// every task not ended is asked; a corrupt journal is skipped here
 		// (it fails loudly where it is read on purpose) — an exit still exits
 		const kindOf = (id: string): string => {
@@ -312,7 +361,14 @@ export class TaskManager {
 				return "corrupt";
 			}
 		};
-		const live = this.#ids().filter((id) => ["running", "starting", "unknown"].includes(kindOf(id)));
+		const moved = (id: string): boolean => {
+			try {
+				return this.#info(id)!.backend === "foreground";
+			} catch {
+				return false;
+			}
+		};
+		const live = this.#ids().filter((id) => ["running", "starting", "unknown"].includes(kindOf(id)) && (which === "all" || moved(id)));
 		const asked = live.filter((id) => this.stop(id, by));
 		const deadline = Date.now() + graceMs;
 		let left = asked;

@@ -668,3 +668,39 @@ WITHOUT a terminal keeps reading as `running` for up to `identifyEveryMs`
 after it died (its cached verdict is still "verified"), and only then
 reads `unknown` — not within one poll. A stop always checks afresh: it never signals a pid
 that is someone else's now.
+
+## Amendment 6 — the person's side of tasks, as built (3e, 2026-10-03, owner-approved)
+
+The 3e plan after an external review. Every detach goes through the
+TaskManager (§6): a running foreground command registers itself as
+detachable (`registerDetachable(executionId, { startedAt, detach })`)
+while it runs, and a detach unregisters before it promotes, so a second
+one — two steers, the key racing a pending auto-detach — is a no-op.
+
+1. **ctrl+b** moves the running foreground command(s) to the background
+   at once; the running row shows `ctrl+b background` while one can be.
+   Inside tmux the key is the prefix; pressed twice it is sent.
+2. **A steer detaches by the command's age** (ADR-0057 §5): the commands
+   registered when the steer arrives are each detached once they are 2 s
+   old — at once if they already are; a command that ends first returns
+   normally; a command started after the steer is never touched. The
+   tool result says why it moved; nothing else reaches the model.
+3. **Declared narrowing of §2:** only shell commands are detachable in
+   0.46. A foreground delegate child is spawned by the extension, not by
+   a runner; converting a running one is its own work. A steer during a
+   foreground delegate waits for it.
+4. **The status row** counts live tasks (`● N tasks running`) and the
+   unknown ones the person has not looked at in `/tasks` in this process
+   (`◌ N unknown`) — an unknown task is never only in the panel.
+5. **`/tasks`** lists the session's tasks; a task can be shown (its last
+   output, or a child's answer) or stopped. The inspection is drawn on
+   the screen only — no `user_input`, no event in the session log,
+   nothing the model sees, no effect on compaction or wakes. A stop is
+   requested; the row reads `stopping` until the journal says how it
+   ended.
+6. **The exit asks first** when tasks are live (on a dock; a pipe stops
+   all, as before) and says beforehand what each answer does. "Leave"
+   keeps a runner's tasks running and stops the moved commands, which this
+   process owns. Whatever is stopped, the exit reports what it could not
+   confirm (`t3: stop unconfirmed — outcome unknown`) and what it left
+   running; a stop requested is never presented as a stop.
