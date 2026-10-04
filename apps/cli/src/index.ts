@@ -186,6 +186,9 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 			/* §2.3: same as ctrl+o above — readline has no binding, and a
 			 * dock-less session has no committed rows to reprint. */
 		},
+		onBackground() {
+			/* 3e: readline has no ctrl+b — /tasks and a steer still work. */
+		},
 		onEditor() {
 			/* §2.4: readline has no ctrl+g, and a piped session has no
 			 * composer to hand over. */
@@ -281,6 +284,9 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onThink(cb) {
 			editor.onThink(cb);
+		},
+		onBackground(cb) {
+			editor.onBackground(cb);
 		},
 		onEditor(cb) {
 			editor.onEditor(cb);
@@ -1842,13 +1848,17 @@ async function main(): Promise<void> {
 		// variable now). A signal death skips this and leaves the dead-pid
 		// residue — the dead-holder takeover recovers it by design
 		// (ADR-0050); the lock never outlives a live writer either way.
-		// ADR-0058: a clean exit stops the session's tasks first.
-		await stopAllTasks();
+		// ADR-0058: a clean exit stops the session's tasks first — or, when
+		// the person chose to leave them (3e), only the moved commands. What
+		// could not be confirmed is said, never called stopped.
+		const tasksAtExit = await stopAllTasks();
 		agent?.close();
 		// v2b: the dock tears down on EVERY exit path — CSI r resets the
 		// scroll region, the cursor lands at the input line, no broken
 		// terminal (kill -9 excepted; `reset` saves it).
 		dock.exit();
+		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — outcome unknown`);
+		if (tasksAtExit.left.length > 0) console.error(`left running: ${tasksAtExit.left.join(", ")} — reopen this session to hear how ${tasksAtExit.left.length === 1 ? "it ends" : "they end"}`);
 		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.
 		await disposeExtensions(loadedExtensions);

@@ -141,6 +141,8 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	{ name: "/think", desc: "show the last full thinking block" },
 	{ name: "/last", desc: "show the most recent tool call's input and output" },
 	{ name: "/copy", desc: "copy the last answer (raw markdown) — ctrl+x does the same" },
+	// ADR-0058 (3e): the session's tasks — stop one, or look at its output
+	{ name: "/tasks", desc: "list this session's background tasks; stop one or show its output" },
 	// R4 (C4d): the committed transcript belongs to the terminal and can
 	// never be re-wrapped in place (ADR-0046); this appends it re-folded.
 	{ name: "/rewrap", desc: "re-print the recent prose at the current width" },
@@ -367,6 +369,7 @@ export class Editor {
 	// coexist; the editor never interprets the key itself.
 	#expandCbs: (() => void)[] = [];
 	#thinkCbs: (() => void)[] = [];
+	#backgroundCbs: (() => void)[] = [];
 	#editorCbs: (() => void)[] = [];
 	/** E1 §3 — ctrl+x. Same shape as the expand key: the editor owns the
 	 *  KEY, the CLI owns what it means. */
@@ -528,6 +531,12 @@ export class Editor {
 	 *  the compositor throws, never an interpretation the editor makes. */
 	onThink(cb: () => void): void {
 		this.#thinkCbs.push(cb);
+	}
+
+	/** ADR-0058 (3e): the background key (ctrl+b) — move the running
+	 *  foreground command to the background. Forwarded, like ctrl+t. */
+	onBackground(cb: () => void): void {
+		this.#backgroundCbs.push(cb);
 	}
 
 	/** §2.4: the external-editor key (ctrl+g). */
@@ -1659,6 +1668,15 @@ export class Editor {
 				// Forwarded, not interpreted: the switch is the
 				// compositor's, exactly as ctrl+o's is.
 				for (const cb of [...this.#thinkCbs]) cb();
+				i += 1;
+			} else if (c === "\x02") {
+				// ADR-0058 (3e) — ctrl+b moves the running foreground command
+				// to the background. `\x02` was unbound in this dispatch. It
+				// works with text in the composer (a steer being typed is
+				// exactly when the person wants the command out of the way);
+				// a panel owns its keys before this point. Inside tmux the
+				// first ctrl+b is tmux's prefix: pressing it twice sends it.
+				for (const cb of [...this.#backgroundCbs]) cb();
 				i += 1;
 			} else if (c === "\x07") {
 				// §2.4 — ctrl+g opens $VISUAL / $EDITOR on the composer.
