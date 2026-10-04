@@ -158,3 +158,32 @@ describe("ADR-0058 §4 — task_stop and reading a task's output", () => {
 		expect(r.content).toContain("task-output");
 	});
 });
+
+describe("ADR-0058 §2 (3e) — a running foreground command is moved to the background through the manager", () => {
+	it("the person's detach: the tool returns at once, the command keeps running and ends with its real code", async () => {
+		const { manager, shell } = setup();
+		const pending = shell.execute({ command: "echo started; sleep 1; echo done; exit 4", foregroundMs: 30_000 }, ctx({ executionId: "ex-bg" } as Partial<ToolContext>));
+		await until(() => manager.detachable(), (d) => d.some((x) => x.executionId === "ex-bg"));
+		const t0 = Date.now();
+		expect(manager.detach("ex-bg", "person")).toBe(true);
+		const r = await pending;
+		expect(Date.now() - t0).toBeLessThan(1_000);
+		expect(r).toMatchObject({ isError: false });
+		expect(r.content).toMatch(/^moved to the background by the person; continued as background task t1 \(not killed — it keeps running\)/);
+		expect(manager.detach("ex-bg", "person")).toBe(false); // once
+		const ended = await until(() => manager.get("t1")!, (i) => i.state.kind === "ended");
+		expect(ended.state).toMatchObject({ kind: "ended", exitCode: 4 });
+		expect(readFileSync(ended.outputPath, "utf8")).toMatch(/started[\s\S]*done/);
+	});
+
+	it("a steer's detach says why; a command that ended is no longer detachable", async () => {
+		const { manager, shell } = setup();
+		const pending = shell.execute({ command: "sleep 1", foregroundMs: 30_000 }, ctx({ executionId: "ex-st" } as Partial<ToolContext>));
+		await until(() => manager.detachable(), (d) => d.length === 1);
+		manager.detach("ex-st", "steer");
+		expect((await pending).content).toMatch(/^moved to the background so the person's message could land; continued as background task t1/);
+		const quick = await shell.execute({ command: "echo hi" }, ctx({ executionId: "ex-q" } as Partial<ToolContext>));
+		expect(quick).toMatchObject({ content: "hi", isError: false });
+		expect(manager.detachable()).toEqual([]); // it unregistered when it settled
+	});
+});

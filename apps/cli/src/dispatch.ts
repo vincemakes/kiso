@@ -5,7 +5,7 @@
  */
 
 import type { SessionRoute } from "./projects.js";
-import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, compactingStatus, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, namedPickView, compactingStatus, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
@@ -20,7 +20,9 @@ import { preferences, setPreference } from "./preferences.js";
 import { settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
-import { queuedSwitchLines } from "./state.js";
+import { queuedSwitchLines, seenUnknownTasks, tasksFor } from "./state.js";
+import { taskOutput, taskRow, taskStateLabel } from "./task-notice.js";
+import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { contextWindowTokens, microcompactThresholdFor, startStatusSpinner, statedContextWindow, windowSourceNote } from "./chat.js";
 import { authForProfile, directWriteProfile, profileAvailable, resolveContextWindow, unavailableReason, type ModelProfile } from "./config.js";
 import { shellTool } from "@vincemakes/kiso-tools-node";
@@ -167,6 +169,8 @@ export interface DispatchCtx {
 	readonly requestSwitch: (id: string) => void;
 	/** DC-57: true once this entry has been asked to leave — the guard that keeps a departing session from answering a batch's later lines. */
 	readonly leaving: () => boolean;
+	/** ADR-0058 (3e): with live tasks, ask before exiting; true = exit. */
+	readonly confirmExit: () => Promise<boolean>;
 	/** §2.5: end this chat() with a REBUILD of the agent on the SAME
 	 *  session — extensions, skills and config are read again. */
 	readonly requestReload: () => void;
@@ -441,6 +445,15 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			body.reprint();
 			ctx.input.prompt();
 		});
+		return;
+	}
+	if (trimmed === "\x02background") {
+		// ADR-0058 (3e) — ctrl+b: the running foreground command(s) to the
+		// background, through the session's TaskManager (§6), at once — a
+		// steer waits for a command to be 2 s old (D1), the key never does.
+		// Off the chain on purpose: it is pressed DURING a run.
+		const moved = tasksFor(ctx.session.id)?.detachAll("person") ?? [];
+		if (moved.length === 0) body.notice("nothing to move to the background");
 		return;
 	}
 	if (trimmed === "\x14think") {
@@ -1102,14 +1115,28 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// streams), a pipe's "exit" always arrives mid-run, and the
 		// approval panel the fix protects only exists on the dock. An idle
 		// exit is immediate, byte-for-byte as before, on every surface.
+		// 3e: with live tasks the dock asks first; staying re-prompts
+		const exitAfterAsking = async (): Promise<void> => {
+			if (await ctx.confirmExit()) ctx.input.close();
+			else ctx.input.prompt();
+		};
 		if (ctx.isRunning() && dock.active) {
 			if (trimmed === "exit") body.notice("[exit queued — closing after the current run completes]");
-			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-				ctx.input.close();
-			});
+			ctx.chainRef.current = ctx.chainRef.current.then(exitAfterAsking);
 			return;
 		}
-		ctx.input.close();
+		void exitAfterAsking();
+		return;
+	}
+	if (trimmed === "/tasks" || trimmed.startsWith("/tasks ")) {
+		// ADR-0058 (3e): the session's tasks, for the PERSON. Everything here
+		// is drawn on the screen and nowhere else — no user_input, no event
+		// in the session log, nothing the model sees, no wake.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			await tasksCommand(trimmed.slice("/tasks".length).trim(), ctx);
+			ctx.paintIdle();
+			ctx.input.prompt();
+		});
 		return;
 	}
 	if (trimmed === "/clear") {
@@ -1251,4 +1278,69 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 	// v2c: a turn submitted while another runs waits on the chain — the
 	// live count rides the status bar (+N queued).
 	ctx.submitTurn(line);
+}
+
+/** ADR-0058 (3e) — `/tasks`, `/tasks show <id>`, `/tasks stop <id>`. On a
+ *  dock the bare command is a pick: a task, then what to do with it. A
+ *  stop is REQUESTED here; the row says `stopping` until the journal says
+ *  how it ended. Looking at the list counts as having seen its unknown
+ *  tasks (the status row stops counting them). */
+async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
+	const manager = tasksFor(ctx.session.id);
+	if (manager === undefined) {
+		bodyLog("no tasks here — this session has no task manager");
+		return;
+	}
+	let list: TaskInfo[];
+	try {
+		list = manager.list();
+	} catch (err) {
+		bodyLog(`tasks: ${(err as Error).message}`);
+		return;
+	}
+	const show = (t: TaskInfo): void => {
+		const lines = taskOutput(t);
+		bodyLog(`${t.id} — ${t.agent !== undefined ? "its answer" : "its last output"}${lines.length === 0 ? ": nothing yet" : ""}`);
+		for (const line of lines) bodyLog(`  ${line}`);
+	};
+	const stop = (t: TaskInfo): void => {
+		bodyLog(manager.stop(t.id, "person") ? `${t.id}: stop requested` : `${t.id}: nothing to stop (${taskStateLabel(t)})`);
+	};
+	const [verb, id] = arg.split(/\s+/);
+	if (verb === "show" || verb === "stop") {
+		const t = list.find((x) => x.id === id);
+		if (t === undefined) bodyLog(`no task ${id ?? ""} in this session`);
+		else if (verb === "show") show(t);
+		else stop(t);
+		return;
+	}
+	if (arg !== "") {
+		bodyLog("usage: /tasks · /tasks show <id> · /tasks stop <id>");
+		return;
+	}
+	if (list.length === 0) {
+		bodyLog("no tasks in this session");
+		return;
+	}
+	for (const t of list) if (t.state.kind === "unknown") seenUnknownTasks.add(t.id);
+	if (!dock.active) {
+		for (const t of list) {
+			const r = taskRow(t);
+			bodyLog(`${r.label}  ${r.note}`);
+		}
+		return;
+	}
+	const ask = (header: string, options: readonly PickOption[]): Promise<number | null> =>
+		new Promise((resolve) => {
+			ctx.input.panelAsk(namedPickView("tasks", { header, options }, ctx.isRunning() ? "❯ run paused" : "▸ tasks", "which task? (id) "), (v) => resolve(v.action === "picked" && "index" in v.result ? v.result.index : null));
+		});
+	const shown = list.slice(-20); // the newest twenty; /tasks show <id> reaches any
+	const which = await ask(`tasks — ${list.length} in this session`, shown.map((t) => taskRow(t)));
+	const task = which === null ? undefined : shown[which];
+	if (task === undefined) return;
+	const live = task.state.kind === "running" || task.state.kind === "starting";
+	const actions = [task.agent !== undefined ? "show its answer" : "show its output", ...(live ? ["stop it"] : [])];
+	const action = await ask(`${task.id} · ${taskStateLabel(task)} · ${taskRow(task).note}`, actions.map((label) => ({ label })));
+	if (action === 0) show(task);
+	else if (action === 1) stop(task);
 }
