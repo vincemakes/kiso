@@ -75,16 +75,23 @@ describe("OR-7 — the pick panel's effort axis", () => {
 		// frame: the dock repaints by whole ROWS, so each ladder state is
 		// written contiguously, while `screenAt` cuts at the marker's own
 		// bytes and hands back a half-painted screen. ──
-		expect(plain(raw), "the ladder opens on the model's own registry default").toContain("effort: low · medium · [high] · xhigh · max");
+		// MOVED (Graphite P3 — DECLARED): the ladder rides the selected row's
+		// OPENED line, and the level in force is marked in colour (bold, the
+		// warn tint off a known ground — this pty answers no ground query)
+		// instead of brackets, so the walk is asserted on the bytes
+		const IN_FORCE = (level: string): string => `\x1b[1m\x1b[33m${level}\x1b[0m`;
+		expect(plain(raw)).toContain("effort low · medium · high · xhigh · max");
+		expect(raw, "the ladder opens on the model's own registry default").toContain(IN_FORCE("high"));
 		expect(plain(raw), "the affordance names the new gesture").toContain("←→ effort");
-		// the row without levels keeps its old shape
-		expect(plain(raw)).toContain("openai-compat/no-such-model-in-any-registry");
+		// the row without levels: its model, and its protocol on the opened line
+		expect(plain(raw)).toContain("no-such-model-in-any-registry");
+		expect(plain(raw)).toContain("profile plain · openai-compat · OR7_KEY");
 
 		// ── the cursor WALKED, one visible step per press. This is the
 		// contract's whole point: visible movement replaces silent
 		// clamping, so each intermediate state has to reach the screen. ──
-		expect(plain(raw), "the first right moved the bracket off the default").toContain("effort: low · medium · high · [xhigh] · max");
-		expect(plain(raw), "the second right reached the top of the ladder").toContain("effort: low · medium · high · xhigh · [max]");
+		expect(raw, "the first right moved the mark off the default").toContain(IN_FORCE("xhigh"));
+		expect(raw, "the second right reached the top of the ladder").toContain(IN_FORCE("max"));
 
 		// ── the notice: both axes, in the typed command's own wording ──
 		expect(plain(raw), "the notice names both axes").toContain("model → axis (claude-opus-5 · max)");

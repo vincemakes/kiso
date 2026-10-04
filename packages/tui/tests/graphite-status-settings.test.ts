@@ -78,39 +78,66 @@ describe("R3e — the /status sheet", () => {
 });
 
 describe("R3e — the /settings panel", () => {
+	// Graphite P3 (owner, 2026-10-04) RE-DERIVED the panel's shape: the band
+	// counts its settings, a row is a table (name, value, source), the axis
+	// strip rides the selected row's opened row with the level in force gold,
+	// and the value cell follows the walk. The explanation row is gone. What
+	// R3e ruled stands: a session row walks its own axis, named on the key
+	// row; a config row has none.
 	const SPEC: PickSpec = {
-		header: "settings — the session's own change here; the rest say how",
+		header: "settings",
+		noun: "",
+		input: "arrows",
+		columns: ["plain", "dim"],
+		levelColumn: 0,
 		options: [
-			{ label: "mode", note: "default", levels: ["default", "accept-edits", "plan", "dontAsk", "bypass"], level: 0, axisLabel: "mode" },
-			{ label: "thinking", note: "default", levels: ["shown", "hidden"], level: 0, axisLabel: "thinking" },
-			{ label: "model", note: "deepseek-flash · ⏎ switches" },
-			{ label: "floor", note: "on — irrecoverable deletes are refused in every mode · default" },
+			{ label: "mode", cols: ["default", "default"], levels: ["default", "accept-edits", "plan", "dontAsk", "bypass"], level: 0, axisLabel: "mode" },
+			{ label: "thinking", cols: ["shown", "default"], levels: ["shown", "hidden"], level: 0, axisLabel: "thinking" },
+			{ label: "model", cols: ["deepseek-flash", "user config"], opened: "api.deepseek.com · profile ds", enter: "⏎ opens /model" },
+			{ label: "floor", cols: ["on", "default"], opened: "irrecoverable deletes are refused in every mode · change: \"floor\": \"off\"" },
 		],
 	};
-	const rows = (cursor: number, level: number | null, W = 100): string[] =>
-		panelRowsOf({ view: settingsPickView(SPEC, "▸ default"), phase: "options", cursor, pick: { cursor, phase: "options", level } }, W, 14).map(plain);
+	// the colour ON: the level in force is marked by colour now, so a test
+	// without it would pass on empty strings
+	beforeEach(() => {
+		delete process.env.NO_COLOR;
+		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+	});
+	afterEach(() => {
+		delete (process.stdout as { isTTY?: boolean }).isTTY;
+	});
+	const raw = (cursor: number, level: number | null, W = 100): string[] =>
+		panelRowsOf({ view: settingsPickView(SPEC, "▸ default"), phase: "options", cursor, pick: { cursor, level } }, W, 14);
+	const rows = (cursor: number, level: number | null, W = 100): string[] => raw(cursor, level, W).map(plain);
 
 	it("opens on its named hairline; a session row walks its own axis, named on the strip and the key row", () => {
 		setGround("light");
+		const p = palette();
+		expect(p.gold, "the palette is on").not.toBe("");
 		const on = rows(0, 2);
-		expect(on[0]).toMatch(/^─{3} settings ─/);
-		expect(on.some((r) => r.trim() === "mode: default · accept-edits · [plan] · dontAsk · bypass")).toBe(true);
+		expect(on[0]).toMatch(/^─{3} settings · 4 ─/);
+		expect(on.some((r) => r.trim() === "default · accept-edits · plan · dontAsk · bypass")).toBe(true);
+		expect(raw(0, 2).join("\n")).toContain(`${p.bold}${p.gold}plan${p.reset}`);
+		expect(on.find((r) => r.includes("›"))).toMatch(/›mode +plan +default/); // the value follows the walk
 		expect(on.some((r) => r.includes("←→ mode"))).toBe(true);
 		const think = rows(1, 1);
-		expect(think.some((r) => r.trim() === "thinking: shown · [hidden]")).toBe(true);
+		expect(think.some((r) => r.trim() === "shown · hidden")).toBe(true);
+		expect(raw(1, 1).join("\n")).toContain(`${p.bold}${p.gold}hidden${p.reset}`);
 		expect(think.some((r) => r.includes("←→ thinking"))).toBe(true);
 	});
 
 	it("a config row has no axis: its value and source, and no ←→ on the key row", () => {
 		setGround("light");
 		const f = rows(3, null);
-		expect(f.some((r) => r.includes("floor") && r.includes("on — irrecoverable deletes are refused"))).toBe(true);
+		expect(f.find((r) => r.includes("›"))).toMatch(/›floor +on +default/);
+		// P3: what the value means and how it changes ride the opened row
+		expect(f.some((r) => r.trim().startsWith("irrecoverable deletes are refused in every mode · change:"))).toBe(true);
 		expect(f.some((r) => r.includes("←→"))).toBe(false);
 	});
 
 	it("the model's effort keeps its name where no label is given", () => {
-		expect(pickAffordance({ cursor: 0, phase: "options", level: 0 }, true)).toContain("←→ effort");
-		expect(pickAffordance({ cursor: 0, phase: "options", level: 0 }, "mode")).toContain("←→ mode");
+		expect(pickAffordance({ cursor: 0, level: 0 }, true)).toContain("←→ effort");
+		expect(pickAffordance({ cursor: 0, level: 0 }, "mode")).toContain("←→ mode");
 	});
 });
 

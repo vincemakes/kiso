@@ -18,6 +18,12 @@
  * one useful thing the old command did.
  *
  * The picker-surface class: new frames only.
+ *
+ * Graphite P3 (owner, 2026-10-04) re-derived this file: the block is a
+ * band (its name carries the header's words, a key row closes it, no
+ * closing rule), the input row is the composer's, and the `t` row with its
+ * typing phase is gone — a FILTER panel offers a typed `provider/model` as
+ * a row of its own (PickSpec.direct). Each moved assertion says so.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -36,13 +42,14 @@ const SPEC: PickSpec = {
 		{ label: "claude-sonnet-5", note: "profile: sonnet" },
 		{ label: "kimi-k3", note: "profile: kimi" },
 	],
-	typeHint: "type provider/model directly",
 };
 
+// P3: the zero-profile panel FILTERS, so a typed provider/model is still a row
 const EMPTY: PickSpec = {
 	header: "model — current: faux (faux)",
 	options: [],
-	typeHint: "type provider/model directly (e.g. openai/deepseek-reasoner)",
+	input: "filter",
+	direct: true,
 	emptyNote: "no profiles — define models in ~/.kiso/config.json",
 };
 
@@ -61,37 +68,46 @@ afterEach(() => {
 describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", () => {
 	it("the prototype's C-1 frame: the header names the current model, the rows carry their labels, `t` is the escape hatch", () => {
 		const view = modelPickView(SPEC, "▸ idle");
-		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 80, 12).map(strip);
+		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, level: null } }, 80, 12).map(strip);
 		// R2: the block opens with the same dashed rule it closes with, so
 		// every content row moves down one.
 		// Graphite §8.1 (R3a): the opening row names the list (`─── model ───`)
 		// and the row under it keeps what followed the name
-		expect(rows[0]!.startsWith("\u2500\u2500\u2500 model \u2500")).toBe(true);
-		expect(rows[1]).toBe("  current: deepseek-v4-flash (openai-compat)");
+		// MOVED (Graphite P3, the band class — DECLARED): the words after the
+		// name ride the band's own row now (`─── model · current: … ───`), so
+		// the rows below move up one
+		expect(rows[0]!.startsWith("\u2500\u2500\u2500 model \u00b7 current: deepseek-v4-flash (openai-compat) \u2500")).toBe(true);
 		// 0.40.1 (the owner's dogfood): a row is its LABEL — the digit column is
 		// gone (the digits still pick by visible position, documented in the
 		// keys sheet), and the note here is the SPEC's own, which the CLI no
 		// longer fills with `profile: <key>`.
-		expect(rows[2]).toContain("deepseek-v4-flash");
-		expect(rows[2], "no digit column").not.toMatch(/\d+ deepseek-v4-flash/);
-		expect(rows[2]).toContain("profile: ds · current");
-		expect(rows[3]).toContain("claude-sonnet-5");
-		expect(rows[4]).toContain("kimi-k3");
-		expect(rows[5]).toContain(" t type provider/model directly");
-		expect(rows.at(-1)!.startsWith("\u2500")).toBe(true); // the block's own bottom rule
+		expect(rows[1]).toContain("deepseek-v4-flash");
+		expect(rows[1], "no digit column").not.toMatch(/\d+ deepseek-v4-flash/);
+		expect(rows[1]).toContain("profile: ds · current");
+		expect(rows[2]).toContain("claude-sonnet-5");
+		expect(rows[3]).toContain("kimi-k3");
+		// DECLARED REVERSALS (P3): no `t` row (a filter offers a typed
+		// provider/model as a row of its own), and no closing rule — the key
+		// row closes the band, the composer's rail sits under it
+		expect(rows.join("\n")).not.toContain(" t type");
+		expect(rows.at(-1)).toMatch(/^ {2}\u2191\u2193 move \u00b7 1\u20133 picks \u00b7 \u23ce confirms \u00b7 esc +1\/3$/);
 	});
 
 	it("the ZERO-PROFILE state keeps today's copy verbatim — the config path is the one useful thing the old command said", () => {
 		const view = modelPickView(EMPTY, "▸ idle");
-		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 80, 12).map(strip);
+		const rows = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, level: null } }, 80, 12).map(strip);
 		expect(rows.join("\n")).toContain("no profiles — define models in ~/.kiso/config.json");
-		expect(rows.join("\n")).toContain("t type provider/model directly (e.g. openai/deepseek-reasoner)");
+		// MOVED (P3): the escape hatch is the filter — what is typed becomes a row
+		const typed = panelRowsOf({ view, phase: "options", cursor: 0, pick: { cursor: 0, level: null, query: "openai/deepseek-reasoner" } }, 80, 12).map(strip);
+		expect(typed.join("\n")).toContain("no profiles — define models in ~/.kiso/config.json");
+		expect(typed.join("\n")).toContain("use openai/deepseek-reasoner directly");
 	});
 
 	it("the lead, the status and the affordance come from the SAME dispatchers the approval panel uses", () => {
 		const view = modelPickView(SPEC, "▸ run paused");
-		const options = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } } as const;
-		expect(strip(panelLeadOf(options))).toBe("1-3> ");
+		const options = { view, phase: "options", cursor: 0, pick: { cursor: 0, level: null } } as const;
+		// MOVED (P3): a pick leaves the input row to the composer — no lead
+		expect(strip(panelLeadOf(options))).toBe("");
 		expect(panelStatusOf(options)).toBe("▸ run paused");
 		// DC-36: the row NAMES the arrows now. ↑↓ have walked this cursor
 		// since this very round (TUI2-R2 ④) and the keys sheet has said so
@@ -99,16 +115,15 @@ describe("TUI2-R2 ④ — the /model panel's block (the picker-surface class)", 
 		// advertised only the digits — which is why the owner read the
 		// mode panel as "type the answer". The subject of this case (the
 		// three dispatchers are the approval panel's own) is untouched.
-		expect(strip(panelAffordanceOf(options))).toBe("↑↓ move · digits pick · ⏎ confirms · esc");
-		const typing = { view, phase: "options", cursor: 0, pick: { cursor: 0, phase: "custom", level: null } } as const;
-		expect(strip(panelLeadOf(typing))).toBe("provider/model: ");
-		expect(panelAffordanceOf(typing)).toBe("enter commits · esc backs out");
+		// (P3: the block's key row says the digits; this sentence is the
+		// dock-less form, and the typing phase it had is gone with the `t` row)
+		expect(strip(panelAffordanceOf(options))).toBe("↑↓ move · ⏎ confirms · esc");
 	});
 
 	it("every row fits W at any width — invariant ① can never fire from this block", () => {
 		for (const W of [40, 60, 80, 120]) {
 			for (const spec of [SPEC, EMPTY]) {
-				for (const row of panelRowsOf({ view: modelPickView(spec, "▸ idle"), phase: "options", cursor: 0, pick: { cursor: 1, phase: "options", level: null } }, W, 12)) {
+				for (const row of panelRowsOf({ view: modelPickView(spec, "▸ idle"), phase: "options", cursor: 0, pick: { cursor: 1, level: null } }, W, 12)) {
 					expect(visibleWidth(row), `W=${W}: ${JSON.stringify(strip(row))}`).toBeLessThanOrEqual(W);
 				}
 			}
@@ -147,27 +162,35 @@ describe("TUI2-R2 ④ — the /model panel's keys", () => {
 		expect(seen).toEqual([]);
 	});
 
-	it("`t` opens the type-it line; ⏎ commits the typed text, and an EMPTY line commits nothing", () => {
-		const { editor, seen } = open();
-		editor.feed(enc("t"));
-		expect(editor.panelState()!.pick!.phase).toBe("custom");
-		editor.feed(enc("openai/deepseek-reasoner\r"));
+	// RE-DERIVED (P3): the `t` line retired into the filter. What it proved —
+	// a model no profile names can be typed and picked, and typing alone
+	// commits nothing — is proved on the filter's direct row.
+	it("a FILTER panel: a typed provider/model is a row; ⏎ commits the typed text, and typing alone commits nothing", () => {
+		const filter: PickSpec = { ...SPEC, input: "filter", direct: true };
+		const { editor, seen } = open(filter);
+		editor.feed(enc("openai/deepseek-reasoner"));
+		expect(editor.line()).toBe("openai/deepseek-reasoner"); // the filter is the composer's text
+		expect(seen).toEqual([]);
+		editor.feed(enc("\r"));
 		expect(seen).toEqual([{ action: "picked", result: { custom: "openai/deepseek-reasoner" } }]);
-		const second = open();
-		second.editor.feed(enc("t\r"));
-		expect(second.seen).toEqual([]); // still typing — an empty line is not a choice
-		expect(second.editor.panelState()!.pick!.phase).toBe("custom");
 	});
 
-	it("esc backs out of the type-it line first, then cancels the panel — two escapes, two different meanings", () => {
-		const { editor, seen } = open();
-		editor.feed(enc("t"));
-		editor.feed(enc("\x1b"));
-		expect(editor.panelState()!.pick!.phase).toBe("options");
-		expect(seen).toEqual([]);
+	it("a FILTER narrows the list and ⏎ picks the match under the cursor — a digit is a letter there", () => {
+		const filter: PickSpec = { ...SPEC, input: "filter", direct: true };
+		const { editor, seen } = open(filter);
+		editor.feed(enc("k3"));
+		expect(editor.panelState()!.pick!.query).toBe("k3");
+		editor.feed(enc("\r"));
+		expect(seen).toEqual([{ action: "picked", result: { index: 2 } }]);
+	});
+
+	it("esc closes a filter panel at once — one escape, whatever was typed", () => {
+		const { editor, seen } = open({ ...SPEC, input: "filter", direct: true });
+		editor.feed(enc("kim"));
 		editor.feed(enc("\x1b"));
 		expect(seen).toEqual([{ action: "cancel" }]);
 		expect(editor.panelState()).toBeNull();
+		expect(editor.line()).toBe(""); // the stashed composer came back, not the filter
 	});
 
 	it("the ZERO-PROFILE panel can still be left, and ⏎ on no options picks nothing", () => {

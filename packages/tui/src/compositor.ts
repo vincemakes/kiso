@@ -1742,7 +1742,12 @@ export class Body {
 		// block carries its own row (approval-panel.ts pushes it for the
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
 		// lost anywhere.
-		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined, expand: null };
+		// Graphite P3 (owner, 2026-10-04): a PICK panel — /model, /mode,
+		// /settings, opened by the person — leaves the bar where it is: the
+		// session's facts do not stop being true while a list is open. A run
+		// paused behind it is said in the band's name. The approval and
+		// question panels keep their own status row (the next round's).
+		if (panel !== null && !(panel.view.pick !== undefined && this.#bar !== null)) return { status: panelStatusOf(panel), hint: undefined, expand: null };
 		// Graphite §8.9: the bar, when the CLI handed one over — the steers
 		// are on screen in the band above the input (§8.7), so the bar does
 		// not count them (the main-sync round, owner 2026-09-30: no `+N
@@ -1827,7 +1832,8 @@ export class Body {
 		// panel rows' edit column; leadWidth is the ONE authority).
 		// R2: wallL is 0 — the box is retired, so the row starts at column
 		// one and the frame's marker and this formula share the constant.
-		const lead = panel !== null ? panelLeadOf(panel) : this.#composerLead();
+		// Graphite P3: a pick leaves the input row to the composer (its filter is typed there)
+		const lead = panel !== null && panel.view.pick === undefined ? panelLeadOf(panel) : this.#composerLead();
 		return 1 + leadWidth(lead) + st.cursor;
 	}
 
@@ -2220,12 +2226,12 @@ export class Body {
 			// W21: the panel's cap is exact, so the force-commit loop never
 			// fires on it. W22: the queue band sits below the panel — the
 			// cap shrinks by it.
-			const frame = panelFrameOf(panel, W, capped);
+			const frame = panelFrameOf(panel, W, capped, this.#opts.height());
 			// B (review of this round): the pick window THIS frame draws. The size
 			// depends on the budget, so the renderer is the only producer — the
 			// digit keys are handed this value instead of deriving a second one.
 			const pick = panel.pick ?? null;
-			return { lines: frame.rows, panelSpan: frame.options, pickWin: pick === null ? null : pickWindowOf(panel.view, pick.cursor, pick.phase, capped) };
+			return { lines: frame.rows, panelSpan: frame.options, pickWin: pick === null ? null : pickWindowOf(panel.view, pick, capped, this.#opts.height()) };
 		}
 		return { lines: this.#liveProjection(W, ctx, cap), panelSpan: null };
 	}
@@ -2694,7 +2700,9 @@ export class Body {
 		// Graphite §7.8: the prompt `›` is gold (the edge of a turn); the
 		// bound lead is plain text and the colour is the paint's, so a ground
 		// resolved after the first frame reaches it.
-		const lead = panel !== null ? panelLeadOf(panel) : this.#composerLead().replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
+		// Graphite P3: a pick panel leaves the input row its own lead — a
+		// filter is typed there, and a digit list says its keys on its key row
+		const lead = panel !== null && panel.view.pick === undefined ? panelLeadOf(panel) : this.#composerLead().replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
 		const leadW = leadWidth(lead);
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row
@@ -2731,10 +2739,13 @@ export class Body {
 		// so the hint names a key the person is about to press; everywhere
 		// else the empty input stays empty. It sits after the drawn cursor,
 		// in the row's pad, so the cursor and the columns do not move.
-		if (panel === null && this.#pickState?.() != null && rows.length === 1 && rows[0] === "") {
+		// Graphite P3: the same exception for a pick that filters (/model) —
+		// its input is the filter too, and its hint is the caller's words.
+		const hint = panel === null ? (this.#pickState?.() != null ? RESUME_FILTER_HINT : null) : panel.view.pick?.input === "filter" ? (panel.view.pick.filterHint ?? null) : null;
+		if (hint !== null && rows.length === 1 && rows[0] === "") {
 			const pad = / +$/.exec(out[0]!);
-			const hintW = visibleWidth(RESUME_FILTER_HINT);
-			if (pad !== null && pad[0].length > hintW) out[0] = `${out[0]!.slice(0, pad.index)}${p.dim}${RESUME_FILTER_HINT}${p.reset}${" ".repeat(pad[0].length - hintW)}`;
+			const hintW = visibleWidth(hint);
+			if (pad !== null && pad[0].length > hintW) out[0] = `${out[0]!.slice(0, pad.index)}${p.dim}${hint}${p.reset}${" ".repeat(pad[0].length - hintW)}`;
 		}
 		return { rows: out, markerRow: cursorRow, markerCol };
 	}

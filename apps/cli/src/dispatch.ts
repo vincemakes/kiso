@@ -138,6 +138,18 @@ function signInNote(p: ModelProfile): string {
 	return p.apiKeyEnv ?? "no key";
 }
 
+/** Graphite P3: why a profile cannot run, for its opened row — the words a
+ *  pick of it prints (`unavailableReason`), without the `model <name>:
+ *  unavailable —` the row already says and the config aside. */
+function unavailableWhy(name: string, p: ModelProfile): string {
+	const head = `model ${name}: `;
+	const said = unavailableReason(name, p);
+	return (said.startsWith(head) ? said.slice(head.length) : said)
+		.replace(/^unavailable \u2014 /, "")
+		.replace(/ \(configs never store keys, only the env-var name\)$/, "")
+		.replaceAll("`", "");
+}
+
 /** Everything dispatch touches that chat() owns. */
 export interface DispatchCtx {
 	readonly session: AgentSession;
@@ -593,21 +605,41 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				const mode = getMode();
 				const hidden = body.thinkingHidden();
 				const THINK = ["shown", "hidden"] as const;
-				const options = facts.map((f): PickOption => {
-					if (f.name === "mode") return { label: "mode", note: f.from, levels: OFFERED_MODES.map((m) => MODE_LABEL[m]), axisLabel: "mode", ...(OFFERED_MODES.indexOf(mode) >= 0 ? { level: OFFERED_MODES.indexOf(mode) } : {}) };
-					if (f.name === "thinking") return { label: "thinking", note: f.from, levels: THINK, level: hidden ? 1 : 0, axisLabel: "thinking" };
-					if (f.name === "model") return { label: "model", note: `${f.value} \u00b7 \u23ce switches` };
-					return { label: f.name, note: `${f.value} \u00b7 ${f.from}` };
+				const DONT_ASK = ["off", "on"] as const;
+				// Graphite P3 (owner, 2026-10-04): the session's own four first —
+				// model, mode, don't ask, thinking — then what lives in a config
+				// file. An order, not groups: no caption between them. The printed
+				// form keeps its own order.
+				const OWN = ["model", "mode", "don't ask", "thinking"];
+				const order = [...OWN.flatMap((n) => facts.filter((f) => f.name === n)), ...facts.filter((f) => !OWN.includes(f.name))];
+				const options = order.map((f): PickOption => {
+					const cols = [f.brief ?? f.value, f.from];
+					if (f.name === "mode") return { label: "mode", cols: [MODE_LABEL[mode] ?? f.value, f.from], levels: OFFERED_MODES.map((m) => MODE_LABEL[m]), axisLabel: "mode", enter: "\u23ce applies", ...(OFFERED_MODES.indexOf(mode) >= 0 ? { level: OFFERED_MODES.indexOf(mode) } : {}) };
+					// the switch is the session's own, as /dont-ask is: walked here, never written to a config
+					if (f.name === "don't ask") return { label: "don't ask", cols, levels: DONT_ASK, level: getDontAsk() ? 1 : 0, axisLabel: "don't ask", enter: "\u23ce applies" };
+					if (f.name === "thinking") return { label: "thinking", cols, levels: THINK, level: hidden ? 1 : 0, axisLabel: "thinking", enter: "\u23ce applies" };
+					if (f.name === "model") {
+						const host = providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl)).replace(/^@/, "");
+						return { label: "model", cols: [agentModel, f.from], opened: [host, profile === null ? "" : `profile ${profile}`].filter((t) => t !== "").join(" \u00b7 "), enter: "\u23ce opens /model" };
+					}
+					// a config file's setting: what its value means, and how it changes
+					return { label: f.name, cols, opened: [f.means ?? "", `change: ${f.change}`].filter((t) => t !== "").join(" \u00b7 "), enter: "\u23ce prints how" };
 				});
 				let level: number | undefined;
 				const picked = await new Promise<PickResult | null>((resolve) => {
-					ctx.input.panelAsk!(settingsPickView({ header: "settings \u2014 the session's own change here; the rest say how", options }, ctx.isRunning() ? "\u276f run paused" : `\u25b8 ${mode}`), (v) => {
-						if (v.action === "picked") level = v.level;
-						resolve(v.action === "picked" ? v.result : null);
-					});
+					ctx.input.panelAsk!(
+						settingsPickView(
+							{ header: "settings", noun: "", input: "arrows", columns: ["plain", "dim"], levelColumn: 0, ...(ctx.isRunning() ? { facts: "run paused" } : {}), options },
+							ctx.isRunning() ? "\u276f run paused" : `\u25b8 ${mode}`,
+						),
+						(v) => {
+							if (v.action === "picked") level = v.level;
+							resolve(v.action === "picked" ? v.result : null);
+						},
+					);
 				});
 				ctx.paintIdle();
-				const f = picked !== null && "index" in picked ? facts[picked.index] : undefined;
+				const f = picked !== null && "index" in picked ? order[picked.index] : undefined;
 				if (f === undefined) {
 					ctx.input.prompt();
 					return; // esc — nothing changed, nothing said
@@ -619,6 +651,17 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 						applyModeSetting({ mode: chosen });
 						body.modeNotice(`mode \u2192 ${MODE_LABEL[chosen]}`, MODE_LABEL[mode], MODE_LABEL[chosen]);
 						if (getDontAsk() !== wasOn) body.dontAskNotice(`don't ask \u2192 ${getDontAsk() ? "on" : "off"}`, getDontAsk());
+						ctx.paintIdle();
+					}
+					ctx.input.prompt();
+					return;
+				}
+				if (f.name === "don't ask") {
+					// /dont-ask's own path: the switch, its row, and nothing written
+					const want = level === undefined ? undefined : DONT_ASK[level] === "on";
+					if (want !== undefined && want !== getDontAsk()) {
+						setDontAsk(want);
+						body.dontAskNotice(`don't ask \u2192 ${want ? "on" : "off"}`, want);
 						ctx.paintIdle();
 					}
 					ctx.input.prompt();
@@ -771,7 +814,12 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 									// the header names the switch when it is on; the
 									// rows are the tiers alone — don't ask is not a tier
 									// and is not offered beside them (owner, 2026-09-30)
-									header: `mode — current: ${modeDisplay()}`,
+									// Graphite P3: the current tier rides the band's name, in
+									// the owner's words of 2026-09-30 (`current: full access ·
+									// don't ask`) — the row that said it is gone
+									header: "mode",
+									facts: `current: ${modeDisplay()}${ctx.isRunning() ? " \u00b7 run paused" : ""}`,
+									enter: "\u23ce switches",
 									// the main-sync design: no `· current` suffix — the cursor
 									// opens on the current tier and the band names it; at 80
 									// columns the suffix was cut to `· c`
@@ -858,36 +906,43 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					ctx.input.panelAsk(
 						modelPickView(
 							{
-								header: `model — current: ${agentModel}`,
-								options: names.map((name) => {
+								// Graphite P3 (owner, 2026-10-04): the band counts the
+								// profiles and the rows are a table — the model, its host,
+								// and a state word only where there is one (`current`, or
+								// why it cannot run). Typing FILTERS, as /resume does: the
+								// model, then the host, then the profile's name; a typed
+								// `provider/model` that no profile is becomes a row of its
+								// own — DECLARED REVERSAL of the `t` row (TUI2-R2 ④) and of
+								// the digits here (a digit is a letter of a model name).
+								header: "model",
+								noun: "profiles",
+								...(ctx.isRunning() ? { facts: "run paused" } : {}),
+								input: "filter",
+								// PH-1a (finding PH-F4): the example is a syntax
+								// directWriteProfile ACCEPTS — the fresh install sees it
+								filterHint: names.length === 0 ? "type provider/model (e.g. openai-compat/deepseek-reasoner)" : "filter, or type provider/model",
+								direct: true,
+								enter: "\u23ce switches",
+								options: names.map((name): PickOption => {
 									const profile = configModels[name]!;
-									// the note keeps what tells two rows apart; the levels
-									// left it for the axis below (they were being cut off
-									// the end of the note column at 100 columns).
-									// The owner, 2026-09-21: two profiles can name ONE model
-									// id and reach two accounts, so the current mark follows
-									// the PROFILE the session is on (`currentModelName`), not
-									// the model id — the id alone marked both such rows, or
-									// neither. The row's own provider rides the label, so two
-									// rows that share an id still read differently.
-									// 0.40.1 (the owner's dogfood, 2026-09-21): the `profile: <key>` prefix
-									// is gone — the row already names the model and its endpoint, and the
-									// profile key is what `/model <name>` takes, not what a chooser
-									// reading a list needs. What remains is what the chooser CANNOT
-									// infer: availability, and which one is live.
-									// 0.40.6 (the owner, 2026-09-23: "who told you to write ctx"):
-									// the window rode here in 0.40.3–0.40.5 and cut `unavailable`
-									// to `unavailabl…` on the owner's rows. It lives on /status and
-									// /settings, where there is room to say it and its source.
-									const marks = [...(profileAvailable(profile) ? [] : ["unavailable"]), ...(name === currentProfileName ? ["current"] : [])];
-									const host = profileProviderLabel(profile.kind, profile.baseUrl, profile.upstream);
-									return { label: `${profile.kind}/${profile.model}${host === "" ? "" : ` ${host}`}`, note: marks.join(" · "), ...effortAxis(profile) };
+									const available = profileAvailable(profile);
+									// 0.40.1 took the `profile: <key>` prefix off every row and
+									// the kind/ prefix rode the label; P3 moves both to the
+									// selected row's opened line (owner: the profile name kept
+									// there), beside what signs it in. The owner, 2026-09-21:
+									// two profiles can name ONE model id, so `current` follows
+									// the PROFILE, not the id.
+									const host = profileProviderLabel(profile.kind, profile.baseUrl, profile.upstream).replace(/^@/, "");
+									const state = name === currentProfileName ? "current" : available ? "" : profile.apiKeyEnv === undefined ? "sign in" : "no key";
+									return {
+										label: profile.model,
+										cols: [host, state],
+										opened: available ? `profile ${name} \u00b7 ${profile.kind} \u00b7 ${signInNote(profile)}` : unavailableWhy(name, profile),
+										...(available ? {} : { off: true }),
+										match: [name],
+										...effortAxis(profile),
+									};
 								}),
-								// PH-1a (finding PH-F4): the example must be a syntax
-								// directWriteProfile actually ACCEPTS — the old
-								// "openai/…" hint failed with "no such model profile"
-								// on exactly the fresh-install path that shows it.
-								typeHint: names.length === 0 ? "type provider/model directly (e.g. openai-compat/deepseek-reasoner)" : "type provider/model directly",
 								// MP-1 (0.40.7): the cursor opens on the session's own
 								// profile — opening on row 0 plus one Enter changed who pays
 								...(currentProfileName !== null && names.indexOf(currentProfileName) >= 0 ? { initial: names.indexOf(currentProfileName) } : {}),
