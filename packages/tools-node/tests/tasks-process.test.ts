@@ -34,7 +34,9 @@ function setup(onTransition?: (t: TaskInfo, tr: TaskTransition) => void) {
 	const root = join(base, "s.tasks");
 	const cwd = join(base, "ws");
 	mkdirSync(cwd);
-	const manager = new TaskManager({ root, backend, pollMs: 50, ...(onTransition !== undefined ? { onTransition } : {}) });
+	// identifyEveryMs 100: a dead runner is seen within the test's time
+	// (the default 5 s is the stated worst case — Windows P6)
+	const manager = new TaskManager({ root, backend, pollMs: 50, identifyEveryMs: 100, ...(onTransition !== undefined ? { onTransition } : {}) });
 	return { base, root, cwd, manager };
 }
 
