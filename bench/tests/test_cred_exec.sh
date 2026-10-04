@@ -20,6 +20,13 @@ out=$(env -i PATH="$PATH" BENCH_CRED_FILE="$CRED" BENCH_CRED_AS=OPENAI_API_KEY s
 [ "$out" = "$KEY|||" ] && ok "the arm reads the key as OPENAI_API_KEY; nothing else from the file, and no path, reaches it" || bad "mapping: $out"
 
 # 2. a file without the key refuses to launch the arm
+# 3f: a route names the variable INSIDE the file (BENCH_CRED_KEY) — the
+# Command Code file carries COMMANDCODE_API_KEY, not DEEPSEEK_API_KEY
+printf 'COMMANDCODE_API_KEY=%s\nDEEPSEEK_API_KEY=not-this-one\n' "$KEY" > "$T/co.env"
+out=$(env -i PATH="$PATH" BENCH_CRED_FILE="$T/co.env" BENCH_CRED_AS=OPENAI_API_KEY BENCH_CRED_KEY=COMMANDCODE_API_KEY sh "$B/cred-exec.sh" sh -c 'printf "%s|%s" "${OPENAI_API_KEY:-}" "${BENCH_CRED_KEY:-}"')
+[ "$out" = "$KEY|" ] && ok "BENCH_CRED_KEY picks the variable inside the file, and is not passed on" || bad "named key: $out"
+if env -i PATH="$PATH" BENCH_CRED_FILE="$T/co.env" BENCH_CRED_AS=OPENAI_API_KEY BENCH_CRED_KEY='X;rm' sh "$B/cred-exec.sh" true 2>/dev/null; then bad "a non-name BENCH_CRED_KEY launched the arm"; else ok "a BENCH_CRED_KEY that is not a variable name refuses to launch"; fi
+
 printf 'NOTHING=1\n' > "$T/empty.env"
 if env -i PATH="$PATH" BENCH_CRED_FILE="$T/empty.env" BENCH_CRED_AS=OPENAI_API_KEY sh "$B/cred-exec.sh" true 2>/dev/null; then bad "a keyless file launched the arm"; else ok "a file without the key refuses to launch the arm"; fi
 

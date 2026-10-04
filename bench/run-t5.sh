@@ -150,8 +150,14 @@ fi
 # the credentials file's PATH; cred-exec.sh reads the key inside the process
 # that becomes the arm. The file must exist and name the key; nothing here
 # reads the value.
-CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-deepseek/credentials.env"
-grep -q 'DEEPSEEK_API_KEY=' "$CRED_FILE" 2>/dev/null || { echo "no DEEPSEEK_API_KEY in $CRED_FILE" >&2; exit 1; }
+# 3f: the ROUTE decides the file and the variable in it (route.sh). The
+# comparator arms only ever ran on DeepSeek's official endpoint, so a co
+# round is the kiso arm's alone.
+. "$B/route.sh"
+if [ "$BENCH_ROUTE" != ds ] && [ "$TOOL" != kiso ]; then
+  echo "BENCH_ROUTE=$BENCH_ROUTE is for the kiso arm only" >&2; exit 1
+fi
+CRED_FILE="$ROUTE_CRED_FILE"
 TOT=0
 # PER-LEG HARD LIMITS. A leg had none: a hung arm ran until someone noticed,
 # a looping arm spent the programme's budget on one task. Overridable, but
@@ -208,6 +214,11 @@ cd "$WORK/repo"
 # have never measured and do not control. The same shape as reading a
 # fallback as a measurement, which is the defect this whole round began with.
 BENCH_EFFORT=${BENCH_EFFORT:-high}
+# 3f: `none` — no effort line and no effort gate, for a route whose model
+# the registry cannot bind a level on (decided by the route's trial leg;
+# both arms of a round run the same setting)
+EFFORT_LINE="/model ds $BENCH_EFFORT"
+[ "$BENCH_EFFORT" = none ] && EFFORT_LINE=""
 TURN() { node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-t5.json','utf8'))[$1-1])"; }
 
 # F33-R6: declared for EVERY arm, not inside one. It lived in the kiso
@@ -246,17 +257,14 @@ case "$TOOL" in
     # exact shape. The env pairs stay: the profile carries the endpoint
     # across the switch, which is CTX-1's lesson one field over.
     mkdir -p "$WORK/kiso-home"
-    cat > "$WORK/kiso-home/config.json" <<CFG
-{ "models": { "ds": { "kind": "openai-compat", "model": "deepseek-flash",
-  "baseUrl": "https://api.deepseek.com", "apiKeyEnv": "OPENAI_API_KEY" } } }
-CFG
+    route_profile_json > "$WORK/kiso-home/config.json"
     assert_bare kiso "$BARE_HOME" || exit 1
     # §3: KISO_SKILLS_DIR was missing entirely — an arm reading the operator's
     # skills is not the product as installed.
     # §3: KISO_SKILLS_DIR was missing entirely — an arm reading the
     # operator's skills is not the product as installed.
-    set -- "OPENAI_BASE_URL=https://api.deepseek.com" "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" \
-      "OPENAI_MODEL=deepseek-flash" "KISO_EXTENSIONS_DIR=$EXTDIR" \
+    set -- "OPENAI_BASE_URL=$ROUTE_BASE_URL" "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" "BENCH_CRED_KEY=$ROUTE_CRED_KEY" \
+      "OPENAI_MODEL=$ROUTE_MODEL" "KISO_EXTENSIONS_DIR=$EXTDIR" \
       "KISO_HOME=$WORK/kiso-home" "KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1"
     # CAPTURE (the launch bench, the T6 runner's mechanism): this arm dumps
     # its own request bodies — never a proxy, whose loopback base URL would
@@ -309,11 +317,11 @@ CFG
     # compaction — that is a real question, just not this one — and the
     # manifest records which way the leg ran, so no reader has to guess.
     if [ "${BENCH_T5_COMPACT:-0}" = 1 ]; then
-      seg 1 printf '%s\n' "/model ds $BENCH_EFFORT" "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
+      seg 1 printf '%s\n' ${EFFORT_LINE:+"$EFFORT_LINE"} "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
       seg 2 printf '/compact\n'
       seg 3 printf '%s\n' "$(TURN 6)" "$(TURN 7)" "$(TURN 8)"
     else
-      seg 1 printf '%s\n' "/model ds $BENCH_EFFORT" "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
+      seg 1 printf '%s\n' ${EFFORT_LINE:+"$EFFORT_LINE"} "$(TURN 1)" "$(TURN 2)" "$(TURN 3)" "$(TURN 4)" "$(TURN 5)"
       seg 2 printf '%s\n' "$(TURN 6)" "$(TURN 7)" "$(TURN 8)"
     fi
     # NO `commit` FIELD, and its absence is deliberate.
@@ -341,7 +349,7 @@ CFG
 const fs = require('fs');
 const meta = {
   tool: 'kiso', task: 'T5', run: '$RUN', round: process.env.KISO_ROUND || null,
-  model: 'deepseek-flash',
+  model: '$ROUTE_MODEL', route: '$BENCH_ROUTE',
   kisoVersion: '$KISO_VERSION',
   createdAt: Date.now(),
 };
@@ -477,7 +485,7 @@ echo "$TOT" > "$WORK/wall_seconds"
 # The wire is unchanged: both ids reach the same model. What changes is
 # that the manifest stops recording a name nobody serves.
 case "$TOOL" in
-  kiso)   ARM_CMD="$KISO_BIN"; ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL KISO_HOME KISO_EXTENSIONS_DIR" ;;
+  kiso)   ARM_CMD="$KISO_BIN"; ARM_MODEL="$ROUTE_MODEL"; ARM_ENDPOINT="$ROUTE_BASE_URL"; ARM_ENV="OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL KISO_HOME KISO_EXTENSIONS_DIR" ;;
   # The effort flag belongs IN the captured command. Round B recorded this
   # arm's command as the bare binary name, so the manifest could not show
   # that `--thinking high` was ever sent — the only record of its effort was
@@ -581,7 +589,7 @@ elif [ "$TOOL" = "claude" ] && grep -qi "Unknown --effort value" "$WORK"/stdout-
   # `high` whose requests were never high — the same silent substitution the
   # kiso check below exists for, except this one announces itself.
   mark_incomplete "$WORK" "effort_not_bound" "the tool rejected --effort $BENCH_EFFORT and used its default"
-elif [ "$TOOL" = "kiso" ] && [ "$EFFORT_BOUND" != "$BENCH_EFFORT" ]; then
+elif [ "$TOOL" = "kiso" ] && [ "$BENCH_EFFORT" != none ] && [ "$EFFORT_BOUND" != "$BENCH_EFFORT" ]; then
   # BEFORE the task verdict, like every other execution-validity question:
   # a leg that ran at the wrong level did not fail the task, it failed to
   # be the arm it claims to be.
