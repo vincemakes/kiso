@@ -1325,6 +1325,54 @@ opens to change how the session runs take §8.2's shape:
 - The approval and question panels keep their own status row; they are
   the next round.
 
+**8.15 The approval and question panels** (P4, owner, 2026-10-04, all
+four recommendations taken). The panels that stop a run until the person
+answers — an approval for a tool call, a question from the model, a
+question kiso asks itself (§8.12) — take §8.2's shape:
+
+```
+─── needs you · asked by mode:default ──────────────────────────────────
+  SHELL rm -rf build && npm run build                       the call, once
+  deletes files permanently (build)                         the risk line, warn
+▌› 1 Yes, run it
+   2 Yes, and don't ask again for shell
+   3 Show me safer ways to do this
+   4 No — let me tell it what to do instead
+  ↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies          1/4
+──────────────────────────────────────────────────────────────────────── the composer's rail
+```
+
+- The band's name carries the facts: `needs you · asked by <speaker>`
+  (`· amended` when the model answered a note with a new call);
+  `question · <header> · 1 of 2` (`· pick any` for a multi-select);
+  kiso's own question keeps §8.12's band, a path that does not fit cut
+  from the LEFT so the folder's name and the rule's end stay on screen.
+- An approval says the call ONCE, as its transcript card's head
+  (`SHELL rm -rf build`, `WRITE src/clamp.ts`): the body follows only when
+  it adds something — a diff, JSON, or a command the head row cannot show
+  whole. The speaker's fix hint (`/mode accept-edits auto-approves edits`)
+  has a row of its own under the body. DECLARED REVERSAL of the
+  `<tool> needs approval — asked by <speaker>` row, the bold title under
+  it and the blank row after them.
+- A question puts the model's question first, bold. DECLARED REVERSAL of
+  the `‹ 1/2 ›` after it, the header's own row and the blank row.
+- The options, their digits, the gold `›`, the risk line, the safer list
+  and the amend path work as they did. In the amend phase the options give
+  way to `your note goes to the model — it will propose a new call`; in
+  the safer phase the block says `asked the model for safer options` above
+  the alternatives — both were status-row words.
+- One key row with the counter closes the band; an approval's says
+  `esc denies` (the CLI records esc as a denial). No closing rule —
+  DECLARED REVERSAL of the panel's own bottom rule (TUI2-R1.5 ⑪, R2).
+- Around the panel: the Graphite bar stays under it — DECLARED REVERSAL
+  of the panel's status row (`❯ needs you · run paused`, `❯ question 1 of
+  2 · answers are durable facts`), which goes, `run paused` and the
+  durable-facts sentence with it (owner). Before a bar exists (the trust
+  question comes before the session) the row keeps the panel's words and
+  drops the retired key ladder. The input row is the composer's — DECLARED
+  REVERSAL of `pick>` and `amend›`; an empty note or answer row carries a
+  dim `tell kiso what to do instead` or `your answer`.
+
 ## 9. The transcript viewer
 
 `ctrl+r` opens a reader over the turn's record. It was born because §7.1
