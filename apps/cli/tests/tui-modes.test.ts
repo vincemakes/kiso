@@ -244,8 +244,8 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		);
 		const plain = out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 		// the PANEL, not a printed list
-		expect(plain, "bare /mode did not open a picker (Graphite §8.1: the named opening row)").toMatch(/\u2500{3} mode \u2500/);
-		expect(plain, "bare /mode did not open a picker").toContain("current: default");
+		// Graphite P3 (DECLARED): the current tier rides the band's name now
+		expect(plain, "bare /mode did not open a picker (Graphite §8.1: the named opening row)").toMatch(/\u2500{3} mode \u00b7 current: default \u2500/);
 		// every tier is offered, each saying what it DOES — the notes are
 		// transcribed from decide(), so a drifting description is a bug
 		for (const tier of ["default", "accept edits", "plan", "full access"]) expect(plain, `${tier} is not on the panel`).toContain(tier);

@@ -25,7 +25,6 @@ const SPEC: PickSpec = {
 		{ label: "deepseek-flash", note: "profile: ds · current" },
 		{ label: "gpt-6-astra", note: "profile: chatgpt" },
 	],
-	typeHint: "type provider/model directly",
 };
 const APPROVAL = {
 	flavor: "approval" as const,
@@ -37,7 +36,7 @@ const APPROVAL = {
 	fallbackQuestion: "approve? ",
 };
 const approvalRows = (W: number): string[] => panelRowsOf({ view: APPROVAL as never, phase: "options", cursor: 0 }, W, 14);
-const modelRows = (W: number): string[] => panelRowsOf({ view: modelPickView(SPEC, "▸ idle"), phase: "options", cursor: 1, pick: { cursor: 1, phase: "options", level: null } }, W, 12);
+const modelRows = (W: number): string[] => panelRowsOf({ view: modelPickView(SPEC, "▸ idle"), phase: "options", cursor: 1, pick: { cursor: 1, level: null } }, W, 12);
 
 describe("§8.1 — a list names itself", () => {
 	it("the hairline in `line`, the name bold gold, its facts dim", () => {
@@ -54,8 +53,10 @@ describe("§8.1 — a list names itself", () => {
 		setGround("light");
 		expect(plain(approvalRows(80)[0]!)).toMatch(/^─{3} needs you ─+$/);
 		const m = modelRows(80).map(plain);
-		expect(m[0]).toMatch(/^─{3} model ─+$/);
-		expect(m[1]).toBe("  current: deepseek-flash (openai-compat)");
+		// MOVED (Graphite P3 — DECLARED): the words after the name ride the
+		// band's own row; the `current:` row under it is gone
+		expect(m[0]).toMatch(/^─{3} model · current: deepseek-flash \(openai-compat\) ─+$/);
+		expect(m[1]).not.toContain("current:");
 	});
 
 	it("off a known ground the header is one dim span, the same words", () => {
@@ -87,7 +88,11 @@ describe("§8.2 — the selected row", () => {
 		expect(plain(a[sel]!).trimEnd()).toBe(" › 1 Yes, run it");
 		expect(plain(a[sel + 1]!).trimEnd()).toBe("   2 Yes, and don't ask again for shell");
 		const m = modelRows(80);
-		expect(plain(m.find((r) => r.startsWith(p.askEdge))!)).toMatch(/^ › gpt-6-astra +profile: chatgpt/);
+		// MOVED (P3, the §8.13 shape): the gold `›` sits right before the name,
+		// as on the command list, so the name stays in column 2 whether or not
+		// its row is selected — the column does not move
+		expect(plain(m.find((r) => r.startsWith(p.askEdge))!)).toMatch(/^ ›gpt-6-astra +profile: chatgpt/);
+		expect(plain(m.slice(1).find((r) => r.includes("deepseek-flash"))!)).toMatch(/^ {2}deepseek-flash +profile: ds/);
 	});
 
 	it("off a known ground: the reverse-video bar, the `→` kept", () => {

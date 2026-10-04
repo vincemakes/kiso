@@ -14,7 +14,11 @@
  */
 
 import { escapeTerminal, palette } from "./lines.js";
-import { selectionBar, visibleWidth, widthCut } from "./components.js";
+import { atEmbed, bandKeyRow, bandVisible, bandWindow, goldHits, moreMark, selectionBar, visibleWidth, widthCut } from "./components.js";
+
+// Graphite P3: the band helpers and the matcher moved to tui-cells, where
+// the pick panels draw too; re-exported so every import site stays as it was
+export { atEmbed, bandKeyRow, bandVisible, bandWindow, moreMark };
 import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 
 /** The bound source's item — a repo-relative path and nothing else.
@@ -62,51 +66,6 @@ export const AT_SKIP: ReadonlySet<string> = new Set([".git", "node_modules", "di
 /** KC3 §4 — the panel's visible height. A ceiling, not a promise: the
  *  compositor clamps further when the terminal is short. */
 export const AT_VISIBLE = 5;
-
-/**
- * The subsequence embedding, TIGHTENED — the two-pass walk every good
- * fuzzy finder uses, and the reason `@ra` emboldens the "ra" of
- * "src/range.js" rather than the r of "src" and the a of "range".
- *
- * Pass 1 walks forward and stops at the EARLIEST index that completes
- * the query — this both answers "does it match at all" and fixes the
- * right-hand edge. Pass 2 walks backward from that edge, taking the
- * LATEST position for each query character in turn, which slides every
- * matched character as far right as it can go without crossing the
- * next one. The result is the most clustered embedding that ends where
- * the earliest match ends.
- *
- * Case-insensitive: both sides are lowercased by the caller once per
- * query rather than once per character.
- *
- * Returns the ascending match indices, or null when the query is not a
- * subsequence of the path at all.
- */
-export function atEmbed(lowerPath: string, lowerQuery: string): number[] | null {
-	if (lowerQuery === "") return [];
-	// pass 1 — forward, to the earliest completing index
-	let qi = 0;
-	let end = -1;
-	for (let pi = 0; pi < lowerPath.length; pi += 1) {
-		if (lowerPath[pi] === lowerQuery[qi]) {
-			qi += 1;
-			if (qi === lowerQuery.length) {
-				end = pi;
-				break;
-			}
-		}
-	}
-	if (end === -1) return null; // not a subsequence — no embedding exists
-	// pass 2 — backward from that edge, sliding each character right
-	const hit = new Array<number>(lowerQuery.length);
-	let pi = end;
-	for (let j = lowerQuery.length - 1; j >= 0; j -= 1) {
-		while (lowerPath[pi] !== lowerQuery[j]) pi -= 1;
-		hit[j] = pi;
-		pi -= 1;
-	}
-	return hit;
-}
 
 /** The longest run of CONSECUTIVE indices in an ascending list. An
  *  empty query has no run — every path ties on it, and the rank falls
@@ -188,63 +147,6 @@ function splitPath(path: string): { dir: string; name: string } {
 	return cut === -1 ? { dir: "", name: path } : { dir: path.slice(0, cut + 1), name: path.slice(cut + 1) };
 }
 
-/**
- * Graphite P2 (owner, 2026-10-03) — the band's window, shared by the file
- * picker, the command list and the session picker: EIGHT rows on a
- * terminal 30 rows or taller, five below.
- */
-export function bandVisible(height: number): number {
-	return height >= 30 ? 8 : 5;
-}
-
-/** The window over a list, with a scroll-off of one: while more lies past
- *  an edge the cursor stays a row inside it, so the edge row that carries
- *  a more-mark is never the selected one. Stateless, like atWindow. */
-export function bandWindow(total: number, selected: number, visible: number): { first: number; count: number } {
-	const count = Math.min(total, visible);
-	return { first: Math.max(0, Math.min(selected - count + 2, total - count)), count };
-}
-
-/** The more-mark for row `i` of a window: `↑` on its first row when the
- *  list goes on above, `↓` on its last when it goes on below. */
-export function moreMark(i: number, first: number, count: number, total: number): string | null {
-	return i === first && first > 0 ? "↑" : i === first + count - 1 && first + count < total ? "↓" : null;
-}
-
-/** The key row that closes a band: what the keys do, then the selection's
- *  place in the list at the right edge. The keys give way from the least
- *  needed (the first in `keys`); the counter stays. */
-export function bandKeyRow(keys: readonly string[], selected: number, total: number, W: number): string {
-	const p = palette();
-	const count = total === 0 ? "0/0" : `${selected + 1}/${total}`;
-	let kept = [...keys];
-	while (kept.length > 0 && 2 + visibleWidth(kept.join(" · ")) + 2 + count.length + 1 > W) kept = kept.slice(1);
-	const text = kept.join(" · ");
-	const gap = Math.max(1, W - 1 - 2 - visibleWidth(text) - count.length);
-	return `${p.dim}${widthCut(`  ${text}${" ".repeat(gap)}${count}`, Math.max(0, W))}${p.reset}`;
-}
-
-/** Text with the given code-unit positions in bold gold — what the person
- *  typed, in the colour of what the person says — and the rest in `base`. */
-function goldHits(text: string, hits: ReadonlySet<number>, base: string): string {
-	const p = palette();
-	// off a known ground there is no gold: the warn tint carries it (as
-	// /resume's title does), so a selected row — bold throughout — still
-	// shows which letters matched
-	const gold = p.gold !== "" ? p.gold : p.warn;
-	// one span per RUN of hits, not per letter: a typed prefix is a run
-	let out = "";
-	let inHit: boolean | null = null;
-	let i = 0;
-	for (const ch of text) {
-		const hit = hits.has(i);
-		if (hit !== inHit) out += hit ? `${p.reset}${p.bold}${gold}` : `${inHit === null ? "" : p.reset}${base}`;
-		inHit = hit;
-		out += ch;
-		i += ch.length;
-	}
-	return `${out}${p.reset}`;
-}
 
 /**
  * KC3 §4, Graphite P2 (owner, 2026-10-03) — ONE row of the panel: the
