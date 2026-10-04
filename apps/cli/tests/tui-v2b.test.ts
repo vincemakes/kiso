@@ -211,7 +211,7 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				["needs approval", "y\r"], // the rule line's dim run — one contiguous RAW span
+				["needs you · asked by", "y\r"], // Graphite P4: the band's facts — one contiguous RAW span
 				// The run continues after the approval — "turn 2 · faux" only
 				// appears at the turn's terminal event, AFTER "the tour is
 				// done". "you> " would match the FIRST prompt and close the
@@ -234,7 +234,8 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("asky_read needs approval"); // the panel's rule line
+		expect(clean).toContain("needs you · asked by"); // Graphite P4: the band names who asked
+		expect(clean).toContain("ASKY_READ "); // …and the call is said once, as its card reads
 		// W21: the panel superseded the ❯ badge row — the approved cell
 		// settles at the done form, and the [result] no longer flows into
 		// the body (/last has it). A5: the decider tail (`· approved by
@@ -264,7 +265,9 @@ describe("TUI v2b (real PTY, 24×80)", () => {
 		// bodied card and its metadata sits on the outcome row, with the
 		// head row free to name the call. Every fact is still said, and the
 		// approval is still on the record, which is this case's subject.
-		expect(clean).toMatch(/ {2}asky_read/);
+		// (Graphite P4: this was met by the approval's retired `asky_read needs
+		// approval` row too; the card's head is upper case, as every head is)
+		expect(clean).toMatch(/ {2}ASKY_READ/);
 		expect(clean).toMatch(/1 line · \d+\.\ds · approved/);
 		// REVERSED (R13): "the full result stays out of the stream" was
 		// VD-5's one-lining, and VD-5 is retired — a settled call is a CARD

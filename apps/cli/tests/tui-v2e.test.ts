@@ -106,7 +106,7 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				["needs approval", "y\r"], // the rule line's dim run — one contiguous RAW span (the tool name's bold span sits BEFORE the reset code, so "<tool> needs approval" never matches the byte stream) — "y" + enter send the verdict
+				["needs you · asked by", "y\r"], // Graphite P4: the band's facts' dim run — one contiguous RAW span (the tool name's bold span sits BEFORE the reset code, so "<tool> needs approval" never matches the byte stream) — "y" + enter send the verdict
 				["the tour is done", "exit\r"],
 			],
 			workdir,
@@ -165,7 +165,7 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 			workdir,
 		);
 		const clean = stripANSI(out);
-		const asked = clean.indexOf("needs approval");
+		const asked = clean.indexOf("needs you · asked by"); // Graphite P4: the band
 		expect(asked, "the approval never opened").toBeGreaterThan(0);
 		for (const row of ["- line1", "+ FIRST", "- line2", "+ LAST"]) expect(clean.indexOf(row, asked), `the approval shows no ${row}`).toBeGreaterThan(asked);
 		expect(clean).toContain("+2 -2 \u00b7 2 hunks");
@@ -198,7 +198,7 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		);
 		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, [["\u258c ", "go\r"], ["the bypass edit is done", "exit\r"]], workdir);
 		const clean = stripANSI(out);
-		expect(clean, "bypass asked").not.toContain("needs approval");
+		expect(clean, "bypass asked").not.toContain("needs you · asked by");
 		const head = clean.indexOf("+1 -1");
 		expect(head, "no settled card").toBeGreaterThan(0);
 		expect(clean.indexOf("- OLD", head), "the settled card shows no diff").toBeGreaterThan(head);

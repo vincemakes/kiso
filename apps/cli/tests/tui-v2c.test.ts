@@ -234,7 +234,7 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				["needs approval", "\x1b"], // the rule line's dim run — Esc at the panel = the cancel
+				["needs you · asked by", "\x1b"], // Graphite P4: the band's facts — Esc at the panel = the cancel
 				// The cancel is a CONSERVATIVE DENIAL (a RESULT, not an
 				// abort): the run continues and the script's turn 2 ("the
 				// tour is done") completes the SAME run.

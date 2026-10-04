@@ -203,7 +203,7 @@ describe("T-Q4 — the happy path: two questions, one durable answers JSON", () 
 		//    descriptions and the walk counter
 		expect(screen).toContain("which bundler?");
 		expect(screen).toContain("fast dev server");
-		expect(screen).toContain("‹ 1/2 ›");
+		expect(screen).toContain("1 of 2"); // Graphite P4: the place in the set rides the band's name
 		expect(screen).toContain("which test runners?");
 
 		// ② ONE durable tool_result, carrying both answers in the shapes
@@ -336,7 +336,8 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 		// cells, so the ANSWERED ask is on screen as history — its settled
 		// card names the questions it asked. What "asks nothing" means is
 		// that no PANEL comes up: the panel's own status row is absent.
-		expect(third).not.toContain("answers are durable facts");
+		// Graphite P4: no panel means no question band (its status sentence retired)
+		expect(third.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).not.toMatch(/question · [^\n]*1 of 2/);
 		expect(third).not.toContain("question 1 of 2");
 		expect(third.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("asked 2 questions (answered)");
 		expect(third).not.toContain("never answered"); // P1b: the recovery panel's band, singular or plural

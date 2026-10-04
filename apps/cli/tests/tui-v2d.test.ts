@@ -219,7 +219,11 @@ const CELL_LINE = [
 	// indent now and are classified by SHAPE, one shape per row kind.
 	// This is stricter than the gutter was — `│ anything` admitted every
 	// panel row at once, where these name four distinct forms.
-	/^\S+ needs approval — asked by .*$/, // the rule line (+ its · fix hint)
+	// Graphite P4 (DECLARED): the rule line retired into the band's name and
+	// the call's head (`SHELL sleep 1; echo hi`), and the fix hint has a row
+	/^\u2500{3} needs you · (?:amended · )?asked by \S+ \u2500+$/, // the band row
+	/^[A-Z][A-Z_]*(?: \S.*)?$/, // the call's head, as its card reads (a call with no target is its verb)
+	/^\/mode \S.*$/, // the fix hint's own row
 	/^[1-9] \S.*$/, // an option row — the digit IS the key (the cursor's row rides the reverse bar and is classified by it)
 	/^↑↓ move · .*$/, // the panel's affordance row
 	// the panel's TITLE is the call's own subject — arbitrary text, like
@@ -382,7 +386,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 				// bare "(approved," and the "· approved," forms — by which time
 				// the second
 				// panel is mounted.
-				["needs approval", "y\r"],
+				["needs you · asked by", "y\r"],
 				["{}", "y\r"],
 				["the tour is done", "exit\r"],
 			],
@@ -398,8 +402,8 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// a panel post-commit — the rule line ("asked by …"), the settled
 		// cells carry the "approved" decision tag, and the 1s shell's
 		// spinner row paints (the spinner IS the gutter).
-		expect(clean).toContain("shell needs approval"); // the shell panel's rule line
-		expect(clean).toContain("asky_read needs approval"); // the asky panel's rule line
+		expect(clean).toContain("SHELL "); // Graphite P4: the shell panel's head
+		expect(clean).toContain("ASKY_READ "); // …and the asky panel's
 		// MOVED (R1.5 slice ④, the running-header class — DECLARED THIS
 		// ROUND): the running header used to print a 60-char slice of the
 		// call's JSON while the done card printed the plain command

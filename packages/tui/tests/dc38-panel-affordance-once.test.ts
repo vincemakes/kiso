@@ -25,7 +25,9 @@ import { Body } from "../src/compositor.js";
 import { Screen } from "./helpers/screen.js";
 import type { PanelView } from "../src/approval-panel.js";
 
-const AFFORDANCE = "↑↓ move · ⏎ or click confirms · 1-4 instant · esc";
+// Graphite P4 (owner, 2026-10-04): an approval's esc says it denies, and the
+// range is an en dash — the words moved; the once-only property did not
+const AFFORDANCE = "↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies";
 
 function makeBody(W: number, H: number) {
 	const writes: string[] = [];

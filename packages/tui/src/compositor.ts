@@ -51,7 +51,7 @@ import { MENU_ITEMS, displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 // KC3.5: the panel-slot reads come from the DISPATCHERS — one source
 // for four reads, so an ask can never render half as an approval.
-import { panelFrameOf, panelLeadOf, panelStatusOf } from "./ask-panel.js";
+import { panelFrameOf, panelHintOf, panelStatusOf } from "./ask-panel.js";
 import { MOUSE_OFF } from "./editor.js";
 import { pickWindowOf } from "./approval-panel.js";
 import type { PanelState } from "./approval-panel.js";
@@ -1742,12 +1742,13 @@ export class Body {
 		// block carries its own row (approval-panel.ts pushes it for the
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
 		// lost anywhere.
-		// Graphite P3 (owner, 2026-10-04): a PICK panel — /model, /mode,
-		// /settings, opened by the person — leaves the bar where it is: the
-		// session's facts do not stop being true while a list is open. A run
-		// paused behind it is said in the band's name. The approval and
-		// question panels keep their own status row (the next round's).
-		if (panel !== null && !(panel.view.pick !== undefined && this.#bar !== null)) return { status: panelStatusOf(panel), hint: undefined, expand: null };
+		// Graphite P3/P4 (owner, 2026-10-04): a panel leaves the bar where it
+		// is — the session's facts do not stop being true while a panel is up,
+		// and what the panel is doing is said in its band. The panel's own
+		// status line is the form before a bar is bound (the trust question
+		// comes before the session exists): its words, and not the key ladder
+		// §7.8 retired — an empty hint, so the row offers none.
+		if (panel !== null && this.#bar === null) return { status: panelStatusOf(panel), hint: "", expand: null };
 		// Graphite §8.9: the bar, when the CLI handed one over — the steers
 		// are on screen in the band above the input (§8.7), so the bar does
 		// not count them (the main-sync round, owner 2026-09-30: no `+N
@@ -1832,8 +1833,8 @@ export class Body {
 		// panel rows' edit column; leadWidth is the ONE authority).
 		// R2: wallL is 0 — the box is retired, so the row starts at column
 		// one and the frame's marker and this formula share the constant.
-		// Graphite P3: a pick leaves the input row to the composer (its filter is typed there)
-		const lead = panel !== null && panel.view.pick === undefined ? panelLeadOf(panel) : this.#composerLead();
+		// Graphite P3/P4: a panel leaves the input row to the composer
+		const lead = this.#composerLead();
 		return 1 + leadWidth(lead) + st.cursor;
 	}
 
@@ -2700,9 +2701,10 @@ export class Body {
 		// Graphite §7.8: the prompt `›` is gold (the edge of a turn); the
 		// bound lead is plain text and the colour is the paint's, so a ground
 		// resolved after the first frame reaches it.
-		// Graphite P3: a pick panel leaves the input row its own lead — a
-		// filter is typed there, and a digit list says its keys on its key row
-		const lead = panel !== null && panel.view.pick === undefined ? panelLeadOf(panel) : this.#composerLead().replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
+		// Graphite P3/P4: a panel leaves the input row its own lead — a filter,
+		// a note or an answer is typed there, and a list says its keys on its
+		// key row (DECLARED REVERSAL of `1-4>`, `pick>`, `amend›`)
+		const lead = this.#composerLead().replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
 		const leadW = leadWidth(lead);
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row
@@ -2741,7 +2743,7 @@ export class Body {
 		// in the row's pad, so the cursor and the columns do not move.
 		// Graphite P3: the same exception for a pick that filters (/model) —
 		// its input is the filter too, and its hint is the caller's words.
-		const hint = panel === null ? (this.#pickState?.() != null ? RESUME_FILTER_HINT : null) : panel.view.pick?.input === "filter" ? (panel.view.pick.filterHint ?? null) : null;
+		const hint = panel === null ? (this.#pickState?.() != null ? RESUME_FILTER_HINT : null) : panelHintOf(panel);
 		if (hint !== null && rows.length === 1 && rows[0] === "") {
 			const pad = / +$/.exec(out[0]!);
 			const hintW = visibleWidth(hint);

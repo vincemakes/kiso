@@ -136,7 +136,9 @@ describe("W21: panelBlockRows", () => {
 	// five plus one shared options row.
 	it("short args render exactly 6 + options + n rows (R2: the block opens with a rule too)", () => {
 		const rows = panelBlockRows(simpleView(), "options", 0, 80, 20);
-		expect(rows).toHaveLength(6 + 2 + 2); // R2: six rows of frame
+		// MOVED (Graphite P4 — DECLARED): FIVE rows of frame — the closing
+		// rule is gone (the composer's rail closes the band), the key row stays
+		expect(rows).toHaveLength(5 + 2 + 2);
 		expect(rows.join("")).not.toContain("more rows");
 	});
 
@@ -154,7 +156,10 @@ describe("W21: panelBlockRows", () => {
 		// the 4-row diff + 5 chrome rows + 4 option rows = 13; at maxRows 20
 		// nothing is cut (the old 6-fixed-row arithmetic is superseded).
 		const rows = panelBlockRows(approvalView(), "options", 0, 120, 20);
-		expect(rows).toHaveLength(14); // R2: six rows of frame
+		// MOVED (Graphite P4 — DECLARED): the band, the call's head, the 4-row
+		// diff, the fix hint's own row, 4 options and the key row — no rule
+		// row, no title-then-blank, no closing rule
+		expect(rows).toHaveLength(2 + 4 + 1 + 4 + 1);
 		expect(rows.join("")).toContain("the brand new line that was written by the tool");
 		expect(rows.join("")).toContain("the old line that gets replaced by the new one");
 	});
@@ -173,11 +178,14 @@ describe("W21: the panel chrome helpers", () => {
 	// information rather than decoration.
 		expect(panelLeadPlain(approvalView(), "options", 0)).toBe("");
 		expect(panelLeadPlain(simpleView(), "options", 0)).toBe("");
-		expect(panelLeadPlain(approvalView(), "amend", 3)).toBe("amend\u203a ");
+		// MOVED (Graphite P4, owner 2026-10-04 — DECLARED): the named lead
+		// retired too — a panel leaves the input row to the composer, and the
+		// empty note row carries a dim hint instead (the tui's panelHintOf)
+		expect(panelLeadPlain(approvalView(), "amend", 3)).toBe("");
 		// the width is the PLAIN text's display width — the colored lead
 		// renders wider in bytes but occupies the same cells.
 		expect(panelLeadWidth(approvalView(), "options", 0)).toBe(0);
-		expect(panelLeadWidth(approvalView(), "amend", 3)).toBe("amend\u203a ".length);
+		expect(panelLeadWidth(approvalView(), "amend", 3)).toBe(0);
 		// and an empty lead spends NO bytes on styling nothing
 		expect(panelLead(approvalView(), "options", 0)).toBe("");
 	});
@@ -192,9 +200,12 @@ describe("W21: the panel chrome helpers", () => {
 		// until you answer". The 867a0fa literals are otherwise intact.
 		expect(panelStatus(approvalView(), "options", 0)).toBe("❯ run paused");
 		expect(panelStatus(approvalView(), "amend", 3)).toBe("❯ your note goes to the model — it will propose a new call");
-		expect(panelAffordance(approvalView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
-		expect(panelAffordance(approvalView(), "options", 1)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
-		expect(panelAffordance(simpleView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-2 instant · esc");
-		expect(panelAffordance(approvalView(), "amend", 3)).toBe("⏎ send · esc back");
+		// MOVED (Graphite P4 — DECLARED): esc on an approval says it denies
+		// (the CLI records it as a denial); the range is an en dash, as on
+		// every key row; the amend keys say where esc goes back to
+		expect(panelAffordance(approvalView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies");
+		expect(panelAffordance(approvalView(), "options", 1)).toBe("↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies");
+		expect(panelAffordance(simpleView(), "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1–2 instant · esc");
+		expect(panelAffordance(approvalView(), "amend", 3)).toBe("⏎ sends · esc back to the choices");
 	});
 });

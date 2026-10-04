@@ -116,7 +116,7 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 		const raw = ptyRun(["--mode", "default", "r15-cur-all"], env as NodeJS.ProcessEnv, {
 			feeds: [
 				["▌ ", "go\r"],
-				["needs approval", "1\r"],
+				["needs you · asked by", "1\r"], // Graphite P4: the band's facts
 				["fixed it.", "\x0f"],
 			],
 			delays: [[5, "/context\r"], [7, "exit\r"]],
@@ -163,13 +163,13 @@ describe("TUI2-R1.5 ⑩ — the cursor parks in the composer (VD-12)", () => {
 			delays: [[3, "1\r"], [6, "exit\r"]],
 			cwd: ws,
 		});
-		const term = termAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
+		const term = termAt(raw, "↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies");
 		const grid = term.visible();
 		// the panel is really up — the assertion below is about that state
-		expect(grid.join("\n")).toContain("needs approval");
+		expect(grid.join("\n")).toContain("needs you · asked by");
 		expectParkedInComposer(term, "approval-panel");
 		// and specifically NOT inside the panel's block
 		const { row } = term.cursor;
-		expect(grid[row] ?? "", "the cursor is inside the panel block").not.toMatch(/needs approval|args \(full\)/);
+		expect(grid[row] ?? "", "the cursor is inside the panel block").not.toMatch(/needs you|args \(full\)/);
 	}, 240_000);
 });
