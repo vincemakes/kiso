@@ -252,9 +252,16 @@ def claude(work):
                 cost_equivalent=inp + 0.02 * cache + 4 * out,
                 unknown_requests=unknown, usage_incomplete=unknown > 0)
 
-def main(workdir):
+def main(workdir, task=None):
+    """`task` (the 0.46.0 evaluation): the legs of THAT task anywhere under
+    `workdir` — a round directory included (`kiso-<task>-<run>`). Without
+    it, the T5 legs under `workdir/runs/`, as before."""
     rows = []
-    for work in sorted(glob.glob(workdir + "/runs/*T5*")):
+    legs = (sorted(glob.glob(workdir + f"/**/kiso-{task}-*", recursive=True)) if task
+            else sorted(glob.glob(workdir + "/runs/*T5*")))
+    for work in legs:
+        if not os.path.isdir(work):
+            continue
         name = os.path.basename(work)
         if name.count("-") < 2:
             continue  # not a <tool>-<task>-<run> dir (notes, reports)
@@ -275,4 +282,4 @@ def main(workdir):
     return rows
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else ".")
+    main(sys.argv[1] if len(sys.argv) > 1 else ".", sys.argv[2] if len(sys.argv) > 2 else None)
