@@ -350,4 +350,50 @@ describe("P6: a kill that does not take — the wait after it is bounded", () =>
 		expect(String(r.content)).toMatch(/UNCERTAIN/);
 		expect(String(r.content)).not.toMatch(/the child process group was killed/);
 	}, 15_000);
+	/** An implementer delegate on win32, its child never exiting on its own; `taskkillTakes` decides the kill. */
+	async function implementerTimesOut(taskkillTakes: boolean): Promise<{ r: { content: string; isError: boolean } | "hung"; gitRuns: string[][] }> {
+		bareWindows();
+		cp.autoExit = false;
+		cp.answer = (file, args) => {
+			if (/taskkill/i.test(file)) {
+				if (taskkillTakes) cp.last?.exit(1, null);
+				return { status: taskkillTakes ? 0 : 1 };
+			}
+			if (file === "git" && args.includes("rev-parse")) return { status: 0, stdout: "0123456789abcdef0123456789abcdef01234567\n" };
+			return { status: 0, stdout: "" };
+		};
+		const home = mkdtempSync(join(tmpdir(), "kiso-sub-win32-home-"));
+		vi.stubEnv("KISO_HOME", home);
+		vi.stubEnv("KISO_SESSIONS_DIR", join(home, "sessions"));
+		vi.stubEnv("KISO_SUBAGENT_BIN", join(home, "kiso.js"));
+		vi.stubEnv("KISO_SUBAGENT_TIMEOUT_MS", "50");
+		vi.stubEnv("KISO_SUBAGENT_DEPTH", "0");
+		const ext = await createSubagentExtension();
+		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
+		const r = await within(
+			delegate.execute({ tasks: [{ role: "implementer", task: "change things" }] }, { signal: new AbortController().signal } as never) as Promise<{ content: string; isError: boolean }>,
+			8_000,
+		);
+		return { r, gitRuns: cp.runs.filter((x) => x.file === "git").map((x) => [...x.args]) };
+	}
+
+	it("an implementer that may still be running keeps its worktree, and nothing is collected from it", async () => {
+		const { r, gitRuns } = await implementerTimesOut(false);
+		expect(r, "the delegate waited without bound for a child the kill did not end").not.toBe("hung");
+		if (r === "hung") return;
+		expect(String(r.content)).toMatch(/UNCERTAIN/);
+		expect(String(r.content)).toMatch(/worktree kept at: .*kiso-subagent-wt-.* — the child may still be writing to it; nothing was collected/);
+		expect(gitRuns.some((a) => a.includes("diff")), "a tree that may still change was diffed").toBe(false);
+		expect(gitRuns.some((a) => a.includes("remove")), "a worktree was removed under a child that may be running").toBe(false);
+	}, 15_000);
+
+	it("an implementer whose kill takes is collected and cleaned up as before (guard)", async () => {
+		const { r, gitRuns } = await implementerTimesOut(true);
+		expect(r).not.toBe("hung");
+		if (r === "hung") return;
+		expect(String(r.content)).toContain("(the child process group was killed)");
+		expect(String(r.content)).not.toMatch(/UNCERTAIN|nothing was collected/);
+		expect(gitRuns.some((a) => a.includes("diff"))).toBe(true);
+		expect(gitRuns.some((a) => a.includes("remove"))).toBe(true);
+	}, 15_000);
 });
