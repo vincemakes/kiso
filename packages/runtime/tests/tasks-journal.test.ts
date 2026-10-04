@@ -101,7 +101,9 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
 		const backend = fakeBackend();
 		const seen: [string, TaskTransition][] = [];
-		const m = new TaskManager({ root, backend, pollMs: 20, onTransition: (t, tr) => void seen.push([t.id, tr]) });
+		// identifyEveryMs 0: the verdicts, read as the identity changes (the
+		// cache's own worst case is tasks-identity-cache.test.ts's)
+		const m = new TaskManager({ root, backend, pollMs: 20, identifyEveryMs: 0, onTransition: (t, tr) => void seen.push([t.id, tr]) });
 		const a = await m.start({ command: "serve", cwd: "/", profile: "service", readyWhen: "up" });
 		const b = await m.start({ command: "build", cwd: "/" });
 		appendRecord(join(root, a.id, "journal.jsonl"), { type: "ready", ts: Date.now(), match: "up" });
@@ -171,7 +173,7 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 	it("an identity that cannot be verified is never read as the runner: unknown, and a stop is only requested — no signal", async () => {
 		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
 		const backend = fakeBackend();
-		const m = new TaskManager({ root, backend });
+		const m = new TaskManager({ root, backend, identifyEveryMs: 0 }); // the verdict as the identity changes
 		const t = await m.start({ command: "sleep 9", cwd: "/" });
 		backend.unverifiable.add(101); // the pid is live; whose it is cannot be told
 		expect(m.get(t.id)!.state.kind).toBe("unknown");
