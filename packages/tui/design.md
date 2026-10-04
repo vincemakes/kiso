@@ -1057,15 +1057,16 @@ print the lines they always printed.
   typed after it is typed (the chunk is parsed whole, so an arrow is an
   arrow); only `esc` is eaten. CACHE rides the seal (§7.11), not here.
 - `/settings` is a pick panel, a row per setting (owner, 2026-09-29). The
-  SESSION's own settings change in it: the mode and thinking walk their own
-  axis with `←→` (the strip and the key row name it: `mode:`,
-  `thinking:`) and apply on `⏎` through `/mode`'s and `ctrl+t`'s own
-  paths; `⏎` on the model opens `/model`. A setting that lives in a
-  config file (floor, auto-compact, project trust, the window, the theme)
-  shows its value and source, and `⏎` prints how to change it: kiso never
-  writes the person's config (0.40.6's rule stands for those — the same
-  split as two of the reference agents; see the R3 plan).
-- The model picker: `/model`'s list as a band; `⏎` switches.
+  SESSION's own settings change in it: the mode, don't ask and thinking
+  walk their own axis with `←→` (the key row names it: `←→ mode`) and
+  apply on `⏎` through `/mode`'s, `/dont-ask`'s and `ctrl+t`'s own paths;
+  `⏎` on the model opens `/model`. A setting that lives in a config file
+  (floor, auto-compact, project trust, the window, the theme) shows its
+  value and source, and `⏎` prints how to change it: kiso never writes
+  the person's config (0.40.6's rule stands for those — the same split as
+  two of the reference agents; see the R3 plan). Its shape is §8.14's.
+- The model picker: `/model`'s list as a band; `⏎` switches. Its shape is
+  §8.14's.
 
 **8.9 The status bar.** One row under the input: the session and its
 health.
@@ -1266,6 +1267,63 @@ the list is not grouped). Both take the resume picker's shape (§8.2):
   picker's does, so a bold selected row still shows which letters matched.
 - Left out, and why: groups in the command list (owner), and a preview of
   the file (the band is a picker, not a viewer).
+
+**8.14 The pick panels: `/model`, `/mode`, `/settings`** (P3, owner,
+2026-10-04, all four recommendations taken). The three lists the person
+opens to change how the session runs take §8.2's shape:
+
+```
+─── model · 9 profiles ─────────────────────────────────────────────────
+▌›deepseek-v4-flash       api.deepseek.com     current                    selected
+▌ effort none · low · high · max  ·  profile ds · openai-compat · DS_KEY  the opened row
+  gpt-5.6-sol             chatgpt.com          sign in
+  claude-opus-5           anthropic
+↓ z-ai/glm-5.3-flash      api.gateway-aaaa.ai
+  ↑↓ move · ←→ effort · ⏎ switches · esc                            1/9
+──────────────────────────────────────────────────────────────────────── the composer's rail
+█filter, or type provider/model
+```
+
+- The band names its count or its current value: `model · 9 profiles`
+  (`2 of 9 match` under a filter), `mode · current: default` (with don't
+  ask on, `current: full access · don't ask` — the owner's words of
+  2026-09-30), `settings · 11`; a run paused behind the panel adds
+  `· run paused`. DECLARED REVERSAL: the `current:` row under the name.
+- The rows are a table, every column measured over the whole list.
+  `/model`: the model, its host, and a state word only where there is one
+  — `current`, or why it cannot run (`no key`, `sign in`, its row dim).
+  `/mode`: the tier and what it does. `/settings`: the name, a short value
+  (`on`, `1M`) and where it came from; the session's own four first
+  (model, mode, don't ask, thinking), with no caption between them and the
+  rest.
+- The selected row keeps §8.2's gold `›` right before its label, as the
+  command list's does, and OPENS into a second row on the same wash (the
+  resume picker's shape): the level strip, the level in force bold gold
+  (no brackets — DECLARED REVERSAL), then what the columns cannot hold.
+  The strip stays whole and the words give way first. `/model`: the
+  profile's name, its protocol and what signs it in — the profile name
+  returns here only, not on every row (owner; 0.40.1 took it off the
+  rows) — or the whole reason it cannot run. `/settings`: what a value
+  means and how it changes; a setting's own axis needs no label.
+- `/model` FILTERS: typing narrows the list as in the resume picker (the
+  model, then the host, then the profile's name), the matched letters
+  gold. A typed `provider/model` that nothing matches becomes a row of its
+  own, `use … directly`. DECLARED REVERSALS: the `t` row and its typing
+  phase (TUI2-R2 ④), and the digits here — a digit is a letter of a model
+  name. `/mode` keeps its digits (`1–4 picks`); `/settings` is ↑↓ alone.
+- One key row with the counter closes the band and names what `⏎` does
+  on that row (`⏎ switches`, `⏎ applies`, `⏎ opens /model`, `⏎ prints
+  how`). No closing rule: the composer's rail closes the band.
+- The window is §8.2's. DECLARED REVERSALS: PICK_MAX's nine rows (at 24
+  rows `/model` shows five, and typing reaches the rest) and the
+  `↕ 1-9 / 11 — ↑↓ scrolls` row (the more-marks and the counter say it).
+- Around the panel: the Graphite bar stays under it (DECLARED REVERSAL of
+  the panel's own `▸ default` status row and its old key ladder, for these
+  three), and the input row is the composer's — no `1-9>` lead; while a
+  filter is empty it carries a dim `filter, or type provider/model`, the
+  resume picker's exception for the same reason.
+- The approval and question panels keep their own status row; they are
+  the next round.
 
 ## 9. The transcript viewer
 
