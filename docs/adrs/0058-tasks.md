@@ -704,3 +704,107 @@ one — two steers, the key racing a pending auto-detach — is a no-op.
    process owns. Whatever is stopped, the exit reports what it could not
    confirm (`t3: stop unconfirmed — outcome unknown`) and what it left
    running; a stop requested is never presented as a stop.
+
+## Amendment 7 — a transition a result reports is not noticed again (2026-10-05, owner-approved)
+
+The 0.46.0 evaluation's paired runs found two defects in the model-facing
+task contract (findings 0460-B1 and 0460-B2). The owner ruled: fix before
+0.46.0, then re-measure. The fix was reviewed externally before it was
+built.
+
+- **0460-B2.1.** `task_stop` returned before the end ("you will be
+  notified"). The `stopped` notice for the model's own stop then landed
+  after the final answer and bought one request that only acknowledged it
+  (4 of 6 legs of the service task).
+- **0460-B2.2.** `background: true` with `readyWhen` returned at once. The
+  model's next command raced the server, and a `ready` notice repeated
+  what it had already assumed.
+- **0460-B1.** The `background` description invited "long jobs", so a test
+  run whose result was needed went to the background and the model slept
+  on it.
+
+**The rule.** Three facts, each with its own owner:
+
+1. **The transition happened** — the task journal (`terminal`, `ready`).
+2. **A tool execution claimed it** — the journal record
+   `result_claimed { transition, executionId }`, where `executionId` is the
+   CLAIMING call's own (task_stop's, the shell call's), not the task's
+   starter. A claimed transition is never noticed: the manager does not
+   announce it, and a restart does not deliver it.
+3. **The model knows it** — the session log: a durable, successful
+   `tool_result` for that execution. The summary snapshot (§7, Amendment
+   3) follows only this.
+
+The claim controls duplicate delivery. The log's `tool_result` controls
+model knowledge, and the summary follows only the latter: a journal
+record never tells the model anything by itself.
+
+1. **`awaitSettled(id, until, ms, { executionId, signal })`.** The
+   TaskManager waits for a task's end, or for its ready line (any end
+   settles that wait too), on behalf of a tool call. While it waits, the
+   watcher skips the task.
+   - **Order is frozen:** the claim is appended durably, then the
+     transition counts as seen, then the call returns.
+   - **Claims nothing:** a timeout, an abort, a call with no execution id,
+     or a claim that cannot be written. Those transitions are announced as
+     before; a duplicate is the lesser evil next to a lost one.
+   - **An agent task is never claimed.** Its end belongs to its group
+     (Amendment 4): a group re-checks only when a member's end is heard,
+     so claiming the last member's end would strand the others' answers.
+2. **`task_stop` waits up to 8 s** (the runner's poll, TERM, the 5 s grace,
+   KILL, the sweep) and reports how the task ended:
+   - `stopped task t2 (SIGTERM; it ran 11s)`;
+   - a task that cannot be confirmed stopped is an error.
+   Esc ends the wait at once. A stop that is not confirmed keeps the
+   notice path. **Only the model's own call claims.** The person's stop
+   (`/tasks stop`) and the exit's are never claimed: the model still
+   hears of them.
+3. **`background` with `readyWhen` waits for the ready line** (up to the
+   foreground wait). The task is the runner's from the start, so it
+   survives kiso and can be left running at exit (Amendment 6).
+   - **Ready:** the result says so, and the ready is claimed.
+   - **An end before ready** fails the call with the output's tail, and
+     the end is claimed.
+   - **Not ready in time:** the result says exactly that ("not ready after
+     N ms — … it keeps running as background task t1, and you will be
+     notified when it is ready") and claims nothing. It never implies
+     ready.
+   - **Detach releases the wait** (Amendment 6's seam): ctrl+b, a steer or
+     Esc ends the wait. The work is already a task, so nothing is promoted
+     and no second task is made. In general, a detach releases the current
+     invocation from waiting on work that can continue on its own; for a
+     foreground command that means a promotion first.
+4. **A promotion's ready is claimed too.** The foreground `readyWhen`
+   promotion's result says "ready —", so `adopt({ ready: true })` claims
+   it for the shell call. The summary then says `ready`, not `running`
+   (0460-S1).
+5. **Wording (0460-B1), +90 bytes per request**, measured on the first
+   request's body against the rc it replaces:
+   - `background`: "Run independently as a task. Use for services/watchers
+     or work whose exit result is not needed next. If you need the result,
+     keep it foreground and raise foregroundMs. You are notified when it
+     ends; do not sleep/poll."
+   - `readyWhen`: "For a continuing service, wait up to foregroundMs for
+     this literal output before returning; the task keeps running
+     afterward."
+   - `task_stop`: "Stop a task, wait briefly for its terminal state, and
+     report how it ended."
+6. **The crash window** (ADR-0025). Suppose kiso dies after a claim was
+   written.
+   - **The execution's success receipt landed:** receipt repair completes
+     the result, and the model is told.
+   - **It did not:** the execution is uncertain and waits for the person.
+     The delivery does not re-notice (the claim stands), and the summary
+     does not reveal the end (no durable successful result). If the person
+     abandons the call, the model may never learn that end. The person
+     ruled on the interrupted call, and no summary or notice goes around
+     that ruling.
+7. **§11 corrected.**
+   - The margins the evaluation used are BM-1 Amendment 1's
+     (`bm1-a1`: median ≤ +20%; a single pair over +50% is reported, not
+     blocking). The `bm1-frozen` figures §11 quoted were superseded.
+   - **F1's paired wall comparison is reversed.** The control has no
+     background delegation, so a fair comparison cannot be made. The
+     re-measure runs F1b instead: an rc-only probe of the background
+     delegate, the wake and the group delivery, which reports the child
+     requests that tune D6's budget.

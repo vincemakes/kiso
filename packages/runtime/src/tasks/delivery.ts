@@ -21,6 +21,13 @@
  * The summary snapshot is what the MODEL was told, never the live journal:
  * a compaction must not reveal a transition that has not been delivered.
  *
+ * A transition a tool result reports (ADR-0058 Amendment 7) is CLAIMED in
+ * the task journal by that execution and never noticed — the manager does
+ * not announce it, and a restart does not deliver it. The claim decides
+ * only that; what the model knows stays the log's: the summary learns a
+ * claimed transition from the claiming execution's durable, successful
+ * tool_result, never from the journal alone.
+ *
  * Background children (ADR-0058 3d) arrive as a GROUP: the agent tasks
  * started by the calls of one model turn. The group closes once that turn
  * has ended and every call in it has its result — before that, a fast
@@ -36,7 +43,7 @@ import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } fr
 import { dirname, join } from "node:path";
 import { isRuntimeInput, type Event, type TaskDeliveryItem, type UserInputVia } from "@vincemakes/kiso-core";
 import { NOTICE_FOOTER as FOOTER, type Run, type TaskNotice } from "../run.js";
-import type { TaskInfo, TaskManager, TaskTransition } from "./manager.js";
+import { endTransitionOf, type TaskInfo, type TaskManager, type TaskTransition } from "./manager.js";
 
 type Mode = "silent" | "notify" | "wake";
 
@@ -95,6 +102,8 @@ export class TaskDelivery {
 		for (const task of this.#safeList()) {
 			const item = itemOf(task);
 			if (item === null || item.transition === "ready" || this.#receipts.has(key(item))) continue;
+			// a tool result reported it: the claim alone decides (Amendment 7)
+			if (task.claims?.some((c) => c.transition === item.transition) === true) continue;
 			if (task.agent !== undefined) this.#ended.set(task.id, { restart: true });
 			else missed.push({ item, line: this.#line(task, item) });
 		}
@@ -135,16 +144,23 @@ export class TaskDelivery {
 	 *  when the model knows of no task. Told started = a durable, successful
 	 *  tool_result for the execution that started it — a started execution
 	 *  with no result (the crash window), or one resolved as not applied,
-	 *  never told the model a task exists. */
+	 *  never told the model a task exists. Told a transition = a notice
+	 *  naming it, or (Amendment 7) a durable, successful tool_result of the
+	 *  execution that claimed it — in log order, the last one wins. */
 	snapshot(events: readonly Event[]): string {
-		const started = new Set(events.filter((e): e is Event & { type: "tool_result" } => e.type === "tool_result" && !e.isError && e.executionId !== undefined).map((e) => e.executionId));
+		const isTold = (e: Event): e is Event & { type: "tool_result" } => e.type === "tool_result" && !e.isError && e.executionId !== undefined;
+		const started = new Set(events.filter(isTold).map((e) => e.executionId));
+		const tasks = this.#safeList();
+		const claimedBy = new Map<string, { readonly taskId: string; readonly transition: string }[]>();
+		for (const task of tasks) for (const c of task.claims ?? []) claimedBy.set(c.executionId, [...(claimedBy.get(c.executionId) ?? []), { taskId: task.id, transition: c.transition }]);
 		const told = new Map<string, string>();
 		for (const e of events) {
+			if (isTold(e)) for (const c of claimedBy.get(e.executionId!) ?? []) told.set(c.taskId, c.transition);
 			if (e.type !== "user_input" || e.via?.kind !== "tasks") continue;
 			for (const i of e.via.items) told.set(i.taskId, i.transition);
 		}
 		const rows: string[] = [];
-		for (const task of this.#safeList()) {
+		for (const task of tasks) {
 			if (task.executionId === undefined || !started.has(task.executionId)) continue;
 			rows.push(`${task.id} ${told.get(task.id) ?? "running"} — ${task.command}`);
 		}
@@ -395,16 +411,9 @@ export class TaskDelivery {
 
 /** The transition a task's state stands for, as a receipt names it. */
 function itemOf(task: TaskInfo, transition?: TaskTransition): TaskDeliveryItem | null {
-	const s = task.state;
-	const t = (x: TaskDeliveryItem["transition"]): TaskDeliveryItem => ({ taskId: task.id, transition: x });
-	if (transition === "ready") return t("ready");
-	if (s.kind === "ended") {
-		if (task.stoppedBy !== undefined) return t("stopped");
-		return s.exitCode === 0 && s.error === undefined ? t("exited") : t("failed");
-	}
-	if (s.kind === "unknown") return t("unknown");
-	if (s.kind === "not_run") return t("failed");
-	return null;
+	if (transition === "ready") return { taskId: task.id, transition: "ready" };
+	const end = endTransitionOf(task);
+	return end === null ? null : { taskId: task.id, transition: end };
 }
 
 const resultPath = (task: TaskInfo): string => join(dirname(task.outputPath), "result.md");

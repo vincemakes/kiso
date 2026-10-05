@@ -11,7 +11,10 @@
  *
  * The session log is conversation truth and never records a process
  * lifecycle; this journal never records what the model knows. Neither
- * decides the other's facts.
+ * decides the other's facts. `result_claimed` (ADR-0058 Amendment 7) is no
+ * exception: it says which tool execution took a transition over — so the
+ * delivery never notices it — not that the model saw it; that is the
+ * session log's, a durable successful tool_result for that execution.
  */
 
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from "node:fs";
@@ -62,7 +65,14 @@ export type TaskRecord =
 	| { readonly type: "stop_unconfirmed"; readonly ts: number; readonly pids: readonly number[] }
 	/** `error`: the command never started (no shell, a missing cwd) — then
 	 *  there is no exit code and none is invented. */
-	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null; readonly error?: string };
+	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null; readonly error?: string }
+	/** ADR-0058 Amendment 7: the tool execution `executionId` — the CLAIMING
+	 *  call (task_stop's own, the shell call's own), not the task's starter —
+	 *  reports `transition` in its result, so it is never noticed. */
+	| { readonly type: "result_claimed"; readonly ts: number; readonly transition: ClaimedTransition; readonly executionId: string };
+
+/** A transition as the model is told it — a notice's or a result's name. */
+export type ClaimedTransition = "ready" | "exited" | "failed" | "stopped" | "unknown";
 
 /** Append one record and fsync it before returning — the write-ahead step. */
 export function appendRecord(file: string, record: TaskRecord): void {

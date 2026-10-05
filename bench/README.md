@@ -645,6 +645,34 @@ contract violation). Findings:
    the 0.1.22 runs re-extracted with the corrected accounting; the 0.1.23
    release re-runs kiso's cells on the published artifact (below).
 
+## The 0.46.0 evaluation — tasks (ADR-0058 §11)
+
+Three fixtures the background-task work exists for, run paired (rc vs the
+published previous release) with T3 and T5:
+
+- **L1** `fixture-l1` — a test suite that takes about 90 s; the task needs
+  two runs of it. Verify: `l1-verify.sh` (the tests unchanged, the suite
+  green on the final tree).
+- **L2** `fixture-l2` — a small HTTP service with a bug: start it, reproduce
+  with curl, fix, verify, stop it. Verify: `l2-verify.sh` (the final
+  server.js answers on a fresh port; a server left running is recorded and
+  stopped by its PID).
+- **F1** `fixture-f1` — six independent read-only questions. Verify:
+  `f1-verify.mjs` (all six facts in the final answer; the repo unchanged).
+
+`run-task.sh <T3|L1|L2|F1> <run>` runs one leg; `run-paired.sh <task>
+<pairs>` a paired set (version voids, the cache-collapse void rule, the
+spend cap). `BENCH_ROUTE=co` puts the kiso arm on DeepSeek V4.1 Flash
+through Command Code (`route.sh`); `BENCH_EFFORT=none` drops the effort
+line. A leg's stdin stays open until the session is idle
+(`feed-until-idle.mjs`) — a stdin that ends at once makes the CLI exit,
+and a clean exit stops every task. Every leg writes `counters.json`
+(`tasks-counters.mjs`: promotions, wakes, short background tasks, alias
+hits, children and their requests, cache hit); `route-trial.mjs` gates a
+new route on one trial leg; `round-spend.mjs` prices a round from its own
+usage; `paired-rows.mjs` splits the extractor's rows
+(`extract-t5.py <dir> <task>`) for `paired-compare.mjs`.
+
 ## The new scenarios (what they measure)
 
 **T4 (skills, progressive loading)**: the fixture gains a repo convention
