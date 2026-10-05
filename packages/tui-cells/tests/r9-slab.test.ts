@@ -64,15 +64,16 @@ const inner = (r: string): string => plain(r).slice(2).trim();
 const isPad = (r: string): boolean => (r.includes(WASH.light) || r.includes(WASH.dark)) && plain(r).trim() === "";
 
 describe("R9 P2 → Graphite §7.4 — the card's shape", () => {
-	it("pad, head with its outcome, note, five output rows, the key, pad — the pads whole rows of ground (§1.5)", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key stands at
+	// the note's right margin, so the foot row is gone.
+	it("pad, head with its outcome, the note with the key, five output rows, pad — the pads whole rows of ground (§1.5)", () => {
 		setGround("light");
 		const rows = render(shell(88));
-		expect(rows).toHaveLength(10);
-		expect(isPad(rows[0]!) && isPad(rows[9]!)).toBe(true);
+		expect(rows).toHaveLength(9);
+		expect(isPad(rows[0]!) && isPad(rows[8]!)).toBe(true);
 		expect(inner(rows[1]!)).toMatch(/^SHELL pwd && ls -la +exit 0 · 88 lines · 0\.4s$/);
-		expect(inner(rows[2]!)).toBe("\u2026 83 earlier lines");
+		expect(inner(rows[2]!)).toMatch(/^\u2026 83 earlier lines +ctrl\+o expands$/);
 		expect(rows.slice(3, 8).map(inner)).toEqual(["row 84", "row 85", "row 86", "row 87", "row 88"]);
-		expect(inner(rows[8]!)).toBe("ctrl+o expands");
 	});
 
 	it("every row is EXACTLY the width — a card that stops short is not a card", () => {
@@ -143,7 +144,7 @@ describe("R9 P2 → Graphite §7.4 — the card's shape", () => {
 		}
 	});
 
-	it("the note and the foot are dim — kiso's words about the result, not the result", () => {
+	it("the note and its key are dim — kiso's words about the result, not the result", () => {
 		for (const [g, P] of [
 			["light", COLOR_LIGHT],
 			["dark", COLOR_DARK],
@@ -151,7 +152,8 @@ describe("R9 P2 → Graphite §7.4 — the card's shape", () => {
 			setGround(g);
 			const rows = render(shell(88));
 			expect(rows[2], `${g}: the note row`).toContain(P.washDim);
-			expect(rows[8], `${g}: the foot`).toContain(P.dim);
+			// one tone for the row: the key is inside the note's span
+			expect(rows[2]!.slice(rows[2]!.indexOf(P.washDim)), `${g}: the key`).toMatch(/^[^\x1b]*\x1b\[[0-9;]*m[^\x1b]*ctrl\+o expands/);
 		}
 	});
 
@@ -188,12 +190,12 @@ describe("R9 P2 — with no ground, the card does not paint at all", () => {
 		expect(render(shell(88)).join("")).not.toMatch(/\x1b\[(?:48;|49m)/);
 	});
 
-	it("the head at the content edge, the body two columns under it opened by `└`, the key on the foot", () => {
+	it("the head at the content edge, the body two columns under it opened by `└`, the key on the cut note", () => {
 		setGround("unknown");
 		const rows = render(shell(88)).map((r) => plain(r).trimEnd());
 		expect(rows[0]).toMatch(/^ {2}SHELL pwd && ls -la +exit 0 · 88 lines · 0\.4s$/);
-		expect(rows.slice(1, 7)).toEqual(["  \u2514 \u2026 83 earlier lines", "    row 84", "    row 85", "    row 86", "    row 87", "    row 88"]);
-		expect(rows[7]).toMatch(/^ +ctrl\+o expands$/);
+		expect(rows[1]).toMatch(/^ {2}\u2514 \u2026 83 earlier lines +ctrl\+o expands$/);
+		expect(rows.slice(2)).toEqual(["    row 84", "    row 85", "    row 86", "    row 87", "    row 88"]);
 		expect(render(shell(88))[2], "the output rows are dim off the card").toContain("\x1b[2m");
 	});
 

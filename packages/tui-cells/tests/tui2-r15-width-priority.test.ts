@@ -99,7 +99,12 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 	it("the walkthrough's S2 block keeps exit AND duration at 100 cols", () => {
 		expect(outcome(shell(S2), 100)).toContain("exit 0");
 		expect(outcome(shell(S2), 100)).toContain("3.0s");
-		expect(row(shell(S2), 100)).toContain("…"); // the COMMAND is what gave way
+		// Re-derived for the card round (owner, 2026-10-05): the command gives
+		// way by FOLDING, never by losing its middle — the core keeps the
+		// first row's right end and the rest of the command hangs under it.
+		const head = rows(shell(S2), 100).slice(0, 2).map((r) => r.trim().replace(/^SHELL /, "").split(/ {2,}/)[0]!);
+		expect(head.join(" ")).toBe(S2);
+		expect(row(shell(S2), 100)).not.toContain("\u2026");
 		expect(rows(shell(S2), 100).join("\n")).toContain("ctrl+o");
 		for (const r of rows(shell(S2), 100)) expect(visibleWidth(r)).toBeLessThanOrEqual(100);
 	});
@@ -145,14 +150,19 @@ describe("TUI2-R1.5 pin 4 — the parens never break", () => {
 	// nothing else. The rule is the one TUI2-R1.5 ⑤ wrote and is unchanged:
 	// the key is the semantics, so it is the part that is RESERVED while
 	// every other part of the row gives way.
-	// Graphite §7.4: the affordance is the card's FOOT — a row of its own,
-	// so no other part of the card competes with it for room.
-	it("the affordance survives every width — the foot carries the key, whole", () => {
+	// Graphite §7.4: the affordance was the card's FOOT, a row of its own.
+	// Re-derived for the card round (owner, 2026-10-05): the key stands at
+	// the cut note's right margin — one row for one fact — and it is still
+	// the part RESERVED: the count's words give way before it does.
+	it("the affordance survives every width — the cut note carries the key, whole", () => {
 		for (const command of [S1, S2]) {
 			for (let W = 24; W <= 120; W += 1) {
 				const all = rows(shell(command), W);
-				expect(all.at(-1)!.trim(), `W=${W}`).toBe("ctrl+o expands");
-				expect(all.filter((r) => r.includes("\u2026 1 earlier line")).length, `W=${W}: no cut note`).toBe(1);
+				const keyed = all.filter((r) => r.trimEnd().endsWith("ctrl+o expands"));
+				expect(keyed.length, `W=${W}: ${all.join("\n")}`).toBe(1);
+				expect(keyed[0]!, `W=${W}: the key is on the note`).toMatch(/\u2026 1( earlier line)? {2,}ctrl\+o expands$/);
+				expect(all.at(-1)!.trim(), `W=${W}: no foot`).not.toBe("ctrl+o expands");
+				for (const r of all) expect(visibleWidth(r), `W=${W}`).toBeLessThanOrEqual(W);
 			}
 		}
 	});

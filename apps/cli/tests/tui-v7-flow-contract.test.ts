@@ -250,7 +250,11 @@ function shellBody(grid: string[]): string[] {
 	// claim does not.
 	// Graphite §7.4 (unpainted, R1f): `└` at column 2, the body at column 4.
 	const BLOCK = (l: string): boolean => l.startsWith("  \u2514 ") || l.startsWith("    ");
-	const start = grid.findIndex((l, i) => i > h && BLOCK(l));
+	// Re-derived for the card round (owner, 2026-10-05): the head's own
+	// fold rows hang under the command at eight columns, which BLOCK also
+	// matches — so the body starts where `└` opens it, which is what this
+	// helper's comment always said ("the fold rows are skipped").
+	const start = grid.findIndex((l, i) => i > h && l.startsWith("  \u2514 "));
 	if (start < 0) return [];
 	const body: string[] = [];
 	for (let i = start; i < grid.length; i += 1) {
@@ -468,7 +472,10 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the outcome that closes it). VD-5's bound of five was the cap
 		// alone, when the note was spent out of it and there was no
 		// outcome row.
+		// Re-derived for the card round (owner, 2026-10-05): the key rides
+		// the cut note's row and the foot row is gone, so the block is the
+		// note and the five rows.
 		const CAP_SHELL_SETTLED = 5;
-		expect(body.length).toBeLessThanOrEqual(CAP_SHELL_SETTLED + 2);
+		expect(body.length, body.join("\n")).toBe(CAP_SHELL_SETTLED + 1);
 	}, 60_000);
 });

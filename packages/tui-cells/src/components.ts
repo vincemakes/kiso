@@ -577,6 +577,23 @@ function spansOpenAfter(text: string, before: readonly string[]): string[] {
 	return open;
 }
 
+/** A line of text folded to `width` cells, breaking after the last space
+ *  that fits (the space is the break), or hard at the width when a run has
+ *  none. Every other character is kept, in order. */
+export function foldAtSpaces(text: string, width: number): string[] {
+	const rows: string[] = [];
+	let rest = text;
+	while (visibleWidth(rest) > width) {
+		const head = widthCut(rest, width);
+		const space = head.lastIndexOf(" ");
+		const cut = space > 0 ? space + 1 : Math.max(1, head.length);
+		rows.push(rest.slice(0, cut).trimEnd());
+		rest = rest.slice(cut);
+	}
+	rows.push(rest);
+	return rows;
+}
+
 /**
  * TUI2-R1.5 ⑨ (VD-10) — the WORD-aware fold, for text a human reads.
  *
@@ -791,11 +808,13 @@ function toolTargetOf(c: Extract<BodyCell, { kind: "tool" }>): string {
  *
  *   head · body · foot
  *
- * The head carries the mark cell, the verb (padded to seven), the target,
- * and at its right end the outcome (§7.5). The body is the preview,
- * aligned under the target. The foot carries the `ctrl+o` key, right-
- * aligned, and exists only while something is behind it; a card with no
- * body carries the key at the end of its head row instead. The ground is
+ * The head carries the verb, the target (a command folds under itself,
+ * at most three rows collapsed), and at its right end the outcome, a
+ * running or waiting card's mark in front of it (§7.5). The body is the
+ * preview, aligned under the verb; when it cut rows away, its cut note
+ * carries the `ctrl+o` key at the right margin. The foot is the way back
+ * on an expanded card; a card with no body carries the key at the end of
+ * its head row instead (the card round, owner 2026-10-05). The ground is
  * the call's STATE (§1.6): the machine's blue while it runs and once it
  * has run, red failed or refused, gold waiting for the person. No pad
  * rows and no side bar: surfaces are backgrounds only (§1.5).
@@ -810,6 +829,9 @@ class ToolExecution implements Component {
 		const p = palette();
 		const c = this.cell;
 		const verb = escapeTerminal(displayVerb(c.name)).toUpperCase();
+		// the card round: a command folds whole (three rows collapsed, all of
+		// it expanded); every other target is one row
+		const fold = c.name === "shell" ? (c.expanded ? Number.POSITIVE_INFINITY : HEAD_ROWS) : 0;
 		if (c.state === "done") {
 			// R3i phase 5: an answered (or declined) ask_user renders its OWN
 			// block — the questions and what the human said.
@@ -826,7 +848,7 @@ class ToolExecution implements Component {
 			// used to read `denied · interrupted` on the failure ground.
 			if (c.reason === "interrupted") {
 				const body = toolBlockParts(c, W, ctx);
-				return card("run", "  ", verb, escapeTerminal(toolTargetOf(c)), ["interrupted"], body.rows, null, W, false);
+				return card("run", "  ", verb, escapeTerminal(toolTargetOf(c)), ["interrupted"], body.rows, null, W, false, fold);
 			}
 			if (c.reason !== null) {
 				// VD-11: a PERSON's refusal is worth saying (they were asked
@@ -835,7 +857,7 @@ class ToolExecution implements Component {
 				const word = c.verdict !== null && c.verdict.decision === "denied" && c.verdict.decidedBy === undefined ? "denied by you" : "denied";
 				const outcome = [`${word} \u00b7 ${escapeTerminal(c.reason)}`, word];
 				const body = toolBlockParts(c, W, ctx);
-				return card("fail", "  ", verb, escapeTerminal(toolTargetOf(c)), outcome, body.rows, null, W, true);
+				return card("fail", "  ", verb, escapeTerminal(toolTargetOf(c)), outcome, body.rows, null, W, true, fold);
 			}
 			// 4c: a card settled from the durable log carries no clock at
 			// all — it says nothing about time rather than `?s`.
@@ -859,14 +881,14 @@ class ToolExecution implements Component {
 			const body = toolBlockParts(c, W, ctx);
 			const state = c.isError ? "fail" : "done";
 			if (body.rows.length > 0) {
-				// the foot exists only while something is behind it: collapsed,
-				// when the preview cut; expanded, when collapsing would hide
-				// something again (a card whose whole body always shows has no
-				// way back to offer)
+				// the foot is the way back: an expanded card's, when collapsing
+				// would hide something again (a card whose whole body always
+				// shows has no way back to offer). A collapsed card's key stands
+				// on its cut note's row (the card round, `cutNote`).
 				const collapsed = { ...c, expanded: false };
 				const behind = c.expanded && (toolBlockParts(collapsed, W, ctx).cut || hiddenLines(collapsed, W) !== null);
-				const foot = c.expanded ? (behind ? COLLAPSE_ROW : null) : body.cut ? EXPAND_ROW : null;
-				return card(state, "  ", verb, escapeTerminal(toolTargetOf(c)), tiers, body.rows, foot, W, c.isError);
+				const foot = behind ? COLLAPSE_ROW : null;
+				return card(state, "  ", verb, escapeTerminal(toolTargetOf(c)), tiers, body.rows, foot, W, c.isError, fold);
 			}
 			// no body: the head row between its pads, and the key — when the
 			// result sits behind it (a read) — at the end of the head row
@@ -874,12 +896,12 @@ class ToolExecution implements Component {
 			// the key is RESERVED (TUI2-R1.5 ⑤): its words shorten only after
 			// the attribution and the count have given way
 			const keyed = hidden === null ? tiers : [...tiers.map((t) => `${t} \u00b7 ${EXPAND_ROW}`), `${tiers[tiers.length - 1]!} \u00b7 ctrl+o`];
-			return card(state, "  ", verb, escapeTerminal(toolTargetOf(c)), keyed, [], null, W, c.isError);
+			return card(state, "  ", verb, escapeTerminal(toolTargetOf(c)), keyed, [], null, W, c.isError, fold);
 		}
 		if (c.state === "approval") {
 			const body = toolBlockParts(c, W, ctx);
 			// a foot only where there is a body above it (§1.3)
-			return card("ask", `${p.gold}\u276f${p.gold === "" ? "" : p.fgEnd} `, verb, liveTarget(c), ["needs you"], body.rows, c.expanded && body.rows.length > 0 ? COLLAPSE_ROW : null, W, false);
+			return card("ask", `${p.gold}\u276f${p.gold === "" ? "" : p.fgEnd} `, verb, liveTarget(c), ["needs you"], body.rows, c.expanded && body.rows.length > 0 ? COLLAPSE_ROW : null, W, false, fold);
 		}
 		if (c.state === "running") {
 			// R3 (design §5.2): a running call BREATHES in its mark cell; its
@@ -900,11 +922,11 @@ class ToolExecution implements Component {
 			const liveRows = ctx.liveWindow ?? CAP_PREVIEW;
 			if (liveRows <= 0) return [cardHeadRow(mark, verb, liveTarget(c), tiers, W, false, false)];
 			const body = toolBlockParts(c, W, ctx);
-			return card("run", mark, verb, liveTarget(c), tiers, body.rows, c.expanded && body.rows.length > 0 ? COLLAPSE_ROW : null, W, false);
+			return card("run", mark, verb, liveTarget(c), tiers, body.rows, c.expanded && body.rows.length > 0 ? COLLAPSE_ROW : null, W, false, fold);
 		}
 		// not started yet (queued behind an exclusive call): the same card,
 		// its outcome says so.
-		return card("run", "  ", verb, liveTarget(c), ["queued"], [], null, W, false);
+		return card("run", "  ", verb, liveTarget(c), ["queued"], [], null, W, false, fold);
 	}
 }
 
@@ -1222,36 +1244,43 @@ function elideMiddle(text: string, room: number): string {
 
 /** §7.5 — only the outcome WORD takes colour: the first segment of the
  *  outcome — `exit 0` in the success colour, a failure's word in the
- *  failure colour — and the rest is `dim`. */
+ *  failure colour, `needs you` in gold (the card round: it stands with
+ *  its `❯` now) — and the rest is `dim`. */
 function outcomeStyled(text: string, error: boolean): string {
 	const p = palette();
 	if (text === "") return "";
 	const at = text.indexOf(" \u00b7 ");
 	const first = at < 0 ? text : text.slice(0, at);
 	const rest = at < 0 ? "" : text.slice(at);
-	const tone = error ? p.red : /^exit 0$/.test(first) ? p.green : "";
+	const tone = error ? p.red : /^exit 0$/.test(first) ? p.green : first === "needs you" ? p.gold : "";
 	return tone === "" ? `${p.dim}${text}${p.reset}` : `${tone}${first}${p.reset}${rest === "" ? "" : `${p.dim}${rest}${p.reset}`}`;
 }
 
 /**
- * §7.4 / §7.5 — a card's head row, without the card's edge and mark cell:
- * the verb (upper case, `dim`, padded to seven), the target, and the
- * outcome right-aligned in `room` cells. It gives way in a pinned order:
- * the outcome's tiers first (the attribution, then the count), then the
- * target elides in its middle; the outcome word is never cut. The row
- * never folds.
+ * §7.4 / §7.5 — a card's head row, without the card's edge cell: the verb
+ * (upper case, `dim`), the target, and the outcome right-aligned in
+ * `room` cells, `mark` (one styled cell, or "") standing in front of the
+ * outcome's words. It gives way in a pinned order: the outcome's tiers
+ * first (the attribution, then the count), then the target elides in its
+ * middle; the outcome word is never cut. The row never folds; a command
+ * folds in `headRows`.
  */
-function headCore(verb: string, target: string, tiers: readonly string[], room: number, error: boolean): string {
+function headCore(verb: string, target: string, tiers: readonly string[], room: number, error: boolean, mark = ""): string {
 	const p = palette();
 	// the verb and ONE space, then the target (owner, 2026-09-29: the verb
 	// column padded to seven left the target stranded between the verb and
 	// the body under it — 0.44's `shell pwd && ls -la` reads as one line)
 	const lead = `${p.dim}${verb}${p.reset} `;
 	const avail = Math.max(1, room - (verb.length + 1));
-	const compose = (tg: string, out: string): string => `${lead}${tg}${" ".repeat(Math.max(2, avail - visibleWidth(tg) - visibleWidth(out)))}${outcomeStyled(out, error)}`;
-	for (const t of tiers) if (visibleWidth(target) + 2 + visibleWidth(t) <= avail) return compose(target, t);
+	// the card round (owner, 2026-10-05): the running `●` and the waiting
+	// `❯` stand where the settled outcome will, so the state is read in one
+	// place and nothing sits against the verb
+	const marked = (out: string): string => `${mark === "" ? "" : `${mark} `}${outcomeStyled(out, error)}`;
+	const mw = mark === "" ? 0 : 2;
+	const compose = (tg: string, out: string): string => `${lead}${tg}${" ".repeat(Math.max(2, avail - visibleWidth(tg) - visibleWidth(out) - mw))}${marked(out)}`;
+	for (const t of tiers) if (visibleWidth(target) + 2 + visibleWidth(t) + mw <= avail) return compose(target, t);
 	const last = tiers[tiers.length - 1] ?? "";
-	const tRoom = avail - 2 - visibleWidth(last);
+	const tRoom = avail - 2 - visibleWidth(last) - mw;
 	if (tRoom >= 4) return compose(elideMiddle(target, tRoom), last);
 	// A NARROW row: the target gives way entirely, then the verb's padding
 	// and the verb, then everything but the outcome — and the outcome's
@@ -1259,14 +1288,54 @@ function headCore(verb: string, target: string, tiers: readonly string[], room: 
 	// what happened and how long it took is never cut open).
 	const bareLead = `${p.dim}${verb}${p.reset} `;
 	// the outcome's segments give way from the FRONT — the count, then
-	// the outcome word — so how long it took, and the key where there is
-	// one, are the last to go
+	// the outcome word (and the mark with it) — so how long it took, and
+	// the key where there is one, are the last to go
 	const segs = last.split(" \u00b7 ");
 	const suffixes = segs.map((_, k) => segs.slice(k).join(" \u00b7 "));
-	for (const row of [`${lead}${outcomeStyled(last, error)}`, `${bareLead}${outcomeStyled(last, error)}`, ...suffixes.map((x, k) => (k === 0 ? outcomeStyled(x, error) : `${p.dim}${x}${p.reset}`))]) {
+	for (const row of [`${lead}${marked(last)}`, `${bareLead}${marked(last)}`, ...suffixes.map((x, k) => (k === 0 ? marked(x) : `${p.dim}${x}${p.reset}`))]) {
 		if (visibleWidth(row) <= room) return row;
 	}
 	return cutLine(`${p.dim}${suffixes[suffixes.length - 1]}${p.reset}`, room);
+}
+
+/** The card round — the cells the head's first row keeps for the outcome
+ *  when a command folds, whatever the outcome says now: `● running · 59m
+ *  59s` and `exit 127 · 59m 59s` both fit. The fold is measured against
+ *  this, never against the words of the moment, so a card neither
+ *  re-folds while it runs nor changes height when it settles (DC-46: a
+ *  live card never shrinks). */
+const OUTCOME_ROOM = 20;
+/** The least room a command's first row keeps; narrower, the head is one
+ *  row and the command elides (the narrow ladder, `headCore`). */
+const FOLD_MIN = 12;
+/** A collapsed card's command shows at most this many rows. */
+const HEAD_ROWS = 3;
+
+/**
+ * The card round (owner, 2026-10-05) — the head's rows. A shell command
+ * is code the person approves and audits, so it is never cut in its
+ * middle: when it does not fit beside the outcome it folds at its spaces,
+ * each further row hanging under its own first character, for at most
+ * `max` rows — past that the last row ends in `…` and ctrl+o shows the
+ * rest. Every other target (a path keeps its head and its file name) is
+ * one row, `headCore`'s. DECLARED REVERSAL of §7.5's "the row never
+ * folds" for a command.
+ */
+function headRows(verb: string, target: string, tiers: readonly string[], room: number, error: boolean, mark: string, max: number): string[] {
+	const single = [headCore(verb, target, tiers, room, error, mark)];
+	if (max <= 1) return single;
+	const lead = verb.length + 1;
+	const avail = room - lead;
+	const last = tiers[tiers.length - 1] ?? "";
+	const first = avail - 2 - Math.max(OUTCOME_ROOM, visibleWidth(last) + (mark === "" ? 0 : 2));
+	if (first < FOLD_MIN || visibleWidth(target) <= first) return single;
+	const head = widthCut(target, first);
+	const space = head.lastIndexOf(" ");
+	const cut = space > 0 ? space + 1 : Math.max(1, head.length);
+	const rest = target.slice(cut).trimStart();
+	const rows = [target.slice(0, cut).trimEnd(), ...(rest === "" ? [] : foldAtSpaces(rest, avail))];
+	const shown = rows.length <= max ? rows : [...rows.slice(0, max - 1), `${widthCut(rows.slice(max - 1).join(" "), avail - 1)}\u2026`];
+	return [headCore(verb, shown[0]!, tiers, room, error, mark), ...shown.slice(1).map((r) => `${" ".repeat(lead)}${r}`)];
 }
 
 /** DC-43 — the head row ALONE, its mark in the mark column: a running
@@ -1284,23 +1353,26 @@ function footRow(key: string, room: number): string {
 
 /**
  * Graphite §7.4 — assemble a card: pad · head · body · foot · pad on the
- * state's ground, full width, its edge cell in column 0 and the head's
- * mark in column 1; or, off the surface, the same content without it —
- * the mark in the mark column, the head at the content edge, the body
- * under it, the foot dim. `mark` is two cells: the glyph and a space, or
- * two spaces.
+ * state's ground, full width, its edge cell in column 0, column 1 blank;
+ * or, off the surface, the same content without it — the mark in the
+ * mark column, the head at the content edge, the body under it, the foot
+ * dim. `mark` is two cells: the glyph and a space, or two spaces. Inside
+ * a card the glyph stands in front of the outcome's words (the card
+ * round: in column 1 it sat against the verb). `fold` is how many rows
+ * the head's command may take (0: the target never folds).
  */
-function card(state: CardState, mark: string, verb: string, target: string, tiers: readonly string[], body: readonly string[], foot: string | null, W: number, error: boolean): string[] {
+function card(state: CardState, mark: string, verb: string, target: string, tiers: readonly string[], body: readonly string[], foot: string | null, W: number, error: boolean, fold = 0): string[] {
 	if (!slabPaints()) {
-		const out = [cutLine(`${mark}${headCore(verb, target, tiers, Math.max(1, W - EDGE.length), error)}`, W), ...body];
+		const [first, ...more] = headRows(verb, target, tiers, Math.max(1, W - EDGE.length), error, "", fold);
+		const out = [cutLine(`${mark}${first}`, W), ...more.map((r) => cutLine(`${EDGE}${r}`, W)), ...body];
 		if (foot !== null) out.push(cutLine(footRow(foot, W), W));
 		return out;
 	}
 	const paint = cardPaint(state);
 	const inner = cardInner(W);
-	// the mark cell is ONE column inside a card: the glyph without its space
-	const markCell = mark.replace(/ $/, "");
-	const rows = [padRow(paint, W), slabRow(headCore(verb, target, tiers, inner - CARD_RIGHT, error), W, paint, markCell), ...body.map((r) => slabRow(r, W, paint))];
+	const glyph = mark.replace(/ $/, "");
+	const head = headRows(verb, target, tiers, inner - CARD_RIGHT, error, glyph.trim() === "" ? "" : glyph, fold);
+	const rows = [padRow(paint, W), ...head.map((r) => slabRow(r, W, paint)), ...body.map((r) => slabRow(r, W, paint))];
 	if (foot !== null) rows.push(slabRow(footRow(foot, inner - CARD_RIGHT), W, paint));
 	rows.push(padRow(paint, W));
 	return rows;
@@ -1382,22 +1454,25 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 	const p = palette();
 	const tone = slabPaints() ? "body" : "dim";
 	let cut = false;
-	const capped = (all: string[], dir: "head" | "tail"): string[] => {
+	const keyed = c.state === "done" && !c.expanded;
+	const capped = (all: string[], dir: "head" | "tail", starts: readonly boolean[] = []): string[] => {
 		if (all.length <= CAP_PREVIEW) return all;
 		cut = true;
 		// R9 P2 / D4: FIVE output rows, and the note is a row of its own.
 		// A shell's conclusion is at the bottom, so its note goes ABOVE the
 		// tail; everything else answers at the top, so its note closes it.
+		// The card round: a settled, collapsed card's key rides the note.
 		return dir === "tail"
-			? [...cutNote(all.length - CAP_PREVIEW, "earlier", W, tone), ...all.slice(all.length - CAP_PREVIEW)]
-			: [...all.slice(0, CAP_PREVIEW), ...cutNote(all.length - CAP_PREVIEW, "more", W, tone)];
+			? [...cutNote(all.length - CAP_PREVIEW, "earlier", W, tone, keyed), ...tailWindow(all, CAP_PREVIEW, starts)]
+			: [...all.slice(0, CAP_PREVIEW), ...cutNote(all.length - CAP_PREVIEW, "more", W, tone, keyed)];
 	};
+	const shellTail = (out: { rows: string[]; starts: boolean[] }, dir: "head" | "tail"): string[] => capped(out.rows, dir, out.starts);
 	// a diff inside a card: its own rows, the head of them until the key
 	const diffCapped = (lines: readonly DiffLine[] | null, cap: number): string[] => {
 		const all = lines === null ? [] : diffRows(lines, W);
 		if (c.expanded || all.length <= cap) return all;
 		cut = true;
-		return [...all.slice(0, cap), ...cutNote(all.length - cap, "more", W, tone)];
+		return [...all.slice(0, cap), ...cutNote(all.length - cap, "more", W, tone, keyed)];
 	};
 	const rows =
 		edit !== null
@@ -1424,7 +1499,7 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 							// opens the whole thing.
 							noPreview(c)
 							? []
-							: capped(blockRows(c.resultText, W, tone), c.name === "shell" ? "tail" : "head")
+							: shellTail(blockLines(c.resultText, W, tone), c.name === "shell" ? "tail" : "head")
 				: c.state === "running"
 					? c.name === "delegate"
 						? delegateRunning(c, W)
@@ -1457,30 +1532,99 @@ function noPreview(c: Extract<BodyCell, { kind: "tool" }>): boolean {
 	return c.state === "done" && !c.expanded && !c.isError && c.reason === null && c.name === "read_file";
 }
 
+/** How far a wrapped output line's continuation rows stand in. */
+const HANG = 2;
+
 /** Fold result text into body rows (the block's own indent): escape,
  *  split, fold each line in the body's text width; trailing empty rows
  *  (the result's final newline) drop. Inside a card the output is
  *  `ink2` (§2: tool output); off the surface it is dim. */
 function blockRows(text: string, W: number, tone: "dim" | "body" = "dim"): string[] {
+	return blockLines(text, W, tone).rows;
+}
+
+/** `blockRows`, with which rows begin a line of output (a wrapped line's
+ *  continuation rows do not) — what a tail window needs to start on a
+ *  whole line. */
+function blockLines(text: string, W: number, tone: "dim" | "body" = "dim"): { rows: string[]; starts: boolean[] } {
 	const p = palette();
 	const textW = bodyTextWidth(W);
 	const rows: string[] = [];
+	const starts: boolean[] = [];
 	const open = tone === "dim" ? p.dim : p.ink2;
 	const close = tone === "dim" ? p.reset : p.ink2 === "" ? "" : p.fgEnd;
 	// 0.40.0: the output's own styling is dropped whole before the escape
+	// The card round (owner, 2026-10-05): a line too long for the row
+	// continues HANG cells in, so one line of output reads as one.
+	const hang = textW > HANG * 4 ? HANG : 0;
 	for (const raw of escapeTerminal(stripAnsi(text)).split("\n")) {
-		for (const row of foldLine(raw, textW)) rows.push(`${bodyRow()}${open}${row}${close}`);
+		const [first = "", ...more] = foldLine(raw, textW);
+		rows.push(`${bodyRow()}${open}${first}${close}`);
+		starts.push(true);
+		if (more.length === 0) continue;
+		for (const row of foldLine(more.join(""), textW - hang)) {
+			rows.push(`${bodyRow()}${" ".repeat(hang)}${open}${row}${close}`);
+			starts.push(false);
+		}
 	}
-	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(bodyRow())) rows.pop();
-	return rows;
+	while (rows.length > 0 && visibleWidth(rows[rows.length - 1]!) === visibleWidth(bodyRow())) {
+		rows.pop();
+		starts.pop();
+	}
+	return { rows, starts };
 }
 
 /** The preview's cut note — how much was cut and in which direction.
- *  The KEY is on the card's foot (§7.4), so the note names only the
- *  count. */
-function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" | "body"): string[] {
+ *  With `key` (a settled card, collapsed) the key that shows the rest
+ *  stands at the same row's right margin: what was cut at the left, how
+ *  to see it at the right (the card round, owner 2026-10-05). DECLARED
+ *  REVERSAL of §7.4's foot for a collapsed card — the note and the key
+ *  were two rows for one fact. The key gives way after the count's word,
+ *  the count never. */
+function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" | "body", key = false): string[] {
 	const n = `${cut} ${word} line${cut === 1 ? "" : "s"}`;
-	return noteRow(pickTier([`\u2026 ${n}`, `\u2026 ${cut}`], bodyTextWidth(W)), W, tone);
+	const room = bodyTextWidth(W);
+	if (key) {
+		for (const [left, k] of [[`\u2026 ${n}`, EXPAND_ROW], [`\u2026 ${cut}`, EXPAND_ROW], [`\u2026 ${cut}`, "ctrl+o"]] as const) {
+			const gap = room - visibleWidth(left) - visibleWidth(k);
+			if (gap >= 2) return noteRow(`${left}${" ".repeat(gap)}${k}`, W, tone);
+		}
+	}
+	return noteRow(pickTier([`\u2026 ${n}`, `\u2026 ${cut}`], room), W, tone);
+}
+
+/** The card round — a shell's tail never opens on a blank row or in the
+ *  middle of a wrapped line, and keeps its height (DC-46: a live window
+ *  never shrinks, and the settle moves nothing). When the window's top row
+ *  would be either, the window starts at an earlier line's first row and
+ *  blank rows inside it give way to make the room, the top-most first: a
+ *  blank row carries no fact, and the conclusion is at the bottom. It
+ *  looks back at most `TAIL_REACH` rows (a bounded walk, never a scan of
+ *  the whole output); when no line start can be reached, the window is
+ *  the plain tail. The rows it hides are counted in the note. `starts`
+ *  marks each row that begins a line of output. */
+const TAIL_REACH = 12;
+function tailWindow(rows: readonly string[], cap: number, starts: readonly boolean[]): string[] {
+	const n = rows.length;
+	if (n <= cap) return [...rows];
+	const blank = (i: number): boolean => visibleWidth(rows[i]!) <= visibleWidth(bodyRow());
+	let blanks = 0;
+	for (let i = n - cap; i < n; i += 1) if (blank(i)) blanks += 1;
+	// s stops at 1: the window reaches only while a row above it stays
+	// cut, so the note never counts nothing but the blanks it skipped
+	for (let s = n - cap; s >= Math.max(1, n - cap - TAIL_REACH); s -= 1) {
+		if (s < n - cap && blank(s)) blanks += 1;
+		const extra = n - s - cap;
+		if (blank(s) || starts[s] === false || blanks < extra) continue;
+		const out: string[] = [];
+		let dropped = 0;
+		for (let i = s; i < n; i += 1) {
+			if (dropped < extra && blank(i)) dropped += 1;
+			else out.push(rows[i]!);
+		}
+		return out;
+	}
+	return rows.slice(n - cap);
 }
 
 /** The error text, uncapped: the answer is at the start, and the whole
@@ -1518,7 +1662,7 @@ function liveWindow(c: Extract<BodyCell, { kind: "tool" }>, W: number, cap: numb
 	// TUI2-R1.5 ④(b) (VD-4): leading empty lines in the sidecar (a
 	// 4096-byte tail can begin on a line boundary) are skipped, so the
 	// output starts under its own header.
-	const all = blockRows(c.resultText, W, tone);
+	const { rows: all, starts } = blockLines(c.resultText, W, tone);
 	const from = all.findIndex((r) => visibleWidth(r) > visibleWidth(bodyRow()));
 	// DC-46, derived — NOTHING YET IS NO WINDOW AT ALL, so a running call
 	// with no output is the same THREE-ROW card as a settled one with
@@ -1535,7 +1679,7 @@ function liveWindow(c: Extract<BodyCell, { kind: "tool" }>, W: number, cap: numb
 	const rows = all.slice(from);
 	if (rows.length <= cap) return rows;
 	return c.name === "shell"
-		? [...cutNote(rows.length - cap, "earlier", W, tone), ...rows.slice(rows.length - cap)]
+		? [...cutNote(rows.length - cap, "earlier", W, tone), ...tailWindow(rows, cap, starts.slice(from))]
 		: [...rows.slice(0, cap), ...cutNote(rows.length - cap, "more", W, tone)];
 }
 

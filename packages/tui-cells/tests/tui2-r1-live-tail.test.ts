@@ -146,7 +146,9 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 		expect(listed.slice(1)).toEqual(["  \u2514 a.ts", "    b.ts"]);
 	});
 
-	it("COMPLETION replaces the running status with the outcome, in the same place; the key moves to the foot", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key joins the
+	// cut note's row, so the settle swaps words and adds no row at all.
+	it("COMPLETION replaces the running status with the outcome, in the same place; the key joins the cut note", () => {
 		setTTY(false);
 		const settled = render(
 			running({
@@ -157,8 +159,8 @@ describe("TUI2-R1 T-V3 — the running shell's live tail", () => {
 			}),
 		);
 		expect(settled[0]).toMatch(/^ {2}SHELL npm test +exit 0 · 22 lines · 18\.2s$/);
-		expect(settled).toContain("  \u2514 \u2026 17 earlier lines");
-		expect(settled.at(-1)!.trim()).toBe("ctrl+o expands");
+		expect(settled[1]).toMatch(/^ {2}\u2514 \u2026 17 earlier lines +ctrl\+o expands$/);
+		expect(settled.at(-1)!.trim()).toBe("out 21");
 		expect(settled.join("\n")).not.toContain("running");
 	});
 });
