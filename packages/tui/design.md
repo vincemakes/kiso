@@ -1350,12 +1350,20 @@ question kiso asks itself (§8.12) — take §8.2's shape:
 - An approval says the call ONCE, as its transcript card's head
   (`SHELL rm -rf build`, `WRITE src/clamp.ts`): the body follows only when
   it adds something — a diff, JSON, or a command the head row cannot show
-  whole. The speaker's fix hint (`/mode accept-edits auto-approves edits`)
+  whole; a one-line command too long for the head row folds under it
+  instead, its continuation rows under the command's first cell, breaking
+  at a space where it can (owner's capture, 2026-10-05: cut and then
+  repeated whole). The speaker's fix hint (`/mode accept-edits auto-approves edits`)
   has a row of its own under the body. DECLARED REVERSAL of the
   `<tool> needs approval — asked by <speaker>` row, the bold title under
   it and the blank row after them.
 - A question puts the model's question first, bold. DECLARED REVERSAL of
-  the `‹ 1/2 ›` after it, the header's own row and the blank row.
+  the `‹ 1/2 ›` after it, the header's own row and the blank row. A
+  single-select is `1 vite` (the mark column appears once an option is
+  picked); a description too long for its column is cut with `…`, and the
+  SELECTED option opens when its description does not fit: its row keeps
+  the label and up to three rows under it, on the same wash, say the
+  description whole (owner, 2026-10-05).
 - The options, their digits, the gold `›`, the risk line, the safer list
   and the amend path work as they did. In the amend phase the options give
   way to `your note goes to the model — it will propose a new call`; in
