@@ -82,12 +82,27 @@ describe("P4 — an approval says the call once", () => {
 		expect(plain(rows(WRITE)[1]!)).toBe("  WRITE src/clamp.ts");
 	});
 
-	it("a one-line command the head shows whole is not repeated; a long or multi-line one is", () => {
+	it("a one-line command is said ONCE: whole on the head row, or folded under it at its spaces — never cut and repeated", () => {
 		const text = rows(SHELL).map(plain).join("\n");
 		expect(text).not.toContain("│ rm -rf build");
-		const long = "npm run build -- --filter=@vincemakes/kiso-tui --verbose --no-cache --concurrency=8";
-		const cut = rows({ ...SHELL, title: long, args: { kind: "text", lines: [long] } }, 0, "options", 60).map(plain).join("\n");
-		expect(cut, "the head was cut, so the body says it whole").toContain("│ npm run build");
+		// the owner's capture (2026-10-05): a long command was cut in the head
+		// and then repeated whole in a body, its first half read twice
+		const long = 'which -a kiso; kiso --version 2>&1 | head -5; echo "---"; ls -la ~/.kiso/sessions 2>/dev/null | head -10';
+		const r = rows({ ...SHELL, title: long, args: { kind: "text", lines: [long] } }).map(plain);
+		expect(r[1]).toBe('  SHELL which -a kiso; kiso --version 2>&1 | head -5; echo "---"; ls -la');
+		expect(r[2], "the continuation sits under the command's first cell").toBe("        ~/.kiso/sessions 2>/dev/null | head -10");
+		expect(r.join("\n")).not.toContain("│");
+		expect(r.join("\n")).not.toContain("…");
+		// every character of the command is on screen, in order (the breaks are spaces)
+		expect([r[1]!.slice("  SHELL ".length), r[2]!.trim()].join(" ")).toBe(long);
+		// a run with no space breaks hard at the width, still whole
+		const path = `cat ${"/very/long".repeat(12)}`;
+		const hard = rows({ ...SHELL, title: path, args: { kind: "text", lines: [path] } }, 0, "options", 60).map(plain);
+		const head = hard.slice(1).filter((x, i) => i === 0 || x.startsWith("        "));
+		expect(head[0]).toBe("  SHELL cat"); // the one space is the break
+		expect(head.slice(1).map((x) => x.trim()).join("")).toBe("/very/long".repeat(12));
+		for (const x of head) expect(visibleWidth(x), "one cell of margin").toBeLessThanOrEqual(59);
+		// a multi-line command still has its body
 		const two = rows({ ...SHELL, title: "make && make test", args: { kind: "text", lines: ["make &&", "make test"] } }).map(plain).join("\n");
 		expect(two).toContain("│ make &&");
 	});
@@ -153,6 +168,18 @@ describe("P4 — a question from the model", () => {
 		expect(r[0]).toMatch(/^─{3} question · runners · 2 of 2 · pick any ─+$/);
 		expect(r.at(-1)).toMatch(/^ {2}↑↓ move · space or 1–2 marks · ⏎ sends the set · .*← back · esc declines +1\/3$/);
 		expect(r.filter((x) => /^─/.test(x))).toHaveLength(1);
+	});
+
+	it("a description too long for its column is cut by cells WITH an ellipsis; a single-select spends no mark column", () => {
+		// the owner's capture (2026-10-05): the model's descriptions ended in
+		// mid-word at the right edge, and the labels sat three cells off the digits
+		const long: AskSpec = { questions: [{ question: "which part?", header: "scope", options: [{ label: "config and sessions", description: "the model definitions in config.json, and whether the session files are complete" }, { label: "the command", description: "the install path, the version and the runtime" }] }] };
+		const r = askBlockRows(askView(long), askStart(long), 80, 30).map(plain);
+		const first = r.find((x) => x.includes("config and sessions"))!.trimEnd();
+		expect(first.endsWith("…")).toBe(true);
+		expect(visibleWidth(first)).toBeLessThanOrEqual(79);
+		expect(r.find((x) => x.includes("the command"))).toMatch(/^ {3}2 the command +the install path, the version and the runtime$/);
+		expect(r.find((x) => x.includes("type your own answer"))).toMatch(/^ {3}t type your own answer/);
 	});
 
 	it("one question alone: no place in a set", () => {

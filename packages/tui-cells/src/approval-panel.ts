@@ -759,15 +759,25 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// — asked by <speaker>` row, of the bold title under it and of the blank
 	// row after them (R3a, TUI2-R1.5 ⑤). The body follows only when it adds
 	// something: a diff, JSON, or a command the head row cannot show whole.
-	const verbHead = `${p.bold}${escapeTerminal(displayVerb(view.name)).toUpperCase()}${p.reset}${view.title === "" ? "" : ` ${escapeTerminal(view.title)}`}`;
+	const verb = escapeTerminal(displayVerb(view.name)).toUpperCase();
+	const verbHead = `${p.bold}${verb}${p.reset}${view.title === "" ? "" : ` ${escapeTerminal(view.title)}`}`;
 	const sayOnce = view.flavor === "approval" && asked === undefined;
+	// a call that is ONE line of text (a shell command) and is its own title:
+	// said once even when the row cannot hold it — the head row folds, its
+	// continuation rows under the command's first cell, breaking at a space
+	// where it can (the owner's capture, 2026-10-05: cut in the head and then
+	// repeated whole in a body, the first half read twice, `sessi|ons` split)
+	const oneLine = sayOnce && view.args.kind === "text" && view.args.lines.length === 1 && view.args.lines[0] === view.title;
+	const headRoom = Math.max(1, W - 2);
+	// (one cell of margin at the right, as the other rows keep)
+	const folds = oneLine && visibleWidth(verbHead) > headRoom && headRoom - verb.length - 2 >= 12 ? foldAtSpaces(escapeTerminal(view.title), headRoom - verb.length - 2) : null;
 	if (asked !== undefined) {
 		rows.push(bandHeader(askedLabel(asked.question, asked.facts, W), W));
 		rows.push(...prose);
 	} else if (sayOnce) {
 		const facts = [...(view.amended === true ? ["amended"] : []), `asked by ${escapeTerminal(view.speaker)}`];
 		rows.push(bandHeader(`needs you \u00b7 ${facts.join(" \u00b7 ")}`, W));
-		rows.push(`  ${cutLine(verbHead, Math.max(1, W - 2))}`);
+		rows.push(folds === null ? `  ${cutLine(verbHead, headRoom)}` : `  ${p.bold}${verb}${p.reset} ${folds[0]}`);
 	} else {
 		// a question with no layout of its own (no caller in the product
 		// draws one since P1b): the old head, kept for that case
@@ -779,9 +789,11 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// the args — the bounded block's body: fold, then cap. The └ cut is
 	// ONE row (the W20 discipline): when the args exceed the budget, one
 	// notice row carries the count and where the rest is (the event log).
-	const repeats = sayOnce && visibleWidth(verbHead) <= Math.max(1, W - 2) && view.args.kind === "text" && view.args.lines.length === 1 && view.args.lines[0] === view.title;
+	const repeats = oneLine && (visibleWidth(verbHead) <= headRoom || folds !== null);
+	// the folded command's continuation rows ride the args' budget, so a
+	// command taller than the screen still ends in the honest cut notice
 	const args: string[] = repeats
-		? []
+		? (folds ?? []).slice(1).map((r) => `  ${" ".repeat(verb.length + 1)}${r}`)
 		: view.args.kind === "diff"
 			? diffBody(view.args.diff, W, true) // the expanded path — never the tool cell's capped copy
 			: view.args.lines.flatMap((line) => gutterFold(`${p.dim}│${p.reset} `, escapeTerminal(line), W));
@@ -897,6 +909,23 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	const list = phase === "options" ? { at: cursor, of: panelOptions(view).length } : phase === "safer" && safer !== undefined ? { at: safer.cursor, of: safer.options.length + 1 } : null;
 	rows.push(panelKeyRow(panelAffordance(view, phase, cursor, safer), list, W));
 	return { rows, ...layout };
+}
+
+/** A line of text folded to `width` cells, breaking after the last space
+ *  that fits (the space is the break), or hard at the width when a run has
+ *  none. Every other character is kept, in order. */
+function foldAtSpaces(text: string, width: number): string[] {
+	const rows: string[] = [];
+	let rest = text;
+	while (visibleWidth(rest) > width) {
+		const head = widthCut(rest, width);
+		const space = head.lastIndexOf(" ");
+		const cut = space > 0 ? space + 1 : Math.max(1, head.length);
+		rows.push(rest.slice(0, cut).trimEnd());
+		rest = rest.slice(cut);
+	}
+	rows.push(rest);
+	return rows;
 }
 
 /** The key row: the keys, cut by cells, and the counter at the right margin. */

@@ -162,9 +162,12 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 		// run on after an em dash. It sits in a right column now, so the
 		// labels — the thing being chosen between — all start and END at a
 		// column the LIST decided rather than the previous row's length.
-		expect(rows).toMatch(/ 1   vite {2,}fast dev server/);
-		expect(rows).toMatch(/ 2   esbuild {2,}one binary/);
-		expect(rows).toContain("t   type your own answer");
+		// MOVED (Graphite P4 follow-up — DECLARED): a single-select spends no
+		// mark column until something is picked — `1 vite`, as the P4 design
+		// drew it; the description column still belongs to the list
+		expect(rows).toMatch(/ 1 vite {2,}fast dev server/);
+		expect(rows).toMatch(/ 2 esbuild {2,}one binary/);
+		expect(rows).toContain("t type your own answer");
 		// DECLARED SUPERSESSION (R6/D2): the row names the FINISHER and the
 		// REAL option count. It said `1-4 pick · t type · esc decline` in
 		// both modes, never mentioning enter — on the one panel shape
