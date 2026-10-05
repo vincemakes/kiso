@@ -97,10 +97,11 @@ describe("ADR-0058 §3 — the wait, with tasks", () => {
 		expect(r.content).toMatch(/^ready/);
 		expect(r.content).toMatch(/continued as background task t1/);
 		expect(manager.get("t1")!.state).toEqual({ kind: "running", ready: true });
-		const s = await stop.execute({ id: "t1" }, ctx());
-		expect(s.content).toMatch(/stopping task t1/);
-		const ended = await until(() => manager.get("t1")!, (i) => i.state.kind === "ended");
-		expect(ended.state).toMatchObject({ kind: "ended", stopped: true });
+		// a promoted ready is claimed for the shell call: its result told the model
+		expect(readRecords(join(manager.root, "t1", "journal.jsonl")).filter((x) => (x.type as string) === "result_claimed")).toEqual([expect.objectContaining({ transition: "ready", executionId: "ex-1" })]);
+		const s = await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+		expect(s.content).toMatch(/^stopped task t1 \(SIGTERM; it ran \d+(\.\d+)?s\)/);
+		expect(manager.get("t1")!.state).toMatchObject({ kind: "ended", stopped: true });
 	});
 
 	it("background: true starts a runner task at once", async () => {
@@ -110,15 +111,6 @@ describe("ADR-0058 §3 — the wait, with tasks", () => {
 		expect(readRecords(join(manager.root, "t1", "journal.jsonl"))[0]).toMatchObject({ backend: "process", executionId: "ex-1" });
 		const ended = await until(() => manager.get("t1")!, (i) => i.state.kind === "ended");
 		expect(readFileSync(ended.outputPath, "utf8")).toContain("later");
-	});
-
-	it("background: true with readyWhen: a task at once, and the ready line is recorded later", async () => {
-		const { manager, shell, stop } = setup();
-		const r = await shell.execute({ command: "sleep 0.3; echo listening; sleep 30", background: true, readyWhen: "listening" }, ctx());
-		expect(r.content).toMatch(/started background task t1/);
-		await until(() => manager.get("t1")!, (i) => i.state.kind === "running" && i.state.ready);
-		await stop.execute({ id: "t1" }, ctx());
-		await until(() => manager.get("t1")!, (i) => i.state.kind === "ended");
 	});
 
 	it("Esc before promotion still stops the command exactly as today; no task is made", async () => {
@@ -185,5 +177,110 @@ describe("ADR-0058 §2 (3e) — a running foreground command is moved to the bac
 		const quick = await shell.execute({ command: "echo hi" }, ctx({ executionId: "ex-q" } as Partial<ToolContext>));
 		expect(quick).toMatchObject({ content: "hi", isError: false });
 		expect(manager.detachable()).toEqual([]); // it unregistered when it settled
+	});
+});
+
+const claimsOf = (manager: TaskManager, id: string) => readRecords(join(manager.root, id, "journal.jsonl")).filter((x) => (x.type as string) === "result_claimed");
+/** A ctx whose signal fires `abort` after `ms` (the person's Esc). */
+const escAfter = (ms: number, extra: Partial<ToolContext> = {}) =>
+	ctx({ signal: { aborted: false, addEventListener: (_t: string, l: () => void) => void setTimeout(l, ms), removeEventListener: () => {} } as never, ...extra });
+
+describe("ADR-0058 Amendment 7 — task_stop waits for the end and says how it ended", () => {
+	it("a running task is stopped within the call; the end is claimed for the STOP call, so no notice follows", async () => {
+		const { manager, shell, stop } = setup();
+		await shell.execute({ command: "sleep 30", background: true }, ctx());
+		const s = await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+		expect(s).toMatchObject({ isError: false });
+		expect(s.content).toMatch(/^stopped task t1 \(SIGTERM; it ran \d+(\.\d+)?s\)/);
+		expect(manager.get("t1")!.state).toMatchObject({ kind: "ended", stopped: true });
+		expect(claimsOf(manager, "t1")).toEqual([expect.objectContaining({ transition: "stopped", executionId: "ex-stop" })]);
+	});
+
+	it("Esc during the wait returns at once, claims nothing, and says the end is not confirmed", async () => {
+		const { manager, shell, stop } = setup();
+		// the whole group ignores TERM: the stop takes the 5 s grace, then KILL
+		await shell.execute({ command: "trap '' TERM; sleep 30", background: true }, ctx());
+		const t0 = Date.now();
+		const s = await stop.execute({ id: "t1" }, escAfter(100, { executionId: "ex-stop" } as Partial<ToolContext>));
+		expect(Date.now() - t0).toBeLessThan(2_000);
+		expect(s.content).toMatch(/^stop requested for task t1; its end is not confirmed yet — you will be notified when it ends/);
+		await until(() => manager.get("t1")!, (i) => i.state.kind === "ended", 15_000);
+		expect(claimsOf(manager, "t1")).toEqual([]);
+	}, 20_000);
+});
+
+describe("ADR-0058 Amendment 7 — background with readyWhen waits for the ready line", () => {
+	it("ready: the result says so, the task keeps running, and the ready is claimed for the shell call", async () => {
+		const { manager, shell, stop } = setup();
+		const r = await shell.execute({ command: "sleep 0.3; echo listening; sleep 30", background: true, readyWhen: "listening" }, ctx());
+		expect(r).toMatchObject({ isError: false });
+		expect(r.content).toMatch(/^started background task t1; ready — the output contains "listening"\./);
+		expect(manager.get("t1")!.state).toEqual({ kind: "running", ready: true });
+		expect(claimsOf(manager, "t1")).toEqual([expect.objectContaining({ transition: "ready", executionId: "ex-1" })]);
+		await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+	});
+
+	it("an end before the ready line fails the call, with its output, and is claimed", async () => {
+		const { manager, shell } = setup();
+		const r = await shell.execute({ command: "echo boom; exit 3", background: true, readyWhen: "listening" }, ctx());
+		expect(r).toMatchObject({ isError: true });
+		expect(r.content).toMatch(/^background task t1 ended before it was ready \(exit code 3\)/);
+		expect(r.content).toContain("boom");
+		expect(claimsOf(manager, "t1")).toEqual([expect.objectContaining({ transition: "failed", executionId: "ex-1" })]);
+	});
+
+	it("not ready within foregroundMs: the result never implies ready, the task keeps running, nothing is claimed", async () => {
+		const { manager, shell, stop } = setup();
+		const r = await shell.execute({ command: "sleep 30", background: true, readyWhen: "listening", foregroundMs: 300 }, ctx());
+		expect(r).toMatchObject({ isError: false });
+		expect(r.content).toMatch(/^not ready after 300 ms — no "listening" in the output yet; it keeps running as background task t1, and you will be notified when it is ready\./);
+		expect(manager.get("t1")!.state).toEqual({ kind: "running", ready: false });
+		expect(claimsOf(manager, "t1")).toEqual([]);
+		await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+	});
+
+	it("the person's detach RELEASES the wait: the one task keeps running, no second task, nothing claimed", async () => {
+		const { base, manager, shell, stop } = setup();
+		const pending = shell.execute({ command: "sleep 30", background: true, readyWhen: "listening", foregroundMs: 30_000 }, ctx({ executionId: "ex-bgw" } as Partial<ToolContext>));
+		await until(() => manager.detachable(), (d) => d.some((x) => x.executionId === "ex-bgw"));
+		expect(manager.detach("ex-bgw", "person")).toBe(true);
+		const r = await pending;
+		expect(r.content).toMatch(/^started background task t1; stopped waiting for "listening" \(moved on by the person\) — not ready yet; you will be notified when it is ready\./);
+		expect(readdirSync(join(base, "s1.tasks"))).toEqual(["t1"]);
+		expect(manager.get("t1")!.state).toEqual({ kind: "running", ready: false });
+		expect(claimsOf(manager, "t1")).toEqual([]);
+		expect(manager.detachable()).toEqual([]);
+		await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+	});
+
+	it("a steer releases the wait the same way, and says why", async () => {
+		const { base, manager, shell, stop } = setup();
+		const pending = shell.execute({ command: "sleep 30", background: true, readyWhen: "listening", foregroundMs: 30_000 }, ctx({ executionId: "ex-st" } as Partial<ToolContext>));
+		await until(() => manager.detachable(), (d) => d.length === 1);
+		manager.detach("ex-st", "steer");
+		expect((await pending).content).toMatch(/^started background task t1; stopped waiting for "listening" \(so the person's message could land\) — not ready yet/);
+		expect(readdirSync(join(base, "s1.tasks"))).toEqual(["t1"]);
+		await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+	});
+
+	it("Esc releases the wait; the task keeps running and nothing is claimed", async () => {
+		const { manager, shell, stop } = setup();
+		const r = await shell.execute({ command: "sleep 30", background: true, readyWhen: "listening", foregroundMs: 30_000 }, escAfter(150));
+		expect(r.content).toMatch(/^started background task t1; stopped waiting for "listening" \(interrupted\) — not ready yet/);
+		expect(manager.get("t1")!.state.kind).toBe("running");
+		expect(claimsOf(manager, "t1")).toEqual([]);
+		await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+	});
+});
+
+describe("ADR-0058 Amendment 7 — the descriptions say when to background and what a stop does (0460-B1)", () => {
+	it("background, readyWhen and task_stop carry the measured wording", () => {
+		const { shell, stop } = setup();
+		const props = (shell.parameters as { properties: Record<string, { description: string }> }).properties;
+		expect(props.background!.description).toBe(
+			"Run independently as a task. Use for services/watchers or work whose exit result is not needed next. If you need the result, keep it foreground and raise foregroundMs. You are notified when it ends; do not sleep/poll.",
+		);
+		expect(props.readyWhen!.description).toBe("For a continuing service, wait up to foregroundMs for this literal output before returning; the task keeps running afterward.");
+		expect(stop.description).toBe("Stop a task, wait briefly for its terminal state, and report how it ended.");
 	});
 });
