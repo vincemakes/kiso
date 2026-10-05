@@ -23,7 +23,8 @@
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type TaskAgent, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
+import type { AbortSignalLike } from "@vincemakes/kiso-core";
+import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type ClaimedTransition, type TaskAgent, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
 
 /** Whether a recorded runner is still that process (ADR-0058 §6):
  *  "verified" — the pid is live AND its OS start time is the recorded one;
@@ -80,6 +81,30 @@ export interface TaskInfo {
 	readonly outputPath: string;
 	readonly startedAt: number;
 	readonly endedAt?: number;
+	/** ADR-0058 Amendment 7: the transitions a tool execution took over —
+	 *  its result reports them, so they are never noticed. */
+	readonly claims?: readonly { readonly transition: ClaimedTransition; readonly executionId: string }[];
+}
+
+/** The name a task's end (or its runner's vanishing, or a start that never
+ *  ran) has for the model — as a notice says it, and as a claim records it. */
+export function endTransitionOf(task: TaskInfo): Exclude<ClaimedTransition, "ready"> | null {
+	const s = task.state;
+	if (s.kind === "ended") {
+		if (task.stoppedBy !== undefined) return "stopped";
+		return s.exitCode === 0 && s.error === undefined ? "exited" : "failed";
+	}
+	if (s.kind === "unknown") return "unknown";
+	if (s.kind === "not_run") return "failed";
+	return null;
+}
+
+/** What `awaitSettled` saw: settled — the target reached (or any end);
+ *  claimed — taken over for the calling execution, so never announced. */
+export interface TaskSettled {
+	readonly info: TaskInfo;
+	readonly settled: boolean;
+	readonly claimed: boolean;
 }
 
 export interface TaskAdoptOptions {
@@ -162,6 +187,8 @@ export class TaskManager {
 	readonly #local = new Map<string, () => void>();
 	/** executionId → a running foreground command that can be detached (3e) */
 	readonly #detachable = new Map<string, Detachable>();
+	/** id → how many `awaitSettled` calls wait on it: the watcher skips it */
+	readonly #waiting = new Map<string, number>();
 
 	constructor(options: TaskManagerOptions) {
 		this.root = options.root;
@@ -254,7 +281,11 @@ export class TaskManager {
 		appendRecord(journal, { type: "runner_started", ts: Date.now(), pid: options.runner.pid, startedAt: options.runner.startedAt });
 		appendRecord(journal, { type: "command_started", ts: Date.now() });
 		fsyncDir(dir);
-		if (options.ready === true && options.readyWhen !== undefined) appendRecord(journal, { type: "ready", ts: Date.now(), match: options.readyWhen });
+		if (options.ready === true && options.readyWhen !== undefined) {
+			appendRecord(journal, { type: "ready", ts: Date.now(), match: options.readyWhen });
+			// the promotion's own result says "ready —": that call reports it
+			if (options.executionId !== undefined) appendRecord(journal, { type: "result_claimed", ts: Date.now(), transition: "ready", executionId: options.executionId });
+		}
 		this.#local.set(id, options.stop);
 		this.#seen.set(id, options.ready === true ? "ready" : "running");
 		this.observe();
@@ -312,6 +343,63 @@ export class TaskManager {
 		if (identity === "gone") return false;
 		appendRecord(join(this.root, id, JOURNAL), { type: "stop_requested", ts: Date.now(), by });
 		if (identity === "verified") this.#backend.signalStop(runner.pid);
+		return true;
+	}
+
+	/** ADR-0058 Amendment 7: wait up to `ms` for task `id` to reach `until`
+	 *  — "end" (ended, unknown, never run) or "ready" (ready, or any end) —
+	 *  on behalf of a tool call whose result will report it. While it waits
+	 *  the watcher never announces this task. What it observes is CLAIMED
+	 *  for `executionId` — the caller's own execution: `result_claimed` is
+	 *  durable first, then the transition counts as seen, so it is never
+	 *  announced. A timeout, an abort, no execution id, an agent task (its
+	 *  end belongs to its group, 3d) or a claim that cannot be written
+	 *  claim nothing: the transition is announced as before. */
+	async awaitSettled(id: string, until: "end" | "ready", ms: number, opts: { readonly executionId?: string; readonly signal?: AbortSignalLike } = {}): Promise<TaskSettled> {
+		if (this.get(id) === undefined) throw new Error(`no task ${id} in this session`);
+		this.#waiting.set(id, (this.#waiting.get(id) ?? 0) + 1);
+		let aborted = opts.signal?.aborted === true;
+		let wake = (): void => {};
+		const onAbort = (): void => {
+			aborted = true;
+			wake();
+		};
+		opts.signal?.addEventListener("abort", onAbort);
+		try {
+			const deadline = Date.now() + ms;
+			for (;;) {
+				const info = this.#info(id)!;
+				const reached = endTransitionOf(info) ?? (until === "ready" && info.state.kind === "running" && info.state.ready ? "ready" : null);
+				if (reached !== null) return { info, settled: true, claimed: this.#claim(info, reached, opts.executionId) };
+				const left = deadline - Date.now();
+				if (aborted || left <= 0) return { info, settled: false, claimed: false };
+				await new Promise<void>((resolve) => {
+					const timer = setTimeout(resolve, Math.min(100, left));
+					wake = () => {
+						clearTimeout(timer);
+						resolve();
+					};
+				});
+			}
+		} finally {
+			opts.signal?.removeEventListener("abort", onAbort);
+			const n = (this.#waiting.get(id) ?? 1) - 1;
+			if (n > 0) this.#waiting.set(id, n);
+			else this.#waiting.delete(id);
+		}
+	}
+
+	/** The frozen order: the claim durable, THEN seen — an append that fails
+	 *  leaves the transition unseen, to be announced (a duplicate is the
+	 *  lesser evil next to a lost transition). */
+	#claim(info: TaskInfo, transition: ClaimedTransition, executionId: string | undefined): boolean {
+		if (executionId === undefined || info.agent !== undefined) return false;
+		try {
+			appendRecord(join(this.root, info.id, JOURNAL), { type: "result_claimed", ts: Date.now(), transition, executionId });
+		} catch {
+			return false;
+		}
+		this.#seen.set(info.id, this.#kindOf(info));
 		return true;
 	}
 
@@ -403,6 +491,8 @@ export class TaskManager {
 
 	#poll(): void {
 		for (const id of this.#ids()) {
+			// a tool call is waiting on it: what it sees, its result reports
+			if (this.#waiting.has(id)) continue;
 			const before = this.#seen.get(id);
 			if (before === "ended" || before === "unknown" || before === "not_run") continue;
 			let info: TaskInfo;
@@ -435,6 +525,9 @@ export class TaskManager {
 		const verified =
 			this.#local.has(id) || (terminal === undefined && runner !== undefined && this.#identityOf(id, runner) === "verified");
 		const stop = records.find((r): r is Extract<TaskRecord, { type: "stop_requested" }> => r.type === "stop_requested");
+		const claims = records
+			.filter((r): r is Extract<TaskRecord, { type: "result_claimed" }> => r.type === "result_claimed")
+			.map((r) => ({ transition: r.transition, executionId: r.executionId }));
 		return {
 			id,
 			command: planned?.command ?? "",
@@ -447,6 +540,7 @@ export class TaskManager {
 			outputPath: join(this.root, id, OUTPUT),
 			startedAt: planned?.ts ?? 0,
 			...(terminal !== undefined ? { endedAt: terminal.ts } : {}),
+			...(claims.length > 0 ? { claims } : {}),
 		};
 	}
 

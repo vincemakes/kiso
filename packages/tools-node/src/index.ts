@@ -20,7 +20,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, linkSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import type { SearchReply, SearchRequest } from "./search-worker.js";
@@ -28,7 +28,7 @@ import { killTree, NO_BASH, processStartTime, RotatingOutput, startCommand } fro
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
+import { defineTool, type AbortSignalLike, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 // WR-1/WR-1A — the revision-guard primitives (unit-tested in wr1a-coda):
 import { strippedShellEnv } from "./secret-env.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
@@ -91,6 +91,9 @@ const DEFAULT_FOREGROUND_MS = 60_000;
 const TASK_OUTPUT_CAP = 64 * 1024 * 1024;
 /** A task's stop: SIGTERM, this long, then the confirmed sweep. */
 const TASK_STOP_GRACE_MS = 5_000;
+/** ADR-0058 Amendment 7: how long task_stop waits for the end it reports —
+ *  the runner's journal poll, TERM, the grace, KILL and the sweep. */
+const TASK_STOP_WAIT_MS = 8_000;
 // the token round: the scoped-read defaults — read_file shows the head 200 lines
 // of a large file (with an actionable continuation note, never a silent
 // drop), search_text caps at 50 excerpts, list_dir at 200 entries. The
@@ -1344,9 +1347,56 @@ export interface ShellTasks {
 	};
 	stop(id: string, by: "model"): boolean;
 	get(id: string): { readonly state: { readonly kind: string } } | undefined;
+	/** ADR-0058 Amendment 7: wait for a task's end (or ready line) that this
+	 *  call's result will report; what it sees is claimed for `executionId`,
+	 *  so it is never noticed. Without it the calls return at once (today's
+	 *  results, a notice to follow). */
+	awaitSettled?(
+		id: string,
+		until: "end" | "ready",
+		ms: number,
+		opts: { readonly executionId?: string; readonly signal?: AbortSignalLike },
+	): Promise<{ readonly info: SettledTask; readonly settled: boolean; readonly claimed: boolean }>;
 	/** 3e: a running foreground command that can be moved to the background
 	 *  now (the person's key, a steer) — registered while it runs. */
 	registerDetachable?(executionId: string, detachable: { readonly startedAt: number; detach(by: "person" | "steer"): void }): () => void;
+}
+
+/** What a settled wait reports about its task. */
+interface SettledTask {
+	readonly state: { readonly kind: string; readonly ready?: boolean; readonly exitCode?: number | null; readonly signal?: string | null; readonly error?: string };
+	readonly outputPath: string;
+	readonly startedAt: number;
+	readonly endedAt?: number;
+}
+
+/** How a task ended, in a few words: its signal, its exit code, or why it
+ *  never ran. */
+function howEnded(task: SettledTask): string {
+	const s = task.state;
+	if (s.kind === "unknown") return "its runner is gone and its end is unknown";
+	if (s.error !== undefined) return `it never started: ${s.error}`;
+	if (s.signal !== undefined && s.signal !== null) return s.signal;
+	if (s.exitCode !== undefined && s.exitCode !== null) return `exit code ${s.exitCode}`;
+	return "no exit code";
+}
+
+/** The last `bytes` of a task's output file ("" when there is none). */
+function outputTail(path: string, bytes = 2_048): string {
+	try {
+		const fd = openSync(path, "r");
+		try {
+			const size = fstatSync(fd).size;
+			const len = Math.min(size, bytes);
+			const buf = Buffer.alloc(len);
+			readSync(fd, buf, 0, len, size - len);
+			return `${size > len ? "…" : ""}${buf.toString("utf8")}`.trim();
+		} finally {
+			closeSync(fd);
+		}
+	} catch {
+		return "";
+	}
 }
 
 type ShellInput = { command: string; timeoutMs?: number; foregroundMs?: number; background?: boolean; readyWhen?: string };
@@ -1378,8 +1428,12 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					properties: {
 						command: { type: "string", description: "The command to run" },
 						foregroundMs: { type: "number", description: "How long to wait for the result, in ms (default 60000); if you need the result to go on, allow enough time" },
-						background: { type: "boolean", description: "Start as a background task and return at once: servers, watchers, long jobs" },
-						readyWhen: { type: "string", description: "A literal piece of the output that means ready (a server's ready line): the wait ends there and the command keeps running as a task" },
+						background: {
+							type: "boolean",
+							description:
+								"Run independently as a task. Use for services/watchers or work whose exit result is not needed next. If you need the result, keep it foreground and raise foregroundMs. You are notified when it ends; do not sleep/poll.",
+						},
+						readyWhen: { type: "string", description: "For a continuing service, wait up to foregroundMs for this literal output before returning; the task keeps running afterward." },
 						timeoutMs: { type: "number", description: "Deprecated: use foregroundMs" },
 					},
 					required: ["command"],
@@ -1419,7 +1473,9 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					...(readyWhen !== undefined ? { readyWhen } : {}),
 					profile: readyWhen !== undefined ? "service" : "oneshot",
 				});
-				return { content: `started background task ${task.id}. ${taskNote(task.outputPath)}`, isError: false };
+				const settle = tasks.awaitSettled?.bind(tasks);
+				if (readyWhen === undefined || settle === undefined) return { content: `started background task ${task.id}. ${taskNote(task.outputPath)}`, isError: false };
+				return waitForReady(tasks, settle, task, readyWhen, timeout, ctx);
 			}
 			return new Promise((resolvePromise) => {
 				// detached: the command gets its OWN process group, so a
@@ -1643,6 +1699,55 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 	});
 }
 
+/** ADR-0058 Amendment 7: `background` with `readyWhen` — the task is the
+ *  runner's from the start; this call waits for its ready line (up to the
+ *  foreground wait) and reports what it saw. The ready (or an end before
+ *  it) is claimed for this call, so no notice repeats it. The person
+ *  (ctrl+b), a steer or Esc RELEASES the wait: the work is already a task,
+ *  so nothing is promoted and no second task is made. */
+async function waitForReady(
+	tasks: ShellTasks,
+	settle: NonNullable<ShellTasks["awaitSettled"]>,
+	task: { readonly id: string; readonly outputPath: string },
+	readyWhen: string,
+	timeout: number,
+	ctx: { readonly executionId?: string | undefined; readonly signal: AbortSignalLike },
+): Promise<ToolResult> {
+	const release = new AbortController();
+	let reason: "person" | "steer" | "interrupted" | null = null;
+	const onEsc = (): void => {
+		reason ??= "interrupted";
+		release.abort();
+	};
+	if (ctx.signal.aborted) onEsc();
+	else ctx.signal.addEventListener("abort", onEsc);
+	const undetach =
+		tasks.registerDetachable !== undefined && ctx.executionId !== undefined
+			? tasks.registerDetachable(ctx.executionId, {
+					startedAt: Date.now(),
+					detach: (by) => {
+						reason ??= by;
+						release.abort();
+					},
+				})
+			: (): void => {};
+	try {
+		const w = await settle(task.id, "ready", timeout, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), signal: release.signal });
+		const where = `Output: ${task.outputPath} (read it with read_file); task_stop stops it.`;
+		if (w.settled && w.info.state.kind === "running") return { content: `started background task ${task.id}; ready — the output contains "${readyWhen}". ${taskNote(task.outputPath)}`, isError: false };
+		if (w.settled) {
+			const tail = outputTail(task.outputPath);
+			return { content: `background task ${task.id} ended before it was ready (${howEnded(w.info)})${tail !== "" ? `\n${tail}` : ""}`, isError: true, errorKind: "fatal" };
+		}
+		if (reason === null) return { content: `not ready after ${timeout} ms — no "${readyWhen}" in the output yet; it keeps running as background task ${task.id}, and you will be notified when it is ready. ${where}`, isError: false };
+		const why = reason === "person" ? "moved on by the person" : reason === "steer" ? "so the person's message could land" : "interrupted";
+		return { content: `started background task ${task.id}; stopped waiting for "${readyWhen}" (${why}) — not ready yet; you will be notified when it is ready. ${where}`, isError: false };
+	} finally {
+		undetach();
+		ctx.signal.removeEventListener("abort", onEsc);
+	}
+}
+
 /** Where a task's output is, and what happens next — one wording for the
  *  shell's results. */
 function taskNote(outputPath: string): string {
@@ -1653,7 +1758,7 @@ function taskNote(outputPath: string): string {
 export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> {
 	return defineTool<{ id: string }>({
 		name: "task_stop",
-		description: "Stop a background task this session started, with its whole process group. The result says whether it was still running.",
+		description: "Stop a task, wait briefly for its terminal state, and report how it ended.",
 		parameters: {
 			type: "object",
 			properties: { id: { type: "string", description: "The task id, as the shell reported it (t1, t2, …)" } },
@@ -1666,9 +1771,15 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
 			const info = tasks?.get(id);
 			if (tasks === undefined || info === undefined) return { content: `no task ${id} in this session`, isError: true, errorKind: "precondition" };
 			if (info.state.kind === "ended") return { content: `task ${id} had already ended`, isError: false };
-			return tasks.stop(id, "model")
-				? { content: `stopping task ${id}; you will be notified when it has ended`, isError: false }
-				: { content: `task ${id} is not running (${info.state.kind}); nothing to stop`, isError: false };
+			if (!tasks.stop(id, "model")) return { content: `task ${id} is not running (${info.state.kind}); nothing to stop`, isError: false };
+			if (tasks.awaitSettled === undefined) return { content: `stopping task ${id}; you will be notified when it has ended`, isError: false };
+			// Amendment 7: wait for the end this result reports — claimed for
+			// THIS call, so no stopped notice follows (Esc: nothing claimed)
+			const w = await tasks.awaitSettled(id, "end", TASK_STOP_WAIT_MS, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), signal: ctx.signal });
+			if (!w.settled) return { content: `stop requested for task ${id}; its end is not confirmed yet — you will be notified when it ends`, isError: false };
+			if (w.info.state.kind === "unknown") return { content: `task ${id} could not be confirmed stopped — some of its processes may still be running`, isError: true, errorKind: "fatal" };
+			const ran = w.info.endedAt !== undefined ? `; it ran ${Math.round((w.info.endedAt - w.info.startedAt) / 100) / 10}s` : "";
+			return { content: `stopped task ${id} (${howEnded(w.info)}${ran})`, isError: false };
 		},
 	});
 }
