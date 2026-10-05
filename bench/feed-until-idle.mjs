@@ -21,6 +21,14 @@
  * A task is live while its journal has no `terminal` (nor `stop_unconfirmed`)
  * and its recorded runner pid still exists — a runner that died without a
  * terminal is not waited for (its verdict is `unknown`, ADR-0058 §6).
+ *
+ * The quiet window runs from the LATER of the log's last change and the
+ * latest task end (eval-0460b amendment A1). A turn that dispatches
+ * background work and ends goes quiet at once; when its last task ends
+ * later, the session is idle at that instant, but the end's notice — a wake
+ * run — lands a beat after (the manager's poll, the delivery window). Timing
+ * the quiet from the log alone closed stdin in that beat and the CLI exited
+ * before the wake: four of eval-0460b's six F1b legs.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -58,10 +66,10 @@ const alive = (pid) => {
 	}
 };
 
-/** The ids of the session's live tasks. */
-export function liveTasks(tasksDir, isAlive = alive) {
+/** Every task journal of the session: [id, records]. */
+function journals(tasksDir) {
 	if (!existsSync(tasksDir)) return [];
-	const live = [];
+	const out = [];
 	for (const id of readdirSync(tasksDir)) {
 		const journal = join(tasksDir, id, "journal.jsonl");
 		if (!existsSync(journal)) continue;
@@ -75,12 +83,39 @@ export function liveTasks(tasksDir, isAlive = alive) {
 					return {};
 				}
 			});
-		if (records.some((r) => r.type === "terminal" || r.type === "stop_unconfirmed")) continue;
+		out.push([id, records]);
+	}
+	return out;
+}
+
+const ended = (r) => r.type === "terminal" || r.type === "stop_unconfirmed";
+
+/** The ids of the session's live tasks. */
+export function liveTasks(tasksDir, isAlive = alive) {
+	const live = [];
+	for (const [id, records] of journals(tasksDir)) {
+		if (records.some(ended)) continue;
 		const runner = records.find((r) => r.type === "runner_started");
 		if (runner !== undefined && !isAlive(runner.pid)) continue; // gone without a terminal: unknown, not waited for
 		live.push(id);
 	}
 	return live;
+}
+
+/** The latest task end (a `terminal` or `stop_unconfirmed` timestamp) in the session's journals, or null. */
+export function lastTaskEnd(tasksDir) {
+	let latest = null;
+	for (const [, records] of journals(tasksDir)) {
+		for (const r of records) if (ended(r) && typeof r.ts === "number" && (latest === null || r.ts > latest)) latest = r.ts;
+	}
+	return latest;
+}
+
+/** Close stdin now: idle, and quiet for QUIET_MS since the later of the log's
+ *  last change and the latest task end (a task ending restarts the clock). */
+export function shouldClose(sessionsDir, sessionId, now, logQuietSince, isAlive = alive) {
+	const end = lastTaskEnd(join(sessionsDir, `${sessionId}.tasks`)) ?? 0;
+	return now - Math.max(logQuietSince, end) >= QUIET_MS && idleNow(sessionsDir, sessionId, isAlive);
 }
 
 /** Idle: a run ended, its terminal is the last event, no task is live. */
@@ -111,7 +146,7 @@ async function main(argv) {
 			quietSince = Date.now();
 			continue;
 		}
-		if (Date.now() - quietSince >= QUIET_MS && idleNow(sessionsDir, sessionId)) break;
+		if (shouldClose(sessionsDir, sessionId, Date.now(), quietSince)) break;
 	}
 	process.stdout.end();
 }
