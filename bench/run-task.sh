@@ -1,6 +1,8 @@
 #!/bin/sh
-# run-task.sh <task: T3|L1|L2|F1> <run-id> — one kiso leg of the 0.46.0
-# evaluation (kiso-doc plan-0460-3f-evaluation; ADR-0058 §11).
+# run-task.sh <task: T3|L1|L2|F1|F1b> <run-id> — one kiso leg of the 0.46.0
+# evaluation (kiso-doc plan-0460-3f-evaluation; ADR-0058 §11). F1b is F1's
+# fixture and questions with the fan-out asked for: the eval-0460b
+# mechanism probe (kiso-doc plan-0460-fix-b1-b2 §4), run by run-probe.sh.
 #
 # One prompt, one session, run on the leg-isolation, bare-home, deadline
 # and cred-exec machinery run-t5.sh established (see its notes; they are
@@ -20,8 +22,8 @@ B="$(cd "$(dirname "$0")" && pwd)"
 KISO_BIN=${KISO_BIN:-kiso}
 case "$TASK" in
 	T3) FIXTURE=fixture-v1; PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks.json','utf8')).T3)") ;;
-	L1|L2|F1) FIXTURE=fixture-$(printf '%s' "$TASK" | tr 'LF' 'lf'); PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-0460.json','utf8'))['$TASK'])") ;;
-	*) echo "run-task.sh: unknown task $TASK (T3 | L1 | L2 | F1)" >&2; exit 1 ;;
+	L1|L2|F1|F1b) FIXTURE=fixture-$(printf '%s' "$TASK" | tr 'LF' 'lf' | sed 's/b$//'); PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-0460.json','utf8'))['$TASK'])") ;;
+	*) echo "run-task.sh: unknown task $TASK (T3 | L1 | L2 | F1 | F1b)" >&2; exit 1 ;;
 esac
 
 # The version the arm WILL run, asked of the binary itself (run-t5.sh's
@@ -136,7 +138,7 @@ case "$TASK" in
 	T3) VERIFY=fail; (cd "$WORK/repo" && node tests/user.test.js >/dev/null 2>&1 && node src/cli.js >/dev/null 2>&1) && VERIFY=pass ;;
 	L1) VERIFY=$(sh "$B/l1-verify.sh" "$WORK/repo") ;;
 	L2) VERIFY=$(sh "$B/l2-verify.sh" "$WORK/repo" "$WORK" 2>/dev/null) ;;
-	F1) VERIFY=$(node "$B/f1-verify.mjs" "$WORK") ;;
+	F1|F1b) VERIFY=$(node "$B/f1-verify.mjs" "$WORK") ;;
 esac
 echo "$VERIFY" > "$WORK/verify"
 node "$B/tasks-counters.mjs" "$WORK" > "$WORK/counters.json" 2>/dev/null || echo '{"error":"the counters did not run"}' > "$WORK/counters.json"
