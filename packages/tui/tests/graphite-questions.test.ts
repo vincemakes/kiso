@@ -80,18 +80,23 @@ describe("P1b — the shape of kiso's own question", () => {
 		expect(r.some((x) => /2 not now/.test(x))).toBe(true);
 	});
 
-	it("the options, the key row and the closing rule are the approval's own", () => {
+	// MOVED (Graphite P4 — DECLARED): the key row closes the band, with the
+	// counter at the margin; the closing rule is gone (the composer's rail)
+	it("the options and the key row are the approval's own, and the key row closes the band", () => {
 		const r = rowsOf(UNC).map(plain);
-		expect(r.at(-2)).toMatch(/^ {2}↑↓ move · ⏎ or click confirms · 1-2 instant · esc$/);
-		expect(r.at(-1)).toMatch(/^─+$/);
+		expect(r.at(-1)).toMatch(/^ {2}↑↓ move · ⏎ or click confirms · 1–2 instant · esc +1\/2$/);
+		expect(r.filter((x) => /^─+$/.test(x))).toHaveLength(0);
 	});
 
 	it("a tool approval keeps the approval layout", () => {
 		const approval: PanelView = { flavor: "approval", name: "shell", title: "npm test", speaker: "default", statusText: "❯ run paused", args: { kind: "text", lines: ["npm test"] }, fallbackQuestion: "approve shell? (y/n) " };
 		const r = rowsOf(approval).map(plain);
-		expect(r[0]).toMatch(/^─{3} needs you ─/);
-		expect(r[2]).toBe("  npm test");
-		expect(r[3]).toBe("");
+		// MOVED (Graphite P4 — DECLARED): who asked rides the band; the call is
+		// said once, as its card reads — a one-line command that fits the head
+		// row is not repeated in a body
+		expect(r[0]).toMatch(/^─{3} needs you · asked by default ─/);
+		expect(r[1]).toBe("  SHELL npm test");
+		expect(r.join("\n")).not.toContain("│ npm test");
 	});
 
 	it("the dock-less question is unchanged, word for word", () => {

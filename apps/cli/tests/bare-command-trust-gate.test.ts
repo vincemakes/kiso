@@ -158,7 +158,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
                 if b"Cannot read properties of undefined" in full:
                     crashed = True
                     break
-                if not approved and b"needs approval" in full:
+                if not approved and b"asked by" in full:  # Graphite P4: the approval band names who asked
                     send(b"1\\r")
                     approved = True
                     continue

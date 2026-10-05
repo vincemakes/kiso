@@ -87,11 +87,19 @@ describe("TUI2-R3v2 ① — the option list and its bar", () => {
 	});
 
 	it("the affordance is the v4 hint line, and it counts the real options", () => {
-		expect(panelAffordance(view, "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
-		expect(panelAffordance(simple, "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1-2 instant · esc");
+		// MOVED (Graphite P4 — DECLARED): an approval's esc says it denies; the
+		// range is an en dash, as on every key row
+		expect(panelAffordance(view, "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies");
+		expect(panelAffordance(simple, "options", 0)).toBe("↑↓ move · ⏎ or click confirms · 1–2 instant · esc");
 	});
 
-	it("the un-amended rule line keeps its RAW BYTE run — four PTY gates need it", () => {
+	// RE-DERIVED (Graphite P4, owner 2026-10-04 — DECLARED): the rule line
+	// retired into the band's name (`needs you · asked by <speaker>`) and the
+	// call's head (`SHELL …`). What this gate protects stands: the PTY gates
+	// match frames on a RAW byte run, so the run they use now — the band's
+	// facts — must be one contiguous span on the ground those gates run on
+	// (the unknown one: a pty answers no ground query).
+	it("the band's facts are ONE contiguous byte run on the unknown ground — the PTY gates' needle", () => {
 		// the regression this gate exists for: splicing the "(amended)"
 		// marker in with its own dim span closed and reopened the run, which
 		// is invisible on screen and broke the byte sequence the PTY driver
@@ -99,18 +107,28 @@ describe("TUI2-R3v2 ① — the option list and its bar", () => {
 		// hung. An ordinary approval's bytes are not ours to churn.
 		// R2: the block OPENS with a dashed rule, so the rule LINE — the
 		// sentence naming the tool and who asked — is row 1.
-		const rule = panelBlockRows(view, "options", 0, 120, 20)[1]!;
-		expect(rule, "the needle must survive as ONE contiguous byte run").toContain("needs approval — asked by");
+		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+		try {
+			const band = panelBlockRows(view, "options", 0, 120, 20)[0]!;
+			expect(band, "the needle must survive as ONE contiguous byte run").toContain("needs you · asked by");
+		} finally {
+			delete (process.stdout as { isTTY?: boolean }).isTTY;
+		}
 	});
 
 	it("…and the AMENDED line says so, in one contiguous run of its own", () => {
-		const rule = panelBlockRows({ ...view, amended: true }, "options", 0, 120, 20)[1]!; // R2: row 0 is the opening rule
-		expect(rule).toContain("needs approval · (amended) — asked by");
+		const band = panelBlockRows({ ...view, amended: true }, "options", 0, 120, 20)[0]!;
+		expect(band).toContain("needs you · amended · asked by");
 	});
 
-	it("the typed phase says where the words GO, and leads with amend›", () => {
-		expect(panelLeadPlain(view, "amend", 3)).toBe("amend› ");
+	// MOVED (Graphite P4 — DECLARED): no `amend›` lead (the composer's row,
+	// with a dim hint while it is empty); the block itself says where the
+	// words go, since the bar stays under the panel; the status line keeps
+	// the words for a terminal with no bar
+	it("the typed phase says where the words GO, in the block, with no lead", () => {
+		expect(panelLeadPlain(view, "amend", 3)).toBe("");
+		expect(panelBlockRows(view, "amend", 3, 120, 20).join("\n")).toContain("your note goes to the model — it will propose a new call");
 		expect(panelStatus(view, "amend", 3)).toBe("❯ your note goes to the model — it will propose a new call");
-		expect(panelAffordance(view, "amend", 3)).toBe("⏎ send · esc back");
+		expect(panelAffordance(view, "amend", 3)).toBe("⏎ sends · esc back to the choices");
 	});
 });

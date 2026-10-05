@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Editor } from "../src/editor.js";
-import { askAnswers, askBlockRows, askCommitCustom, askDeclineAll, askKey, askLeadPlain, askStart, askView, type AskResult, type AskRuntime, type AskSpec } from "../src/ask-panel.js";
+import { askAffordance, askAnswers, askBlockRows, askCommitCustom, askDeclineAll, askKey, askLeadPlain, askStart, askView, type AskResult, type AskRuntime, type AskSpec } from "../src/ask-panel.js";
 import type { PanelVerdict } from "../src/approval-panel.js";
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
@@ -154,7 +154,8 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 	it("the question, the header, the numbered options and their descriptions", () => {
 		const rows = plain(askBlockRows(askView(ONE), askStart(ONE), 80, 20));
 		expect(rows).toContain("which bundler?");
-		expect(rows).toContain("bundler");
+		// MOVED (Graphite P4 — DECLARED): the header rides the band's name
+		expect(rows).toMatch(/─── question · bundler ─/);
 		expect(rows).toContain(" 1 ");
 		expect(rows).toContain("vite");
 		// DECLARED SUPERSESSION (R2, design §7.5): the description used to
@@ -176,16 +177,19 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 		// ...and the range is this question's OWN count. ONE has three
 		// options plus the type-your-own row, so a hardcoded "1-4" was
 		// wrong here in the most literal way available.
-		expect(rows).toContain("1-3 instant");
+		// (Graphite P4: an en dash, as on every key row)
+		expect(rows).toContain("1–3 instant");
 	});
 
-	it("the ‹ n/m › counter appears only when there is more than one question, and ← joins the keys", () => {
-		expect(plain(askBlockRows(askView(ONE), askStart(ONE), 80, 20))).not.toContain("‹");
+	// MOVED (Graphite P4 — DECLARED): the place in the set rides the band's
+	// name (`1 of 2`) instead of `‹ 1/2 ›` after the question
+	it("the place in the set appears only when there is more than one question, and ← joins the keys", () => {
+		expect(plain(askBlockRows(askView(ONE), askStart(ONE), 80, 20))).not.toMatch(/\d of \d/);
 		const two = askView(TWO);
-		expect(plain(askBlockRows(two, askStart(TWO), 80, 20))).toContain("‹ 1/2 ›");
+		expect(plain(askBlockRows(two, askStart(TWO), 80, 20))).toMatch(/─── question · [^\n]*1 of 2/);
 		const at2 = walk(TWO, ["1"]).state;
 		const rows = plain(askBlockRows(two, at2, 80, 20));
-		expect(rows).toContain("‹ 2/2 ›");
+		expect(rows).toMatch(/─── question · [^\n]*2 of 2/);
 		expect(rows).toContain("← back");
 	});
 
@@ -207,8 +211,10 @@ describe("T-Q1 — the rows: the frames the human reads", () => {
 	});
 
 	it("the block is BOUNDED: a small maxRows drops rows with the honest notice", () => {
-		const rows = askBlockRows(askView(ONE), askStart(ONE), 80, 8);
-		expect(rows.length).toBeLessThanOrEqual(8);
+		// (Graphite P4: three rows of frame, not six — the cap that forces the
+		// notice is smaller)
+		const rows = askBlockRows(askView(ONE), askStart(ONE), 80, 6);
+		expect(rows.length).toBeLessThanOrEqual(6);
 		expect(plain(rows)).toContain("more rows — the full question is in the event log");
 	});
 });
@@ -360,10 +366,14 @@ describe("REL-0152-D3: the type-your-own row is part of the list", () => {
 		expect(askKey(ONE, s, "enter").state.phase).not.toBe("custom");
 	});
 
+	// MOVED (Graphite P4 — DECLARED): the lead retired (a panel leaves the
+	// input row to the composer); the range it was checked for lives on the
+	// key row, and it is the REAL one
 	it("the affordance names the real range, not a hard-coded 1-4", () => {
-		const line = askLeadPlain(askStart(ONE));
-		expect(line).not.toBe("1-4> ");
-		expect(line).toMatch(/pick|1-\d/);
+		expect(askLeadPlain(askStart(ONE))).toBe("");
+		const keys = askAffordance(askStart(ONE), ONE.questions[0]);
+		expect(keys).toContain("1–3 instant");
+		expect(keys).not.toMatch(/1[-–]4/);
 	});
 });
 

@@ -51,7 +51,8 @@ describe("§8.1 — a list names itself", () => {
 
 	it("the approval, the model list: their opening row is the named hairline", () => {
 		setGround("light");
-		expect(plain(approvalRows(80)[0]!)).toMatch(/^─{3} needs you ─+$/);
+		// Graphite P4: the band's name carries who asked
+		expect(plain(approvalRows(80)[0]!)).toMatch(/^─{3} needs you · asked by mode:default ─+$/);
 		const m = modelRows(80).map(plain);
 		// MOVED (Graphite P3 — DECLARED): the words after the name ride the
 		// band's own row; the `current:` row under it is gone

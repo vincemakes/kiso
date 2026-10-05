@@ -105,7 +105,11 @@ describe("TUI2-R2pre ④ — one display-verb table", () => {
 			fallbackQuestion: "approve edit_file? (y/n) ",
 		};
 		const rows = panelBlockRows(view, "options", 1, 80, 20).join("\n");
-		expect(rows).toContain("edit needs approval");
+		// MOVED (Graphite P4 — DECLARED): the act is named by the call's head,
+		// as its transcript card reads (`EDIT src/parser.ts`); the band says
+		// who asked. Still the display verb, never the raw tool name.
+		expect(rows.replace(/\x1b\[[0-9;]*m/g, "")).toContain("EDIT src/parser.ts");
+		expect(rows).not.toContain("EDIT_FILE");
 		expect(rows).not.toContain("edit_file needs approval");
 		// the dock-less fallback is the PIPE path — its bytes do not move
 		expect(view.fallbackQuestion).toBe("approve edit_file? (y/n) ");

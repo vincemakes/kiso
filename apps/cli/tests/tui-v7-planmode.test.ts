@@ -144,7 +144,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 				["the survey is done.", ""], // the model's answer after the denial
 				["plan ready", "/mode default\r"], // the way-forward row → the only exit
 				["▸ default · /mode to switch", "go\r"], // turn 2 executes normally
-				["needs approval", "y\r"], // the ask RESTORED under default — the rule line's dim run
+				["needs you · asked by", "y\r"], // the ask RESTORED under default — Graphite P4: the band's facts
 				// NEEDLE MOVED (R9 P2 / D4): the head row no longer carries the
 				// result, so the old needle never matched and the scenario spent
 				// its whole 60s wall — a driver whose wait cannot match reports
@@ -199,7 +199,7 @@ describe("TUI v7 W19 — plan mode's product surface (real PTY, 24×80)", () => 
 		expect(clean).toContain("▸ plan · read-only · /mode to switch"); // Graphite §8.9
 		// ④ /mode default executes NORMALLY: the ask is back, the shell
 		// succeeds, the recap is the ordinary shape (not plan-ready again).
-		expect(clean).toContain("shell needs approval");
+		expect(clean).toContain("SHELL "); // Graphite P4: the call's head
 		// MOVED (R1.5 slice ⑤, the approval-attribution class): the human
 		// answered this ask, and that is what the row records.
 		// MOVED (R9 P2 / D4): the settled shell is a slab. The head row

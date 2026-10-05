@@ -194,7 +194,7 @@ sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
 		["▌ ", "go\r"], // the submit
-		["needs approval", "y\r"], // the rule line's dim run — the default tier ASKS the shell, answer the panel
+		["needs you · asked by", "y\r"], // Graphite P4: the band's facts — the default tier ASKS the shell, answer the panel
 	])}, 30, ${cols}, ${JSON.stringify(postResizes)})
 `;
 	let out: string;

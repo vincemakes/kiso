@@ -324,7 +324,10 @@ describe("TUI v6 — the one compositor", () => {
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the panel header names the act; view.name stays raw for the
 		// option-2 rule prefill and the dock-less fallbackQuestion.
-		expect(plain).toContain("edit needs approval"); // the rule line
+		// MOVED (Graphite P4 — DECLARED): the act is the call's head, as its
+		// transcript card reads, and the band's name says who asked
+		expect(plain).toContain("EDIT edit examples/foo.ts");
+		expect(plain).toContain("needs you · asked by mode:default");
 		// MOVED (the TUI2-R3v2 panel-selection supersession class): "1-3> "
 		// was a prompt for input the panel no longer asks for, and the
 		// affordance is the v4 hint line. The slot swap is proven by what
@@ -338,7 +341,7 @@ describe("TUI v6 — the one compositor", () => {
 		// argued it should be — the chevron was never the evidence.
 		expect(bytes).not.toContain("\x1b[2m› \x1b[0m");
 		expect(plain).toContain("❯ needs you · run paused"); // Graphite §8.7 (R3b): a waiting status says so first // the phase status (the CLI's painting status is out)
-		expect(plain).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc"); // the phase affordance
+		expect(plain).toContain("↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies"); // the phase affordance (P4: esc says it denies)
 		body.bindApproval(() => null);
 		body.raw(["y"]);
 		tick();

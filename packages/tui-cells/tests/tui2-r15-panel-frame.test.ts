@@ -36,35 +36,34 @@ const VIEW = {
 	fallbackQuestion: "approve edit_file? (y/n) ",
 };
 
-describe("TUI2-R1.5 ⑪ — the panel closes with a real rule (VD-13)", () => {
-	it("the last row is a RULE across the width, not an orphan elbow", () => {
+// DECLARED REVERSAL (Graphite P4, owner 2026-10-04): the panel no longer
+// closes with a rule of its own — it doubled the composer's rail, which sits
+// right under the band. VD-13's finding stands and is still pinned below:
+// the block's last row is never an orphan `└` elbow, and the cut notice's
+// elbow can never be read as an edge. The last row is the KEY row now.
+describe("TUI2-R1.5 ⑪, Graphite P4 — the panel closes on its key row (VD-13)", () => {
+	it("the last row is the key row, with the counter at the margin — not an elbow, not a rule", () => {
 		const rows = panelBlockRows(VIEW, "options", 1, 60, 20);
 		const last = rows[rows.length - 1]!;
 		expect(last).not.toBe("└ ");
-		expect(last.startsWith("\u2500")).toBe(true);
-		expect(visibleWidth(last)).toBe(60);
-		expect(last).toBe("\u2500".repeat(60));
+		expect(last.startsWith("\u2500")).toBe(false);
+		expect(last).toMatch(/^ {2}↑↓ move .* 2\/4$/);
+		expect(visibleWidth(last)).toBe(59);
 	});
 
-	it("the rule spans the width at EVERY width, and the row count gains the opening rule (R2)", () => {
+	it("the key row holds at EVERY width, and the row count is the band, the head, the body, the options and the key row", () => {
 		for (const W of [40, 46, 48, 64, 80, 120]) {
 			const rows = panelBlockRows(VIEW, "options", 1, W, 20);
-			expect(visibleWidth(rows[rows.length - 1]!), `W=${W}`).toBe(W);
-			// MOVED (the TUI2-R3v2 panel-selection supersession class): the
-			// frame is 5 chrome rows + ONE ROW PER OPTION, not 6 fixed rows with
-			// the options sharing one. The rule-spans-the-width property this
-			// case exists for is unchanged.
-			expect(rows, `W=${W}`).toHaveLength(6 + 4 + 2); // R2: six chrome rows — the block opens with a rule too
+			expect(visibleWidth(rows[rows.length - 1]!), `W=${W}`).toBeLessThanOrEqual(W - 1);
+			expect(rows[rows.length - 1], `W=${W}`).toMatch(/ 2\/4$/);
+			expect(rows, `W=${W}`).toHaveLength(2 + 2 + 4 + 1);
 		}
 	});
 
-	it("R2: the block opens AND closes with the same dashed rule — the cut-notice elbow never collides with an edge again", () => {
+	it("ONE rule: the band's own, on its first row — the cut-notice elbow never collides with an edge", () => {
 		const rows = panelBlockRows(VIEW, "options", 1, 60, 20);
-		// R2: TWO rules — the block opens with one and closes with one, in
-		// the same vocabulary as the composer. TUI2-R1.5 ⑪'s finding stands
-		// and is why this is safe: the cut notice keeps its └ and can no
-		// longer be mistaken for an edge, because an edge is now ─.
-		expect(rows.filter((r) => r.startsWith("\u2500"))).toHaveLength(2);
+		expect(rows.filter((r) => r.startsWith("\u2500"))).toHaveLength(1);
+		expect(rows[0]!.startsWith("\u2500")).toBe(true);
 	});
 });
 

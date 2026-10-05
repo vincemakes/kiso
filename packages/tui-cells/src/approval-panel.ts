@@ -753,48 +753,63 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// "quoted verbatim".
 	const asked = view.asked;
 	const prose = asked === undefined ? [] : foldWords(escapeTerminal(asked.prose), Math.max(1, W - 4)).map((r) => `${gutter}${r}`);
+	// Graphite P4 (owner, 2026-10-04): an approval says the call ONCE, as its
+	// card will read in the transcript (`SHELL rm -rf build`), and the band's
+	// name carries who asked. DECLARED REVERSAL of the `<tool> needs approval
+	// — asked by <speaker>` row, of the bold title under it and of the blank
+	// row after them (R3a, TUI2-R1.5 ⑤). The body follows only when it adds
+	// something: a diff, JSON, or a command the head row cannot show whole.
+	const verbHead = `${p.bold}${escapeTerminal(displayVerb(view.name)).toUpperCase()}${p.reset}${view.title === "" ? "" : ` ${escapeTerminal(view.title)}`}`;
+	const sayOnce = view.flavor === "approval" && asked === undefined;
 	if (asked !== undefined) {
-		rows.push(bandHeader([asked.question, ...asked.facts].join(" \u00b7 "), W));
+		rows.push(bandHeader(askedLabel(asked.question, asked.facts, W), W));
 		rows.push(...prose);
+	} else if (sayOnce) {
+		const facts = [...(view.amended === true ? ["amended"] : []), `asked by ${escapeTerminal(view.speaker)}`];
+		rows.push(bandHeader(`needs you \u00b7 ${facts.join(" \u00b7 ")}`, W));
+		rows.push(`  ${cutLine(verbHead, Math.max(1, W - 2))}`);
 	} else {
-		// Graphite §8.1 (R3a): the panel names itself, like every band
+		// a question with no layout of its own (no caller in the product
+		// draws one since P1b): the old head, kept for that case
 		rows.push(bandHeader("needs you", W));
 		rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
 		rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
-		// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
-		// full args — never truncated" is a sentence about the implementation,
-		// addressed to whoever was building the panel; the human reading it
-		// during an approval wants to know what the block below is.
 		rows.push("");
 	}
 	// the args — the bounded block's body: fold, then cap. The └ cut is
 	// ONE row (the W20 discipline): when the args exceed the budget, one
 	// notice row carries the count and where the rest is (the event log).
-	const args: string[] =
-		view.args.kind === "diff"
+	const repeats = sayOnce && visibleWidth(verbHead) <= Math.max(1, W - 2) && view.args.kind === "text" && view.args.lines.length === 1 && view.args.lines[0] === view.title;
+	const args: string[] = repeats
+		? []
+		: view.args.kind === "diff"
 			? diffBody(view.args.diff, W, true) // the expanded path — never the tool cell's capped copy
 			: view.args.lines.flatMap((line) => gutterFold(`${p.dim}│${p.reset} `, escapeTerminal(line), W));
-	// TUI2-R3v2 ①: the block now spends N rows on options instead of one,
-	// so the args and the list SHARE what is left after the chrome (the
-	// rule, the title, the divider, the affordance, the corner — five
-	// rows, plus the note when there is one). The list wins the tie: a
-	// human at an approval is choosing, and one more line of a command
-	// they can also read in the event log is worth less than the row that
-	// carries the choice. The args keep a floor of one row so the block
-	// never claims to show what it is asking about and then shows nothing.
+	// the speaker's fix hint (`/mode accept-edits approves edits`) rode the
+	// end of the retired rule row and was cut there; it has a row of its own
+	const hintRow = sayOnce && view.hint !== undefined && view.hint !== "" ? [`${gutter}${cutLine(`${p.dim}${escapeTerminal(view.hint)}${p.reset}`, Math.max(1, W - 2))}`] : [];
+	// the amend phase says where the note goes, where the person is looking —
+	// it was the status row's, and the bar stays under the panel now
+	const amendRow = phase === "amend" ? [`${gutter}${cutLine(`${p.dim}your note goes to the model \u2014 it will propose a new call${p.reset}`, Math.max(1, W - 2))}`] : [];
+	// TUI2-R3v2 ①: the block spends N rows on options instead of one, so
+	// the args and the list SHARE what is left after the chrome. The list
+	// wins the tie: a human at an approval is choosing, and one more line
+	// of a command they can also read in the event log is worth less than
+	// the row that carries the choice. The args keep a floor of one row so
+	// the block never claims to show what it is asking about and then
+	// shows nothing.
 	const chrome =
-		// R2: SIX rows of frame, not five — the block opens with a rule now
-		// as well as closing with one, and the divider row became a blank.
-		// The count is the same shape it always was: every row the block
-		// spends on itself before the args and the list share what is left.
-		// P1b: kiso's own question spends its band row, its sentences, the
-		// affordance and the closing rule.
-		(asked === undefined ? 6 : 3 + prose.length) +
+		// P4: the band row, the call's head and the key row (no blank, no
+		// rule under it); kiso's own question: the band row, its sentences,
+		// the key row; the old head: four rows and the key row
+		(asked === undefined ? (sayOnce ? 3 : 5) : 2 + prose.length) +
+		hintRow.length +
+		amendRow.length +
 		(phase === "options" && note !== undefined ? 1 : 0) +
 		(view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0) +
 		(phase === "asking" ? 1 : 0) +
-		// the safer list's rows + its way-back row
-		(phase === "safer" && safer !== undefined ? safer.options.length + 1 : 0);
+		// the safer list's rows + its way-back row + the row that says so
+		(phase === "safer" && safer !== undefined ? safer.options.length + 2 : 0);
 	const optionCount = phase === "options" ? panelOptions(view).length : 0;
 	const optionsShown = Math.min(optionCount, Math.max(1, maxRows - chrome - 1));
 	const argsBudget = Math.max(1, maxRows - chrome - optionsShown);
@@ -820,6 +835,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// gutter and this row wears the plain two-space indent.
 	const risk = view.riskHint;
 	if (risk !== undefined && risk !== "") rows.push(`${gutter}${cutLine(`${p.warn}${escapeTerminal(risk)}${p.reset}`, Math.max(1, W - 2))}`);
+	rows.push(...hintRow, ...amendRow);
 	// TUI2-R3v2 ①: the option LIST. While the typed phase is open the list
 	// stands down — the human is writing prose to the model, and a bar
 	// hovering over "Yes, run it" while they do it claims a choice is still
@@ -838,6 +854,9 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// last row and is always present: an alternatives list you cannot back
 	// out of would be a trap.
 	if (phase === "safer" && safer !== undefined) {
+		// Graphite P4: what happened, said in the block — it was the status
+		// row's, and the bar stays under the panel now
+		rows.push(`${gutter}${cutLine(`${p.dim}asked the model for safer options${p.reset}`, Math.max(1, W - 2))}`);
 		offset = rows.length;
 		// R2: the `why` takes a COLUMN rather than running on after an em
 		// dash — the commands are what is being chosen between, and they
@@ -871,17 +890,41 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 		count: phase === "options" ? optionsShown : phase === "safer" && safer !== undefined ? safer.options.length + 1 : 0,
 		first,
 	};
-	rows.push(`${gutter}${p.dim}${cutLine(panelAffordance(view, phase, cursor, safer), Math.max(1, W - 2))}${p.reset}`);
-	// TUI2-R1.5 11 (VD-13): a real bottom RULE, in the block's own edge
-	// vocabulary — the same box-drawing run its divider already uses —
-	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
-	// floating at column 1, with no rule running from it and no corner
-	// above it to answer. Worse, `\u2514 ` is the cut-notice prefix everywhere
-	// else in the product, so a CAPPED panel emitted two elbow rows in a
-	// row meaning entirely different things. The rule reads as an edge,
-	// and the cut notice above it reads as a notice.
-	rows.push(boxBottom(W));
+	// Graphite P4 (owner, 2026-10-04): one key row closes the band, with the
+	// selection's place at the right margin on a list (§8.2); the composer's
+	// rail sits under it. DECLARED REVERSAL of the panel's own bottom rule
+	// (TUI2-R1.5 ⑪, R2), which doubled the composer's.
+	const list = phase === "options" ? { at: cursor, of: panelOptions(view).length } : phase === "safer" && safer !== undefined ? { at: safer.cursor, of: safer.options.length + 1 } : null;
+	rows.push(panelKeyRow(panelAffordance(view, phase, cursor, safer), list, W));
 	return { rows, ...layout };
+}
+
+/** The key row: the keys, cut by cells, and the counter at the right margin. */
+export function panelKeyRow(keys: string, list: { readonly at: number; readonly of: number } | null, W: number): string {
+	const p = palette();
+	const count = list === null ? "" : `${list.at + 1}/${list.of}`;
+	const room = Math.max(1, W - 1 - 2 - (count === "" ? 0 : count.length + 2));
+	const text = cutLine(keys, room);
+	const gap = count === "" ? "" : " ".repeat(Math.max(2, W - 1 - 2 - visibleWidth(text) - count.length));
+	return `  ${p.dim}${text}${gap}${count}${p.reset}`;
+}
+
+/** Graphite P4: kiso's own question names the band with its facts; when the
+ *  label does not fit, the LAST fact (a path) is cut from the left, so its
+ *  end — the folder's own name — and the rule after it stay on screen. */
+function askedLabel(question: string, facts: readonly string[], W: number): string {
+	const room = Math.max(1, W - 8); // `─── ` before the label, ` ───` after it
+	const whole = [question, ...facts].join(" \u00b7 ");
+	if (visibleWidth(whole) <= room || facts.length === 0) return whole;
+	const head = [question, ...facts.slice(0, -1)].join(" \u00b7 ");
+	const left = room - visibleWidth(head) - 3 - 1; // ` · ` and the ellipsis
+	if (left < 4) return whole; // too narrow to say anything useful of it — the band cuts as it always did
+	let tail = "";
+	for (const ch of [...facts[facts.length - 1]!].reverse()) {
+		if (visibleWidth(ch + tail) > left) break;
+		tail = ch + tail;
+	}
+	return `${head} \u00b7 \u2026${tail}`;
 }
 
 /**
@@ -895,13 +938,11 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
  * a human really is writing — leads with the word for what they are
  * writing.
  */
-export function panelLead(view: PanelView, phase: PanelPhase, cursor: number): string {
-	const p = palette();
-	if (phase === "amend") return `${p.dim}amend› ${p.reset}`;
-	// R2: an EMPTY lead emits no bytes at all — `dim + reset` around
-	// nothing is eight bytes on the composer row of every frame a panel
-	// is up, and the row it wraps has no content to style.
-	return PANEL_IDLE_LEAD === "" ? "" : `${p.dim}${PANEL_IDLE_LEAD}${p.reset}`;
+export function panelLead(_view: PanelView, _phase: PanelPhase, _cursor: number): string {
+	// Graphite P4 (owner, 2026-10-04): a panel leaves the input row to the
+	// composer in every phase — DECLARED REVERSAL of the named `amend›` lead;
+	// the empty note row carries a dim hint instead (the tui's panelHintOf)
+	return PANEL_IDLE_LEAD;
 }
 
 /** The composer's lead while a selection list owns the keys.
@@ -918,8 +959,8 @@ const PANEL_IDLE_LEAD = "";
 /** The lead's plain text — the editor's reflow width (the line must
  *  fit the lead + the drawn cursor's own cell — R2 retired the box and
  *  its walls with it). */
-export function panelLeadPlain(view: PanelView, phase: PanelPhase, cursor: number): string {
-	return phase === "amend" ? "amend› " : PANEL_IDLE_LEAD;
+export function panelLeadPlain(_view: PanelView, _phase: PanelPhase, _cursor: number): string {
+	return PANEL_IDLE_LEAD;
 }
 
 export function panelLeadWidth(view: PanelView, phase: PanelPhase, cursor: number): number {
@@ -956,16 +997,20 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number):
  * arrows are — an affordance nobody is told about is one nobody uses.
  */
 export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, safer?: SaferRuntime): string {
-	if (phase === "amend") return "⏎ send · esc back";
+	// Graphite P4: the amend keys say where esc goes back to
+	if (phase === "amend") return "⏎ sends · esc back to the choices";
 	// TUI2-R3v2 ③: the ask is in flight — the ONE key that still means
 	// something is the one that gets you out of it.
 	if (phase === "asking") return "esc cancels";
 	// the same sentence the approval list carries, counting the rows THIS
 	// list has (the alternatives plus the way back)
 	if (phase === "safer" && safer !== undefined) {
-		return `↑↓ move · ⏎ or click confirms · 1-${safer.options.length + 1} instant · esc`;
+		return `↑↓ move · ⏎ or click confirms · 1–${safer.options.length + 1} instant · esc`;
 	}
-	return `↑↓ move · ⏎ or click confirms · 1-${panelOptions(view).length} instant · esc`;
+	// Graphite P4 (owner, 2026-10-04): on an approval esc is a denial (the CLI
+	// records it as one), so the key row says so; kiso's own questions keep
+	// the bare `esc`, which declines them
+	return `↑↓ move · ⏎ or click confirms · 1–${panelOptions(view).length} instant · ${view.flavor === "approval" ? "esc denies" : "esc"}`;
 }
 
 

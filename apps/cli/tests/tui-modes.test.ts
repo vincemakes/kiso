@@ -187,10 +187,15 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the panel's rule line names the ACT. The tool is still write_file
 		// on the wire, and the dock-less fallbackQuestion still says so.
-		expect(clean).toContain("write needs approval"); // the switch restored the ask — the panel's rule line
+		expect(clean).toContain("needs you · asked by"); // the switch restored the ask — Graphite P4: the band
+		expect(clean).toContain("WRITE "); // …and the call's head
 		// v2e: the approval-time diff + the frozen one-line summary.
 		expect(clean).toContain("+ hello"); // the diff row (new file, all +)
-		expect(clean).toContain("  write"); // W3 (sanctioned): the verb strips the _file suffix — the settled row is "write" padded
+		// W3 (sanctioned): the verb strips the _file suffix. Graphite P4: this
+		// was met by the approval's retired `write needs approval` row; the
+		// settled card's head says it now
+		expect(clean).toMatch(/WRITE \S/);
+		expect(clean).not.toContain("WRITE_FILE");
 		// Graphite §6 (R2a): a write that creates its file says so on the
 		// settled head (it was the approval's `+1 -0`)
 		expect(clean).toContain("new file · 1 line");
