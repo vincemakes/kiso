@@ -258,16 +258,23 @@ export function askCommitCustom(spec: AskSpec, state: AskRuntime, text: string):
  * A narrow block has no room for two columns; `stop` arrives as 0 and
  * the em-dash form is what it degrades to.
  */
-function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0): string {
+function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0, markCol = multi): string {
 	const p = palette();
-	const mark = multi ? (picked ? "◉" : "◯") : picked ? "◉" : " ";
+	// Graphite P4 follow-up: a single-select spends no mark column until one
+	// of its options is picked (walking back to an answered question shows
+	// its ◉) — the approved `1 vite`, where `1   vite` was drawn
+	const mark = multi ? (picked ? "◉" : "◯") : !markCol ? "" : picked ? "◉" : " ";
 	const lead = askOptionLead(o, n, mark, cursor);
 	const head = `${cursor ? p.bold : ""}${lead}${p.reset}`;
 	const room = Math.max(1, W - 2);
 	let body: string;
 	if (o.description === undefined) body = "";
 	else if (stop > 0) {
-		const desc = widthCut(escapeTerminal(o.description), Math.max(0, room - stop));
+		// cut by cells WITH an ellipsis — a bare cut reads as the whole
+		// sentence (the P2/P3 class, here in the model's descriptions)
+		const left = Math.max(0, room - stop);
+		const said = escapeTerminal(o.description);
+		const desc = visibleWidth(said) <= left ? said : left <= 1 ? "" : `${widthCut(said, left - 1)}…`;
 		body = `${" ".repeat(Math.max(1, stop - visibleWidth(lead)))}${p.dim}${desc}${p.reset}`;
 	} else body = `${p.dim} — ${escapeTerminal(o.description)}${p.reset}`;
 	const text = cutLine(`${head}${body}`, Math.max(1, W - 2));
@@ -284,7 +291,7 @@ function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, mu
  *  how wide it is. The arrow's cell is spent on every row so the digit
  *  column does not move as the cursor walks. */
 function askOptionLead(o: AskOption, n: number, mark: string, cursor: boolean): string {
-	return `${cursor ? "→" : " "} ${n} ${mark} ${escapeTerminal(o.label)}`;
+	return `${cursor ? "→" : " "} ${n} ${mark === "" ? "" : `${mark} `}${escapeTerminal(o.label)}`;
 }
 
 /** Below this many cells a right column is not a column, it is a
@@ -295,10 +302,10 @@ const ASK_DESC_MIN = 18;
  *  the widest label, never past the half-width, and 0 (meaning "no
  *  column, use the em dash") when what is left would not hold a
  *  readable description. */
-export function askDescriptionStop(q: AskQuestion, W: number): number {
+export function askDescriptionStop(q: AskQuestion, W: number, markCol = q.multiSelect === true): number {
 	const multi = q.multiSelect === true;
 	if (!q.options.some((o) => o.description !== undefined)) return 0;
-	const widest = Math.max(...q.options.map((o, i) => visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : " ", false))));
+	const widest = Math.max(...q.options.map((o, i) => visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : markCol ? " " : "", false))));
 	const room = Math.max(1, W - 2);
 	const stop = widest + 2;
 	if (stop > Math.floor(room / 2) || room - stop < ASK_DESC_MIN) return 0;
@@ -328,8 +335,9 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	rows.push(bandHeader(["question", ...facts].join(" \u00b7 "), W));
 	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}`, Math.max(1, W - 2))}`);
 	const picks = state.picks[state.qIndex] ?? [];
-	const stop = askDescriptionStop(q, W);
-	const body = q.options.map((o, i) => optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W, stop));
+	const markCol = multi || picks.length > 0;
+	const stop = askDescriptionStop(q, W, markCol);
+	const body = q.options.map((o, i) => optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W, stop, markCol));
 	// REL-0152-D3: the row is part of the list, so it carries the same
 	// cursor affordance the options do. Dim-always made a reachable row
 	// look like a footnote.
@@ -351,7 +359,7 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 			? `${onCustom || typingHere ? p.bold : ""}${customLead}◉ ${escapeTerminal(typed)}${p.reset}`
 			: typingHere
 				? `${p.bold}${customLead}▸${p.reset} ${p.dim}type your answer — enter sends, esc backs out${p.reset}`
-				: `${onCustom ? p.bold : p.dim}${customLead}  type your own answer${p.reset}`,
+				: `${onCustom ? p.bold : p.dim}${customLead}${markCol ? "  " : ""}type your own answer${p.reset}`,
 		Math.max(1, W - 2),
 	);
 	body.push(onCustom ? selectionBar(customText, visibleWidth(customText), W) : ` ${customText}`);
