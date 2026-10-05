@@ -142,15 +142,17 @@ describe("the card", () => {
 		expect(rows.map(inner)).toContain("···");
 	});
 
-	it("a long diff: twelve rows, the count of the rest, the key on the foot; expanded, all of it", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key stands at
+	// the count's row's right margin, and the foot row is gone.
+	it("a long diff: twelve rows, the count of the rest with the key beside it; expanded, all of it", () => {
 		setGround("light");
 		const search = Array.from({ length: 20 }, (_, i) => `old ${i}`).join("\n");
 		const replace = Array.from({ length: 20 }, (_, i) => `new ${i}`).join("\n");
 		const c = call("edit_file", { path: "big.ts", expectedRevision: "r", search, replace });
 		const rows = render(c);
 		expect(rows.slice(2, 14).every((r) => /^[-+] /.test(inner(r)))).toBe(true);
-		expect(inner(rows[14]!)).toBe("… 28 more lines");
-		expect(inner(rows[15]!).trim()).toBe("ctrl+o expands");
+		expect(inner(rows[14]!)).toMatch(/^… 28 more lines +ctrl\+o expands$/);
+		expect(rows).toHaveLength(16); // pad · head · 12 rows · the note · pad
 		const all = render({ ...c, expanded: true });
 		expect(all.filter((r) => /^[-+] /.test(inner(r)))).toHaveLength(40);
 	});
@@ -160,7 +162,7 @@ describe("the card", () => {
 		const rows = render(call("write_file", { path: "n.md", expectedRevision: "absent", content: "1\n2\n3\n4\n5\n6\n7\n" }));
 		expect(inner(rows[1]!)).toMatch(/^WRITE n\.md +new file · 7 lines · 0\.1s$/);
 		expect(rows.slice(2, 7).map(inner)).toEqual(["+ 1", "+ 2", "+ 3", "+ 4", "+ 5"]);
-		expect(inner(rows[7]!)).toBe("… 2 more lines");
+		expect(inner(rows[7]!)).toMatch(/^… 2 more lines +ctrl\+o expands$/);
 	});
 
 	it("a write over a file: `rewrote · N lines`, its lines as they now read — not as additions (the old text is not in the log)", () => {

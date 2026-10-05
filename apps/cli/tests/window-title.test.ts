@@ -15,62 +15,61 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Event } from "@vincemakes/kiso-core";
 import { OSC_TITLE_PREFIX, OSC_TITLE_SUFFIX, sanitizeTitle, titleText, windowTitleText } from "../src/window-title.js";
 
-const ev = (content: string): Event => ({ seq: 0, type: "user_input", content });
-
 describe("the window title text", () => {
-	// Graphite §8.10: `<name> — <folder>`; the product's own name is the
-	// placeholder until the session has one (it no longer prefixes the name).
-	it("before the session has a title, kiso and the folder", () => {
-		expect(windowTitleText([], "kiso")).toBe("kiso — kiso");
+	// Graphite §8.10, re-derived for the card round (owner, 2026-10-05):
+	// the title says kiso and the folder. DECLARED REVERSAL of 0.39.1's
+	// prompt-derived name and of the working tab's ✦ (2026-09-28); the
+	// cases that pinned them (the substantive-prompt name, the opener
+	// rule, `✦ <name>`) are re-derived here, not deleted: a prompt never
+	// names the tab now, and a working tab looks like a ready one.
+	it("kiso and the folder, whatever the session's first prompt said", () => {
+		expect(windowTitleText("kiso")).toBe("kiso — kiso");
+		expect(titleText("ready", null, "work")).toBe("kiso — work");
 	});
 
-	it("once a substantive prompt lands, the session's own title names it", () => {
-		expect(windowTitleText([ev("fix the resize repaint")], "kiso")).toBe("fix the resize repaint — kiso");
+	it("§8.10 — no mark while working; waiting says it needs you, in words", () => {
+		expect(titleText("working", null, "work")).toBe("kiso — work");
+		expect(titleText("needs-you", null, "work")).toBe("kiso · needs you — work");
+		expect(windowTitleText("work", "needs-you")).toBe("kiso · needs you — work");
+		for (const st of ["ready", "working", "needs-you"] as const) {
+			expect(titleText(st, null, "work")).not.toMatch(/[\u2726\u276f]/);
+			expect(titleText(st, "fix-auth", "work")).not.toMatch(/[\u2726\u276f]/);
+		}
 	});
 
-	it("an opener is not a title — it holds until something substantive arrives", () => {
-		// The SAME rule the resume picker and `kiso sessions` use: the title
-		// is one definition, or it is two labels for one session.
-		expect(windowTitleText([ev("hi"), ev("rewrite the adapter error mapping")], "kiso")).toBe("rewrite the adapter error mapping — kiso");
+	it("a session named with /name shows its name after kiso", () => {
+		expect(titleText("ready", "fix-auth", "work")).toBe("kiso · fix-auth — work");
+		expect(titleText("working", "fix-auth", "work")).toBe("kiso · fix-auth — work");
+		expect(titleText("needs-you", "fix-auth", "work")).toBe("kiso · needs you · fix-auth — work");
 	});
 
-	it("a long title is cut by CELLS, with the mark", () => {
-		const out = windowTitleText([ev("a".repeat(80))], "kiso");
-		expect(out).toBe(`${"a".repeat(39)}… — kiso`);
+	it("a long name is cut by CELLS, with the mark", () => {
+		expect(titleText("ready", "a".repeat(80), "kiso")).toBe(`kiso · ${"a".repeat(39)}\u2026 — kiso`);
 	});
 
 	it("the cut counts wide characters as two cells, never as one", () => {
 		// 30 double-width characters are 60 cells: the cut lands inside them.
-		// A title measured in code points would have let all 30 through and
+		// A name measured in code points would have let all 30 through and
 		// overflowed the tab by 20 columns. Written as an ESCAPE, not as the
 		// character: the tracked tree is English and the CJK gate scans it,
 		// and a width fixture is the one place where the realistic input IS
 		// a wide script. The escape is the same code point, spelled ASCII.
-		const out = windowTitleText([ev("\u6f22".repeat(30))], "kiso");
-		const shown = out.slice(0, -" — kiso".length);
+		const out = titleText("ready", "\u6f22".repeat(30), "kiso");
+		const shown = out.slice("kiso · ".length, -" — kiso".length);
 		expect([...shown].length).toBe(20); // 19 wide + the mark
-		expect(shown.endsWith("…")).toBe(true);
+		expect(shown.endsWith("\u2026")).toBe(true);
 	});
 
-	it("control bytes in a prompt never reach the terminal", () => {
-		// A title is whatever the human typed or pasted. A BEL would end the
+	it("control bytes in a name never reach the terminal", () => {
+		// A name is whatever the human typed or pasted. A BEL would end the
 		// sequence early and an ESC would start another one, so the title
 		// would stop being a title and start being commands.
-		const out = windowTitleText([ev("rm \u0007\u001b]0;pwned the thing")], "kiso");
+		const out = titleText("ready", "rm \u0007\u001b]0;pwned the thing", "kiso");
 		expect(out).not.toContain("\u001b");
 		expect(out).not.toContain("\u0007");
 		expect(out).toContain("pwned"); // the TEXT survives; only the control bytes go
-	});
-
-	it("§8.10 — the three states: ready has no mark, working wears ✦, waiting says it needs you", () => {
-		expect(titleText("ready", "fix the repaint", "kiso")).toBe("fix the repaint — kiso");
-		expect(titleText("working", "fix the repaint", "kiso")).toBe("✦ fix the repaint — kiso");
-		expect(titleText("needs-you", "fix the repaint", "kiso")).toBe("❯ needs you · fix the repaint — kiso");
-		expect(titleText("working", null, "kiso")).toBe("✦ kiso — kiso");
-		expect(windowTitleText([ev("fix the repaint")], "kiso", "needs-you")).toBe("❯ needs you · fix the repaint — kiso");
 	});
 
 	it("bidi controls and invisible format characters never reach a title", () => {
@@ -78,7 +77,7 @@ describe("the window title text", () => {
 		// control byte — escapeTerminal alone lets them through
 		const sneaky = "a\u061cb\u200bc\u200fd\u202ae\u202ef\u2060g\u2069h\ufeffi";
 		expect(sanitizeTitle(sneaky)).toBe("abcdefghi");
-		expect(titleText("ready", "evil\u202egnp.exe", "w\u200bork")).toBe("evilgnp.exe — work");
+		expect(titleText("ready", "evil\u202egnp.exe", "w\u200bork")).toBe("kiso · evilgnp.exe — work");
 		// a name made only of them is no name
 		expect(titleText("ready", "\u200b\u200b", "kiso")).toBe("kiso — kiso");
 	});

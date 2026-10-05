@@ -75,7 +75,9 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 		expect(rows[0]).toMatch(HEAD("READ", "src/parser.ts", "12 lines · 2.4s · ctrl+o expands"));
 	});
 
-	it("a shell whose settled tail is CUT names the key on its FOOT, once", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key moved from
+	// the foot to the cut note's right margin — still once, still the cut's.
+	it("a shell whose settled tail is CUT names the key on its cut note, once", () => {
 		setTTY(false);
 		const rows = render(
 			toolCell({
@@ -86,9 +88,9 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 			}),
 		);
 		expect(rows[0]).toMatch(HEAD("SHELL", "npm test", "exit 0 · 22 lines · 2.4s"));
-		expect(rows).toContain("  \u2514 \u2026 17 earlier lines");
+		expect(rows[1]).toMatch(/^ {2}\u2514 \u2026 17 earlier lines +ctrl\+o expands$/);
 		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length, "exactly one affordance for the cell").toBe(1);
-		expect(rows.at(-1)!.trim()).toBe("ctrl+o expands");
+		expect(rows.at(-1)!.trim()).toBe("out 22");
 	});
 
 	it("a cell that hides NOTHING names no key — the empty result, and a whole tail", () => {
@@ -155,7 +157,8 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 		expect(render(toolCell({ reason: "not allowed", isError: true, resultText: "[Permission denied] not allowed" })).join("\n")).not.toContain("expands");
 	});
 
-	it("an errored cell previews its text, and its one affordance is the foot", () => {
+	// Re-derived for the card round: the one affordance is the cut note's key.
+	it("an errored cell previews its text, and its one affordance is the cut note's key", () => {
 		setTTY(false);
 		const rows = render(
 			toolCell({
@@ -167,8 +170,7 @@ describe("TUI2-R1 T-V1 — the self-naming key", () => {
 			}),
 		);
 		expect(rows[0]).toMatch(HEAD("SHELL", "npm test", "exit 1 · 10 lines · 2.4s"));
-		expect(rows.join("\n")).toContain("\u2026 5 more lines");
-		expect(rows.at(-1)!.trim()).toBe("ctrl+o expands");
+		expect(rows.at(-1)!.trim()).toMatch(/^\u2026 5 more lines +ctrl\+o expands$/);
 		expect((rows.join("\n").match(/ctrl\+o/g) ?? []).length, "one affordance for the cell").toBe(1);
 	});
 

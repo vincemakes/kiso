@@ -1138,7 +1138,7 @@ async function chatLoop(
 		// be left naming the session the user just left.
 		// Graphite R3d: the session's own name, when the person gave it one
 		setTitleName(readSessionName(activeStoreDir, session.id));
-		paintWindowTitle(session.log.all);
+		paintWindowTitle();
 		const nav = {
 			// 0.40.0 dogfood: the ids only — agent.sessions() read every log whole
 			// (seconds on the owner's 118 sessions) before /resume could open

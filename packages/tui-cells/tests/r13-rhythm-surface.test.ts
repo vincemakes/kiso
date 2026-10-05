@@ -110,15 +110,17 @@ describe("D1 — one blank between any two elements, whatever their height", () 
 });
 
 describe("§7.4 — the card: pad · head · body · foot · pad", () => {
-	it("a shell with a long tail: pad, the head with its outcome, the note, the last five rows, the key, pad", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key stands at
+	// the cut note's right margin — the note and the key were two rows for
+	// one fact — so the card is one row shorter and has no foot.
+	it("a shell with a long tail: pad, the head with its outcome, the note with the key, the last five rows, pad", () => {
 		setGround("light");
 		const rows = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) }));
-		expect(rows).toHaveLength(10);
-		expect(isPad(rows[0]!) && isPad(rows[9]!), "a row of the card's ground above and below").toBe(true);
+		expect(rows).toHaveLength(9);
+		expect(isPad(rows[0]!) && isPad(rows[8]!), "a row of the card's ground above and below").toBe(true);
 		expect(inner(rows[1]!)).toMatch(/^SHELL +npm test +exit 0 · 90 lines · 0\.1s$/);
-		expect(inner(rows[2]!), "the cut note opens a shell's preview").toBe("… 85 earlier lines");
+		expect(inner(rows[2]!), "the cut note opens a shell's preview, the key at its right").toMatch(/^… 85 earlier lines +ctrl\+o expands$/);
 		expect(rows.slice(3, 8).map(inner), "the LAST five rows").toEqual(["out 86", "out 87", "out 88", "out 89", "out 90"]);
-		expect(inner(rows[8]!), "the foot carries the key").toBe("ctrl+o expands");
 		for (const r of rows) expect(plain(r), "a block-element glyph drew a surface (§1.5)").not.toMatch(GLYPHS);
 	});
 
@@ -234,7 +236,8 @@ describe("THE DEGRADATION — with no ground, the card keeps its content and los
 		setGround("unknown");
 		const rows = render(tool({ resultText: lines(90, (i) => `out ${i + 1}`) })).map(plain);
 		expect(rows[0]!.indexOf("SHELL")).toBe(2);
-		expect(rows[1]!.trimEnd()).toBe("  \u2514 \u2026 85 earlier lines");
+		// the card round: the key stands at the note's right margin here too
+		expect(rows[1]!.trimEnd()).toMatch(/^ {2}\u2514 \u2026 85 earlier lines +ctrl\+o expands$/);
 		for (const r of rows.filter((r) => /out \d+/.test(r))) expect(r.match(/^ */)![0].length, JSON.stringify(r)).toBe(4);
 	});
 });
@@ -372,8 +375,9 @@ describe("R13 — the three deviations from the ruled mock", () => {
 		const rows = render(tool({ isError: true, input: "npm run lint", inputFull: JSON.stringify({ command: "npm run lint" }), resultText: `exit 1\n${lines(9, (i) => `src/a${i}.ts:3:1  error  Unexpected any`)}` })).map(inner);
 		const body = rows.slice(2, -2).filter((r) => r !== "" && !r.startsWith("\u2026"));
 		expect(body.length, "the error preview is not five rows").toBe(5);
-		expect(rows.some((r) => /^… \d+ more lines$/.test(r)), "the card's note is missing").toBe(true);
-		expect(rows.at(-2), "the key is on the foot").toBe("ctrl+o expands");
+		// re-derived for the card round (owner, 2026-10-05): the key stands
+		// at the note's right margin, and the note closes the preview
+		expect(rows.at(-2), "the card's note, with the key").toMatch(/^… \d+ more lines +ctrl\+o expands$/);
 	});
 
 	it("② a SEARCH names what it looked for, and its scope behind it", () => {
@@ -405,7 +409,8 @@ describe("R13 — the three deviations from the ruled mock", () => {
  *   · the shell's gestures ride the HEAD row's right end, where the
  *     settled outcome will stand, so the settle swaps words and ground;
  *   · the one row a settle may add is the foot, and only when rows are
- *     hidden.
+ *     hidden — and since the card round (owner, 2026-10-05) not even
+ *     that: the key joins the cut note's row, so a settle adds nothing.
  */
 describe("DC-46 — the running card grows and never shrinks", () => {
 	const running = (over: Partial<Extract<BodyCell, { kind: "tool" }>> = {}): Extract<BodyCell, { kind: "tool" }> =>
@@ -415,8 +420,11 @@ describe("DC-46 — the running card grows and never shrinks", () => {
 		setGround("light");
 		const bare = render(running());
 		expect(bare).toHaveLength(3);
-		expect(plain(bare[1]!).slice(1, 2), "the breath in the mark cell, column 1").toMatch(/\S/);
-		expect(inner(bare[1]!)).toMatch(/^SHELL +npm test +running · 1s/);
+		// re-derived for the card round (owner, 2026-10-05): the breath stands
+		// in front of the outcome's words, where the settled outcome will;
+		// column 1 is blank, so nothing sits against the verb
+		expect(plain(bare[1]!).slice(1, 2), "column 1 is blank").toBe(" ");
+		expect(inner(bare[1]!)).toMatch(/^SHELL +npm test +\u25cf running · 1s/);
 		const first = render(running({ resultText: "out 1" }));
 		expect(first).toHaveLength(4);
 		expect(inner(first[2]!)).toBe("out 1");
@@ -459,7 +467,8 @@ describe("DC-46 — the running card grows and never shrinks", () => {
 			const live = render(running({ resultText: text })).length;
 			const settled = render(tool({ resultText: text })).length;
 			expect(settled, `${n} lines: the settle gave ${live - settled} rows back`).toBeGreaterThanOrEqual(live);
-			expect(settled - live, `${n} lines: the settle added more than the foot`).toBeLessThanOrEqual(1);
+			// the card round: the key rides the note, so the settle adds no row
+			expect(settled, `${n} lines: the settle added ${settled - live} rows`).toBe(live);
 		}
 	});
 });

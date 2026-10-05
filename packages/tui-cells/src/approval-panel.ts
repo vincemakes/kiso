@@ -26,7 +26,7 @@
  */
 
 import { displayWidth } from "./width.js";
-import { atEmbed, bandKeyRow, bandVisible, bandWindow, boxBottom, cutLine, diffBody, foldWords, goldHits, gutterFold, moreMark, selectionBar, visibleWidth, widthCut } from "./components.js";
+import { atEmbed, bandKeyRow, bandVisible, bandWindow, boxBottom, cutLine, diffBody, foldAtSpaces, foldWords, goldHits, gutterFold, moreMark, selectionBar, visibleWidth, widthCut } from "./components.js";
 // TUI2-R2pre ④: strings.js takes only a TYPE from this module, so the
 // import is erased at compile time and no runtime cycle exists.
 import { bandHeader, displayVerb } from "./strings.js";
@@ -911,22 +911,9 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	return { rows, ...layout };
 }
 
-/** A line of text folded to `width` cells, breaking after the last space
- *  that fits (the space is the break), or hard at the width when a run has
- *  none. Every other character is kept, in order. */
-export function foldAtSpaces(text: string, width: number): string[] {
-	const rows: string[] = [];
-	let rest = text;
-	while (visibleWidth(rest) > width) {
-		const head = widthCut(rest, width);
-		const space = head.lastIndexOf(" ");
-		const cut = space > 0 ? space + 1 : Math.max(1, head.length);
-		rows.push(rest.slice(0, cut).trimEnd());
-		rest = rest.slice(cut);
-	}
-	rows.push(rest);
-	return rows;
-}
+/** Graphite P4's fold for a one-line command; it lives with the card's
+ *  head now, which folds a command the same way (the card round). */
+export { foldAtSpaces };
 
 /** The key row: the keys, cut by cells, and the counter at the right margin. */
 export function panelKeyRow(keys: string, list: { readonly at: number; readonly of: number } | null, W: number): string {

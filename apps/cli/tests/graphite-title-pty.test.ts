@@ -1,9 +1,11 @@
 /**
  * Graphite §8.10 — the terminal title follows the session's state, on a
- * real PTY: `kiso — <folder>` before there is a name, `✦ <name> — <folder>`
- * while a turn works, `❯ needs you · <name> — <folder>` while the person is
- * asked, and the ready form again once the turn ends. It changes when the
- * state changes and never on a tick, and nothing rings a bell.
+ * real PTY: `kiso — <folder>` while ready and while a turn works, `kiso ·
+ * needs you — <folder>` while the person is asked, and the ready form again
+ * once they answer. It changes when the state changes and never on a tick,
+ * and nothing rings a bell. Re-derived for the card round (owner,
+ * 2026-10-05): DECLARED REVERSAL of the working `✦` and the prompt-derived
+ * name, so working writes nothing new and the prompt never reaches a title.
  *
  * The PTY carries no window size, so the dock stays out and the question is
  * the dock-less `approve <tool>? (y/n)` — the same askPanel, the same title.
@@ -93,15 +95,14 @@ describe("§8.10 — the title follows the state (real PTY)", () => {
 		]);
 		const folder = basename(dir);
 		const titles = [...out.matchAll(/\u001b\]0;([^\u0007]*)\u0007/g)].map((m) => m[1]!);
-		const name = "write the made file please";
-		expect(titles[0], titles.join("\n")).toBe(`kiso — ${folder}`);
-		const i1 = titles.findIndex((t) => t.startsWith("✦ "));
-		const i2 = titles.findIndex((t, i) => i > i1 && t === `❯ needs you · ${name} — ${folder}`);
-		const i3 = titles.findIndex((t, i) => i > i2 && t === `✦ ${name} — ${folder}`);
-		expect(i1, titles.join("\n")).toBeGreaterThan(0);
-		expect(i2, `the question wears ❯\n${titles.join("\n")}`).toBeGreaterThan(i1);
-		expect(i3, `the answer puts ✦ back\n${titles.join("\n")}`).toBeGreaterThan(i2);
-		expect(titles.at(-1), "the turn's end — and the exit — leave the ready form").toBe(`${name} — ${folder}`);
+		expect(titles[0], titles.join("\n")).toBe(`kiso \u2014 ${folder}`);
+		const i2 = titles.findIndex((t) => t === `kiso \u00b7 needs you \u2014 ${folder}`);
+		const i3 = titles.findIndex((t, i) => i > i2 && t === `kiso \u2014 ${folder}`);
+		expect(i2, `the question says it needs you\n${titles.join("\n")}`).toBeGreaterThan(0);
+		expect(i3, `the answer puts the ready form back\n${titles.join("\n")}`).toBeGreaterThan(i2);
+		expect(titles.at(-1), "the turn's end \u2014 and the exit \u2014 leave the ready form").toBe(`kiso \u2014 ${folder}`);
+		// no mark in any state, and the prompt never names the tab
+		for (const t of titles) expect(t, titles.join("\n")).not.toMatch(/[\u2726\u276f]|write the made file/);
 		// a title that changed per tick would repeat forms; each state is
 		// written once per transition (the 1.2 s answer spans six ticks)
 		for (let i = 1; i < titles.length; i += 1) expect(titles[i], `written twice in a row\n${titles.join("\n")}`).not.toBe(titles[i - 1]);

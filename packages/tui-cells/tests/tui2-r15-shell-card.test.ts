@@ -101,9 +101,13 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 });
 
 describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)", () => {
+	// Re-derived for the card round (owner, 2026-10-05): LONG now folds
+	// onto a second head row, so the body is read after the head's rows —
+	// the subject (the tail's first row) is unchanged.
+	const afterHead = (rows: string[]): string[] => rows.slice(1 + rows.slice(1).findIndex((r) => !r.startsWith(" ".repeat(8))));
 	it("one line of output renders one tail row, not a blank one above it", () => {
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
-		const body = rows.slice(1);
+		const body = afterHead(rows);
 		expect(body[0]).toContain("step 1 · compiling module 1 of 6");
 		// DC-46: there is no pad. The window is the output, so ONE line of
 		// output is one row — which is this case's subject stated exactly
@@ -119,7 +123,7 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 
 	it("LEADING empty output lines are skipped — the sidecar's own blanks", () => {
 		const rows = render(shellCell({ resultText: "\n\nfirst real line" }));
-		const body = rows.slice(1);
+		const body = afterHead(rows);
 		expect(body[0]).toContain("first real line");
 	});
 
@@ -170,10 +174,13 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 			...over,
 		} as Partial<Extract<BodyCell, { kind: "tool" }>>);
 
-	it("the head row names the call; the outcome closes the block on its own row", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key stands at
+	// the cut note's right margin, so the output's last row closes the card.
+	it("the head row names the call; the cut note carries the key; the output closes the block", () => {
 		const rows = render(done());
 		expect(rows[0]).toMatch(/^ {2}SHELL npm test +exit 0 · 7 lines · 6\.0s$/);
-		expect(rows.at(-1)!.trim()).toBe("ctrl+o expands");
+		expect(rows[1]).toMatch(/… 2 earlier lines +ctrl\+o expands$/);
+		expect(rows.at(-1)!.trim()).toBe("build done");
 	});
 
 	it("the tail is the LAST five rows, with a note above saying what was cut", () => {
@@ -181,7 +188,7 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 		// R8a's corner still opens it — the corner is the surface's
 		// alternative, not part of the note.
 		const rows = render(done()).map((r) => r.trim().replace(/^└ /, ""));
-		expect(rows).toContain("… 2 earlier lines");
+		expect(rows[1]).toMatch(/^… 2 earlier lines +ctrl\+o expands$/);
 		expect(rows.slice(2, 7)).toEqual(["step 3", "step 4", "step 5", "step 6", "build done"]);
 	});
 

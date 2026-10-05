@@ -300,7 +300,7 @@ own column is used.
 
 | mark | means |
 |---|---|
-| `●` | a call is running — in its card's mark cell; it breathes (§5) |
+| `●` | a call is running — in front of its card's outcome (§7.5); it breathes (§5) |
 | twinkle (§5.2) | the model is working — on the live row for the whole turn, and in the mark column of a streaming thought's first row |
 | `❯` | it needs you: an approval, a question, an unknown outcome to decide |
 | `◇` | a message the person sent that has not landed yet |
@@ -315,14 +315,14 @@ own column is used.
 **4.1 One mark, one meaning, everywhere.** A mark that means two things
 is worse than two marks.
 
-*One DECLARED EXCEPTION (owner-ruled 2026-09-28).* In the terminal title
-`✦` means the session is working (§8.10). The title has no seal for it to
-be confused with, and the owner chose the kiso mark for the tab that is
-busy.
+*The declared exception is retired (the card round, owner, 2026-10-05).*
+It read: in the terminal title `✦` means the session is working (owner,
+2026-09-28). The title carries no mark in any state now (§8.10), so `✦`
+has one meaning everywhere.
 
-**4.2 A settled call wears no mark.** A card's mark cell is empty once the
-call settles: the outcome word says what happened and the card's ground
-says the state. A mark left lit after the motion stops is §1.3's empty
+**4.2 A settled call wears no mark.** A card's outcome carries no mark
+once the call settles: the outcome word says what happened and the card's
+ground says the state. A mark left lit after the motion stops is §1.3's empty
 mark.
 
 **4.3 Retired (P4, owner, 2026-10-04).** It read: *the pending panel
@@ -468,11 +468,14 @@ once. Nothing pads a window — the height is the content.
 
 **The settle never shrinks it.** That is what makes a settle a change of
 content and nothing else: the ground stays the machine's blue unless the
-call failed or was refused (§1.6), the breathing mark leaves its cell, and the head
-row's right end that said `running · 3s` says `exit 0 · 90 lines · 3.2s`.
-The shell's gestures ride that same row rather than spending a window row
-on a footer. The one row a settle may add is the foot row (§7.4), and only
-when the card has rows behind the key.
+call failed or was refused (§1.6), and the head row's right end that said
+`● running · 3s` says `exit 0 · 90 lines · 3.2s` — the breathing mark and
+the words give way together. The shell's gestures ride that same row
+rather than spending a window row on a footer. A settle adds no row: the
+key joins the cut note's row (§7.4; until the card round the settle added
+a foot row for it). The command's fold is measured against a fixed room
+for the outcome (§7.5), so the head keeps its height through the settle
+too.
 
 The live region as a whole is bounded by the SCREEN, and the window's
 top never falls: within a rendering, rows that have reached the
@@ -501,10 +504,9 @@ shrank at its settle.
 
 ```
 ▌                                                              pad: a row of the card's ground
-▌ SHELL   npm test -- recovery          exit 0 · 90 lines · 4.1s
-▌ … 85 earlier lines
+▌ SHELL npm test -- recovery            exit 0 · 90 lines · 4.1s
+▌ … 85 earlier lines                              ctrl+o expands
 ▌ <the last five output rows>
-▌                                                 ctrl+o expands
 ▌                                                              pad
 ```
 
@@ -513,20 +515,28 @@ the state's colour, drawn as a background.) The card spans the full width,
 on its state's ground (§1.6), with a whole row of that ground above and
 below it (§1.5). Two cards are one blank row apart, like any two blocks.
 
-The columns: the edge cell at 0, the head's mark cell at 1 (§4), the verb
-at 2 — the content edge — the target one space after it, and the BODY at
+The columns: the edge cell at 0, column 1 blank — a running or waiting
+card's mark stands in front of its outcome (§7.5) — the verb at 2 — the
+content edge — the target one space after it, and the BODY at
 2, UNDER THE VERB: the head and what it printed line up (owner,
 2026-09-29, the 0.44 card's alignment). The HEAD row: the verb, the target, and at the right
 the outcome (§7.5). The BODY, when there is one, is the preview in `ink2`
 — five rows at most. A shell shows its TAIL with the cut
 note above it, because the conclusion of a command is at the bottom of its
 output; everything else shows its HEAD with the note below, because that is
-where its answer is. **A read shows nothing at all**: its result is the
+where its answer is. A tail never opens on a blank row or in the middle of
+a wrapped line: the window starts at an earlier line's first row and blank
+rows inside it give way to make the room, the top-most first, so it keeps
+its height (§5) and the note counts what it hides. It reaches only while a
+row above it stays cut, and only a dozen rows back; past that the window
+is the plain tail. An output line too long for the row continues two cells
+in, so one line reads as one. **A read shows nothing at all**: its result is the
 file, five lines of it tell a reader less than the head row already does,
 and the key opens the whole thing. Its continuation note, when the tool
-itself capped the result, is not a preview and stays. The FOOT row carries
-the key, right-aligned, and exists only while something is behind it: on a
-collapsed card when the preview cut rows away, on an expanded one when
+itself capped the result, is not a preview and stays. When the preview
+cut rows away, the cut note carries the key at its right margin: what was
+cut at the left, how to see it at the right. The FOOT row carries the way
+back, `ctrl+o collapses`, and exists only on an expanded card when
 collapsing would hide rows again. A call with nothing to preview is its
 head row between its pads — and when its result sits behind the key (a
 read), the key ends the head row's outcome instead: `412 lines · 0.1s ·
@@ -560,6 +570,14 @@ card sits at the content edge (§1.8). One card per call (§1.7) is
 unchanged. R1 drew half-row pads and a side bar with block glyphs; they
 retired (owner, 2026-09-29) for the seams they left (§1.5).
 
+DECLARED REVERSAL (the card round, owner, 2026-10-05). A collapsed card's
+key stood on a foot row of its own, under the preview, while the cut note
+said the count on another row: two rows for one fact. And the head's mark
+stood in column 1, against the verb (`●SHELL`). The key joins the note;
+the mark moves in front of the outcome (§7.5). A command folds rather than
+eliding (§7.5), wrapped output hangs, and a tail never opens on a blank
+row.
+
 **7.5 A card reads verb · target, then outcome.** The verb is the tool's
 display verb in upper case (`SHELL`, `READ`, `EDIT`, `WRITE`, `LIST`,
 `SEARCH`), `dim`, then ONE space and the target in `ink` — `LIST (root)`,
@@ -568,8 +586,10 @@ up down a run of cards; with the body under the verb that padding left the
 target stranded between them, and the owner found the card scattered —
 2026-09-29.) The outcome sits at the right end of the head row: what
 happened, how much of it there was, how long it took — `exit 0 · 90 lines ·
-4.1s`. A running call's reads `running · 12s`, with the shell's gestures
-after it while there is room. Only the outcome WORD takes colour — `exit 0`
+4.1s`. A running call's reads `● running · 12s`, the `●` breathing, with
+the shell's gestures after it while there is room; a call waiting for the
+person reads `❯ needs you`, both in gold. The mark stands where the settled
+outcome will, so the state is read in one place. Only the outcome WORD takes colour — `exit 0`
 in the success colour; `exit 1`, `failed`, `denied` in the failure colour —
 which is §1.2 exactly: the colour rides the fact, not the object carrying
 it. The card's ground says the state as well, and the word still says it
@@ -587,9 +607,28 @@ The head row gives way in a pinned order when the width squeezes: the
 attribution first, then the count; then the target elides in its middle;
 then, on a very narrow row, the target goes, then the verb, then the
 outcome's segments from the front — so how long it took, and the key where
-there is one, are the last to go. The foot row's key is RESERVED — a card
-that says how much is hidden without saying how to see it is the silence
-the affordance exists to remove. No row of a card ever folds; it is cut.
+there is one, are the last to go.
+
+A shell COMMAND never elides in its middle: it is code the person approves
+and audits, and the part a middle cut removes is often the part that
+matters. When it does not fit beside the outcome it folds at its spaces,
+each further row hanging under its own first character, for at most three
+rows; past that the third ends in `…` and `ctrl+o` shows the whole of it.
+The first row keeps 20 cells for the outcome whatever it says at the
+moment (`● running · 59m 59s` and `exit 127 · 59m 59s` both fit), so a card
+neither re-folds while it runs nor changes height when it settles. A path
+is one row and elides in its middle (it keeps its head and its file name).
+On a very narrow row the command takes the narrow ladder above.
+
+The note row's key is RESERVED — a card that says how much is hidden
+without saying how to see it is the silence the affordance exists to
+remove: the count's words give way first, then the key shortens to
+`ctrl+o`; the count is never cut. Apart from the command and the output
+itself, no row of a card folds; it is cut.
+
+DECLARED REVERSAL (the card round, owner, 2026-10-05): "the target elides
+in its middle" for a command, and "no row of a card ever folds" for its
+head.
 
 Only a call still running carries a mark, because only it is moving.
 
@@ -601,8 +640,8 @@ referenced from the code and from the findings record.
 **7.7 `ctrl+o` is one switch, and every settled card obeys it.**
 Pressing it flips a single state and reprints the session (§7.1): every
 card whose content is SETTLED renders expanded — the whole body, and
-`ctrl+o collapses` on its foot row — or collapsed, which is the preview and
-`ctrl+o expands`. A card whose content is still ARRIVING is exempt: its
+`ctrl+o collapses` on its foot row — or collapsed, which is the preview
+with `ctrl+o expands` on its cut note. A card whose content is still ARRIVING is exempt: its
 height is E2/DC-43's, and a global "show everything" has no business
 reaching into it. A card parked for approval is settled, not arriving — its
 diff is complete and a human is reading it — and that is exactly when the
@@ -824,7 +863,7 @@ asked about showed nothing of what it changed.)
   colour says so.
 - The hunks of one call are separated by a `···` row (a `⋯` read as a minus
   in the sign column).
-- Twelve rows, then `… N more lines` and the key on the foot (§7.4).
+- Twelve rows, then `… N more lines` with the key at its right (§7.4).
 - The approval preview reads the file, as before, and applies EVERY hunk
   of a batch (`edits`) in order, each to what the ones before it left —
   the tool's own rule; a hunk the tool would refuse is named (`hunk 2,
@@ -1110,28 +1149,33 @@ side once extensions can set one (§10).
 **8.10 The terminal title.** OSC 0, written only when stdout is a TTY:
 
 ```
-<name> — <folder>                      ready: no mark
-✦ <name> — <folder>                    working
-❯ needs you · <name> — <folder>        an approval, a question, an unknown outcome to decide
+kiso — <folder>                        ready or working: no mark
+kiso · needs you — <folder>            an approval, a question, an unknown outcome to decide
+kiso · <name> — <folder>               a session named with `/name`
 ```
 
-The name is the one `/name` set (R3d: `/name <words>`, `/name` shows it,
-`/name -` clears it) — durable in the session's SIDECAR (`<id>.meta.json`,
+The title says kiso, then — only when the person gave the session one —
+its name: the one `/name` set (R3d: `/name <words>`, `/name` shows it,
+`/name -` clears it), durable in the session's SIDECAR (`<id>.meta.json`,
 the runtime's `name` tenant beside `profile` and `summary`; session
 metadata, not an event, so the log and the derivation never carry it;
-owner, 2026-09-29), and the name the resume picker, the session list and
-`SessionStore.list()` show — else the first substantive input
-(`sessionTitle`), else there is none and the title is `kiso — <folder>`.
-(This section first said "durable in the session log"; the sidecar is
-where session metadata that is not an event lives, ADR-0051 §6.) Working is a turn or a `/compact`; needs you is any
-panel that waits on the person's answer (an approval, an ask, the trust
-gate, an uncertain execution), and the answer puts back what the title
-said before. No model writes the title. It changes when the state
-changes and never on a tick (§5.4). No bell and no notification: nothing
-interrupts the person (owner, 2026-09-28). The text is escaped and stripped
-of bidi and invisible formatting code points, and the name is cut at 40
-cells. On exit kiso writes the ready form, so a closed session never leaves
-a working or waiting mark behind.
+owner, 2026-09-29). Waiting reads `kiso · needs you · <name> — <folder>`
+when a name is set. Needs you is any panel that waits on the person's
+answer (an approval, an ask, the trust gate, an uncertain execution), and
+the answer puts back what the title said before. Working writes nothing:
+a tab that changes on every turn is noise. No model writes the title. It
+changes when the state changes and never on a tick (§5.4). No bell and no
+notification: nothing interrupts the person (owner, 2026-09-28). The text
+is escaped and stripped of bidi and invisible formatting code points, and
+the name is cut at 40 cells. On exit kiso writes the ready form, so a
+closed session never leaves a waiting mark behind.
+
+DECLARED REVERSAL (the card round, owner, 2026-10-05) of two rulings. The
+working tab's `✦` (owner, 2026-09-28; §4.1's declared exception, now
+retired), and 0.39.1's name from the first substantive prompt
+(`sessionTitle`): the tab read `✦ <the first prompt> — <folder>`. The
+resume picker, the session list and `SessionStore.list()` keep showing the
+prompt-derived name; only the tab changed.
 
 **8.11 The resume picker** (P1, owner, 2026-09-30: option B revision 2,
 chosen from three designs after a comparison with the reference picker).

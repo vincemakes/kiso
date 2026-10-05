@@ -31,14 +31,14 @@ describe("R3d — /name", () => {
 		});
 		expect(first).toContain('named "retry work"'); // the spaces collapse
 		expect(first).toContain("name: retry work");
-		expect(titles(first).some((t) => /^retry work \u2014 /.test(t)), titles(first).join(" | ")).toBe(true);
+		expect(titles(first).some((t) => /^kiso \u00b7 retry work \u2014 /.test(t)), titles(first).join(" | ")).toBe(true);
 		expect(sidecar(dirs.home, "named-a").name).toBe("retry work");
 		// the resumed session opens under its name, not its first line
 		const second = ptyRun(["chat", "named-a"], env as NodeJS.ProcessEnv, { feeds: [["/mode to switch", "exit\r"]] });
-		expect(titles(second)[0]).toMatch(/^retry work — /);
+		expect(titles(second)[0]).toMatch(/^kiso \u00b7 retry work \u2014 /);
 	}, 120_000);
 
-	it("`/name -` clears it: the title is the first line again", () => {
+	it("`/name -` clears it: the title is kiso's again (the card round: a prompt never names the tab)", () => {
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript([{ events: [{ type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] }, ...spares(3)]) });
 		const raw = ptyRun(["chat", "named-b"], env as NodeJS.ProcessEnv, {
 			feeds: [
@@ -49,15 +49,15 @@ describe("R3d — /name", () => {
 			],
 		});
 		expect(raw).toContain("name cleared");
-		expect(titles(raw).at(-1)).toMatch(/^write the notes — /);
+		expect(titles(raw).at(-1)).toMatch(/^kiso \u2014 /);
 		expect(sidecar(dirs.home, "named-b")).not.toHaveProperty("name");
 	}, 120_000);
 });
 
 describe("R3d — the name wins where a session is named", () => {
 	it("the window title", () => {
-		expect(windowTitleText([{ type: "user_input", content: "fix the resize repaint", seq: 0 } as never], "kiso", "ready", "retry work")).toBe("retry work — kiso");
-		expect(windowTitleText([{ type: "user_input", content: "fix the resize repaint", seq: 0 } as never], "kiso", "ready", null)).toBe("fix the resize repaint — kiso");
+		expect(windowTitleText("kiso", "ready", "retry work")).toBe("kiso \u00b7 retry work \u2014 kiso");
+		expect(windowTitleText("kiso", "ready", null)).toBe("kiso \u2014 kiso");
 	});
 
 	it("the /resume card", () => {
