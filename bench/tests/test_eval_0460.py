@@ -120,6 +120,36 @@ class Feeder(unittest.TestCase):
             self.assertEqual(gone, "true")  # a runner gone without a terminal is not waited for
 
 
+class FeederTaskEnd(unittest.TestCase):
+    """eval-0460b A1: the quiet clock restarts at a task's end, so the end's
+    notice (a wake run, a beat later) is waited for."""
+
+    def close(self, s, now, quiet_since):
+        return node(f"import('./feed-until-idle.mjs').then(m => console.log(m.shouldClose({json.dumps(s)}, 'x', {now}, {quiet_since}, () => false)))")
+
+    def test_a_task_that_ends_after_the_log_went_quiet_restarts_the_quiet_clock(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = os.path.join(tmp, "s")
+            # the turn dispatched background work and ended at t=0; the log has been quiet since
+            write_jsonl(os.path.join(s, "x.jsonl"), [{"type": "user_input"}, {"type": "stop", "reason": "end_turn"}, {"type": "terminal", "outcome": {"kind": "completed"}}])
+            end = 1_000_000
+            os.makedirs(os.path.join(s, "x.tasks", "t1"))
+            with open(os.path.join(s, "x.tasks", "t1", "journal.jsonl"), "w") as f:
+                f.write(json.dumps({"type": "planned", "ts": end - 30_000}) + "\n" + json.dumps({"type": "terminal", "ts": end}) + "\n")
+            quiet_since = end - 30_000  # the log went quiet 30 s before the task ended
+            self.assertEqual(self.close(s, end + 250, quiet_since), "false")  # one tick after the end: wait for its notice
+            self.assertEqual(self.close(s, end + 4_999, quiet_since), "false")
+            self.assertEqual(self.close(s, end + 5_000, quiet_since), "true")
+
+    def test_without_tasks_the_clock_is_the_logs_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            s = os.path.join(tmp, "s")
+            write_jsonl(os.path.join(s, "x.jsonl"), [{"type": "user_input"}, {"type": "terminal", "outcome": {"kind": "completed"}}])
+            self.assertEqual(node(f"import('./feed-until-idle.mjs').then(m => console.log(m.lastTaskEnd({json.dumps(os.path.join(s, 'x.tasks'))})))"), "null")
+            self.assertEqual(self.close(s, 10_000, 5_000), "true")
+            self.assertEqual(self.close(s, 9_999, 5_000), "false")
+
+
 class PairedRows(unittest.TestCase):
     def test_a_void_pair_is_dropped_whole_and_the_ids_pair(self):
         rows = [{"task": "L1", "run": r, "cost_weighted": 1} for r in ["rc1", "ctl1", "rc2", "ctl2", "rc3", "ctl3b", "rc3b"]]
