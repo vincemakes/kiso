@@ -325,10 +325,13 @@ call settles: the outcome word says what happened and the card's ground
 says the state. A mark left lit after the motion stops is §1.3's empty
 mark.
 
-**4.3 `❯ ask pending · answers are durable facts`.** The pending panel
-states its own durability, and it is the only line in the interface that
-can: kill the process, come back, the question is still here and the
-answered ones are not asked again.
+**4.3 Retired (P4, owner, 2026-10-04).** It read: *the pending panel
+states its own durability* — `❯ ask pending · answers are durable facts`
+on the status row. The status row under a panel is the Graphite bar now
+(§8.15), and the owner dropped the sentence with it. The behaviour it
+described stands (kill the process, come back: the question is still
+there and an answered one is not asked again). Kept as a numbered stub
+because §4's numbers are referenced from the code.
 
 ---
 
