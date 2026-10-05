@@ -914,7 +914,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 /** A line of text folded to `width` cells, breaking after the last space
  *  that fits (the space is the break), or hard at the width when a run has
  *  none. Every other character is kept, in order. */
-function foldAtSpaces(text: string, width: number): string[] {
+export function foldAtSpaces(text: string, width: number): string[] {
 	const rows: string[] = [];
 	let rest = text;
 	while (visibleWidth(rest) > width) {

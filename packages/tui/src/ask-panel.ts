@@ -52,6 +52,7 @@ import {
 	type PanelState,
 	type PanelView,
 	type PickRuntime,
+	foldAtSpaces,
 } from "./approval-panel.js";
 import { boxBottom, cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
 import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
@@ -258,7 +259,7 @@ export function askCommitCustom(spec: AskSpec, state: AskRuntime, text: string):
  * A narrow block has no room for two columns; `stop` arrives as 0 and
  * the em-dash form is what it degrades to.
  */
-function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0, markCol = multi): string {
+function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0, markCol = multi, opened = false): string {
 	const p = palette();
 	// Graphite P4 follow-up: a single-select spends no mark column until one
 	// of its options is picked (walking back to an answered question shows
@@ -268,7 +269,9 @@ function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, mu
 	const head = `${cursor ? p.bold : ""}${lead}${p.reset}`;
 	const room = Math.max(1, W - 2);
 	let body: string;
-	if (o.description === undefined) body = "";
+	// an OPENED option says its description on the rows under it, whole —
+	// its own row carries the label alone, so nothing is said twice
+	if (o.description === undefined || opened) body = "";
 	else if (stop > 0) {
 		// cut by cells WITH an ellipsis — a bare cut reads as the whole
 		// sentence (the P2/P3 class, here in the model's descriptions)
@@ -284,6 +287,30 @@ function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, mu
 	// nothing else, which on a white terminal is close to invisible. One
 	// ruling, applied in the second place it was always about.
 	return cursor ? selectionBar(text, visibleWidth(text), W) : ` ${text}`; // R2: the frame is a rule, so a row is just indented
+}
+
+/** Whether an option's description fits its row as drawn — in the column
+ *  when there is one, after an em dash when there is not. */
+function descriptionFits(o: AskOption, n: number, mark: string, stop: number, W: number): boolean {
+	const room = Math.max(1, W - 2);
+	const said = escapeTerminal(o.description ?? "");
+	if (stop > 0) return visibleWidth(said) <= Math.max(0, room - stop);
+	return visibleWidth(askOptionLead(o, n, mark, false)) + 3 + visibleWidth(said) <= room;
+}
+
+/** The OPENED rows of the selected option: its description, whole, folded
+ *  at its spaces under the label's first cell, on the selection's wash. At
+ *  most three rows, the third cut with an ellipsis when it must be. */
+const OPENED_MAX = 3;
+function openedDescription(description: string, labelCol: number, W: number): string[] {
+	const p = palette();
+	const width = Math.max(8, W - labelCol - 1);
+	let rows = foldAtSpaces(escapeTerminal(description), width);
+	if (rows.length > OPENED_MAX) {
+		const last = rows.slice(OPENED_MAX - 1).join(" ");
+		rows = [...rows.slice(0, OPENED_MAX - 1), visibleWidth(last) <= width ? last : `${widthCut(last, width - 1)}\u2026`];
+	}
+	return rows.map((r) => selectionBar(`${" ".repeat(Math.max(0, labelCol - 1))}${p.dim}${r}${p.reset}`, labelCol - 1 + visibleWidth(r), W));
 }
 
 /** The row's left span, PLAIN — the one place its shape is written, so
@@ -337,7 +364,17 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	const picks = state.picks[state.qIndex] ?? [];
 	const markCol = multi || picks.length > 0;
 	const stop = askDescriptionStop(q, W, markCol);
-	const body = q.options.map((o, i) => optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W, stop, markCol));
+	// Graphite P4 (owner, 2026-10-05): the selected option OPENS when its
+	// description does not fit its row — its row keeps the label and the
+	// rows under it, on the same wash, say the description whole (the
+	// /resume and /model shape). The others keep their one row, cut.
+	const body: string[] = [];
+	q.options.forEach((o, i) => {
+		const on = state.cursor === i;
+		const opens = on && state.phase !== "custom" && o.description !== undefined && !descriptionFits(o, i + 1, multi ? "◯" : markCol ? " " : "", stop, W);
+		body.push(optionRow(o, i + 1, picks.includes(i), on, multi, W, stop, markCol, opens));
+		if (opens) body.push(...openedDescription(o.description!, visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : markCol ? " " : "", false)) - visibleWidth(escapeTerminal(o.label)) + 1, W));
+	});
 	// REL-0152-D3: the row is part of the list, so it carries the same
 	// cursor affordance the options do. Dim-always made a reachable row
 	// look like a footnote.

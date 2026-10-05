@@ -174,12 +174,44 @@ describe("P4 — a question from the model", () => {
 		// the owner's capture (2026-10-05): the model's descriptions ended in
 		// mid-word at the right edge, and the labels sat three cells off the digits
 		const long: AskSpec = { questions: [{ question: "which part?", header: "scope", options: [{ label: "config and sessions", description: "the model definitions in config.json, and whether the session files are complete" }, { label: "the command", description: "the install path, the version and the runtime" }] }] };
-		const r = askBlockRows(askView(long), askStart(long), 80, 30).map(plain);
+		// (the cursor on the SECOND option: a selected long one opens instead)
+		const r = askBlockRows(askView(long), askKey(long, askStart(long), "down").state, 80, 30).map(plain);
 		const first = r.find((x) => x.includes("config and sessions"))!.trimEnd();
 		expect(first.endsWith("…")).toBe(true);
 		expect(visibleWidth(first)).toBeLessThanOrEqual(79);
-		expect(r.find((x) => x.includes("the command"))).toMatch(/^ {3}2 the command +the install path, the version and the runtime$/);
+		expect(r.find((x) => x.includes("the command"))).toMatch(/^ › 2 the command +the install path, the version and the runtime/);
 		expect(r.find((x) => x.includes("type your own answer"))).toMatch(/^ {3}t type your own answer/);
+	});
+
+	it("the selected option OPENS when its description does not fit: the label alone on its row, the description whole under it (owner, 2026-10-05)", () => {
+		const p = palette();
+		const long: AskSpec = { questions: [{ question: "which part?", header: "scope", options: [
+			{ label: "config and sessions", description: "the model definitions in config.json, whether the session files are complete, and whether auth.json is kept private" },
+			{ label: "the command", description: "the install path" },
+		] }] };
+		const r = askBlockRows(askView(long), askStart(long), 80, 30);
+		const at = r.findIndex((x) => x.startsWith(p.askEdge) && plain(x).includes("config and sessions"));
+		expect(plain(r[at]!).trimEnd(), "its own row is the label alone — nothing said twice").toBe(" › 1 config and sessions");
+		const opened = [r[at + 1]!, r[at + 2]!];
+		for (const x of opened) expect(x.startsWith(p.askEdge), "on the selection's wash").toBe(true);
+		const words = opened.map((x) => plain(x).trim()).join(" ");
+		expect(words).toBe("the model definitions in config.json, whether the session files are complete, and whether auth.json is kept private");
+		expect(plain(opened[0]!).indexOf("the model"), "under the label's first cell").toBe(plain(r[at]!).indexOf("config"));
+		// the others keep one row; a description that fits does not open
+		expect(plain(r[at + 3]!)).toMatch(/^ {3}2 the command +the install path$/);
+		const fits = askBlockRows(askView(long), askKey(long, askStart(long), "down").state, 80, 30).map(plain);
+		expect(fits.find((x) => x.includes("the command"))).toMatch(/› 2 the command +the install path/);
+		expect(fits.filter((x) => x.includes("the install path"))).toHaveLength(1);
+		expect(fits.find((x) => x.includes("config and sessions"))!.trimEnd().endsWith("…"), "the unselected long one is cut, one row").toBe(true);
+	});
+
+	it("an opened description is at most three rows, the third cut with an ellipsis", () => {
+		const huge: AskSpec = { questions: [{ question: "q?", options: [{ label: "a", description: "word ".repeat(80).trim() }, { label: "b" }] }] };
+		const r = askBlockRows(askView(huge), askStart(huge), 60, 30).map(plain);
+		const at = r.findIndex((x) => x.startsWith(" › 1 a"));
+		expect(r[at + 4], "three opened rows, then the next option").toMatch(/^ {3}2 b/);
+		expect(r[at + 3]!.trimEnd().endsWith("…")).toBe(true);
+		for (const x of r) expect(visibleWidth(x)).toBeLessThanOrEqual(60);
 	});
 
 	it("one question alone: no place in a set", () => {
