@@ -169,6 +169,7 @@
   "packages/runtime/tests/tasks-detach.test.ts",
   "packages/runtime/tests/tasks-identity-cache.test.ts",
   "packages/runtime/tests/tasks-journal.test.ts",
+  "packages/runtime/tests/tasks-wait.test.ts",
   "packages/runtime/tests/zombie-holder-lock.test.ts",
   "packages/tools-node/tests/aci2-edit-uniqueness.test.ts",
   "packages/tools-node/tests/aci3-retry-ready.test.ts",
