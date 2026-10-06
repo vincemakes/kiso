@@ -35,5 +35,5 @@ declare module "*.mjs" {
 		baseRev: string | null,
 		timeout: number,
 		signal?: AbortSignal,
-	): Promise<{ kind: string; exitCode: number | null; passed: boolean; killed?: "timeout" | "abort"; tail: string; durationMs: number; patchSha256: string }>;
+	): Promise<{ kind: string; exitCode: number | null; passed: boolean; killed?: "timeout" | "abort"; unconfirmed?: number[]; tail: string; durationMs: number; patchSha256: string }>;
 }

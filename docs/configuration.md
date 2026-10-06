@@ -7,10 +7,13 @@ sections are the short form of this page.
 ## Requirements
 
 - **Node ≥ 22** (the packages' engines).
-- **macOS / Linux.** Windows is unsupported: the shell tool's process
-  groups, the session-lock liveness probe (`ps`), and the PTY test
-  suite are all POSIX-only, and no CI runs on Windows. WSL falls under
-  Linux but carries no dedicated testing.
+- **macOS / Linux.** Windows is not yet supported: npm refuses the
+  install there (the package's `os` field). The library's Windows paths
+  — commands through Git Bash, process trees ended with `taskkill`, the
+  session store's writes — run in a Windows CI job, but the terminal has
+  not been checked on a real Windows machine, and a power loss there can
+  drop a file created just before it ([durability](durability.md)). WSL
+  falls under Linux but carries no dedicated testing.
 
 ## Support
 
