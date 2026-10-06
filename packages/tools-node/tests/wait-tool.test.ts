@@ -18,7 +18,7 @@ function fakeTasks(kinds: readonly string[] = ["timer", "task"]): ShellTasks & {
 			throw new Error("not here");
 		},
 		stop: () => false,
-		get: (id) => (id === "t3" ? { state: { kind: "running" } } : id === "t4" ? { state: { kind: "ended" } } : undefined),
+		get: (id) => (id === "t3" ? { state: { kind: "running" } } : id === "t4" ? { state: { kind: "ended" } } : id === "t7" ? { state: { kind: "waiting" }, profile: "wait" } : undefined),
 		wait: async (spec) => {
 			waits.push(spec);
 			return { id: `t${waits.length + 4}`, command: `${spec.source.kind}`, wait: { deadlineAt: 1_700_000_000_000 } };
@@ -41,7 +41,7 @@ describe("ADR-0059 — the wait tool", () => {
 		const tool = waitTool({ workspaceRoot: "/tmp", tasks: () => tasks });
 		const r = await tool.execute({ for: { kind: "timer", ms: 60_000 }, note: "cooldown" }, ctx());
 		expect(r.isError).toBe(false);
-		expect(r.content).toMatch(/^waiting as t5 \(timer, until 2023-11-14T22:13:20\.000Z\)\. Finish your message and stop/);
+		expect(r.content).toMatch(/^waiting as t5 \(timer, until 2023-11-14T22:13:20\.000Z\)\. This wait alone wakes you when it fires — register nothing else for it\. Finish your message and stop now/);
 		expect(r.content).toMatch(/task_stop t5 cancels it/);
 		expect(tasks.waits).toEqual([{ source: { kind: "timer", ms: 60_000 }, note: "cooldown", executionId: "ex-1" }]);
 	});
@@ -60,6 +60,13 @@ describe("ADR-0059 — the wait tool", () => {
 		expect(await tool.execute({ for: { kind: "task", id: "t9" } }, ctx())).toMatchObject({ isError: true, content: "no task t9 in this session" });
 		expect(await tool.execute({ for: { kind: "task", id: "t4" } }, ctx())).toMatchObject({ isError: true, content: "task t4 has already ended — nothing to wait for" });
 		expect((await tool.execute({ for: { kind: "task", id: "t3" } }, ctx())).isError).toBe(false);
+	});
+
+	it("W-F1 (round wait-r1): a wait on a wait is refused, and so is a sub-second timer — the message's end is the yield", async () => {
+		const tool = waitTool({ workspaceRoot: "/tmp", tasks: () => fakeTasks() });
+		expect(await tool.execute({ for: { kind: "task", id: "t7" } }, ctx())).toMatchObject({ isError: true, errorKind: "precondition", content: "t7 is itself a wait: it wakes you by itself when it fires — do not wait on a wait; end your message now" });
+		expect(await tool.execute({ for: { kind: "timer", ms: 1 } }, ctx())).toMatchObject({ isError: true, errorKind: "precondition", content: "a timer wait is at least 1000 ms; to yield the turn, end your message — nothing else is needed" });
+		expect((await tool.execute({ for: { kind: "timer", ms: 1000 } }, ctx())).isError).toBe(false);
 	});
 
 	it("without a session, or a host without waits, the call is a precondition error — never a crash", async () => {

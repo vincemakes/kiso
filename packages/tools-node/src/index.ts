@@ -1346,7 +1346,7 @@ export interface ShellTasks {
 		unconfirmed(pids: readonly number[]): void;
 	};
 	stop(id: string, by: "model"): boolean;
-	get(id: string): { readonly state: { readonly kind: string } } | undefined;
+	get(id: string): { readonly state: { readonly kind: string }; readonly profile?: string } | undefined;
 	/** ADR-0059 release 1: register a wait — a task whose terminal is the
 	 *  event. Absent, the `wait` tool reports that waits are unavailable. */
 	wait?(spec: {
@@ -1799,6 +1799,9 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
  *  woken by it. The call registers the wait and returns at once; the model
  *  finishes its message; the event comes back as a runtime notice (a wake
  *  run in an idle session, the next safe point in a live one). */
+/** W-F1: a timer shorter than this is a "yield" the model does not need. */
+const WAIT_MIN_TIMER_MS = 1_000;
+
 export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number; note?: string; goalId?: string }> {
 	return defineTool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number; note?: string; goalId?: string }>({
 		name: "wait",
@@ -1829,11 +1832,16 @@ export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: strin
 			const kinds = tasks.waitKinds?.() ?? [];
 			if (!kinds.includes(source.kind)) return { content: `no such wait kind "${source.kind}" (available: ${kinds.join(", ") || "none"})`, isError: true, errorKind: "precondition" };
 			if (source.kind === "timer" && !(typeof source.ms === "number" && Number.isFinite(source.ms) && source.ms > 0)) return { content: 'a timer wait needs { kind: "timer", ms: <positive integer> }', isError: true, errorKind: "precondition" };
+			// W-F1 (round wait-r1): a 1 ms "placeholder wait to yield the turn" — ending the
+			// message IS the yield; a timer under a second buys nothing but a wake
+			if (source.kind === "timer" && (source.ms as number) < WAIT_MIN_TIMER_MS) return { content: `a timer wait is at least ${WAIT_MIN_TIMER_MS} ms; to yield the turn, end your message — nothing else is needed`, isError: true, errorKind: "precondition" };
 			if (source.kind === "task") {
 				const id = typeof source.id === "string" ? source.id : "";
 				const info = tasks.get(id);
 				if (info === undefined) return { content: `no task ${id || "(none given)"} in this session`, isError: true, errorKind: "precondition" };
 				if (info.state.kind === "ended") return { content: `task ${id} has already ended — nothing to wait for`, isError: true, errorKind: "precondition" };
+				// W-F1: a wait on a wait — the first wait wakes you by itself
+				if (info.profile === "wait") return { content: `${id} is itself a wait: it wakes you by itself when it fires — do not wait on a wait; end your message now`, isError: true, errorKind: "precondition" };
 			}
 			const w = await tasks.wait({
 				source,
@@ -1843,7 +1851,7 @@ export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: strin
 				...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
 			});
 			const until = w.wait !== undefined ? `, until ${new Date(w.wait.deadlineAt).toISOString()}` : "";
-			return { content: `waiting as ${w.id} (${w.command}${until}). Finish your message and stop; you will be woken when it fires. task_stop ${w.id} cancels it.`, isError: false };
+			return { content: `waiting as ${w.id} (${w.command}${until}). This wait alone wakes you when it fires — register nothing else for it. Finish your message and stop now. task_stop ${w.id} cancels it.`, isError: false };
 		},
 	});
 }
