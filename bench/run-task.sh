@@ -23,7 +23,9 @@ KISO_BIN=${KISO_BIN:-kiso}
 case "$TASK" in
 	T3) FIXTURE=fixture-v1; PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks.json','utf8')).T3)") ;;
 	L1|L2|F1|F1b) FIXTURE=fixture-$(printf '%s' "$TASK" | tr 'LF' 'lf' | sed 's/b$//'); PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-0460.json','utf8'))['$TASK'])") ;;
-	*) echo "run-task.sh: unknown task $TASK (T3 | L1 | L2 | F1 | F1b)" >&2; exit 1 ;;
+	# ADR-0059 release 1: the wait chains, on fixture-w (fixture-t5's seed with one known bug)
+	W1|W2) FIXTURE=fixture-w; PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-wait.json','utf8'))['$TASK'])") ;;
+	*) echo "run-task.sh: unknown task $TASK (T3 | L1 | L2 | F1 | F1b | W1 | W2)" >&2; exit 1 ;;
 esac
 
 # The version the arm WILL run, asked of the binary itself (run-t5.sh's
@@ -63,6 +65,15 @@ rm -rf "$WORK/repo/.git"
 if [ "$TASK" = L2 ]; then
 	node -e 'const s=require("net").createServer();s.listen(0,()=>{console.log(s.address().port);s.close()})' > "$WORK/repo/.port"
 fi
+# W2: the leg's own fake `gh`, first on PATH, its state beside the repo;
+# the drivers poll it every second (KISO_GH_POLL_MS) instead of every minute
+W_ENV=""
+if [ "$TASK" = W2 ]; then
+	mkdir -p "$WORK/bin" "$WORK/gh-state"
+	cp "$B/fixture-w2-gh/gh" "$WORK/bin/gh"; chmod +x "$WORK/bin/gh"
+	PATH="$WORK/bin:$PATH"; export PATH
+	W_ENV="KISO_GH_POLL_MS=${KISO_GH_POLL_MS:-1000}"
+fi
 git -C "$WORK/repo" init -q
 git -C "$WORK/repo" config user.email bench@localhost
 git -C "$WORK/repo" config user.name bench
@@ -97,7 +108,7 @@ node "$B/feed-until-idle.mjs" "$WORK/kiso-home/sessions" "$SID" "$LEG_DEADLINE_S
 	bare_bounded "$BARE_HOME" "$LEG_DEADLINE_S" "$WORK/stdout.log" \
 		"OPENAI_BASE_URL=$ROUTE_BASE_URL" "BENCH_CRED_FILE=$ROUTE_CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" "BENCH_CRED_KEY=$ROUTE_CRED_KEY" \
 		"OPENAI_MODEL=$ROUTE_MODEL" "KISO_EXTENSIONS_DIR=$EXTDIR" "KISO_HOME=$WORK/kiso-home" \
-		"KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1" \
+		"KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1" $W_ENV \
 		-- sh "$B/cred-exec.sh" $KISO_BIN --mode bypass "$SID"
 RC=$?
 set -e
@@ -139,6 +150,7 @@ case "$TASK" in
 	L1) VERIFY=$(sh "$B/l1-verify.sh" "$WORK/repo") ;;
 	L2) VERIFY=$(sh "$B/l2-verify.sh" "$WORK/repo" "$WORK" 2>/dev/null) ;;
 	F1|F1b) VERIFY=$(node "$B/f1-verify.mjs" "$WORK") ;;
+	W1|W2) VERIFY=$(sh "$B/w-verify.sh" "$WORK/repo") ;;
 esac
 echo "$VERIFY" > "$WORK/verify"
 node "$B/tasks-counters.mjs" "$WORK" > "$WORK/counters.json" 2>/dev/null || echo '{"error":"the counters did not run"}' > "$WORK/counters.json"

@@ -1,0 +1,49 @@
+#!/bin/sh
+# The W2 leg's FAKE `gh` (ADR-0059 release 1 bench): no network, no GitHub.
+# run-task.sh puts this directory first on the leg's PATH. State lives
+# beside it, under ../gh-state (the leg's, never shared):
+#
+#   calls        one line per invocation — the poll count
+#   head         the "head sha" the checks are reported for
+#
+# `pr view … --json headRefOid`   → {"headRefOid": <head>}
+# `pr checks … --json …`          → pending for the first two polls after
+#                                   every (re)arm, then one conclusion: the
+#                                   `test` check passes iff the repo's own
+#                                   suite (node --test tests/*.test.js) passes on the
+#                                   tree as it is NOW — the fix the model
+#                                   makes is what flips it; `lint` passes.
+#
+# "After every (re)arm": a conclusion is final for the wait that saw it; the
+# driver dedupes a repeated identical observation (W5). A re-armed wait sees
+# pending again because the count restarts when a conclusion was served.
+set -u
+D="$(cd "$(dirname "$0")/.." && pwd)"
+S="$D/gh-state"
+R="$D/repo"
+mkdir -p "$S"
+[ -f "$S/head" ] || echo "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" > "$S/head"
+case "$1 $2" in
+  "pr view")
+    printf '{"headRefOid":"%s"}\n' "$(cat "$S/head")"
+    ;;
+  "pr checks")
+    echo 1 >> "$S/calls"
+    n=$(wc -l < "$S/calls" | tr -d ' ')
+    since=$(cat "$S/served" 2>/dev/null || echo 0)
+    if [ $((n - since)) -lt 3 ]; then
+      printf '[{"name":"test","state":"IN_PROGRESS","bucket":"pending","workflow":"ci"},{"name":"lint","state":"SUCCESS","bucket":"pass","workflow":"ci"}]\n'
+    else
+      echo "$n" > "$S/served"
+      if (cd "$R" && node --test tests/*.test.js >/dev/null 2>&1); then
+        printf '[{"name":"test","state":"SUCCESS","bucket":"pass","workflow":"ci"},{"name":"lint","state":"SUCCESS","bucket":"pass","workflow":"ci"}]\n'
+      else
+        printf '[{"name":"test","state":"FAILURE","bucket":"fail","workflow":"ci","link":"https://example.invalid/ci/1"},{"name":"lint","state":"SUCCESS","bucket":"pass","workflow":"ci"}]\n'
+      fi
+    fi
+    ;;
+  *)
+    echo "fake gh: unexpected: $*" >&2
+    exit 2
+    ;;
+esac

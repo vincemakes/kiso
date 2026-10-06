@@ -20,7 +20,10 @@
  *
  * A task is live while its journal has no `terminal` (nor `stop_unconfirmed`)
  * and its recorded runner pid still exists — a runner that died without a
- * terminal is not waited for (its verdict is `unknown`, ADR-0058 §6).
+ * terminal is not waited for (its verdict is `unknown`, ADR-0058 §6). A
+ * wait (ADR-0059) is live until `wait_fired` / `wait_expired`: it has no
+ * runner, and its end restarts the quiet clock like any task end, so the
+ * wake run it causes is waited for.
  *
  * The quiet window runs from the LATER of the log's last change and the
  * latest task end (eval-0460b amendment A1). A turn that dispatches
@@ -88,7 +91,11 @@ function journals(tasksDir) {
 	return out;
 }
 
-const ended = (r) => r.type === "terminal" || r.type === "stop_unconfirmed";
+/** A task has ended: a process's terminal, a stop nobody could confirm, or —
+ *  ADR-0059 — a wait's event or deadline. A WAITING task has no runner and
+ *  no terminal, so it is live (the session is not idle while a wait is
+ *  pending — the chain's next wake is what the leg is waiting for). */
+const ended = (r) => r.type === "terminal" || r.type === "stop_unconfirmed" || r.type === "wait_fired" || r.type === "wait_expired";
 
 /** The ids of the session's live tasks. */
 export function liveTasks(tasksDir, isAlive = alive) {

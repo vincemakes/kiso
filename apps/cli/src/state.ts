@@ -70,7 +70,14 @@ export function tasksFor(sessionId: string | undefined): TaskManager | undefined
 		taskBackend ??= processTaskBackend();
 		// ADR-0059: the CLI's wait drivers (GitHub over `gh`) ride the manager;
 		// `timer` and `task` are the runtime's own
-		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend, drivers: cliWaitDrivers({ cwd: () => workspaceRoot() }) });
+		// KISO_GH_POLL_MS — the test rigs' and the bench's knob (like
+		// KISO_STREAM_IDLE_MS): how often the GitHub drivers ask `gh`
+		const pollFromEnv = Number.parseInt(process.env.KISO_GH_POLL_MS ?? "", 10);
+		manager = new TaskManager({
+			root: join(activeStoreDir, `${sessionId}.tasks`),
+			backend: taskBackend,
+			drivers: cliWaitDrivers({ cwd: () => workspaceRoot(), ...(Number.isFinite(pollFromEnv) && pollFromEnv > 0 ? { pollMs: pollFromEnv } : {}) }),
+		});
 		manager.observe();
 		taskManagers.set(sessionId, manager);
 	}

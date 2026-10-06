@@ -34,6 +34,17 @@
  *                       `deliveredOnce` (every child named in exactly one notice)
  *   cacheHit            cacheRead / inputTokens over every request of the leg (children included)
  *   usagePerRequest     usage events per `stop` event in the main session (1 = one usage per request)
+ *
+ * ADR-0059 release 1 (the wait chains, kiso-doc bench-plan-wait-release-1):
+ *   waits               the session's waits by their journals: count, byKind, and how each
+ *                       ended — fired, expired, stopped, failed (a driver error), pending
+ *   chainLen            the longest run of consecutive wake runs (a person's input resets it)
+ *   wakeColdPrefix      per wake run, in order, the FIRST request's fresh input (the trace
+ *                       sidecar, by runId) — the honest cost of "0 tokens while waiting";
+ *                       null where the trace has no request for that run
+ *   emptyPromises       runs whose assistant text promises a future action ("I'll let you
+ *                       know", "once CI …") while the run registered no wait and started no
+ *                       background task — INFORMATIONAL, a text heuristic (frozen phrase list)
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -54,7 +65,21 @@ const lines = (file) =>
 		: [];
 const eventsOf = (file) => lines(file).map((r) => r.event ?? r);
 /** Events with their record's timestamp (the session log keeps `ts` beside the event). */
-const timedEventsOf = (file) => lines(file).map((r) => ({ ts: r.ts ?? null, e: r.event ?? r }));
+const timedEventsOf = (file) => lines(file).map((r) => ({ ts: r.ts ?? null, runId: r.runId ?? null, e: r.event ?? r }));
+
+/** ADR-0059: the frozen phrases of a promise with nothing behind it. Lower-cased text. */
+const EMPTY_PROMISE = [/\bi(?:'|’)?ll let you know\b/, /\bi will let you know\b/, /\bi(?:'|’)?ll (?:tell|notify) you when\b/, /\bi will (?:tell|notify) you when\b/, /\bi(?:'|’)?ll check back\b/, /\bi will check back\b/, /\bi(?:'|’)?ll report (?:back )?(?:when|once)\b/, /\b(?:once|when) (?:ci|the checks?|the build|the tests?|the review) (?:is |are |has |have )?(?:done|green|passe?s?|complete|finished?|back)\b[^.]*\bi(?:'|’)?ll\b/];
+
+/** The first request of each run in the trace sidecar: runId → fresh input tokens. */
+function firstRequestFresh(sessionsDir, sid) {
+	const out = new Map();
+	for (const r of lines(join(sessionsDir, "traces", `${sid}.jsonl`))) {
+		if (r.kind !== "request" || typeof r.runId !== "string" || out.has(r.runId)) continue;
+		const fresh = typeof r.canonical?.input === "number" ? r.canonical.input : typeof r.freshInput === "number" ? r.freshInput : null;
+		out.set(r.runId, fresh);
+	}
+	return out;
+}
 
 /** The build the leg ran: meta.json (run-task.sh), else the request trace's header. */
 function legVersion(work) {
@@ -112,6 +137,10 @@ export function counters(work) {
 		groups: { count: 0, members: [], deliveries: 0, deliveredOnce: null },
 		cacheHit: null,
 		usagePerRequest: null,
+		waits: { count: 0, byKind: {}, fired: 0, expired: 0, stopped: 0, failed: 0, pending: 0 },
+		chainLen: 0,
+		wakeColdPrefix: [],
+		emptyPromises: 0,
 	};
 	let input = 0;
 	let cache = 0;
@@ -138,16 +167,29 @@ export function counters(work) {
 		// 0460-I4: after a final answer, a request whose only new input is a notice
 		let afterFinal = false;
 		let noticeSince = false;
+		// ADR-0059: the chain, the wake run's id (for its cold prefix), the run's text and what it registered
+		let chain = 0;
+		let runId = null;
+		let runText = "";
+		let runRegistered = false;
+		const wakeRunIds = [];
 		const closeRun = () => {
 			if (runFirst?.via?.kind === "tasks") {
 				out.wakes += 1;
 				out.wakeRequests.push(runStops);
 				if (runStops === 1) out.oneRequestWakes += 1;
-			}
+				chain += 1;
+				if (chain > out.chainLen) out.chainLen = chain;
+				wakeRunIds.push(runId);
+			} else if (runFirst !== null) chain = 0; // the person spoke: a new chain
+			if (runFirst !== null && !runRegistered && EMPTY_PROMISE.some((re) => re.test(runText.toLowerCase()))) out.emptyPromises += 1;
 			runFirst = null;
 			runStops = 0;
 			afterFinal = false;
 			noticeSince = false;
+			runId = null;
+			runText = "";
+			runRegistered = false;
 		};
 		const readyStarts = []; // { ts, executionId } of background + readyWhen starts
 		const startedAt = []; // { ts, executionId } of every tool execution
@@ -157,7 +199,9 @@ export function counters(work) {
 		const segmentOf = new Map(); // tool_call_end seq → the model response it belongs to
 		const executionSeq = new Map(); // executionId → its tool_call_end seq
 		let segment = 0;
-		for (const { ts, e } of timed) {
+		for (const { ts, runId: rid, e } of timed) {
+			if (runId === null && rid !== null) runId = rid;
+			if (e.type === "text_delta" && typeof e.text === "string") runText += e.text;
 			if (e.type === "usage") usages += 1;
 			if (e.type === "stop") {
 				stops += 1;
@@ -183,6 +227,7 @@ export function counters(work) {
 				const input = e.input ?? {};
 				if (e.name === "shell" && input.timeoutMs !== undefined && aliasCounted !== false) out.aliasHits += 1;
 				if ((e.name === "shell" || e.name === "delegate") && input.background === true) out.backgroundStarts += 1;
+				if (e.name === "wait" || ((e.name === "shell" || e.name === "delegate") && input.background === true)) runRegistered = true;
 				if (typeof e.seq === "number") segmentOf.set(e.seq, segment);
 			}
 			if (e.type === "tool_execution_started") {
@@ -205,10 +250,25 @@ export function counters(work) {
 		}
 		closeRun();
 		if (stops > 0) out.usagePerRequest = Math.round((usages / stops) * 100) / 100;
+		// ADR-0059: each wake run's first request, from the trace (null when untraced)
+		const firstFresh = firstRequestFresh(dir, f.replace(/\.jsonl$/, ""));
+		for (const id of wakeRunIds) out.wakeColdPrefix.push(id !== null && firstFresh.has(id) ? firstFresh.get(id) : null);
 		// the session's tasks
 		const tasksDir = join(dir, f.replace(/\.jsonl$/, ".tasks"));
 		if (!existsSync(tasksDir)) continue;
 		const journals = new Map(readdirSync(tasksDir).map((id) => [id, lines(join(tasksDir, id, "journal.jsonl"))]));
+		// ADR-0059: the waits, by how they ended
+		for (const records of journals.values()) {
+			const planned = records.find((r) => r.type === "planned");
+			if (planned?.profile !== "wait") continue;
+			out.waits.count += 1;
+			const kind = planned.wait?.source?.kind ?? "?";
+			out.waits.byKind[kind] = (out.waits.byKind[kind] ?? 0) + 1;
+			if (records.some((r) => r.type === "wait_fired")) out.waits.fired += 1;
+			else if (records.some((r) => r.type === "wait_expired")) out.waits.expired += 1;
+			else if (records.some((r) => r.type === "terminal")) out.waits[records.some((r) => r.type === "stop_requested") ? "stopped" : "failed"] += 1;
+			else out.waits.pending += 1;
+		}
 		// 0460-I5: a tool execution that started between a ready-wait start and the moment
 		// the model was told the task's state
 		for (const start of readyStarts) {
