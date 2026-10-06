@@ -12,8 +12,9 @@
 
 export interface NoticeMeta {
 	/** The row's label; absent for a sentence that has no kind of its own
-	 *  (a command's confirmation — `mode → plan`, `[/compact] …`), which
-	 *  stays whole at the content edge. `""` continues the row above. */
+	 *  (a command's confirmation — `mode → plan`, `[/compact] …` without
+	 *  its brackets), which stays whole at the content edge. `""`
+	 *  continues the row above. */
 	readonly label?: string;
 	readonly sentence: string;
 }
@@ -21,7 +22,7 @@ export interface NoticeMeta {
 /** kiso's session events — the notices that are a KIND of thing, first
  *  match wins. A command's own confirmation is not one of them: its words
  *  are read as a whole, and a label would only split them. */
-const SHAPES: readonly (readonly [RegExp, string, (m: RegExpExecArray) => string])[] = [
+const SHAPES: readonly (readonly [RegExp, string | null, (m: RegExpExecArray) => string])[] = [
 	[/^✦ compacted (.*)$/s, "COMPACTED", (m) => m[1]!],
 	[/^\[\/compact\] ✦ compacted(?: · )?(.*)$/s, "COMPACTED", (m) => m[1]!],
 	[/^✦ pruned (.*)$/s, "PRUNED", (m) => m[1]!],
@@ -43,6 +44,24 @@ const SHAPES: readonly (readonly [RegExp, string, (m: RegExpExecArray) => string
 	[/^stream interrupted — (.*)$/s, "INTERRUPTED", (m) => m[1]!],
 	[/^(no reply recorded — .*)$/s, "INTERRUPTED", (m) => m[1]!],
 	[/^verification pass$/s, "VERIFY", () => ""],
+	// the last sweep (owner, 2026-10-06): a session switch (`/clear`,
+	// `/resume <id>`) is a session event — the id it opened and the way back
+	[/^session (\S+) \(switched — previous: (\S+), \/resume \S+ returns\)\n?$/s, "SESSION", (m) => `${m[1]!} · /resume ${m[2]!} returns`],
+	[/^--- re-wrapped (\d+ blocks?) at the current width \(appended — the history above is unchanged\) ---$/s, "REWRAPPED", (m) => `${m[1]!} at the current width · the history above is unchanged`],
+	[/^\[dontAsk\] the model's question was declined — nothing asks in dontAsk$/s, "DENIED", () => "the model's question — nothing asks while don't ask is on"],
+	// …and a command's own reply. It wore its command in brackets
+	// (`[/compact] …`, `[reload] …`), or brackets alone (`[no thinking
+	// yet]`), or `--- … ---` rules; on the terminal the person has just
+	// typed the command, so the reply is a sentence at the content edge.
+	// A pipe keeps every bracket.
+	[/^\[reload\] (\d+ extensions?\b.*)$/s, null, (m) => `reloaded ${m[1]!}`],
+	[/^\[reload\] (.*)$/s, null, (m) => `reload failed: ${m[1]!}`],
+	[/^\[\/([a-z-]+)\] failed: (.*)$/s, null, (m) => `/${m[1]!} failed: ${m[2]!}`],
+	[/^\[\/[a-z-]+\] (.*)$/s, null, (m) => m[1]!],
+	[/^\[(turn held — [^\]]+)\] (.*)$/s, null, (m) => `${m[1]!} · ${m[2]!}`],
+	[/^\[([^[\]\n]+)\]$/s, null, (m) => m[1]!],
+	[/^no such mode: (.*)\ntiers: (.*)$/s, null, (m) => `no such mode: ${m[1]!} · tiers: ${m[2]!}`],
+	[/^--- (\d+ earlier blocks?) not re-wrapped \(bounded at two screens\) ---$/s, null, (m) => `${m[1]!} not re-wrapped — bounded at two screens`],
 ];
 
 export function noticeMeta(text: string): NoticeMeta {
@@ -51,7 +70,7 @@ export function noticeMeta(text: string): NoticeMeta {
 	if (/^ {2}\S/.test(text)) return { label: "", sentence: text.trim() };
 	for (const [re, label, sentence] of SHAPES) {
 		const m = re.exec(text);
-		if (m !== null) return { label, sentence: sentence(m) };
+		if (m !== null) return label === null ? { sentence: sentence(m) } : { label, sentence: sentence(m) };
 	}
 	// no kind of its own: the sentence stays whole — only the `✦`, which is
 	// the seal's mark on a terminal (§4), comes off

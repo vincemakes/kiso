@@ -91,16 +91,20 @@ describe("the startup banner (logo)", () => {
 		expect(out).toContain("██╗  ██╗██╗███████╗ ██████╗");
 		expect(out).toMatch(/the coding agent that survives kill -9 · \d+\.\d+\.\d+/);
 		expect(out).toContain("intent → effect → durable fact");
-		expect(out).toMatch(/│ {2}SESSION {5}new · resumable after kill -9/);
+		// RE-DERIVED (the last sweep, owner 2026-10-06): SESSION names the id,
+		// and the faux model — these runs have no key — has a MODEL row
+		// saying how to leave it; a real model is still the bar's alone
+		expect(out).toMatch(/│ {2}SESSION {5}\S+ · new · resumable after kill -9/);
+		expect(out).toMatch(/│ {2}MODEL {7}faux · set an API key, or add a model to config\.json/);
 		expect(out).toMatch(/│ {2}RULES {7}none/);
-		for (const gone of ["MODEL", "WORKSPACE", "esc interrupt"]) expect(out, gone).not.toContain(gone);
+		for (const gone of ["WORKSPACE", "esc interrupt"]) expect(out, gone).not.toContain(gone);
 	}, 90_000);
 
 	it("the 80×24 window a Mac opens by default shows the wordmark, and what loaded below it", () => {
 		const { env, dirs } = isolatedEnv();
 		const out = plainOut(env, dirs.home, 24, 80);
 		expect(out).toContain("██╗  ██╗██╗███████╗ ██████╗");
-		expect(out).toMatch(/SESSION {5}new · resumable after kill -9/);
+		expect(out).toMatch(/SESSION {5}\S+ · new · resumable after kill -9/);
 	}, 90_000);
 
 	it("under 20 rows the opening is one line, and what loaded follows it", () => {
@@ -114,7 +118,7 @@ describe("the startup banner (logo)", () => {
 			expect(out, `${rows}x${cols}`).not.toContain("█");
 			expect(out, `${rows}x${cols}`).toMatch(/✦ kiso \d+\.\d+\.\d+ · the coding agent that survives kill -9/);
 		}
-		expect(plainOut(env, dirs.home, 19, 80)).toMatch(/SESSION {5}new · resumable after kill -9/);
+		expect(plainOut(env, dirs.home, 19, 80)).toMatch(/SESSION {5}\S+ · new · resumable after kill -9/);
 	}, 90_000);
 
 	it("a narrow screen keeps the name and drops nothing silently", () => {

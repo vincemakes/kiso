@@ -31,6 +31,11 @@ import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 
 const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 
+/** RE-DERIVED (the last sweep, owner 2026-10-06): on a dock `[reload] …`
+ *  is a sentence without its brackets — `reloaded 4 extensions, …`, and a
+ *  failure `reload failed: …`. A pipe still prints `[reload]`. */
+const RELOADED = "reloaded ";
+
 /** Every gate asserts this FIRST. Without it each one passes on a tree
  *  where `/reload` is an unknown command: the trust question is asked
  *  once because nothing reloaded, the binding survives because nothing
@@ -38,7 +43,7 @@ const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
  *  gate — three of these were, on the first red run. */
 function reloaded(out: string, times = 1): void {
 	expect(out, "the command exists at all").not.toContain("unknown command: /reload");
-	expect(out.split("[reload]").length - 1, `the reload ran ${times}×`).toBeGreaterThanOrEqual(times);
+	expect(out.split(RELOADED).length - 1, `the reload ran ${times}×`).toBeGreaterThanOrEqual(times);
 }
 
 /** A `!!` line that writes a SKILL.md the index will accept — the `\n`s
@@ -142,7 +147,7 @@ function addExtensionCmd(dir: string, name: string, mark: string): string {
  *  the needle that never appeared, and the fix is this one number. That is
  *  a thing someone should look at. */
 const BASELINE = 4;
-const reloadWith = (added: number): string => `[reload] ${BASELINE + added} extensions`;
+const reloadWith = (added: number): string => `${RELOADED}${BASELINE + added} extensions`;
 
 describe("§2.5 — /reload", () => {
 	it("gate 1 — a skill added mid-session is in the index AND its tool can read it", () => {
@@ -166,7 +171,7 @@ describe("§2.5 — /reload", () => {
 				// each step waits for the PREVIOUS one to have happened,
 				// not for a number of seconds to pass
 				[SHELL_DONE, "/reload\r"],
-				["[reload]", "use it\r"],
+				[RELOADED, "use it\r"],
 				["after.", "exit\r"],
 			],
 		});
@@ -192,7 +197,7 @@ describe("§2.5 — /reload", () => {
 				["/mode to switch", "call it\r"],
 				["first done.", `!!rm -f ${join(dirs.extensions, "probe.mjs")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
-				["[reload]", "call it again\r"],
+				[RELOADED, "call it again\r"],
 				["second done.", "exit\r"],
 			],
 		});
@@ -219,7 +224,7 @@ describe("§2.5 — /reload", () => {
 				["/mode to switch", "go\r"],
 				["before.", `!!printf 'throw new Error("deliberately broken");\\n' > ${join(dirs.extensions, "broken.mjs")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
-				["[reload]", "still there?\r"],
+				["reload failed", "still there?\r"],
 				["STILL ALIVE", "exit\r"],
 			],
 		});
@@ -249,12 +254,12 @@ describe("§2.5 — /reload", () => {
 			feeds: [
 				["/mode to switch", "/model beta\r"],
 				["model-beta", "/reload\r"],
-				["[reload]", "exit\r"],
+				[RELOADED, "exit\r"],
 			],
 		});
 		const out = strip(raw);
 		reloaded(out);
-		const after = out.slice(out.lastIndexOf("[reload]"));
+		const after = out.slice(out.lastIndexOf(RELOADED));
 		expect(after, "the switched binding came back").toContain("beta");
 		expect(after, "and the startup profile did not silently return").not.toContain("model-alpha");
 	}, 300_000);

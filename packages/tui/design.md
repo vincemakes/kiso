@@ -746,18 +746,34 @@ Beside the wordmark when `W ≥ 96`, behind one hairline, what loaded, one
 fact per row — the label `dim` in its column, the fact in `ink`, a
 quieter note after it:
 
-- `SESSION` — `new · resumable after kill -9`, or `resumed · N events`;
+- `SESSION` — the session's id, then `new · resumable after kill -9` or
+  `resumed · N events`;
+- `MODEL` — only when no model resolved: `faux`, then how to leave it
+  (`set an API key, or add a model to config.json` — no longer than the
+  `RULES` note, or beside the wordmark it is cut) — the bar names the faux
+  model but cannot say that;
 - `RULES` — the instruction file the prompt reads (the same lookup, so it
   never names a file the model is not given), or `none`;
 - `SKILLS` — the count, and how many cannot load;
 - `MCP` — servers and tools, `connecting…` while they are;
-- `EXTENSIONS` — the same extensions line a pipe prints, so the two never
-  disagree about what loaded (and `ask (off in dontAsk)` stays beside the
-  tier that turns it off);
+- `EXTENSIONS` — how many, then the names (`4 · mcp, skills, subagent,
+  ask`, the user's after `user:`, the project's after `project:`), built
+  from the same three lists as the pipe's `[N extensions: …]` line, so the
+  two never disagree about what loaded (and `ask (off in dontAsk)` stays
+  beside the tier that turns it off);
 - DC-49's home-directory row, when the workspace is the home directory.
 
 The model, the mode and the folder are the status bar's (§8.9) and are
-not repeated. Under 96 columns the facts move below the wordmark. The
+not repeated — the faux model's `MODEL` row is the one exception.
+
+DECLARED REVERSAL (the last sweep, owner, 2026-10-06). The `EXTENSIONS`
+row carried the pipe's bracketed line verbatim (`[4 extensions: built-in:
+mcp, …]`); the opening is preceded by no `session <id>` line (it stood
+above the wordmark at column 0); and the faux model's `[faux mode — …]`
+line, written into the frame and painted over at once, is the `MODEL` row.
+A pipe, and a terminal with no dock, prints all three as it did — the
+`session <id>` and faux lines still print there, so the opening's rows
+keep their old form too. Under 96 columns the facts move below the wordmark. The
 wordmark shows from 20 rows — in the 80×24 window a Mac opens by default
 (owner, 2026-09-29: a wordmark the default window never shows is not worth
 drawing). Under 20 rows, on a terminal
@@ -823,11 +839,33 @@ beside it, folded under itself (column 14). `FAILED` and `UNCERTAIN` name
 outcomes and take the failure colour; the rest are `dim`. No card and no
 ground: they are not the machine's work.
 
-A command's own confirmation — `model → …`, `[/compact] …`, `[dontAsk] …`
-— has no kind of its own: its words are read as a whole, and a label would
-only split them. It stays whole at the content edge, with no label. On the
-terminal the `✦` some notices open with comes off: it is the seal's mark
-(§4). A pipe prints every notice as written.
+A command's own reply — `model → …`, `copied 48 chars`, `no tasks in this
+session`, `unknown command: /x — /help lists the commands` — has no kind
+of its own: its words are read as a whole, and a label would only split
+them. It stays whole at the content edge, with no label. On the terminal
+the `✦` some notices open with comes off: it is the seal's mark (§4). So
+do the brackets a reply wore and the command's name inside them (`[no
+thinking yet]`, `[/compact] nothing to compact — …`, `[reload] 4
+extensions, …` reads `reloaded 4 extensions, …`; a failure keeps what
+failed: `/model failed: …`), and a reply of two lines is one row (`no such
+mode: x · tiers: …`). A pipe prints every notice as written.
+
+DECLARED REVERSAL (the last sweep, owner, 2026-10-06). These replies were
+raw rows at column 0, brackets and all, a blank row between the two lines
+of one reply. A session switch (`/clear`, `/resume <id>`) is a session
+event, `SESSION <id> · /resume <previous> returns` (it was `session <id>
+(switched — previous: …)` at column 0); `/rewrap`'s `--- re-wrapped … ---`
+is `REWRAPPED 3 blocks at the current width · the history above is
+unchanged`; don't ask declining the model's question is `DENIED`.
+
+`/think` and `/last` bring back what they find as ONE cell (the last
+sweep): a meta row — `THINKING the last block · 3 lines`, `LAST CALL LIST
+(root) · 2 lines` (the card's verb and target, how much came back) — and
+under it the parts in their own look: the thinking as §7.2 draws it, a
+call's `input` and `output` under dim titles, in `ink2`, hung by two. They
+printed at column 0 under `--- list input ---` rules with a blank row
+between every part. A pipe prints the log as it did, the call's own name
+in the rules.
 
 A MODE switch is the exception (R3e, owner 2026-09-29): the approval tier
 is the person's own choice, and the person's words are gold — so it is one
@@ -1004,7 +1042,12 @@ directly below them.
 
 **8.4 Enter completes; the NEXT enter sends.** The same rule for every
 band. Completing and sending on one key would send a fragment. `esc`
-closes every band.
+closes every band. A line that is exactly a command's name lists that
+command first (the last sweep: `/skill` listed `/skills` first, by the
+table's order, and Enter completed the line to it — the command typed in
+full never ran), so Enter on a whole name sends it. A pick list with
+nothing in it counts nothing (it read `0/0` under `no profiles`); a filter
+that matches nothing still counts `0/0`.
 
 **8.5 What gives way, and where the keys are advertised.** A piece
 skipped is an affordance lost at a width that could have shown it, so

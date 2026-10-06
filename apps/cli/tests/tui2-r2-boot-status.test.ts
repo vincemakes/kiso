@@ -47,7 +47,9 @@ function bootFrame(raw: string): string[] {
 		const term = new VtScreen(ROWS, COLS);
 		term.write(Buffer.from(raw.slice(0, i + CLOSE.length), "utf8"));
 		const grid = term.visible();
-		if (grid.some((l) => l.startsWith("session "))) return grid;
+		// RE-DERIVED (the last sweep, owner 2026-10-06): the session is the
+		// opening's SESSION row — the `session <id>` line retired on a dock
+		if (grid.some((l) => /SESSION {5}\S+ · (new|resumed)/.test(l))) return grid;
 		pos = i + CLOSE.length;
 	}
 }

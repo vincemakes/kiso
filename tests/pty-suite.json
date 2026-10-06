@@ -53,6 +53,7 @@
   "apps/cli/tests/graphite-picks-pty.test.ts",
   "apps/cli/tests/graphite-sheets-pty.test.ts",
   "apps/cli/tests/graphite-tasks-pty.test.ts",
+  "apps/cli/tests/graphite-sweep-pty.test.ts",
   "apps/cli/tests/graphite-title-pty.test.ts",
   "apps/cli/tests/hf1-multiline-command-pty.test.ts",
   "apps/cli/tests/hf2-multiline-title-pty.test.ts",

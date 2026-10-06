@@ -238,12 +238,15 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 				// The cancel is a CONSERVATIVE DENIAL (a RESULT, not an
 				// abort): the run continues and the script's turn 2 ("the
 				// tour is done") completes the SAME run.
-				["[approval cancelled — treated as a denial]", ""],
+				// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the
+				// reply has no brackets
+				["approval cancelled — treated as a denial", ""],
 				["the tour is done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("[approval cancelled — treated as a denial]");
+		expect(clean).toContain("approval cancelled — treated as a denial");
+		expect(clean).not.toContain("[approval cancelled");
 		expect(clean).not.toContain("[aborting run]"); // the old abort is GONE — the denial continues the run
 		// The REPL survived the cancel — the SAME run completed its turn.
 		expect(clean).toContain("the tour is done");

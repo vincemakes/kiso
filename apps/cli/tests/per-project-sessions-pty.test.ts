@@ -22,6 +22,10 @@ import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 
 const answer = (text: string): string => fauxScript([{ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] }, ...spares(3)]);
 const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\x1b\][^\x07]*\x07/g, "");
+/** RE-DERIVED (the last sweep, owner 2026-10-06): on a dock a route line is
+ *  a notice, folded by words at the content edge — a long path moves to a
+ *  row of its own. The words are compared, not where the rows break. */
+const words = (t: string): string => strip(t).replace(/\s+/g, " ");
 
 function world() {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "kiso-pp-")));
@@ -133,14 +137,16 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 				feeds: [
 					["/mode to switch", "the here task\r"],
 					["here answered.", "/resume pp-lost\r"],
-					["previous: pp-here", "/resume pp-here\r"],
-					["previous: pp-lost", "exit\r"],
+					// RE-DERIVED (the last sweep, owner 2026-10-06): a switch is a
+					// SESSION row on a dock — the id, and the way back
+					["/resume pp-here returns", "/resume pp-here\r"],
+					["/resume pp-lost returns", "exit\r"],
 				],
 			}),
 		);
-		expect(out).toContain(`workspace unknown — tools work in ${w.alpha}`);
-		expect(out).toContain("session pp-lost (switched — previous: pp-here");
-		expect(out).toContain("session pp-here (switched — previous: pp-lost");
+		expect(words(out)).toContain(`workspace unknown — tools work in ${w.alpha}`);
+		expect(out).toMatch(/SESSION {5}pp-lost · \/resume pp-here returns/);
+		expect(out).toMatch(/SESSION {5}pp-here · \/resume pp-lost returns/);
 		// nothing moved either way
 		expect(existsSync(join(unknown, "pp-lost.jsonl"))).toBe(true);
 		expect(existsSync(join(w.folder(w.alpha), "pp-lost.jsonl"))).toBe(false);
@@ -209,7 +215,7 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 				],
 			}),
 		);
-		expect(chat).toContain(`this session belongs to ${w.beta} — cd there to resume it`);
+		expect(words(chat)).toContain(`this session belongs to ${w.beta} — cd there to resume it`);
 		// still in this project's folder, never switched
 		expect(existsSync(join(w.folder(w.alpha), "pp-beta.jsonl"))).toBe(false);
 	}, 90_000);

@@ -8,7 +8,7 @@
  * the body is not edited beyond the rename and activeStoreDir's setter.
  */
 
-import { activeStoreDir, childTurnBudget, setActiveStoreDir, body, bodyLog, codingToolOptions, extensionsDir, floorOn, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
+import { activeStoreDir, childTurnBudget, setActiveStoreDir, body, bodyLog, dock, codingToolOptions, extensionsDir, floorOn, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
 import { claimProjectDir, projectLayoutActive } from "./projects.js";
 import { migrationNotice, pendingLegacyIds, planMigration, runMigration } from "./session-migration.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
@@ -205,9 +205,14 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	setConfiguredWindow(resolveContextWindow(merged, resolved?.profile));
 	const model = resolved === null ? "faux" : resolved.profile.model;
 	if (resolved === null) {
-		console.log(
-			"[faux mode — set ANTHROPIC_API_KEY or OPENAI_API_KEY, or configure models in ~/.kiso/config.json]\n",
-		);
+		// the last sweep (owner, 2026-10-06): on a dock this line was written
+		// into the frame and painted over at once — the opening's MODEL row
+		// says it instead (opening.ts). A pipe, and -p, keep it.
+		if (!dock.active) {
+			console.log(
+				"[faux mode — set ANTHROPIC_API_KEY or OPENAI_API_KEY, or configure models in ~/.kiso/config.json]\n",
+			);
+		}
 		setCurrentFaux(true);
 		setCurrentModelName("faux");
 		setCurrentProfileName(null);

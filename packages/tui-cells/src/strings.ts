@@ -225,6 +225,27 @@ export function extensionsBannerText(
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
+/** The last sweep (owner, 2026-10-06) — the same three lists as the
+ *  opening's EXTENSIONS row: how many, then the names — the built-in ones
+ *  bare, the user's after `user:`, the project's after `project:`. The
+ *  pipe's `[N extensions: …]` line stays `extensionsBannerText`'s. Null
+ *  when nothing loaded. */
+export function extensionsFact(
+	builtIn: readonly BannerExtension[],
+	user: readonly BannerExtension[],
+	project: readonly BannerExtension[],
+): { readonly value: string; readonly note: string } | null {
+	const total = builtIn.length + user.length + project.length;
+	if (total === 0) return null;
+	const label = (e: BannerExtension): string =>
+		e.connecting === true ? `${e.name} (connecting…)` : e.note !== undefined ? `${e.name} (${e.note})` : e.name;
+	const parts: string[] = [];
+	if (builtIn.length > 0) parts.push(builtIn.map(label).join(", "));
+	if (user.length > 0) parts.push(`user: ${user.map(label).join(", ")}`);
+	if (project.length > 0) parts.push(`project: ${project.map(label).join(", ")}`);
+	return { value: String(total), note: parts.join(" \u00b7 ") };
+}
+
 // ---- TUI2-R1 (D): the keys, in ONE place ----
 
 /** One gesture: what you press, and what it does. */

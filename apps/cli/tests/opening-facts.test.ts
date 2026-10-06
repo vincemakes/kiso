@@ -7,22 +7,35 @@ import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { extensionsBannerText, extensionsFact } from "@vincemakes/kiso-tui";
 import { openingFacts, type OpeningInputs } from "../src/opening.js";
 import { projectInstructions, readProjectInstructions } from "../src/coding-prompt.js";
 
-const BASE: OpeningInputs = { resumedEvents: 0, rules: null, skills: null, mcp: null, extensions: "", homeWorkspace: false };
+const BASE: OpeningInputs = { sessionId: "s-1", resumedEvents: 0, faux: false, rules: null, skills: null, mcp: null, extensions: null, homeWorkspace: false };
 
 describe("§7.10 — the facts", () => {
 	it("a new session with nothing loaded: SESSION and RULES only", () => {
 		expect(openingFacts(BASE)).toEqual([
-			{ label: "SESSION", value: "new", note: "resumable after kill -9" },
+			{ label: "SESSION", value: "s-1", note: "new · resumable after kill -9" },
 			{ label: "RULES", value: "none", note: "an AGENTS.md or CLAUDE.md here is read" },
 		]);
 	});
 
 	it("a resumed session says how much it carries", () => {
-		expect(openingFacts({ ...BASE, resumedEvents: 187 })[0]).toEqual({ label: "SESSION", value: "resumed", note: "187 events" });
-		expect(openingFacts({ ...BASE, resumedEvents: 1 })[0]!.note).toBe("1 event");
+		expect(openingFacts({ ...BASE, resumedEvents: 187 })[0]).toEqual({ label: "SESSION", value: "s-1", note: "resumed · 187 events" });
+		expect(openingFacts({ ...BASE, resumedEvents: 1 })[0]!.note).toBe("resumed · 1 event");
+	});
+
+	it("the last sweep: SESSION names the id (the `session <id>` line above the opening retired)", () => {
+		expect(openingFacts({ ...BASE, sessionId: "2026-10-06T12-20-36-94eb" })[0]!.value).toBe("2026-10-06T12-20-36-94eb");
+		// off a dock (no id given) the row keeps its old form — that line still prints there
+		expect(openingFacts({ ...BASE, sessionId: null })[0]).toEqual({ label: "SESSION", value: "new", note: "resumable after kill -9" });
+		expect(openingFacts({ ...BASE, sessionId: null, extensions: { value: "[4 extensions: built-in: mcp]" } })).toContainEqual({ label: "EXTENSIONS", value: "[4 extensions: built-in: mcp]" });
+	});
+
+	it("the last sweep: the faux model says how to leave it, right under SESSION; a real model says nothing here", () => {
+		expect(openingFacts({ ...BASE, faux: true })[1]).toEqual({ label: "MODEL", value: "faux", note: "set an API key, or add a model to config.json" });
+		expect(openingFacts(BASE).some((f) => f.label === "MODEL")).toBe(false);
 	});
 
 	it("RULES names the file the prompt reads", () => {
@@ -43,10 +56,16 @@ describe("§7.10 — the facts", () => {
 		expect(openingFacts({ ...BASE, mcp: { tools: ["mcp__one__x"], connecting: false } })).toContainEqual({ label: "MCP", value: "1 server", note: "1 tool" });
 	});
 
-	it("EXTENSIONS carries the pipe's own extensions line — one text for what loaded, the dontAsk note beside it", () => {
+	it("EXTENSIONS: how many, then the names — built from the SAME lists as the pipe's line, the dontAsk note beside it", () => {
 		expect(openingFacts(BASE).some((f) => f.label === "EXTENSIONS")).toBe(false);
-		const line = "[5 extensions: built-in: mcp, skills, subagent, ask (off in dontAsk) · project: lint-guard]";
-		expect(openingFacts({ ...BASE, extensions: line })).toContainEqual({ label: "EXTENSIONS", value: line });
+		const builtIn = [{ name: "mcp" }, { name: "skills" }, { name: "subagent" }, { name: "ask", note: "off in dontAsk" }];
+		const project = [{ name: "lint-guard" }];
+		const fact = extensionsFact(builtIn, [{ name: "mine" }], project);
+		expect(fact).toEqual({ value: "6", note: "mcp, skills, subagent, ask (off in dontAsk) · user: mine · project: lint-guard" });
+		expect(openingFacts({ ...BASE, extensions: fact })).toContainEqual({ label: "EXTENSIONS", value: "6", note: fact!.note });
+		// the pipe's line, from the same lists, says the same count and names
+		expect(extensionsBannerText(builtIn, [{ name: "mine" }], project)).toBe(" · [6 extensions: built-in: mcp, skills, subagent, ask (off in dontAsk) · mine · project: lint-guard]");
+		expect(extensionsFact([], [], [])).toBeNull();
 	});
 
 	it("DC-49: the home directory as workspace is stated, last, with its remedy", () => {
