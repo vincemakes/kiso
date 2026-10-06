@@ -35,6 +35,8 @@ import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { sweepStaleMergeDirs } from "./temp-sweep.js";
 import { CODING_TOOL_RULES, composeSystemPrompt } from "./coding-prompt.js";
 import { createAgent, loadExtensions, loadProjectExtensions, SessionStore, type AgentDefinition, type ContextPolicy } from "@vincemakes/kiso-runtime";
+import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
+import { preferences, startingEffort } from "./preferences.js";
 
 /** LT-1: the stream watchdog's bound from the environment — a non-negative
  *  number of milliseconds (0 disables it); anything else is ignored. The
@@ -277,6 +279,14 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		// config profile — a direct provider/model or an env key names none.
 		workspace: workspaceRoot(),
 		...(resolved !== null && merged.models?.[resolved.name] === resolved.profile ? { profileName: resolved.name } : {}),
+		// B1: a NEW session of a config profile starts at the effort last
+		// picked for it (the picker's fallback applied); the runtime reads it
+		// for a new session only — a resumed one keeps its own
+		...(() => {
+			if (resolved === null || merged.models?.[resolved.name] !== resolved.profile) return {};
+			const effort = startingEffort(resolved.profile, preferences().effort?.[resolved.name]);
+			return effort === null ? {} : { reasoning: { thinking: "default", effort } as ReasoningSetting };
+		})(),
 		// Area 5: the coding tools are bound to the workspace — every path
 		// they touch is canonicalized inside cwd, escapes are refused.
 		tools: [...createCodingTools(codingToolOptions())], // DC-49 — the options live in state.ts, shared with the `!` command's runner
