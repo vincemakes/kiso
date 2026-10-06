@@ -46,7 +46,8 @@ import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, 
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers, setChildTurnBudget, stopAllTasks } from "./state.js";
+import { settingsLayers, setChildTurnBudget, stopAllTasks, tasksFor } from "./state.js";
+import { tasksForDisplay } from "./task-notice.js";
 import { finishChild, type ChildEnd } from "./child-result.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
@@ -1097,7 +1098,7 @@ async function chatLoop(
 			// prompt inside a conversation with thousands of events — the
 			// durable log was right there and none of it was shown. Empty for
 			// a fresh session, so `kiso chat` is byte-identical.
-			showResumeTail(session.log.all);
+			showResumeTail(session.log.all, session.id);
 			// R2 (owner, 2026-08-27): the resume list is NOT on the opening
 			// screen. `/resume` is where you go looking for a session; the
 			// opening's job is to say what THIS one is.
@@ -1126,7 +1127,7 @@ async function chatLoop(
 			void announceUpdate();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
-			showResumeTail(session.log.all);
+			showResumeTail(session.log.all, session.id);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
 		// XP-1 §3.3.6: a /clear-fresh session INHERITS the live selection,
@@ -1237,9 +1238,10 @@ async function readSecret(prompt: string): Promise<string> {
  * there is no viewer and no cell renderer, so the plain text tail stays
  * (DC-51: one call, one cell).
  */
-function showResumeTail(events: Parameters<typeof resumeTail>[0]): void {
+function showResumeTail(events: Parameters<typeof resumeTail>[0], sessionId?: string): void {
 	const W = process.stdout.columns ?? 80;
-	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W);
+	// the tasks round: a task notice in the history reads its task's journal
+	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W, tasksForDisplay(tasksFor(sessionId)));
 	else bodyLog(resumeTail(events, W).join("\n"));
 }
 
@@ -1545,6 +1547,10 @@ async function main(): Promise<void> {
 				const id = arg ?? newSessionId(sessionsDir());
 				// v2b: the dock (TTY only) wraps the whole session — the
 				// trust question, the banner, the body, and the input line.
+				// the tasks round (owner, 2026-10-06): the first frames, before the
+				// bar is bound, offer no key ladder (§7.8 retired it) — set while
+				// the dock is not yet up, so nothing is drawn until enter() paints
+				dock.setStatus("", "");
 				dock.enter();
 				// E area: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
@@ -1569,6 +1575,10 @@ async function main(): Promise<void> {
 				// argv[4] is the optional prompt; argv[3] is the session id
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
+				// the tasks round (owner, 2026-10-06): the first frames, before the
+				// bar is bound, offer no key ladder (§7.8 retired it) — set while
+				// the dock is not yet up, so nothing is drawn until enter() paints
+				dock.setStatus("", "");
 				dock.enter();
 				const routeLine = arg !== undefined ? enterRouted(arg) : null;
 				agent = await createCodingAgent(arg, input, modelFlag);
@@ -1609,7 +1619,7 @@ async function main(): Promise<void> {
 				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 				// REL-0152-D5 — the same tail on the explicit-id form. NOT on
 				// the -p path above: that one's stdout is a machine's input.
-				showResumeTail(session.log.all);
+				showResumeTail(session.log.all, session.id);
 				await resume(session, prompt, faux, input);
 				break;
 			}
@@ -1841,6 +1851,10 @@ async function main(): Promise<void> {
 				// A area: no subcommand (or any non-command first argument) IS
 				// chat — the first argument is the session id.
 				const id = command ?? newSessionId(sessionsDir());
+				// the tasks round (owner, 2026-10-06): the first frames, before the
+				// bar is bound, offer no key ladder (§7.8 retired it) — set while
+				// the dock is not yet up, so nothing is drawn until enter() paints
+				dock.setStatus("", "");
 				dock.enter();
 				// R-I-p2 (finding R-I-p-2): the bare command passes the SAME
 				// input source and model flag as chat/resume — the pre-patch

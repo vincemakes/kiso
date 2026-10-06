@@ -31,7 +31,7 @@ import {
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { liveTasks, mergedConfig, queuedSwitchLines, seenUnknownTasks, setExitTasks, tasksFor } from "./state.js";
-import { taskCounts, taskNoticeRow } from "./task-notice.js";
+import { taskCounts, taskNoticeRow, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget, tiersFor } from "@vincemakes/kiso-runtime/internal";
@@ -1064,7 +1064,8 @@ export async function consumeRun(
 				// any run that carries one, as replay.ts does for old logs.
 				// ADR-0058: a task notice is a row, never the person's chip
 				if (ev.via?.kind === "tasks") {
-					body.notice(taskNoticeRow(ev.via.items));
+					// the tasks round: one row per task, how it ended and what ran
+					body.metaNotice(taskNoticeRow(ev.via.items), taskNoticeRows(ev.via.items, tasksForDisplay(tasksFor(session.id))));
 					break;
 				}
 				if (ev.source === "system") {

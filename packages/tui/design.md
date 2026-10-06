@@ -578,6 +578,16 @@ the mark moves in front of the outcome (§7.5). A command folds rather than
 eliding (§7.5), wrapped output hangs, and a tail never opens on a blank
 row.
 
+A BACKGROUND delegation's card (the tasks round, owner, 2026-10-06) says
+what was sent and where it went. The call returns at once, so the card
+settles with the work only begun: the head names the children's roles
+(`DELEGATE explorer · reviewer`), the outcome says `2 in the background`
+with how long the call took, and the body is one row per child — its task
+id (the one `/tasks`, the bar and the `TASK` row use), its role in `ink2`,
+its task `dim`. DECLARED REVERSAL of the card that read `DELEGATE … 1
+line` with no target: it looked for the foreground summary a background
+run never writes.
+
 **7.5 A card reads verb · target, then outcome.** The verb is the tool's
 display verb in upper case (`SHELL`, `READ`, `EDIT`, `WRITE`, `LIST`,
 `SEARCH`), `dim`, then ONE space and the target in `ink` — `LIST (root)`,
@@ -827,6 +837,22 @@ that switched it already says what each tier does. All four ways in
 (/mode's picker, `/mode <name>`, /settings, shift+tab) draw it; a pipe
 prints `mode → bypass` as it always did.
 
+A row that names a thing is ONE row (the tasks round, owner, 2026-10-06):
+what it names is cut with `…`, never folded under itself.
+
+- `TASK` — a background task ended (ADR-0058). One row per task, the label
+  once and the rows under it unlabelled: the task id, how it ended, then
+  what ran, `dim`. A shell reads `exited 0` (the success colour) or
+  `failed 1` (the failure colour); a child reads `answered` or `failed`;
+  `stopped` is `dim`; `◌ outcome unknown` is gold; a long-running command
+  that said it was ready reads `ready`. The words come from the task's own
+  journal, so a resumed session draws what a live one did. A pipe prints
+  `✦ task t1 exited · t2 exited` as it always did. DECLARED REVERSAL of
+  0.46.0's one row of bare transitions on the terminal.
+- `PROJECT` — the trust gate's answer (§8.12): `trusted · ~/w/.kiso ·
+  config.json (97e337)`, `trusted` in the success colour, or `not
+  trusted`.
+
 **7.13 The person's own shell (R2).** `!command` runs and sends;
 `!!command` runs and only shows. Both render as the person's card on their
 own warm ground (§7.9's `human`, its edge cell): `$ <command>` bold as one
@@ -996,7 +1022,10 @@ The key ladder (`/ commands · ↑ history · ctrl+r transcript · @ files ·
 ? keys`) that R1 put in the empty input retired with the placeholder
 (§7.8, owner, 2026-09-29): `?` opens the keys sheet, and `/` opens the
 command list. The status bar's `/mode to switch` is the one teaching hint
-left on screen, which is why it is the last thing the bar gives up.
+left on screen, which is why it is the last thing the bar gives up. The
+frames before the bar is bound offer no hint at all (the tasks round):
+the status row stays empty until the bar arrives — it used to fall back to
+the pre-Graphite row and flash the retired ladder on every start.
 
 **8.6 The editor's keys, and the one gesture with three spellings.**
 `alt+←/→` moves the cursor by word and `alt+⌫` / `alt+d` delete a word
@@ -1278,6 +1307,13 @@ They open on the QUESTION:
 - `rerun it? · <tool>`, `ask it again? · never answered` (`ask them
   again?` for several), `trust this project? · <root, home as ~>` with the
   answers `trust it` / `not now`.
+- The trust gate prints nothing above its question on a dock (the tasks
+  round, owner, 2026-10-06): the question lists the files itself. What
+  was trusted stays in the scrollback as ONE `PROJECT` meta row (§7.12),
+  written once the person has answered. DECLARED REVERSAL of the
+  `[project .kiso] <root>` line and the file list printed above the
+  question, the same listing twice on one screen. Off a dock the listing
+  is printed as before.
 - The options, the key row and the closing rule are the approval's own;
   tool approvals keep the approval layout. The dock-less questions (a pipe,
   a TTY with no room for a panel) are unchanged, word for word.
@@ -1478,6 +1514,12 @@ shape (§8.8), and `/help` opens the command list. Off a dock (a pipe,
   one place, the place ends the row. A skill that cannot load says why in
   the failure colour. The closing row says how to run one:
   `/<name> runs one · a built-in wins its name · esc closes`.
+- A task's output (`/tasks` → a task → show its output; the tasks round,
+  owner, 2026-10-06): the band names the task, which output it is and how
+  it ended (`t1 · its last output · exited 0`, `t2 · its answer ·
+  answered`); its newest twelve lines at the content edge in `ink2`, each
+  cut to one row; the closing row. DECLARED REVERSAL of the lines printed
+  into the conversation at column 0, a blank between each.
 - `/help` opens the command list (§8.13) — the band a typed `/` opens,
   every command and installed skill with its description, filtered as
   the person types — on an empty composer. The list you read is the list

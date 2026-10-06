@@ -27,7 +27,9 @@ const journal = (home: string, id: string, task: string): string => {
 };
 const shellCall = (input: object) => ({ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input }, { type: "stop", reason: "tool_use" }] });
 const text = (t: string) => ({ events: [{ type: "text_delta", text: t }, { type: "stop", reason: "end_turn" }] });
-const PROMPT = "/ commands · ↑ history";
+// the idle bar: the boot row offers no key ladder (the tasks round, §8.5),
+// so a session is ready when the bar is bound and teaches `/mode`
+const PROMPT = "/mode to switch";
 
 describe("ADR-0058 (3e) — the person's side of tasks", () => {
 	it("ctrl+b moves the running command to the background; /tasks show is the person's alone; exit asks and stops it", () => {

@@ -339,7 +339,7 @@ export function resumeVisible(height: number): number {
 /** The window over the matches, with a scroll-off of one: while more lies
  *  past an edge, the cursor stays a row inside it, so the edge row that
  *  carries a more-mark is never the selected one. Stateless, like
- *  atWindow: the same (total, selected) always draws the same window. */
+ *  bandWindow: the same (total, selected) always draws the same window. */
 export function resumeWindow(total: number, selected: number, visible: number): { first: number; count: number } {
 	return bandWindow(total, selected, visible);
 }

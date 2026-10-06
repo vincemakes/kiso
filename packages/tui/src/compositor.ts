@@ -82,6 +82,7 @@ import {
 	visibleWidth,
 	type BodyCell,
 	type FrameCtx,
+	type NoticeMark,
 	breathFrame,
 	widthCut,
 } from "./components.js";
@@ -860,6 +861,27 @@ export class Body {
 		// Graphite §7.12: a meta row on the terminal; the pipe above keeps
 		// the text as written.
 		this.#cells.push({ kind: "notice", text, done: true, ...noticeMeta(text) });
+		this.#mark();
+	}
+
+	/** The tasks round (owner, 2026-10-06) — a notice whose terminal form
+	 *  is one meta row per thing it names (a task's end, a project's trust):
+	 *  each row a label (`TASK` once, `""` under it), the sentence cut to one
+	 *  row, its outcome word marked. A pipe keeps `text`, byte for byte. */
+	metaNotice(text: string, rows: readonly { readonly label: string; readonly sentence: string; readonly mark?: NoticeMark }[]): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		const [first, ...also] = rows;
+		if (first === undefined) return;
+		// ONE cell for the notice, so its rows stay together (D1 puts a blank
+		// between two cells)
+		this.#cells.push({ kind: "notice", text, done: true, label: first.label, sentence: first.sentence, ...(first.mark !== undefined ? { mark: first.mark } : {}), oneRow: true, ...(also.length > 0 ? { also } : {}) });
 		this.#mark();
 	}
 
