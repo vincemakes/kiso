@@ -1072,7 +1072,10 @@ replace it while they last.
 | waiting | `❯ needs you · <what>` — `<what>` the open panel's own words (`run paused`, `a question for you`, `uncertain execution`), the `❯` gold. It rides the STATUS row, where the panel's status always was: while a panel is up it holds the live zone itself (R3b) |
 
 The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued
-message is one row: `◇ queued  <text>  after this turn · ↑ edit`.
+message is one row: `◇ queued  <text>  after this turn · ↑ edit`. While a
+running command can be moved to the background (ADR-0058 3e), the row
+teaches it right after esc — `esc stop · ctrl+b background · ⏎ steer ·
+alt+⏎ redirect` — and the steer and the redirect give way before it does.
 
 *(with Safe Admission, owner-ruled 2026-09-28)* `⏎` during a run is STEER,
 and there is no queue. A steer waits as
@@ -1144,9 +1147,16 @@ default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆
   branch and `floor off` carry colour. Off a known ground the chip is
   `▸ <mode>`, the segments join with ` · `, and each side is one dim span.
 
-Nothing reserves a place for what has not shipped. With background tasks,
-`● N tasks running ↓` joins the bar; an extension's status joins its right
-side once extensions can set one (§10).
+The session's tasks (ADR-0058 3e; the second main-sync round, owner,
+2026-10-06) sit right after the mode, where 0.46.0's status row has them:
+`● 2 tasks running` with the `●` in the machine's blue, `◌ 1 unknown` (or
+`◌ 1 task unknown` alone) with the `◌` in gold — an outcome nobody can know
+is the one that needs the person (§4) — the words quiet like the rest of
+the bar. A fact: it never gives way. With no task it is absent and the bar
+is the bar it was. `/tasks` lists them (a pick band, §8.14).
+
+Nothing reserves a place for what has not shipped: an extension's status
+joins the bar's right side once extensions can set one (§10).
 
 **8.10 The terminal title.** OSC 0, written only when stdout is a TTY:
 
