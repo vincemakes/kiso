@@ -831,11 +831,24 @@ is how the person meets it, and when kiso concludes it.
      row reads `✦ lost track of t3 — …`.
    - The opening and the tail (the LAST ` — ` part) are pinned by test, so
      a redesigned task row carries them.
-   - It comes with the delivery, as every task row does: at once in a live
-     run; when idle, with the next run (a lost task is a notice, never a
-     wake, §8), live and on resume alike.
-   - One delivery per loss: the model's notice and the person's row are
-     the same `user_input` (`via: tasks`).
+   - **It is said when kiso concludes it**, not with the model's notice.
+     A lost task is a notice, never a wake (§8), so its notice waits for
+     the next run; the person should not. The delivery tells its host, through
+     `TaskDeliveryOptions.onLost(taskIds)` (passed by `session.useTasks`),
+     of every loss the model has not been told of:
+     - at startup, from the same scan that finds missed transitions
+       (receipts and claims excluded), so a reopened session says it before
+       any message;
+     - live, as the `unknown` transition is heard.
+     A loss a tool result reported (claimed, Amendment 7) is never told:
+     the result said it.
+   - **Said once per process.** The CLI records each id it told. When the
+     model's notice of that loss arrives, its row is not printed again,
+     neither in the transcript nor in a queued turn's line. The row is
+     screen-only. A loss the model has not been told of is said again on
+     the next open, because it is still news. A delivered one appears in a
+     resume replay at its delivery, as every task row does.
+   - The model is told once: one notice, delivered with the next run.
 3. **`/tasks`** labels it `lost track — may still be running`. This
    retires §9's `◌ outcome unknown` wording, not the state.
    `/tasks show t3` first says why, read from the journal:
