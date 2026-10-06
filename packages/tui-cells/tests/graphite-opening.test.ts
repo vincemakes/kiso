@@ -101,6 +101,14 @@ describe("§7.10 — the one-line form", () => {
 		const narrow = plain(bannerLines(16, 19, "0.44.0", "", [], 0, META));
 		expect(narrow).toContain("  SESSION     n…");
 	});
+
+	it("the last sweep: a note gives way from its end, one ` · ` part at a time — a timestamp id keeps `new`", () => {
+		const facts = [{ label: "SESSION", value: "2026-10-06T14-35-27-e173", note: "new · resumable after kill -9" }];
+		const at = (W: number): string => plain(bannerLines(W, 19, "0.44.0", "", [], 0, { facts })).find((r) => r.includes("SESSION"))!.trimEnd();
+		expect(at(80)).toBe("  SESSION     2026-10-06T14-35-27-e173 · new · resumable after kill -9");
+		expect(at(50)).toBe("  SESSION     2026-10-06T14-35-27-e173 · new");
+		expect(at(40)).toBe("  SESSION     2026-10-06T14-35-27-e173");
+	});
 });
 
 describe("§7.10 — a long fact hangs under itself", () => {

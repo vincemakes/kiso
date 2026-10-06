@@ -747,7 +747,8 @@ fact per row — the label `dim` in its column, the fact in `ink`, a
 quieter note after it:
 
 - `SESSION` — the session's id, then `new · resumable after kill -9` or
-  `resumed · N events`;
+  `resumed · N events` (beside the wordmark a note that does not fit gives
+  way from its end, one ` · ` part at a time: a timestamp id keeps `new`);
 - `MODEL` — only when no model resolved: `faux`, then how to leave it
   (`set an API key, or add a model to config.json` — no longer than the
   `RULES` note, or beside the wordmark it is cut) — the bar names the faux
