@@ -1,6 +1,6 @@
 /**
  * The remote boundary (0.46.2, owner-ratified 2026-10-06): a destructive
- * git push and a direct package publish change state other people share,
+ * git push and a registry write change state other people share,
  * and a saved "don't ask again for shell" — permission remembered by TOOL
  * NAME from some earlier call — never carries one. Authority given now
  * still does: full-access runs them, and an explicit user extension that
@@ -38,6 +38,16 @@ const CROSSES = [
 	"git push --prune origin",
 	"git push -uf origin main",
 	"git push -o ci.skip -f origin main",
+	// a dry run turned off again is no dry run: the last setting wins
+	"git push --dry-run --no-dry-run --force origin main",
+	"git push -n --no-dry-run -f",
+	"git push --dry-run --no-dry --force origin main",
+	// git takes an unambiguous prefix of a long option
+	"git push --mirr",
+	"git push --del origin feature",
+	"git push --pru origin",
+	"git push --force-w origin main",
+	"git push --force-i origin main",
 	// git's global options before the subcommand, the ones with a value too
 	"git --no-pager push --force",
 	"git -C repo --no-pager push -f",
@@ -49,7 +59,7 @@ const CROSSES = [
 	'sh -c "git push --force"',
 	"cd repo && git push --force-with-lease",
 	"git fetch && git push --mirror backup",
-	// B — a direct package publish
+	// B — a registry write: a publish
 	"npm publish",
 	"npm publish --access public",
 	"pnpm publish",
@@ -59,6 +69,45 @@ const CROSSES = [
 	"yarn publish",
 	"yarn npm publish",
 	"yarn workspace foo npm publish",
+	// … an unpublish, a deprecation (an empty message lifts one: still a write)
+	"npm unpublish pkg@1.0.0",
+	"npm unpublish pkg --force",
+	"pnpm unpublish pkg@1.0.0",
+	'npm deprecate pkg@1 "use 2.x"',
+	'npm deprecate pkg@1 ""',
+	'pnpm deprecate pkg@"<2" "use 2.x"',
+	// … a dist-tag moved, under every name npm takes for add and rm
+	"npm dist-tag add pkg@1.2.0 latest",
+	"npm dist-tag a pkg@1.2.0 next",
+	"npm dist-tag set pkg@1.2.0 next",
+	"npm dist-tags s pkg@1.2.0 next",
+	"npm dist-tag rm pkg beta",
+	"npm dist-tag r pkg beta",
+	"npm dist-tag del pkg beta",
+	"npm dist-tag d pkg beta",
+	"npm dist-tag remove pkg beta",
+	"npm dist-tag --registry https://r.example add pkg@1 next",
+	"pnpm dist-tag add pkg@1.2.0 latest",
+	"yarn tag add pkg@1.2.0 latest",
+	"yarn tag rm pkg beta",
+	"yarn tag remove pkg beta",
+	"yarn npm tag add pkg@1.2.0 beta",
+	"yarn npm tag remove pkg beta",
+	// a dry run exempts nothing where the command has none, and is off
+	// when the parser reads it off
+	"npm deprecate pkg@1 msg --dry-run",
+	"npm dist-tag add pkg@1 latest --dry-run",
+	"yarn publish --dry-run",
+	"npm publish --dry-run false",
+	"npm publish --dry-run=false",
+	"npm publish --dry-run --no-dry-run",
+	"npm unpublish pkg --dry-run false",
+	// npm runs a unique prefix of a command name
+	"npm pub",
+	"npm pu --access public",
+	"npm unp pkg@1.0.0",
+	"npm dep pkg@1 old",
+	"npm depr pkg@1 old --dry-run",
 ];
 
 const STAYS = [
@@ -81,6 +130,33 @@ const STAYS = [
 	"git commit -m 'git push -f'",
 	"echo git push --force",
 	"npm publish --dry-run",
+	"npm publish --dry-run true",
+	"npm publish --dry-run=true",
+	"pnpm -r publish --dry-run",
+	"npm unpublish pkg@1.0.0 --dry-run",
+	"yarn npm publish --dry-run",
+	"yarn npm publish -n",
+	// listing tags and reading the registry change nothing
+	"npm dist-tag ls pkg",
+	"npm dist-tag ls d",
+	"npm dist-tags list",
+	"npm dist-tag pkg",
+	"npm dist-tag",
+	"pnpm dist-tag ls pkg",
+	"yarn tag list pkg",
+	"yarn tag ls pkg",
+	"yarn npm tag list pkg",
+	"npm view pkg dist-tags",
+	"npm view pkg dist-tags.latest",
+	"yarn add tag",
+	"npm run deprecate",
+	// `un` is npm's alias for uninstall, not a prefix of unpublish
+	"npm un pkg",
+	"npm pub --dry-run",
+	"npm unp pkg@1.0.0 --dry-run",
+	// candidates the owner has not named: not in the list
+	"npm owner add someone pkg",
+	"npm access set status=private pkg",
 	"npm run publish",
 	"pnpm run publish",
 	"yarn run publish",
@@ -155,7 +231,7 @@ describe("what crossing costs, tier by tier, under a saved shell rule", () => {
 			for (const tier of ["default", "accept-edits"] as const) {
 				expect(await decide(tier, "git push origin main"), tier).toBe("allow");
 				expect(await decide(tier, "touch made.txt"), tier).toBe("allow");
-				for (const line of ["git push --force-with-lease", "git push origin :feature", "npm publish"]) {
+				for (const line of ["git push --force-with-lease", "git push origin :feature", "npm publish", "npm unpublish pkg@1", "npm deprecate pkg@1 old", "npm dist-tag add pkg@1 latest"]) {
 					expect(await decide(tier, line), `${tier}: ${line}`).toBe("ask");
 				}
 			}
@@ -166,7 +242,7 @@ describe("what crossing costs, tier by tier, under a saved shell rule", () => {
 
 	it("full-access still runs it — authority given now is not remembered authority", async () => {
 		try {
-			for (const line of ["git push --force", "git push --mirror", "npm publish"]) expect(await decide("full-access", line), line).toBe("allow");
+			for (const line of ["git push --force", "git push --mirror", "npm publish", "npm unpublish pkg@1", "npm dist-tag rm pkg beta"]) expect(await decide("full-access", line), line).toBe("allow");
 		} finally {
 			setMode("default");
 		}
@@ -189,6 +265,8 @@ describe("what crossing costs, tier by tier, under a saved shell rule", () => {
 			expect(await decide("full-access", "npm view publish")).toBe("allow");
 			// a word that merely contains publish is not the word
 			expect(await decide("default", "npm install publish-tool")).toBe("allow");
+			// `npm install deprecate` installs a package called deprecate: read as a deprecation
+			expect(await decide("default", "npm install deprecate")).toBe("ask");
 		} finally {
 			setMode("default");
 		}
