@@ -6,12 +6,18 @@
  * task that was lost and then records its end is still announced, so a
  * model told "unknown" learns how it ended. The stop path is unchanged: a
  * runner not verified NOW is never signalled.
+ *
+ * And the person hears of a loss when kiso concludes it (rev 2): the
+ * delivery tells its host, through `onLost`, of every loss the model has
+ * not been told of — at startup and live — while the model's notice keeps
+ * its own turn. A loss a tool result already reported is never told.
  */
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { appendRecord } from "../src/tasks/journal.js";
+import { TaskDelivery } from "../src/tasks/delivery.js";
 import { TaskManager, type RunnerIdentity, type TaskBackend, type TaskTransition } from "../src/tasks/manager.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -110,6 +116,67 @@ describe("Amendment 8 — a lost task that records its end is still announced", 
 		await sleep(40);
 		expect(heard).toEqual(["unknown", "ended"]);
 		expect(manager.get(t.id)!.state.kind).toBe("ended");
+		manager.close();
+	});
+});
+
+describe("Amendment 8 (rev 2) — the person hears of a loss when kiso concludes it", () => {
+	const delivery = (manager: TaskManager, events: unknown[] = []) => {
+		const told: string[][] = [];
+		const d = new TaskDelivery({ manager, events: () => events as never, liveRun: () => undefined, onLost: (ids) => void told.push([...ids]) } as never);
+		return { d, told };
+	};
+
+	it("at startup: a loss the model was not told of is told at once; one it was told of is not", async () => {
+		const { b } = backend(() => "gone");
+		const { manager } = setup(b);
+		const t = await manager.start({ command: "npm run dev", cwd: "/", executionId: "ex-1" });
+		expect(manager.get(t.id)!.state.kind).toBe("unknown");
+		const fresh = delivery(manager);
+		expect(fresh.told).toEqual([[t.id]]);
+		fresh.d.close();
+		const receipt = { type: "user_input", content: "n", source: "system", via: { kind: "tasks", items: [{ taskId: t.id, transition: "unknown" }] }, seq: 0 };
+		const known = delivery(manager, [receipt]);
+		expect(known.told).toEqual([]);
+		known.d.close();
+		manager.close();
+	});
+
+	it("live: a loss is told once, at once — no run has carried its notice yet", async () => {
+		let gone = false;
+		const { b } = backend(() => (gone ? "gone" : "verified"));
+		const { manager } = setup(b);
+		const { d, told } = delivery(manager);
+		const t = await manager.start({ command: "x", cwd: "/", executionId: "ex-1" });
+		manager.observe();
+		await sleep(30);
+		expect(told).toEqual([]);
+		gone = true;
+		await sleep(60);
+		expect(told).toEqual([[t.id]]);
+		d.close();
+		manager.close();
+	});
+
+	it("a loss a tool result reported (claimed) is never told", async () => {
+		let gone = false;
+		const { b } = backend(() => (gone ? "gone" : "verified"));
+		const { manager } = setup(b);
+		const { d, told } = delivery(manager);
+		const t = await manager.start({ command: "x", cwd: "/", executionId: "ex-1" });
+		manager.observe();
+		const waited = manager.awaitSettled(t.id, "end", 2_000, { executionId: "ex-stop" });
+		gone = true;
+		const settled = await waited;
+		expect(settled.info.state.kind).toBe("unknown");
+		expect(settled.claimed).toBe(true);
+		await sleep(60);
+		expect(told).toEqual([]);
+		// and a later delivery built from the journal does not tell it either
+		const later = delivery(manager);
+		expect(later.told).toEqual([]);
+		later.d.close();
+		d.close();
 		manager.close();
 	});
 });
