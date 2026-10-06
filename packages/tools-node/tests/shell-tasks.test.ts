@@ -28,12 +28,12 @@ function ctx(extra: Partial<ToolContext> = {}): ToolContext {
 	return { signal: { aborted: false, addEventListener: () => {}, removeEventListener: () => {} }, sessionId: "s1", executionId: "ex-1", ...extra } as unknown as ToolContext;
 }
 
-function setup() {
+function setup(shellEnv?: Record<string, string>) {
 	const base = realpathSync(mkdtempSync(join(tmpdir(), "kiso-shelltasks-")));
 	const cwd = join(base, "ws");
 	mkdirSync(cwd);
 	const manager = new TaskManager({ root: join(base, "s1.tasks"), backend, pollMs: 50 });
-	const opts = { workspaceRoot: cwd, tasks: (sid: string | undefined) => (sid === "s1" ? manager : undefined) };
+	const opts = { workspaceRoot: cwd, tasks: (sid: string | undefined) => (sid === "s1" ? manager : undefined), ...(shellEnv !== undefined ? { shellEnv } : {}) };
 	return { base, cwd, manager, opts, shell: shellTool(opts), stop: taskStopTool(opts) };
 }
 
@@ -180,6 +180,10 @@ describe("ADR-0058 §2 (3e) — a running foreground command is moved to the bac
 	});
 });
 
+/** A task with a final reading: ended, or `unknown` — a stop the runner
+ *  could not confirm (a loaded machine can miss the sweep's deadline) is
+ *  never read as stopped (ADR-0058 §6). */
+const settled = (i: { readonly state: { readonly kind: string } }) => i.state.kind === "ended" || i.state.kind === "unknown";
 const claimsOf = (manager: TaskManager, id: string) => readRecords(join(manager.root, id, "journal.jsonl")).filter((x) => (x.type as string) === "result_claimed");
 /** A ctx whose signal fires `abort` after `ms` (the person's Esc). */
 const escAfter = (ms: number, extra: Partial<ToolContext> = {}) =>
@@ -204,7 +208,22 @@ describe("ADR-0058 Amendment 7 — task_stop waits for the end and says how it e
 		const s = await stop.execute({ id: "t1" }, escAfter(100, { executionId: "ex-stop" } as Partial<ToolContext>));
 		expect(Date.now() - t0).toBeLessThan(2_000);
 		expect(s.content).toMatch(/^stop requested for task t1; its end is not confirmed yet — you will be notified when it ends/);
-		await until(() => manager.get("t1")!, (i) => i.state.kind === "ended", 15_000);
+		// the claim is what this pins, not how the stop ends: an idle machine
+		// confirms it (ended); a loaded one may not (unknown) — either way
+		// nothing was claimed, so the end is still noticed
+		await until(() => manager.get("t1")!, settled, 15_000);
+		expect(claimsOf(manager, "t1")).toEqual([]);
+	}, 20_000);
+
+	it("a stop the runner cannot confirm: Esc claims nothing, and the task reads unknown, never stopped", async () => {
+		// the runner's knob reports the stop unconfirmed — what a sweep that
+		// misses its deadline on a loaded machine reports
+		const { manager, shell, stop } = setup({ KISO_TASK_RUNNER_STOP_UNCONFIRMED: "1" });
+		await shell.execute({ command: "sleep 30", background: true }, ctx());
+		await stop.execute({ id: "t1" }, escAfter(100, { executionId: "ex-stop" } as Partial<ToolContext>));
+		const t = await until(() => manager.get("t1")!, settled, 15_000);
+		expect(t.state.kind).toBe("unknown");
+		expect(readRecords(join(manager.root, "t1", "journal.jsonl")).some((r) => r.type === "stop_unconfirmed")).toBe(true);
 		expect(claimsOf(manager, "t1")).toEqual([]);
 	}, 20_000);
 });
