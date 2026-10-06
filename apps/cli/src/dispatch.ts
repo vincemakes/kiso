@@ -16,7 +16,7 @@ import { agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelNa
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { profileProviderLabel, providerLabel } from "./provider-label.js";
 import { installedVersion, versionStatusLine } from "./stale-version.js";
-import { preferences, setPreference } from "./preferences.js";
+import { preferences, rememberEffort, setPreference } from "./preferences.js";
 import { settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
@@ -104,7 +104,7 @@ function effortAxis(p: ModelProfile): Pick<PickOption, "levels" | "level" | "dis
 		// the sentence the coordination note asked for: said only when the
 		// cursor could NOT land where the previous selection asked.
 		...(carried !== undefined && carried !== "default" && carriedIdx < 0 && defaultIdx >= 0
-			? { levelNote: `effort ${carried} \u2192 ${levels[defaultIdx]}: the nearest this model supports` }
+			? { levelNote: `effort ${carried} \u2192 ${levels[defaultIdx]}: this model's default (it has no ${carried})` }
 			: {}),
 	};
 }
@@ -912,6 +912,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// §2.5: the ONE source a reload reads for the model — a
 							// switch made here must survive the rebuild.
 							setModelChoice(arg);
+							// B1: an explicit effort (typed, or the panel's level) is
+							// remembered for the profile — where its next NEW session
+							// starts (preferences.json)
+							if (direct === null && effortTok !== undefined && reasoning !== undefined) rememberEffort(profName, effortTok);
 							// The window a PROFILE states travels with the switch,
 							// like the model id and the endpoint. Leaving it behind
 							// is CTX-1 one field over: the row would show a

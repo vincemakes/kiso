@@ -90,7 +90,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 	};
 });
 
-const { runAcceptance } = await import("../dist/kiso-subagent.mjs");
+const { default: createSubagentExtension, runAcceptance } = await import("../dist/kiso-subagent.mjs");
 const { startCommand } = await import("../../../packages/tools-node/src/process.js");
 
 const realPlatform = process.platform;
@@ -262,4 +262,138 @@ describe("agreement: the subagent's copy of the bash rule picks what the process
 			expect(subagent).toBe(module);
 		});
 	}
+});
+
+/**
+ * P6 (review round 1, item 3): a kill that does not take. `taskkill` can
+ * fail (access denied) and leave the child running; a group SIGKILL can be
+ * refused (EPERM). The wait after a kill is bounded either way, and the
+ * verdict says the exit was NOT confirmed — never a clean "killed", never
+ * a parent that waits forever.
+ */
+describe("P6: a kill that does not take — the wait after it is bounded", () => {
+	/** `p` settles before `ms`, or the case reads "hung" (an explicit red, not the runner's timeout). */
+	const within = async <T>(p: Promise<T>, ms: number): Promise<T | "hung"> => {
+		let timer: NodeJS.Timeout | undefined;
+		const hung = new Promise<"hung">((resolve) => {
+			timer = setTimeout(() => resolve("hung"), ms);
+		});
+		try {
+			return await Promise.race([p, hung]);
+		} finally {
+			clearTimeout(timer);
+		}
+	};
+
+	it("win32: taskkill fails, the check stays alive — the acceptance settles, the kill unconfirmed", async () => {
+		bareWindows();
+		fakeFiles.add(GIT_BASH);
+		cp.autoExit = false; // the check never exits on its own, and taskkill does not end it
+		cp.answer = (file) => (/taskkill/i.test(file) ? { status: 1 } : { status: 0, stdout: "" });
+		const r = await within(runAcceptance(CHECK[0], CHECK[1], ws(), "HEAD", 50, undefined), 8_000);
+		expect(r, "the parent waited without bound for a child the kill did not end").not.toBe("hung");
+		if (r === "hung") return;
+		expect(taskkillRuns()).toHaveLength(1);
+		expect(r.killed).toBe("timeout");
+		expect(r.passed).toBe(false);
+		expect(r.exitCode).toBeNull();
+		expect(r.unconfirmed).toEqual([4242]);
+	}, 15_000);
+
+	it("POSIX: the group SIGKILL is refused (EPERM), the check stays alive — the same bounded verdict", async () => {
+		setPlatform("linux");
+		cp.autoExit = false;
+		vi.spyOn(process, "kill").mockImplementation((() => {
+			throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+		}) as typeof process.kill);
+		const r = await within(runAcceptance(CHECK[0], CHECK[1], ws(), "HEAD", 50, undefined), 8_000);
+		expect(r, "the parent waited without bound for a child the kill did not end").not.toBe("hung");
+		if (r === "hung") return;
+		expect(r.killed).toBe("timeout");
+		expect(r.unconfirmed).toEqual([4242]);
+	}, 15_000);
+
+	it("a kill that does take is confirmed: no unconfirmed field (guard)", async () => {
+		bareWindows();
+		fakeFiles.add(GIT_BASH);
+		cp.autoExit = false;
+		cp.answer = (file) => {
+			if (/taskkill/i.test(file)) cp.last?.exit(1, null);
+			return { status: 0, stdout: "" };
+		};
+		const r = await runAcceptance(CHECK[0], CHECK[1], ws(), "HEAD", 50, undefined);
+		expect(r.killed).toBe("timeout");
+		expect(r).not.toHaveProperty("unconfirmed");
+	});
+
+	it("win32: the delegate's child survives taskkill — the delegate returns, saying the exit is UNCERTAIN", async () => {
+		bareWindows();
+		cp.autoExit = false;
+		cp.answer = (file) => (/taskkill/i.test(file) ? { status: 1 } : { status: 0, stdout: "" });
+		const home = mkdtempSync(join(tmpdir(), "kiso-sub-win32-home-"));
+		vi.stubEnv("KISO_HOME", home);
+		vi.stubEnv("KISO_SESSIONS_DIR", join(home, "sessions"));
+		vi.stubEnv("KISO_SUBAGENT_BIN", join(home, "kiso.js"));
+		vi.stubEnv("KISO_SUBAGENT_TIMEOUT_MS", "50");
+		vi.stubEnv("KISO_SUBAGENT_DEPTH", "0");
+		const ext = await createSubagentExtension();
+		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
+		const r = await within(
+			delegate.execute({ tasks: [{ role: "explorer", task: "look around" }] }, { signal: new AbortController().signal } as never) as Promise<{ content: string; isError: boolean }>,
+			8_000,
+		);
+		expect(r, "the delegate waited without bound for a child the kill did not end").not.toBe("hung");
+		if (r === "hung") return;
+		expect(r.isError).toBe(true);
+		expect(String(r.content)).toMatch(/timed out after 50ms/);
+		expect(String(r.content)).toMatch(/4242/);
+		expect(String(r.content)).toMatch(/UNCERTAIN/);
+		expect(String(r.content)).not.toMatch(/the child process group was killed/);
+	}, 15_000);
+	/** An implementer delegate on win32, its child never exiting on its own; `taskkillTakes` decides the kill. */
+	async function implementerTimesOut(taskkillTakes: boolean): Promise<{ r: { content: string; isError: boolean } | "hung"; gitRuns: string[][] }> {
+		bareWindows();
+		cp.autoExit = false;
+		cp.answer = (file, args) => {
+			if (/taskkill/i.test(file)) {
+				if (taskkillTakes) cp.last?.exit(1, null);
+				return { status: taskkillTakes ? 0 : 1 };
+			}
+			if (file === "git" && args.includes("rev-parse")) return { status: 0, stdout: "0123456789abcdef0123456789abcdef01234567\n" };
+			return { status: 0, stdout: "" };
+		};
+		const home = mkdtempSync(join(tmpdir(), "kiso-sub-win32-home-"));
+		vi.stubEnv("KISO_HOME", home);
+		vi.stubEnv("KISO_SESSIONS_DIR", join(home, "sessions"));
+		vi.stubEnv("KISO_SUBAGENT_BIN", join(home, "kiso.js"));
+		vi.stubEnv("KISO_SUBAGENT_TIMEOUT_MS", "50");
+		vi.stubEnv("KISO_SUBAGENT_DEPTH", "0");
+		const ext = await createSubagentExtension();
+		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
+		const r = await within(
+			delegate.execute({ tasks: [{ role: "implementer", task: "change things" }] }, { signal: new AbortController().signal } as never) as Promise<{ content: string; isError: boolean }>,
+			8_000,
+		);
+		return { r, gitRuns: cp.runs.filter((x) => x.file === "git").map((x) => [...x.args]) };
+	}
+
+	it("an implementer that may still be running keeps its worktree, and nothing is collected from it", async () => {
+		const { r, gitRuns } = await implementerTimesOut(false);
+		expect(r, "the delegate waited without bound for a child the kill did not end").not.toBe("hung");
+		if (r === "hung") return;
+		expect(String(r.content)).toMatch(/UNCERTAIN/);
+		expect(String(r.content)).toMatch(/worktree kept at: .*kiso-subagent-wt-.* — the child may still be writing to it; nothing was collected/);
+		expect(gitRuns.some((a) => a.includes("diff")), "a tree that may still change was diffed").toBe(false);
+		expect(gitRuns.some((a) => a.includes("remove")), "a worktree was removed under a child that may be running").toBe(false);
+	}, 15_000);
+
+	it("an implementer whose kill takes is collected and cleaned up as before (guard)", async () => {
+		const { r, gitRuns } = await implementerTimesOut(true);
+		expect(r).not.toBe("hung");
+		if (r === "hung") return;
+		expect(String(r.content)).toContain("(the child process group was killed)");
+		expect(String(r.content)).not.toMatch(/UNCERTAIN|nothing was collected/);
+		expect(gitRuns.some((a) => a.includes("diff"))).toBe(true);
+		expect(gitRuns.some((a) => a.includes("remove"))).toBe(true);
+	}, 15_000);
 });

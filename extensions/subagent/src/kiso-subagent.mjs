@@ -404,15 +404,17 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 		// the fixed UNRESOLVED instruction the result parser reads back.
 		const taskPath = join(manifestDir ?? policyDir, `${childId}.task`);
 		writeFileSync(taskPath, `${task}\n\n${UNRESOLVED_INSTRUCTION}\n`, "utf8");
-		const { code, stdout, killed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal, model, sessionsDir);
+		const { code, stdout, killed, unconfirmed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal, model, sessionsDir);
 		const extraction = await extractChildResult(sessionsDir, childId, `exit ${code}\n${stdout}`);
 		const status = killed === "timeout" ? "timeout" : killed === "abort" ? "killed" : code !== 0 && extraction.outcome === "missing" ? "spawn-failed" : extraction.outcome;
 		let failed = code !== 0 || killed !== null || extraction.failed;
 		const lines = [];
+		// Windows P6: a kill that did not take is never reported as a kill
+		const killNote = unconfirmed.length > 0 ? ` — could not confirm the child exited (pid ${unconfirmed.join(", ")}): treat its side effects as UNCERTAIN` : " (the child process group was killed)";
 		if (killed === "timeout") {
-			lines.push(`  FAILED: timed out after ${timeout}ms (the child process group was killed)`);
+			lines.push(`  FAILED: timed out after ${timeout}ms${killNote}`);
 		} else if (killed === "abort") {
-			lines.push("  FAILED: aborted by the parent run (the child process group was killed)");
+			lines.push(`  FAILED: aborted by the parent run${killNote}`);
 		} else if (code !== 0) {
 			lines.push(`  FAILED: the child exited with code ${code}\n${stdout}`);
 		} else if (extraction.failed) {
@@ -425,7 +427,11 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 		let patchPath = null;
 		let patchBytes = null;
 		let collection = null;
-		if (role === "implementer") {
+		// Windows P6: a child that may still be running keeps its worktree,
+		// and nothing is collected from it — a patch of a tree that may
+		// still change is not the child's result
+		if (unconfirmed.length > 0 && worktree !== null) keepWorktree = true;
+		if (role === "implementer" && unconfirmed.length === 0) {
 			// CX-1 F2 (audit F2): tri-state collection. `collected` is earned
 			// (the patch file closed AND git exited 0); a failure PRESERVES the
 			// worktree and says so; "consumed" is undefined, so a worktree
@@ -468,6 +474,7 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			patchPath,
 			patchBytes,
 			verification,
+			...(unconfirmed.length > 0 ? { unconfirmed } : {}),
 			unresolved,
 			answer: extraction.text,
 			usage: extraction.usage,
@@ -482,7 +489,8 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 		if (scope !== undefined) text += `\n  scoped: no shell · writes only under ${scope.join(", ")}`;
 		if (baseRev !== null) text += `\n  child saw HEAD ${baseRev.slice(0, 7)}; the parent's uncommitted changes were not visible`;
 		if (verification !== null && verification.skipped === undefined) {
-			text += `\n  verification: ${verification.kind} ${verification.passed ? "PASSED" : "FAILED"} · exit ${verification.exitCode === null ? "killed" : verification.exitCode} · ${verification.durationMs}ms · ${verification.kind === "check" ? verification.command : verification.evaluator}`;
+			const exit = verification.unconfirmed !== undefined ? `killed, not confirmed (pid ${verification.unconfirmed.join(", ")} may still be running — treat its side effects as UNCERTAIN)` : verification.exitCode === null ? "killed" : verification.exitCode;
+			text += `\n  verification: ${verification.kind} ${verification.passed ? "PASSED" : "FAILED"} · exit ${exit} · ${verification.durationMs}ms · ${verification.kind === "check" ? verification.command : verification.evaluator}`;
 			if (!verification.passed && verification.tail !== "") text += `\n${verification.tail}`;
 		}
 		for (const l of lines) text += `\n${l}`;
@@ -497,6 +505,8 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			} else if (collection.kind === "failed") {
 				text += `\n  FAILED: collecting the worktree's changes: ${collection.reason}${collection.partialPath !== undefined ? ` (partial patch at ${collection.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
 			}
+		} else if (unconfirmed.length > 0 && worktree !== null) {
+			text += `\n  worktree kept at: ${worktree} — the child may still be writing to it; nothing was collected`;
 		}
 		return { failed, ...(failed ? { failKind: failKindOf(status, verification) } : {}), text, toolCalls: extraction.toolCalls };
 	} finally {
@@ -718,8 +728,52 @@ function killGroup(child) {
 		if (process.platform === "win32") execFileSync("taskkill", ["/T", "/F", "/PID", String(child.pid)], { stdio: "ignore", windowsHide: true });
 		else process.kill(-child.pid, "SIGKILL");
 	} catch {
-		// already gone
+		// already gone, or the kill was refused: the bounded wait decides
 	}
+}
+
+/** How long the wait after a kill lasts before the child's exit is
+ *  declared unconfirmed — tools-node's killTree uses the same fallback. */
+const KILL_CONFIRM_MS = 2_000;
+
+/** The child's exit, supervised: the timeout and the parent's abort kill
+ *  its group, and the wait after a kill is bounded (Windows P6). A kill
+ *  that does not take — taskkill refused, a group SIGKILL refused with
+ *  EPERM — leaves the child running; after KILL_CONFIRM_MS its pid comes
+ *  back in `unconfirmed` (tools-node's contract: the caller must not
+ *  report it gone) and the child is let go, so it never holds the parent. */
+function superviseExit(child, timeout, signal) {
+	return new Promise((resolve) => {
+		let killed = null;
+		let done = false;
+		let confirm;
+		const settle = (code, unconfirmed) => {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			clearTimeout(confirm);
+			signal?.removeEventListener("abort", onAbort);
+			resolve({ code, killed, unconfirmed });
+		};
+		const kill = (why) => {
+			if (killed !== null) return;
+			killed = why;
+			killGroup(child);
+			if (done) return;
+			confirm = setTimeout(() => {
+				child.stdout?.destroy();
+				child.stderr?.destroy();
+				child.unref();
+				settle(null, [child.pid]);
+			}, KILL_CONFIRM_MS);
+		};
+		const timer = setTimeout(() => kill("timeout"), timeout);
+		const onAbort = () => kill("abort");
+		child.on("error", () => settle(null, []));
+		child.on("exit", (code) => settle(code, []));
+		if (signal?.aborted) onAbort();
+		else signal?.addEventListener("abort", onAbort, { once: true });
+	});
 }
 
 /** The bash a check runs through on win32 — this build's own copy of the
@@ -784,23 +838,7 @@ export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout,
 	};
 	child.stdout.on("data", capture);
 	child.stderr.on("data", capture);
-	let killed = null;
-	const timer = setTimeout(() => {
-		killed = "timeout";
-		killGroup(child);
-	}, timeout);
-	const onAbort = () => {
-		killed = "abort";
-		killGroup(child);
-	};
-	if (signal?.aborted) onAbort();
-	else signal?.addEventListener("abort", onAbort, { once: true });
-	const exitCode = await new Promise((resolveExit) => {
-		child.on("error", () => resolveExit(null));
-		child.on("exit", (code) => resolveExit(code));
-	});
-	clearTimeout(timer);
-	signal?.removeEventListener("abort", onAbort);
+	const { code: exitCode, killed, unconfirmed } = await superviseExit(child, timeout, signal);
 	const code = killed !== null ? null : exitCode;
 	return {
 		kind,
@@ -808,6 +846,7 @@ export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout,
 		exitCode: code,
 		passed: code === 0,
 		...(killed !== null ? { killed } : {}),
+		...(unconfirmed.length > 0 ? { unconfirmed } : {}),
 		tail: output.slice(-ACCEPTANCE_TAIL),
 		durationMs: Date.now() - started,
 		patchSha256,
@@ -866,27 +905,7 @@ function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, mod
 	child.stdout.on("data", (d) => {
 		stdout += String(d);
 	});
-	const exited = new Promise((resolve) => {
-		child.on("exit", (code, sig) => resolve({ code: code ?? -1, signal: sig }));
-	});
-	let killed = null;
-	const timer = setTimeout(() => {
-		killed = "timeout";
-		killGroup(child);
-	}, timeout);
-	const onAbort = () => {
-		killed = "abort";
-		killGroup(child);
-	};
-	if (signal?.aborted) onAbort();
-	else signal?.addEventListener("abort", onAbort, { once: true });
-	// The timeout and abort listener live until the child EXITS — clearing
-	// them in a finally around the setup would disarm them before the exit.
-	return exited.then(({ code }) => {
-		clearTimeout(timer);
-		signal?.removeEventListener("abort", onAbort);
-		return { code, stdout, killed };
-	});
+	return superviseExit(child, timeout, signal).then(({ code, killed, unconfirmed }) => ({ code: code ?? -1, stdout, killed, unconfirmed }));
 }
 
 /** The role policy: read-only for explorer/reviewer, the full six for
