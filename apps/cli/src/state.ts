@@ -7,16 +7,17 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { taskWhat } from "./task-notice.js";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
+import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
 import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
+import { taskNoticeLines, taskWhat } from "./task-notice.js";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
@@ -74,6 +75,25 @@ export function taskWhatOf(sessionId: string | undefined): (taskId: string) => s
 			return undefined; // a corrupt journal is reported where it is read on purpose
 		}
 	};
+}
+
+/** Amendment 8: the lost tasks this process has told the person of, per
+ *  session — when the model's notice of the same loss arrives later, its
+ *  row is not said again. */
+const toldLost = new Map<string, Set<string>>();
+export function lostToldOf(sessionId: string): Set<string> {
+	let told = toldLost.get(sessionId);
+	if (told === undefined) toldLost.set(sessionId, (told = new Set()));
+	return told;
+}
+
+/** The transcript lines a delivery shows: a loss already told is left out. */
+export function deliveryLines(sessionId: string, items: readonly TaskDeliveryItem[]): string[] {
+	const told = lostToldOf(sessionId);
+	return taskNoticeLines(
+		items.filter((i) => !(i.transition === "unknown" && told.has(i.taskId))),
+		taskWhatOf(sessionId),
+	);
 }
 
 export function tasksFor(sessionId: string | undefined): TaskManager | undefined {

@@ -30,7 +30,7 @@ import {
 } from "@vincemakes/kiso-tui";
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
-import { liveTasks, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
+import { deliveryLines, liveTasks, lostToldOf, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
 import { taskCounts, taskNoticeLines } from "./task-notice.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
@@ -1036,7 +1036,7 @@ export async function consumeRun(
 				// any run that carries one, as replay.ts does for old logs.
 				// ADR-0058: a task notice is a row, never the person's chip
 				if (ev.via?.kind === "tasks") {
-					for (const row of taskNoticeLines(ev.via.items, taskWhatOf(session.id))) body.notice(row);
+					for (const row of deliveryLines(session.id, ev.via.items)) body.notice(row);
 					break;
 				}
 				if (ev.source === "system") {
@@ -1718,7 +1718,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		spentUsd = (spentUsd ?? 0) + usd;
 	};
 	const queueTurn = (line: string, via?: UserInputVia): void => {
-		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? taskNoticeLines(via.items, taskWhatOf(session.id)).join(" · ") : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
+		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? (deliveryLines(session.id, via.items).join(" · ") || taskNoticeLines(via.items, taskWhatOf(session.id)).join(" · ")) : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
 		pendingTurns.push(slot);
 		queued += 1;
 		chainRef.current = chainRef.current.then(async () => {
@@ -1796,6 +1796,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			: session.useTasks(taskManager, {
 					wake: mergedConfig.taskWake !== false,
 					onWake: (w) => queueTurn(w.content, w.via),
+					// Amendment 8: a loss is said when kiso concludes it — the
+					// model's notice still rides the next run, and is not said again
+					onLost: (ids) => {
+						const told = lostToldOf(session.id);
+						for (const id of ids) told.add(id);
+						for (const line of taskNoticeLines(ids.map((taskId) => ({ taskId, transition: "unknown" as const })), taskWhatOf(session.id))) body.notice(line);
+					},
 					...(Number.isFinite(autoDetachFromEnv) && autoDetachFromEnv >= 0 ? { autoDetachMinAgeMs: autoDetachFromEnv } : {}),
 				});
 	// 3e: a task's change repaints the row it is counted on
