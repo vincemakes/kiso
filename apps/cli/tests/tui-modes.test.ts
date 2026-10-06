@@ -674,3 +674,85 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 		expect(plain).toContain("don't ask → off");
 	}, 120_000);
 });
+
+describe("the remote boundary (real PTY, 24×80) — a saved shell rule does not carry a destructive push", () => {
+	/** The generated rule file, as `2 Yes, don't ask again for shell` writes it. */
+	const RULE_FILE = [
+		"const RULES = new Set([\"shell\"]);",
+		"export default {",
+		'  name: "dont-ask-again",',
+		"  rules: RULES,",
+		'  approvals: [{ decide(call) { return RULES.has(call.name) ? { action: "allow" } : { action: "abstain" }; } }],',
+		"};",
+		"",
+	].join("\n");
+
+	function setup(done: string) {
+		const { env, dirs } = isolatedEnv();
+		const base = realpathSync(mkdtempSync(join(tmpdir(), "kiso-boundary-")));
+		const workdir = join(base, "work");
+		mkdirSync(workdir, { recursive: true });
+		writeFileSync(join(dirs.extensions, "dont-ask-again.mjs"), RULE_FILE, "utf8");
+		const script = join(base, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input: { command: "touch made.txt" } }, { type: "stop", reason: "tool_use" }] },
+				// no repository here and no such remote: an approved push fails at once
+				{ events: [{ type: "tool_call_end", callId: "s2", name: "shell", input: { command: "git push --force-with-lease nowhere main" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "text_delta", text: done }, { type: "stop", reason: "end_turn" }] },
+			]),
+			"utf8",
+		);
+		// git must not walk up out of the scratch directory
+		return { env: { ...env, KISO_FAUX_SCRIPT: script, GIT_CEILING_DIRECTORIES: base } as NodeJS.ProcessEnv, workdir };
+	}
+
+	it("default: the routine command runs on the saved rule, and the force push is put to the person", () => {
+		const { env, workdir } = setup("rb done");
+		ptyRun(
+			env,
+			[
+				["▌ ", "go\r"],
+				// the push's panel — ONE answer is fed; had the routine command
+				// asked too, it would take it and the push would wait out the timeout
+				["don't ask again", "1\r"],
+				["rb done", "exit\r"],
+			],
+			workdir,
+			{ modeFlag: "default", session: "boundary-ask" },
+		);
+		const events = new SessionStore(join(env.KISO_HOME!, "sessions")).load("boundary-ask").map((r) => r.event);
+		const asked = events.filter((e) => e.type === "permission_requested").map((e) => (e as { callId: string }).callId);
+		expect(asked, "only the push was put to the person").toEqual(["s2"]);
+		const decided = decidedEvents(env, "boundary-ask");
+		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "dont-ask-again" });
+		// the person answered it (option 1) — a decision exists, and it is theirs
+		expect(decided.find((e) => e.callId === "s2")).toMatchObject({ decision: "approved" });
+		expect(decided.find((e) => e.callId === "s2")?.decidedBy, "the person, not the saved rule").toBeUndefined();
+		expect(existsSync(join(workdir, "made.txt")), "the routine command ran").toBe(true);
+	}, 90_000);
+
+	it("with don't ask on: the force push is refused with its reason, and the run goes on", () => {
+		const { env, workdir } = setup("rb2 done");
+		const out = ptyRun(
+			{ ...env, KISO_DONT_ASK: "1" },
+			[
+				["▌ ", "go\r"],
+				["rb2 done", "exit\r"],
+			],
+			workdir,
+			{ modeFlag: "default", session: "boundary-dontask" },
+		);
+		expect(stripANSI(out)).toContain("[dontAsk] shell would ask — denied");
+		const decided = decidedEvents(env, "boundary-dontask");
+		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "dont-ask-again" });
+		expect(decided.find((e) => e.callId === "s2")).toMatchObject({ decision: "denied" });
+		expect(decided.find((e) => e.callId === "s2")?.reason).toContain("dontAsk");
+		// KNOWN, an open finding (the modes round): the switch answers through
+		// the same approve() a person's "No" uses, so the refusal is recorded
+		// with no decidedBy — shaped as a person's decision. Pinned so its fix
+		// lands as a deliberate change to this line.
+		expect(decided.find((e) => e.callId === "s2")?.decidedBy).toBeUndefined();
+	}, 90_000);
+});
