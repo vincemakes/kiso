@@ -1802,31 +1802,27 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
 /** W-F1: a timer shorter than this is a "yield" the model does not need. */
 const WAIT_MIN_TIMER_MS = 1_000;
 
-export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number; note?: string; goalId?: string }> {
-	return defineTool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number; note?: string; goalId?: string }>({
+export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number }> {
+	// The rent (round wait-r1, measured): this tool's table entry and prompt
+	// text are paid on EVERY request of a session that has tasks, waited or
+	// not — 316 tokens as first shipped. So: no per-field descriptions, no
+	// guideline line, the yield rule lives in the result text the model
+	// reads when it matters. `note` and `goalId` stay on the host API
+	// (ShellTasks.wait); the model-facing schema gains goalId with goals.
+	return defineTool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number }>({
 		name: "wait",
-		description:
-			"Wait for a future event without polling: a timer ({kind:\"timer\", ms}), a background task's end ({kind:\"task\", id}), or an event source this session registered. Returns at once; then finish your message and stop — the event comes back as a runtime notice.",
+		description: 'Wait without polling for {kind:"timer",ms}, {kind:"task",id} or a registered source. Returns at once; end your message and the event wakes you. deadlineMs: give up after (default 1 day).',
 		parameters: {
 			type: "object",
 			properties: {
-				for: {
-					type: "object",
-					description: "What to wait for: kind plus that kind's fields",
-					properties: { kind: { type: "string", description: "timer | task | a registered source kind" } },
-					required: ["kind"],
-					additionalProperties: true,
-				},
-				deadlineMs: { type: "integer", minimum: 1, description: "Give up after this long (default 24 h, at most 7 d); an expiry is reported like any end" },
-				note: { type: "string", maxLength: 200, description: "Shown beside the wait while it waits" },
-				goalId: { type: "string", description: "The goal this wait serves, when one is open" },
+				for: { type: "object", properties: { kind: { type: "string" } }, required: ["kind"], additionalProperties: true },
+				deadlineMs: { type: "integer", minimum: 1 },
 			},
 			required: ["for"],
 			additionalProperties: false,
 		},
-		promptSnippet: "wait — end this turn and be woken by a timer, a task's end, or a registered event",
-		promptGuidelines: ["After `wait`, finish your message and stop: the event comes back as a runtime notice. Never poll in a loop for something you can wait on."],
-		execute: async ({ for: source, deadlineMs, note, goalId }, ctx) => {
+		promptSnippet: "wait — end the turn; an event wakes you",
+		execute: async ({ for: source, deadlineMs }, ctx) => {
 			const tasks = opts.tasks?.(ctx.sessionId);
 			if (tasks?.wait === undefined) return { content: "waits are not available in this session", isError: true, errorKind: "precondition" };
 			const kinds = tasks.waitKinds?.() ?? [];
@@ -1846,8 +1842,6 @@ export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: strin
 			const w = await tasks.wait({
 				source,
 				...(deadlineMs !== undefined ? { deadlineMs } : {}),
-				...(note !== undefined ? { note } : {}),
-				...(goalId !== undefined ? { goalId } : {}),
 				...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
 			});
 			const until = w.wait !== undefined ? `, until ${new Date(w.wait.deadlineAt).toISOString()}` : "";

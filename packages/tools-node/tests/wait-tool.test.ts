@@ -30,6 +30,15 @@ function fakeTasks(kinds: readonly string[] = ["timer", "task"]): ShellTasks & {
 const ctx = (sessionId = "s"): ToolContext => ({ sessionId, executionId: "ex-1", signal: new AbortController().signal }) as unknown as ToolContext;
 
 describe("ADR-0059 — the wait tool", () => {
+	it("the rent (round wait-r1): the wire entry plus the prompt text stays under 600 bytes — it is paid on every request", () => {
+		const w = waitTool({ workspaceRoot: "/tmp", tasks: () => fakeTasks() });
+		const wire = JSON.stringify({ name: w.name, description: w.description, input_schema: w.parameters });
+		const prompt = (w.promptSnippet ?? "").length + (w.promptGuidelines ?? []).join("\n").length;
+		expect(wire.length + prompt).toBeLessThan(600);
+		expect(w.promptGuidelines ?? []).toEqual([]);
+		expect(Object.keys((w.parameters as { properties: object }).properties)).toEqual(["for", "deadlineMs"]);
+	});
+
 	it("is in the coding toolset exactly when tasks are, beside task_stop", () => {
 		const names = (opts: Parameters<typeof createCodingTools>[0]) => createCodingTools(opts).map((t) => t.name);
 		expect(names({ workspaceRoot: "/tmp" })).not.toContain("wait");
@@ -39,11 +48,11 @@ describe("ADR-0059 — the wait tool", () => {
 	it("registers a timer wait for this execution and tells the model to stop", async () => {
 		const tasks = fakeTasks();
 		const tool = waitTool({ workspaceRoot: "/tmp", tasks: () => tasks });
-		const r = await tool.execute({ for: { kind: "timer", ms: 60_000 }, note: "cooldown" }, ctx());
+		const r = await tool.execute({ for: { kind: "timer", ms: 60_000 } }, ctx());
 		expect(r.isError).toBe(false);
 		expect(r.content).toMatch(/^waiting as t5 \(timer, until 2023-11-14T22:13:20\.000Z\)\. This wait alone wakes you when it fires — register nothing else for it\. Finish your message and stop now/);
 		expect(r.content).toMatch(/task_stop t5 cancels it/);
-		expect(tasks.waits).toEqual([{ source: { kind: "timer", ms: 60_000 }, note: "cooldown", executionId: "ex-1" }]);
+		expect(tasks.waits).toEqual([{ source: { kind: "timer", ms: 60_000 }, executionId: "ex-1" }]);
 	});
 
 	it("refuses a kind the session did not register, naming the available ones", async () => {

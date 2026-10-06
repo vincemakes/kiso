@@ -121,11 +121,20 @@ resident host).
 
 ### 5. The tool
 
-`wait({ for: { kind, … }, deadlineMs?, note?, goalId? })`, in the coding
-toolset beside `task_stop` whenever tasks are wired. It returns at once
-("waiting as t7 …"); its guideline tells the model to finish its message
-and stop, and never to poll for what it can wait on. `goalId` is on the
-schema from day one and unused until release 2a.
+`wait({ for: { kind, … }, deadlineMs? })`, in the coding toolset beside
+`task_stop` whenever tasks are wired. It returns at once ("waiting as
+t7 …"); its RESULT tells the model that this wait alone wakes it and to
+end its message now. It refuses a wait on a wait and a timer under a
+second (round wait-r1, finding W-F1). `note` and `goalId` are on the host
+API (`ShellTasks.wait`), not on the model-facing schema: the model's
+schema gains `goalId` when goals ship (release 2a).
+
+**The rent, measured** (round wait-r1, the first request's input on route
+`co`): as first built, +316 tokens on every request of a session with
+tasks (per-field descriptions, a prompt guideline, `note`, `goalId`).
+Trimmed to +150 (T3, the trimmed rc 2,973 against the published 0.46.1's
+2,823, same first turn). A test pins the wire entry plus prompt text
+under 600 bytes.
 
 ### 6. The notice
 
@@ -159,8 +168,8 @@ driver is armed; a crash before it leaves no wait and no effect.
 change → the request-byte gates, the paired bench and the crash matrix
 block.
 
-**Static rent:** the `wait` schema and one guideline line, estimated
-90–130 tokens per request at the cache-read price.
+**Static rent:** estimated 90–130 tokens per request; MEASURED +316 as
+first built and +150 after the trim (§5). Paid at the cache-read price.
 
 **Paired bench, candidate vs 0.46.0, interleaved:** T3 and T5 with the
 frozen margins. **New fixtures, same task on both arms:** W-A a timer
