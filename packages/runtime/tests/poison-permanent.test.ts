@@ -38,6 +38,12 @@ async function seedTerminated(store: SessionStore, seq0: number): Promise<void> 
 	await store.append("s", "r0", { seq: seq0 + 1, type: "terminal", outcome: { kind: "completed" } });
 }
 
+/** Both cases contend with a lock held in THIS process, so the store
+ *  walks its whole same-process retry (25 attempts, 20 ms apart) before it
+ *  refuses: about 0.7 s on macOS, 5.1 s once on the Windows CI runner
+ *  (slower file operations, coarser timers) — past vitest's 5 s default. */
+const LOCK_RETRY_BUDGET = 30_000;
+
 describe("permanent poison (round 4)", () => {
 	it("a session whose writes failed against a LIVE writer stays poisoned forever — even after the lock frees", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-poison-"));
@@ -75,7 +81,7 @@ describe("permanent poison (round 4)", () => {
 		expect(records.map((r) => r.event.seq)).toEqual([0, 1, 2]); // only A's writes
 		expect(records.some((r) => r.event.type === "user_input" && r.event.content === "hello")).toBe(false);
 		expect(records.some((r) => r.event.type === "user_input" && r.event.content === "second")).toBe(false);
-	});
+	}, LOCK_RETRY_BUDGET);
 
 	it("runs constructed BEFORE the poison all fail on consumption — nothing of their context reaches the disk", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-poison-"));
@@ -112,5 +118,5 @@ describe("permanent poison (round 4)", () => {
 		expect(records.map((r) => r.event.seq)).toEqual([0, 1, 2, 3]); // A + C only
 		expect(records.some((r) => r.event.type === "user_input" && r.event.content === "one")).toBe(false);
 		expect(records.some((r) => r.event.type === "user_input" && r.event.content === "two")).toBe(false);
-	});
+	}, LOCK_RETRY_BUDGET);
 });
