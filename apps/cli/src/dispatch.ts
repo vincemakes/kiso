@@ -20,8 +20,8 @@ import { preferences, rememberEffort, setPreference } from "./preferences.js";
 import { settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
-import { queuedSwitchLines, seenUnknownTasks, tasksFor } from "./state.js";
-import { taskOutput, taskRow, taskStateLabel } from "./task-notice.js";
+import { queuedSwitchLines, tasksFor } from "./state.js";
+import { lostReason, taskOutput, taskRow, taskStateLabel } from "./task-notice.js";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { contextWindowTokens, microcompactThresholdFor, startStatusSpinner, statedContextWindow, windowSourceNote } from "./chat.js";
 import { authForProfile, directWriteProfile, profileAvailable, resolveContextWindow, unavailableReason, type ModelProfile } from "./config.js";
@@ -1287,8 +1287,8 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 /** ADR-0058 (3e) — `/tasks`, `/tasks show <id>`, `/tasks stop <id>`. On a
  *  dock the bare command is a pick: a task, then what to do with it. A
  *  stop is REQUESTED here; the row says `stopping` until the journal says
- *  how it ended. Looking at the list counts as having seen its unknown
- *  tasks (the status row stops counting them). */
+ *  how it ended. A task kiso lost track of says why in `show`
+ *  (Amendment 8). */
 async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	const manager = tasksFor(ctx.session.id);
 	if (manager === undefined) {
@@ -1304,6 +1304,9 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	}
 	const show = (t: TaskInfo): void => {
 		const lines = taskOutput(t);
+		// Amendment 8: a lost task says why, before its output
+		const why = lostReason(t);
+		if (why !== undefined) bodyLog(`${t.id} — lost track: ${why}; it may still be running`);
 		bodyLog(`${t.id} — ${t.agent !== undefined ? "its answer" : "its last output"}${lines.length === 0 ? ": nothing yet" : ""}`);
 		for (const line of lines) bodyLog(`  ${line}`);
 	};
@@ -1326,7 +1329,6 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 		bodyLog("no tasks in this session");
 		return;
 	}
-	for (const t of list) if (t.state.kind === "unknown") seenUnknownTasks.add(t.id);
 	if (!dock.active) {
 		for (const t of list) {
 			const r = taskRow(t);

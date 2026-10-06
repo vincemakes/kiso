@@ -7,6 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { taskWhat } from "./task-notice.js";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -62,6 +63,19 @@ export function codingToolOptions(): {
  *  — the `!` gesture — has none, and its shell is today's. */
 const taskManagers = new Map<string, TaskManager>();
 let taskBackend: ReturnType<typeof processTaskBackend> | undefined;
+/** Amendment 8: what a session's task ran — a lost task's transcript row
+ *  names it. Undefined when the task or its journal cannot be read. */
+export function taskWhatOf(sessionId: string | undefined): (taskId: string) => string | undefined {
+	return (taskId) => {
+		try {
+			const t = tasksFor(sessionId)?.get(taskId);
+			return t === undefined ? undefined : taskWhat(t);
+		} catch {
+			return undefined; // a corrupt journal is reported where it is read on purpose
+		}
+	};
+}
+
 export function tasksFor(sessionId: string | undefined): TaskManager | undefined {
 	if (sessionId === undefined || activeStoreDir === "") return undefined;
 	let manager = taskManagers.get(sessionId);
@@ -81,10 +95,6 @@ let exitTasks: "stop" | "leave" = "stop";
 export function setExitTasks(choice: "stop" | "leave"): void {
 	exitTasks = choice;
 }
-
-/** 3e: the unknown tasks the person has looked at in `/tasks` in this
- *  process — the status row stops counting them. */
-export const seenUnknownTasks = new Set<string>();
 
 /** 3e: the live tasks of every session this process opened — a runner's
  *  (`durable`, it survives this process) and moved commands (`moved`). */

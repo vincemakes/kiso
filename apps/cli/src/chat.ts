@@ -30,8 +30,8 @@ import {
 } from "@vincemakes/kiso-tui";
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
-import { liveTasks, mergedConfig, queuedSwitchLines, seenUnknownTasks, setExitTasks, tasksFor } from "./state.js";
-import { taskCounts, taskNoticeRow } from "./task-notice.js";
+import { liveTasks, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
+import { taskCounts, taskNoticeLines } from "./task-notice.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
@@ -1036,7 +1036,7 @@ export async function consumeRun(
 				// any run that carries one, as replay.ts does for old logs.
 				// ADR-0058: a task notice is a row, never the person's chip
 				if (ev.via?.kind === "tasks") {
-					body.notice(taskNoticeRow(ev.via.items));
+					for (const row of taskNoticeLines(ev.via.items, taskWhatOf(session.id))) body.notice(row);
 					break;
 				}
 				if (ev.source === "system") {
@@ -1625,18 +1625,18 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// most once a second; the idle row (repainted rarely) always reads —
 	// a task promoted or moved to the background makes no transition to
 	// hear, and the row the turn ends on must already count it
-	let taskRow: { readonly at: number; readonly seen: number; readonly counts: TaskCountsOnRow } | null = null;
+	let taskRow: { readonly at: number; readonly counts: TaskCountsOnRow } | null = null;
 	const taskCountsNow = (fresh = false): TaskCountsOnRow | undefined => {
 		const manager = tasksFor(session.id);
 		if (manager === undefined) return undefined;
-		if (fresh || taskRow === null || Date.now() - taskRow.at > 1_000 || taskRow.seen !== seenUnknownTasks.size) {
+		if (fresh || taskRow === null || Date.now() - taskRow.at > 1_000) {
 			let list: ReturnType<typeof manager.list> = [];
 			try {
 				list = manager.list();
 			} catch {
 				// a corrupt journal is reported where it is read on purpose
 			}
-			taskRow = { at: Date.now(), seen: seenUnknownTasks.size, counts: taskCounts(list, seenUnknownTasks) };
+			taskRow = { at: Date.now(), counts: taskCounts(list) };
 		}
 		return taskRow.counts;
 	};
@@ -1718,7 +1718,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		spentUsd = (spentUsd ?? 0) + usd;
 	};
 	const queueTurn = (line: string, via?: UserInputVia): void => {
-		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? taskNoticeRow(via.items) : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
+		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? taskNoticeLines(via.items, taskWhatOf(session.id)).join(" · ") : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
 		pendingTurns.push(slot);
 		queued += 1;
 		chainRef.current = chainRef.current.then(async () => {

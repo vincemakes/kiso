@@ -7,7 +7,9 @@
  * user_input — the model never sees the inspection); a clean exit with
  * live tasks asks first and says what each answer does; "leave" keeps a
  * runner's task running and says so; a steer during a long command lands
- * without waiting for it (ADR-0057 §5).
+ * without waiting for it (ADR-0057 §5). Amendment 8: a task kiso lost track
+ * of is said once in the transcript, by name, and `/tasks` lists it; the
+ * status row counts only what kiso manages.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 
-type Ev = { type: string; content?: unknown; source?: string };
+type Ev = { type: string; content?: unknown; source?: string; via?: { kind: string; items?: unknown } };
 const eventsOf = (home: string, id: string): Ev[] =>
 	readFileSync(join(home, "sessions", `${id}.jsonl`), "utf8")
 		.split("\n")
@@ -90,5 +92,37 @@ describe("ADR-0058 (3e) — the person's side of tasks", () => {
 		const events = eventsOf(dirs.home, "t3e-c");
 		expect(String(events.find((e) => e.type === "tool_result")?.content)).toMatch(/^moved to the background so the person's message could land; continued as background task t1/);
 		expect(events.filter((e) => e.type === "user_input").map((e) => String(e.content))).toEqual(["go", "also check the logs"]);
+	}, 120_000);
+
+	it("a task kiso lost track of is said once in the transcript, by name, and /tasks show says why (Amendment 8)", () => {
+		// the command kills its own runner: the runner never records the end,
+		// and the command's shell outlives it — kiso cannot know how it ends
+		const cmd = "sleep 1; kill -9 $PPID; sleep 2";
+		const { env, dirs } = isolatedEnv({ KISO_MODE: "bypass", KISO_FAUX_SCRIPT: fauxScript([shellCall({ command: cmd, background: true }), text("started it"), text("heard"), ...spares(3)]) });
+		const raw = ptyRun(["chat", "t3e-d"], env as NodeJS.ProcessEnv, {
+			feeds: [
+				[PROMPT, "go\r"],
+				["heard", "/tasks show t1\r"],
+				["t1 — lost track:", "exit\r"],
+			],
+			// a lost task is a notice, not a wake: the next message carries
+			// it. The runner dies ~1 s after the task starts and a gone
+			// runner is read within one identify window (5 s) — 15 s is margin
+			delays: [[15, "next\r"]],
+			timeout: 60,
+		});
+		expect(raw).toContain(`✦ lost track of t1 (${cmd})`);
+		expect(raw).toContain("it may still be running · /tasks shows it");
+		expect(raw).toContain("t1 — lost track: its runner is gone without recording its end; it may still be running");
+		// the status row never held it
+		expect(raw).not.toContain("◌");
+		expect(raw).not.toMatch(/\d+ unknown/);
+		// said once: one delivery, and the model's side still reads unknown
+		const notices = eventsOf(dirs.home, "t3e-d").filter((e) => e.type === "user_input" && e.via?.kind === "tasks");
+		expect(notices.map((e) => e.via?.items)).toEqual([[{ taskId: "t1", transition: "unknown" }]]);
+		expect(String(notices[0]?.content)).toContain('status="unknown"');
+		expect(journal(dirs.home, "t3e-d", "t1")).not.toContain('"type":"terminal"');
+		// a gone runner is never asked to stop at exit, so nothing is reported unconfirmed
+		expect(raw).not.toContain("stop unconfirmed");
 	}, 120_000);
 });
