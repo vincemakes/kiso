@@ -123,7 +123,7 @@ describe("Amendment 8 — a lost task that records its end is still announced", 
 describe("Amendment 8 (rev 2) — the person hears of a loss when kiso concludes it", () => {
 	const delivery = (manager: TaskManager, events: unknown[] = []) => {
 		const told: string[][] = [];
-		const d = new TaskDelivery({ manager, events: () => events as never, liveRun: () => undefined, onLost: (ids) => void told.push([...ids]) } as never);
+		const d = new TaskDelivery({ manager, events: () => events as never, liveRun: () => undefined, onLost: (ids) => void told.push([...ids]) });
 		return { d, told };
 	};
 
