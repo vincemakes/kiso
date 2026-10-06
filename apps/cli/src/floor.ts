@@ -346,8 +346,8 @@ export function innerLines(argv: readonly LooseWord[], home: string): { readonly
 /** How deep command lines inside command lines are followed — `sh -c`,
  *  `eval` — and how many are read in all: eval's two readings would
  *  otherwise double at every level. */
-const MAX_INNER_DEPTH = 16;
-const MAX_INNER_LINES = 256;
+export const MAX_INNER_DEPTH = 16;
+export const MAX_INNER_LINES = 256;
 
 /** A target: a word, or the root of the repository a git command runs in. */
 type Target = LooseWord | "repo";
@@ -372,6 +372,46 @@ interface Destructive {
 	readonly label?: string;
 	/** R6: a find that selects — only a home subtree refuses it */
 	readonly subtreesOnly?: boolean;
+}
+
+/** git's global options, read to the subcommand. Shared by the floor and
+ *  the remote boundary (remote-boundary.ts), which must find the same
+ *  subcommand the floor does: an option without a value is one word
+ *  skipped, whatever it is, so `git --no-pager push` reads as push. */
+export interface GitInvocation {
+	readonly sub: string | undefined;
+	readonly rest: readonly LooseWord[];
+	/** B7: several -C compose, each relative to the one before */
+	readonly cds: readonly LooseWord[];
+	/** B7: --work-tree X IS the tree a whole-tree command works on */
+	readonly workTree: LooseWord | undefined;
+	/** B7: --git-dir X is a target in itself (space and = forms both) */
+	readonly gitDirs: readonly LooseWord[];
+}
+
+/** `args` is git's argv without `git`. */
+export function gitInvocation(args: readonly LooseWord[]): GitInvocation {
+	let i = 0;
+	const cds: LooseWord[] = [];
+	let workTree: LooseWord | undefined;
+	const gitDirs: LooseWord[] = [];
+	while (i < args.length && args[i]!.text.startsWith("-")) {
+		const t = args[i]!.text;
+		const eq = /^--(work-tree|git-dir)=(.*)$/.exec(t);
+		if (eq !== null) {
+			const value = { ...args[i]!, text: eq[2]!, unknownAt: -1, tilde: eq[2]!.startsWith("~") };
+			if (eq[1] === "work-tree") workTree = value;
+			else gitDirs.push(value);
+		}
+		if ((t === "-C" || t === "--work-tree" || t === "--git-dir") && i + 1 < args.length) {
+			if (t === "-C") cds.push(args[i + 1]!);
+			else if (t === "--work-tree") workTree = args[i + 1];
+			else gitDirs.push(args[i + 1]!);
+			i += 2;
+		} else if (t === "-c" || t === "--namespace" || t === "--exec-path") i += 2;
+		else i += 1;
+	}
+	return { sub: args[i]?.text, rest: args.slice(i + 1), cds, workTree, gitDirs };
 }
 
 /** The destructive command's targets, or null when it is not destructive. */
@@ -410,31 +450,7 @@ function destructiveTargets(argv: readonly LooseWord[]): Destructive | null {
 		return { targets: paths.length > 0 ? paths : [literal(".")], label: "find with no selecting primary" };
 	}
 	if (name !== "git") return null;
-	let i = 0;
-	// B7: several -C compose, each relative to the one before
-	const cds: LooseWord[] = [];
-	// B7: --work-tree X IS the tree a whole-tree command works on; --git-dir
-	// X is a target in itself (space and = forms both)
-	let workTree: LooseWord | undefined;
-	const gitDirs: LooseWord[] = [];
-	while (i < args.length && args[i]!.text.startsWith("-")) {
-		const t = args[i]!.text;
-		const eq = /^--(work-tree|git-dir)=(.*)$/.exec(t);
-		if (eq !== null) {
-			const value = { ...args[i]!, text: eq[2]!, unknownAt: -1, tilde: eq[2]!.startsWith("~") };
-			if (eq[1] === "work-tree") workTree = value;
-			else gitDirs.push(value);
-		}
-		if ((t === "-C" || t === "--work-tree" || t === "--git-dir") && i + 1 < args.length) {
-			if (t === "-C") cds.push(args[i + 1]!);
-			else if (t === "--work-tree") workTree = args[i + 1];
-			else gitDirs.push(args[i + 1]!);
-			i += 2;
-		} else if (t === "-c" || t === "--namespace" || t === "--exec-path") i += 2;
-		else i += 1;
-	}
-	const sub = args[i]?.text;
-	const rest = args.slice(i + 1);
+	const { sub, rest, cds, workTree, gitDirs } = gitInvocation(args);
 	const flags = new Set(rest.filter((a) => a.text.startsWith("-")).map((a) => a.text));
 	const as = (targets: Target[]): Destructive => ({
 		targets: [...targets.map((t) => (t === "repo" && workTree !== undefined ? workTree : t)), ...gitDirs],
