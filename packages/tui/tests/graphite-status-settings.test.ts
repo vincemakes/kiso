@@ -68,11 +68,19 @@ describe("R3e — the /status sheet", () => {
 		expect(editor.line()).toBe("");
 	});
 
-	it("the keys sheet is unchanged: any key closes it and is eaten", () => {
+	// Re-derived for the sheets round (owner, 2026-10-06): DECLARED REVERSAL
+	// of "the keys sheet is unchanged: any key closes it and is eaten" —
+	// every sheet closes the same way now, and says so on its last row.
+	it("the keys sheet closes the same way: a key closes it AND is typed; esc and ? are eaten", () => {
 		editor.feed(enc("?"));
 		expect(editor.sheetContent()).toBe(true);
 		editor.feed(enc("x"));
 		expect(editor.sheetOpen()).toBe(false);
+		expect(editor.line()).toBe("x");
+		editor.feed(enc("\x15"));
+		editor.feed(enc("?"));
+		editor.feed(enc("?"));
+		expect(editor.sheetOpen(), "the ? that opened it closes it, and does not reopen it").toBe(false);
 		expect(editor.line()).toBe("");
 	});
 });

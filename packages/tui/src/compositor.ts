@@ -2912,7 +2912,16 @@ export class Body {
 		// stood here until R14: a resize now reprints from the model, so
 		// there is no stale fold for a width change to re-index.
 		const march = all.slice(skip);
-		for (const line of march.length > contentRows ? march.slice(march.length - contentRows) : march) {
+		// The sheets round (owner, 2026-10-06): a sheet sits ON the
+		// composer. When the window's top cannot come back down (R13 — a
+		// taller band, the `/` list, pushed rows into the scrollback) the
+		// rows a shorter sheet leaves free go ABOVE it, between the
+		// conversation and the sheet — not between the sheet and the
+		// composer's rail, where they read as the sheet stopping short.
+		const sheetUp = (this.#sheetState?.() ?? false) !== false;
+		const short = contentRows - march.length;
+		const placed = sheetUp && short > 0 && liveLines.length > 0 && liveLines.length <= march.length ? [...march.slice(0, march.length - liveLines.length), ...new Array<string>(short).fill(""), ...march.slice(march.length - liveLines.length)] : march;
+		for (const line of placed.length > contentRows ? placed.slice(placed.length - contentRows) : placed) {
 			desired[r - 1] = this.#checked(line, W);
 			r += 1;
 		}

@@ -23,7 +23,7 @@
  */
 
 import { kUnit } from "./lines.js";
-import { meterGlyphs } from "./context-ledger.js";
+import { meterCells, meterGlyphs } from "./context-ledger.js";
 
 /** 0.40.0 — the compacting row's bar: output produced so far against the
  *  summary call's output budget (text AND reasoning — see the runtime's
@@ -392,7 +392,6 @@ export interface BarInput {
 }
 
 /** The ctx meter's width in cells (§8.9). */
-const METER_CELLS = 10;
 
 /**
  * §8.9 — the ctx meter: ten `▆` cells with the used share filled, then the
@@ -412,11 +411,8 @@ export function ctxMeter(ctx: BarInput["ctx"]): string {
 	if (p.track === "") return `ctx ${pct}`;
 	// the cells follow the percentage SHOWN: `ctx 0%` is an empty meter,
 	// and from 1% at least one cell is filled (owner, 2026-09-29 — a lit
-	// cell beside `0%` read as a contradiction)
-	const shown = Math.round(used * 100);
-	const filled = shown <= 0 ? 0 : Math.min(METER_CELLS, Math.max(1, Math.round(shown / 10)));
-	const tone = used >= ctx.hard ? p.fail : used >= ctx.soft ? p.gold : p.ink2;
-	return `${p.dim}ctx${p.reset} ${tone}${"▆".repeat(filled)}${p.track}${"▆".repeat(METER_CELLS - filled)}${p.fgEnd} ${p.dim}${pct}${p.reset}`;
+	// cell beside `0%` read as a contradiction); one rule with /context's
+	return `${p.dim}ctx${p.reset} ${meterCells(used, ctx.soft, ctx.hard)} ${p.dim}${pct}${p.reset}`;
 }
 
 /**

@@ -30,7 +30,7 @@ import { displayWidth, visibleWidth, widthCut } from "./width.js";
 // TUI2-R2pre ④: the ONE display-verb table (strings.ts, beside
 // KEY_BINDINGS). strings.js imports only render/width here, so this edge
 // adds no cycle.
-import { bandHeader, displayVerb } from "./strings.js";
+import { SHEET_CLOSE, bandHeader, displayVerb } from "./strings.js";
 import {
 	bannerLines,
 	breathFrame,
@@ -2285,7 +2285,7 @@ export function infoSheetRows(title: string, facts: readonly { readonly label: s
 		const folded = foldWords(escapeTerminal(f.value), room);
 		for (const [i, line] of folded.entries()) rows.push(`  ${i === 0 ? `${p.dim}${f.label.padEnd(labelW)}${p.reset}` : " ".repeat(labelW)}${line}`);
 	}
-	rows.push(`  ${p.dim}esc closes \u00b7 typing goes to the input${p.reset}`);
+	rows.push(`  ${p.dim}${SHEET_CLOSE}${p.reset}`);
 	return rows.map((r) => cutLine(r, W));
 }
 
