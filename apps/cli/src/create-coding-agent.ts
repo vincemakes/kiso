@@ -19,8 +19,8 @@ import { builtInLayer } from "./builtin.js";
 import { recordLearnedWindow, useLearnedWindows } from "./learned-windows.js";
 import { compactionDiscardedNotice, contextWindowTokens, knownContextWindow, unknownWindowNotice, windowLearnedNotice } from "./chat.js";
 import { type PolicyCall } from "@vincemakes/kiso-core";
-import { guardSavedAllow, isProtectedWrite } from "./protected-writes.js";
-import { floorExtension, isDestructiveCall } from "./floor.js";
+import { guardSavedAllow, neverInheritedCall } from "./protected-writes.js";
+import { floorExtension } from "./floor.js";
 import { protectedShellExtension } from "./protected-shell.js";
 import { homedir } from "node:os";
 import { breakerExtension } from "./breaker.js";
@@ -237,9 +237,10 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	// 0.40.0: the read-only shell allow sits after the tiers — an allow from
 	// it outranks a tier's ask and names itself in decidedBy.
 	// 0.40.0: a saved allow never carries a write into .git/ or .kiso/, nor
-	// a destructive shell command.
+	// a destructive shell command; 0.46.2: nor a command across the remote
+	// boundary (remote-boundary.ts).
 	const workspaceRoot = (): string => codingToolOptions().workspaceRoot;
-	const neverInherited = (call: PolicyCall): boolean => isProtectedWrite(call, workspaceRoot()) || isDestructiveCall(call);
+	const neverInherited = (call: PolicyCall): boolean => neverInheritedCall(call, workspaceRoot());
 	setNeverInherited(neverInherited);
 	// 0.40.0: the catastrophe floor, at the chain's HEAD — a deny there
 	// names itself in decidedBy and outranks every tier, bypass included.
