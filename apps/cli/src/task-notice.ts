@@ -31,9 +31,12 @@ export function taskStateLabel(task: TaskInfo): string {
 			return task.stoppedBy !== undefined ? "stopping" : s.ready ? "ready" : "running";
 		case "unknown":
 			return "◌ outcome unknown";
+		case "waiting":
+			return task.stoppedBy !== undefined ? "stopping" : "◷ waiting";
 		case "ended":
 			if (s.stopped) return "stopped";
-			if (s.error !== undefined) return "failed to start";
+			if (s.wait !== undefined) return s.wait.outcome;
+			if (s.error !== undefined) return task.profile === "wait" ? "failed" : "failed to start";
 			return s.exitCode !== null ? (s.exitCode === 0 ? "exited 0" : `failed ${s.exitCode}`) : `ended ${s.signal ?? ""}`.trim();
 	}
 }

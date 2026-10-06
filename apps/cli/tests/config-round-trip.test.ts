@@ -65,6 +65,7 @@ const CONFIG_SAMPLE: Record<string, unknown> = {
 	contextWindow: 654_321,
 	autoCompact: { thresholdRatio: 0.5 },
 	taskWake: false, // ADR-0058 (3c): false is the value a dropped field would hide
+	maxWakes: 7, // ADR-0059 §3.3: the chain budget
 	projectTrust: "ask",
 	theme: "dark",
 	floor: "off", // 0.40.0, user-level only — "round-trip" is not a <cwd> source

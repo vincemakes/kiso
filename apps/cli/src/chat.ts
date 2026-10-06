@@ -1795,6 +1795,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			? () => {}
 			: session.useTasks(taskManager, {
 					wake: mergedConfig.taskWake !== false,
+					...(mergedConfig.maxWakes !== undefined ? { maxWakes: mergedConfig.maxWakes } : {}),
 					onWake: (w) => queueTurn(w.content, w.via),
 					...(Number.isFinite(autoDetachFromEnv) && autoDetachFromEnv >= 0 ? { autoDetachMinAgeMs: autoDetachFromEnv } : {}),
 				});

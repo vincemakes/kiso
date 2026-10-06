@@ -375,7 +375,7 @@ export class AgentSession {
 		manager: TaskManager,
 		// autoDetachMinAgeMs (3e D1): how old a foreground command must be
 		// before a steer detaches it — default AUTO_DETACH_MIN_AGE_MS
-		options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs"> & { readonly autoDetachMinAgeMs?: number } = {},
+		options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs" | "maxWakes"> & { readonly autoDetachMinAgeMs?: number } = {},
 	): () => void {
 		this.#delivery?.close();
 		const { autoDetachMinAgeMs, ...deliveryOptions } = options;

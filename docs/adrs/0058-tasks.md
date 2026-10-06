@@ -1,6 +1,6 @@
 # ADR-0058: Tasks — execution that outlives the tool call that started it
 
-- **Status:** **Accepted** — ratified by the owner on 2026-09-28, in
+- **Status:** **Accepted** (§8 guard 3 and §10's "no scheduled tasks" overturned by ADR-0059, 2026-10-06 — see Amendment 8) — ratified by the owner on 2026-09-28, in
   their own words, with the group rule as written in §8 (a failure never
   wakes on its own). Rev 2: rev 1 went through one external review and
   its findings are applied (a visible one-release alias, `background` vs
@@ -808,3 +808,22 @@ record never tells the model anything by itself.
      re-measure runs F1b instead: an rc-only probe of the background
      delegate, the wake and the group delivery, which reports the child
      requests that tune D6's budget.
+
+## Amendment 8 (2026-10-06, ADR-0059) — the chain budget replaces lineage depth 1; one-shot timers
+
+- **§8 guard 3 ("lineage depth 1") is overturned.** A task that ends
+  inside a wake run may wake again. The bound is the chain budget:
+  `maxWakes` autonomous wakes since the last run a person started
+  (default 20; CLI setting and host option), counted from the log —
+  a wake run is one whose first input is a runtime notice. Past the
+  budget a terminal delivers as a notify whose line says "chain budget
+  spent". The switch (guard 4) stands.
+- **§10's "no scheduled or recurring tasks" is overturned for one-shot
+  timers.** A wait with `{ kind: "timer", ms }` is a task whose terminal
+  is the fire time. No recurrence.
+- **A fourth profile, `wait`.** Its records (`wait_fired`,
+  `wait_expired`), its verdict (`waiting`), and its notice line
+  (`<kiso-wait …/>`) are ADR-0059's. The restart rule of §6/§8 — a
+  terminal missed while nobody listened is a notify, never a wake at
+  startup — applies to a wait that resolves at re-arm because its time
+  had passed (`overdue`).
