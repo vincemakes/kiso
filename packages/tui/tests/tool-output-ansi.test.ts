@@ -22,6 +22,28 @@ const VITEST = [
 	`${E}[2m      Tests ${E}[22m ${E}[1m${E}[31m2 failed${E}[39m${E}[22m${E}[2m | ${E}[22m${E}[1m${E}[32m13 passed${E}[39m${E}[22m${E}[90m (15)${E}[39m`,
 ].join("\n");
 
+/** The expanded card's render of `rows` rows, each 1,700 unterminated
+ *  `ESC P` and a label (~3,400 chars a row), on the real clock: the result
+ *  arrives, then ctrl+o draws the WHOLE output through blockRows. */
+function renderExpanded(rows: number): number {
+	const hostile = Array.from({ length: rows }, (_, i) => `${`${E}P`.repeat(1_700)}row ${i}`).join("\n");
+	const writes: string[] = [];
+	const body = new Body({ active: () => true, height: () => 24, width: () => 100, editCol: () => 1, write: (s) => writes.push(s) });
+	body.enter();
+	body.toolStart("shell", "c1", { command: "cat hostile" });
+	body.toolRunning("c1");
+	const started = realNow();
+	body.toolResult("c1", { content: hostile, isError: false });
+	vi.advanceTimersByTime(16);
+	body.toggleExpanded();
+	vi.advanceTimersByTime(16);
+	const elapsed = realNow() - started;
+	const frame = writes.join("");
+	// the expanded card was drawn, with the WHOLE output
+	if (!frame.includes("ctrl+o collapses") || !frame.includes("row 0") || !frame.includes(`row ${rows - 1}`)) throw new Error(`the expanded card of ${rows} rows was not drawn whole`);
+	return elapsed;
+}
+
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
@@ -48,30 +70,33 @@ describe("tool output without its terminal styling", () => {
 		for (const remnant of ["[31m", "[41m", "[39m", "[22m", "[90m"]) expect(frame).not.toContain(remnant);
 	});
 
-	it("hostile output stays linear: 100,000 chars of unterminated ESC P through the card in under 50 ms", () => {
+	it("hostile output stays linear: four times the unterminated ESC P costs about four times as much, not sixteen", () => {
 		// the lead's review: a string-body branch that scanned lazily to the
 		// end of the text for its terminator made every unterminated `ESC P`
 		// an O(n) scan — n²/2 steps on the render path, synchronously (the
-		// DC-54 shape: a missing bound, not a sync/async question)
-		// ~100k chars: 30 rows, each 1,700 unterminated `ESC P` and a label —
-		// rows, so the card has a body to expand
-		const hostile = Array.from({ length: 30 }, (_, i) => `${`${E}P`.repeat(1_700)}row ${i}`).join("\n");
-		const writes: string[] = [];
-		const body = new Body({ active: () => true, height: () => 24, width: () => 100, editCol: () => 1, write: (s) => writes.push(s) });
-		body.enter();
-		body.toolStart("shell", "c1", { command: "cat hostile" });
-		body.toolRunning("c1");
-		// ctrl+o: the expanded card draws the WHOLE output through blockRows
-		const started = realNow();
-		body.toolResult("c1", { content: hostile, isError: false });
-		vi.advanceTimersByTime(16);
-		body.toggleExpanded();
-		vi.advanceTimersByTime(16);
-		const elapsed = realNow() - started;
-		const frame = writes.join("");
-		expect(frame).toContain("ctrl+o collapses"); // the expanded card was drawn
-		expect(frame).toContain("row 0"); // …with the WHOLE output
-		expect(elapsed, `rendering took ${Math.round(elapsed)} ms`).toBeLessThan(50);
+		// DC-54 shape: a missing bound, not a sync/async question).
+		//
+		// The gate compares the render at n and at 4n rather than holding it
+		// under a fixed number of milliseconds: a linear render costs about 4×
+		// (less, with the card's fixed cost), the quadratic one 16×. An
+		// absolute 50 ms budget went red at 72 ms on a loaded machine (a full
+		// check's unit pool on every core, load 21) while the render was
+		// linear; load slows both sizes alike, so the ratio does not move
+		// with it. Each size is the fastest of five, so one stall cannot
+		// decide the gate.
+		const RUNS = 5;
+		const fastest = (rows: number): number => {
+			let best = Number.POSITIVE_INFINITY;
+			for (let run = 0; run < RUNS; run += 1) best = Math.min(best, renderExpanded(rows));
+			return best;
+		};
+		const small = fastest(8); // ~27,000 chars
+		const large = fastest(32); // ~109,000 chars
+		expect(large / small, `${Math.round(small)} ms at n, ${Math.round(large)} ms at 4n`).toBeLessThan(8);
+		// a backstop on the absolute cost, wide enough for any load the ratio
+		// tolerates: the quadratic render took 817 ms at ~100,000 chars on an
+		// idle machine, the linear one a few
+		expect(large, `${Math.round(large)} ms at ~109,000 chars`).toBeLessThan(400);
 	});
 
 	it("a NAME keeps the visible remnant — stripping it would let an injected name pass as another", () => {
