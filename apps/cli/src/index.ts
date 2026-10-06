@@ -46,7 +46,7 @@ import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, 
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers, setChildTurnBudget, stopAllTasks } from "./state.js";
+import { settingsLayers, setChildTurnBudget, stopAllTasks, taskWhatOf } from "./state.js";
 import { finishChild, type ChildEnd } from "./child-result.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
@@ -1078,7 +1078,7 @@ async function chatLoop(
 			// prompt inside a conversation with thousands of events — the
 			// durable log was right there and none of it was shown. Empty for
 			// a fresh session, so `kiso chat` is byte-identical.
-			showResumeTail(session.log.all);
+			showResumeTail(session.log.all, session.id);
 			// R2 (owner, 2026-08-27): the resume list is NOT on the opening
 			// screen. `/resume` is where you go looking for a session; the
 			// opening's job is to say what THIS one is.
@@ -1107,7 +1107,7 @@ async function chatLoop(
 			void announceUpdate();
 		} else {
 			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
-			showResumeTail(session.log.all);
+			showResumeTail(session.log.all, session.id);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
 		// XP-1 §3.3.6: a /clear-fresh session INHERITS the live selection,
@@ -1216,9 +1216,10 @@ async function readSecret(prompt: string): Promise<string> {
  * there is no viewer and no cell renderer, so the plain text tail stays
  * (DC-51: one call, one cell).
  */
-function showResumeTail(events: Parameters<typeof resumeTail>[0]): void {
+function showResumeTail(events: Parameters<typeof resumeTail>[0], sessionId?: string): void {
 	const W = process.stdout.columns ?? 80;
-	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W);
+	// Amendment 8: a lost task's replayed row names what it ran
+	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W, taskWhatOf(sessionId));
 	else bodyLog(resumeTail(events, W).join("\n"));
 }
 
@@ -1588,7 +1589,7 @@ async function main(): Promise<void> {
 				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 				// REL-0152-D5 — the same tail on the explicit-id form. NOT on
 				// the -p path above: that one's stdout is a machine's input.
-				showResumeTail(session.log.all);
+				showResumeTail(session.log.all, session.id);
 				await resume(session, prompt, faux, input);
 				break;
 			}
@@ -1857,7 +1858,7 @@ async function main(): Promise<void> {
 		// scroll region, the cursor lands at the input line, no broken
 		// terminal (kill -9 excepted; `reset` saves it).
 		dock.exit();
-		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — outcome unknown`);
+		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — it may still be running`);
 		if (tasksAtExit.left.length > 0) console.error(`left running: ${tasksAtExit.left.join(", ")} — reopen this session to hear how ${tasksAtExit.left.length === 1 ? "it ends" : "they end"}`);
 		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.

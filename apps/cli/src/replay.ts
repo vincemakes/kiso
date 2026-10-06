@@ -22,7 +22,7 @@
 
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
-import { taskNoticeRow } from "./task-notice.js";
+import { taskNoticeLines } from "./task-notice.js";
 
 /** The Body surface the replay drives — the live run's own mutations. */
 export interface ReplayBody {
@@ -68,7 +68,7 @@ export function turnsOf(events: readonly Ev[]): Ev[][] {
 
 /** One turn through the Body — consumeRun's mapping, minus everything that
  *  needs the live process (clocks, tailers, usage, the recap). */
-function replayTurn(body: ReplayBody, turn: readonly Ev[]): void {
+function replayTurn(body: ReplayBody, turn: readonly Ev[], what?: (taskId: string) => string | undefined): void {
 	let thinking = false;
 	let said = false;
 	const results = new Set<string>();
@@ -81,7 +81,7 @@ function replayTurn(body: ReplayBody, turn: readonly Ev[]): void {
 			case "user_input": {
 				const ask = askOf(e);
 				if (ask !== null) body.userLine(ask);
-				else if ((e.via as { kind?: unknown } | undefined)?.kind === "tasks") body.notice(taskNoticeRow((e.via as { items: readonly TaskDeliveryItem[] }).items));
+				else if ((e.via as { kind?: unknown } | undefined)?.kind === "tasks") for (const row of taskNoticeLines((e.via as { items: readonly TaskDeliveryItem[] }).items, what)) body.notice(row);
 				else if (e.source === "system") {
 					body.notice("verification pass");
 					body.notice(`  ${typeof e.content === "string" ? e.content : ""}`);
@@ -140,7 +140,7 @@ const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : 
  * Replay a session's durable events into the body. Returns the number of
  * turns it found (0: a fresh session — nothing is drawn).
  */
-export function replayInto(body: ReplayBody, events: readonly Ev[], W = 80): number {
+export function replayInto(body: ReplayBody, events: readonly Ev[], W = 80, what?: (taskId: string) => string | undefined): number {
 	// The latest checkpoint: the turns it covers are what the model will
 	// read as its summary, not as turns.
 	let checkpoint: { coversToSeq: number; summary: string } | null = null;
@@ -161,14 +161,14 @@ export function replayInto(body: ReplayBody, events: readonly Ev[], W = 80): num
 	if (checkpoint !== null) {
 		const summary = checkpoint.summary;
 		body.fold(`checkpoint · summarizes ${plural(covered.length, "earlier turn")} · ctrl+r to read`, () => {
-			for (const t of covered) replayTurn(body, t);
+			for (const t of covered) replayTurn(body, t, what);
 		}, summary);
 	}
 	if (earlier.length > 0) {
 		body.fold(`${plural(earlier.length, "earlier turn")} · ctrl+r to read`, () => {
-			for (const t of earlier) replayTurn(body, t);
+			for (const t of earlier) replayTurn(body, t, what);
 		});
 	}
-	for (const t of shown) replayTurn(body, t);
+	for (const t of shown) replayTurn(body, t, what);
 	return total;
 }
