@@ -36,6 +36,7 @@ import {
 	breathFrame,
 	cutLine,
 	escapeTerminal,
+	oneRow,
 	stripAnsi,
 	foldThinking,
 	foldResult,
@@ -224,6 +225,24 @@ const proseRoom = (W: number): number => Math.max(1, W - EDGE.length * 2);
 
 // ---- the cell model (the CLI's mutation surface — unchanged from v5) ----
 
+/** Graphite §7.12 — the one word of a notice's sentence that carries the
+ *  weight, and its colour: the failure colour, the plan's blue, ink, and
+ *  (the tasks round) the success colour of an outcome that went well and
+ *  the gold of one nobody can know. */
+export interface NoticeMark {
+	readonly text: string;
+	readonly tone: "fail" | "blue" | "ink" | "ok" | "gold";
+}
+
+/** The tasks round — a further row of a one-row notice, drawn under the
+ *  first with its own label (`""`: none) in the same cell, so the rows of
+ *  one notice stay together (two cells would be a blank apart, D1). */
+export interface NoticeRow {
+	readonly label: string;
+	readonly sentence: string;
+	readonly mark?: NoticeMark;
+}
+
 export type BodyCell =
 	| { kind: "user"; text: string; done: true; turn: number }
 	| {
@@ -286,7 +305,7 @@ export type BodyCell =
 	/** Graphite §7.12 — `label` and `sentence` are the meta row's two
 	 *  halves, derived from `text` by the compositor; `text` is what a
 	 *  pipe prints, unchanged. */
-	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" }; stacked?: true }
+	| { kind: "notice"; text: string; done: true; label?: string; sentence?: string; mark?: NoticeMark; stacked?: true; oneRow?: true; also?: readonly NoticeRow[] }
 	/** Graphite §7.11 — the turn's seal: its forms, widest first; the
 	 *  widest that fits is drawn, and the narrowest is cut. */
 	| { kind: "seal"; tiers: readonly string[]; done: true }
@@ -687,20 +706,6 @@ export function gutterFold(gutter: string, line: string, W: number): string[] {
 	return foldLine(line, textW).map((r) => `${gutter}${r}`);
 }
 
-/** A6: the tool-header variant — ONE cut row, never a fold. A wide
- *  header (a long target path, a wordy denial reason) used to wrap
- *  through foldLine — every wrapped row repeated the gutter, the
- *  settled row grew past its previewed height. The header names the
- *  call — the ellipsis marks the cut, the body below still carries the
- *  full content. The budget: the gutter's own visible width + the
- *  ellipsis ride the row (the invariant ① cap holds). */
-export function gutterCut(gutter: string, line: string, W: number): string[] {
-	const gutterW = visibleWidth(gutter);
-	const textW = Math.max(1, W - gutterW - 1);
-	const cut = widthCut(line, textW);
-	return [`${gutter}${cut}${visibleWidth(line) > textW ? "…" : ""}`];
-}
-
 /** Lines without the phantom empty line after a trailing newline. */
 function countLines(text: string): number {
 	if (text === "") return 0;
@@ -862,6 +867,21 @@ class ToolExecution implements Component {
 			// 4c: a card settled from the durable log carries no clock at
 			// all — it says nothing about time rather than `?s`.
 			const elapsed = c.startedAt !== null && c.doneAt !== null ? settledLabel((c.doneAt - c.startedAt) / 1000) : c.startedAt === null && c.doneAt === null ? "" : "?s";
+			// The tasks round (owner, 2026-10-06): a BACKGROUND delegation
+			// returns at once, so its card settles in a tenth of a second with
+			// the work only just begun. It names its children — the roles on
+			// the head, `N in the background`, a row per child with the task id
+			// `/tasks` and the notice use — instead of the foreground summary it
+			// never writes (the card read `DELEGATE … 1 line` with no target).
+			const children = c.name === "delegate" && !c.isError ? backgroundChildren(c) : null;
+			if (children !== null) {
+				const p2 = palette();
+				const rw = Math.max(...children.map((x) => x.role.length));
+				const room = bodyRowRoom(W);
+				const rows = children.map((x) => cutLine(`${bodyRow()}${x.id}  ${p2.ink2}${x.role.padEnd(rw)}${p2.ink2 === "" ? "" : p2.fgEnd}  ${p2.dim}${x.task}${p2.reset}`, room));
+				const outcome = `${children.length} in the background${elapsed === "" ? "" : ` \u00b7 ${elapsed}`}`;
+				return card("done", "  ", verb, children.map((x) => x.role).join(" \u00b7 "), [outcome], slabPaints() ? rows : openBlock(rows), null, W, false);
+			}
 			const rawMeta = settledMeta(c);
 			const meta = escapeTerminal(rawMeta);
 			const attr = attribution(c).replace(/^ · /, "");
@@ -1523,6 +1543,30 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 	return parts;
 }
 
+/** The tasks round — a background delegation's children, from what the
+ *  call returned (`started 2 background children: t1 explorer (session …),
+ *  t2 reviewer (session …). They read …`) and what it was asked (each
+ *  task's role and words): the task id, the role, the task's first line.
+ *  Null for anything else — a foreground delegation, a refusal. */
+function backgroundChildren(c: { resultText: string; inputFull: string }): { id: string; role: string; task: string }[] | null {
+	const m = /^started \d+ background (?:child|children): (.*?)\. They read the workspace/s.exec(c.resultText);
+	if (m === null) return null;
+	let asked: { tasks?: readonly { role?: unknown; task?: unknown }[] } = {};
+	try {
+		asked = JSON.parse(c.inputFull) as typeof asked;
+	} catch {
+		// the full input is always JSON (stringified at toolStart)
+	}
+	const pool = (asked.tasks ?? []).map((t) => ({ role: String(t.role ?? ""), task: oneRow(escapeTerminal(String(t.task ?? "").split("\n")[0] ?? "")), used: false }));
+	const out: { id: string; role: string; task: string }[] = [];
+	for (const s of m[1]!.matchAll(/(\S+) (\S+) \(session [^)]*\)/g)) {
+		const at = pool.findIndex((t) => !t.used && t.role === s[2]);
+		if (at >= 0) pool[at]!.used = true;
+		out.push({ id: escapeTerminal(s[1]!), role: escapeTerminal(s[2]!), task: at >= 0 ? pool[at]!.task : "" });
+	}
+	return out.length === 0 ? null : out;
+}
+
 /** R13 E1 — the one settled call that previews NOTHING. A read's result
  *  IS the file; five lines of it tell a reader less than the head row
  *  already does, and the key opens the whole thing. (The reference
@@ -1977,7 +2021,7 @@ const META_FAIL = new Set(["FAILED", "UNCERTAIN"]);
  * whole at the content edge.
  */
 class ErrorLine implements Component {
-	constructor(private readonly cell: { text: string; label?: string; sentence?: string; mark?: { readonly text: string; readonly tone: "fail" | "blue" | "ink" }; stacked?: true }) {}
+	constructor(private readonly cell: { text: string; label?: string; sentence?: string; mark?: NoticeMark; stacked?: true; oneRow?: true; also?: readonly NoticeRow[] }) {}
 	render(W: number, _ctx: FrameCtx): string[] {
 		const p = palette();
 		const c = this.cell;
@@ -1995,7 +2039,7 @@ class ErrorLine implements Component {
 		const m = c.mark;
 		const lit = (r: string): string => {
 			if (m === undefined || !r.includes(m.text)) return `${p.dim}${r}${p.reset}`;
-			const tone = m.tone === "fail" ? p.red : m.tone === "blue" ? p.blue : "";
+			const tone = m.tone === "fail" ? p.red : m.tone === "blue" ? p.blue : m.tone === "ok" ? p.green : m.tone === "gold" ? p.gold : "";
 			// the word after the arrow (the mode switched TO), not an earlier one
 			const arrow = r.indexOf(`\u2192 ${m.text}`);
 			const at = arrow >= 0 ? arrow + 2 : r.indexOf(m.text);
@@ -2009,6 +2053,13 @@ class ErrorLine implements Component {
 			const label = `${EDGE}${p.bold}${p.gold}${c.label}${p.reset}  `;
 			const lead = visibleWidth(label);
 			return foldWords(sentence, Math.max(1, W - lead)).map((r, i) => cutLine(i === 0 ? `${label}${lit(r)}` : `${" ".repeat(lead)}${lit(r)}`, W));
+		}
+		// the tasks round: a row that names a thing (a task, a project) is ONE
+		// row — what ran is cut with an ellipsis, never folded under itself
+		if (c.oneRow === true) {
+			const rows = [cutLine(`${head}${lit(sentence)}`, W)];
+			for (const r of c.also ?? []) rows.push(...new ErrorLine({ text: c.text, label: r.label, sentence: r.sentence, ...(r.mark !== undefined ? { mark: r.mark } : {}), oneRow: true }).render(W, _ctx));
+			return rows;
 		}
 		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${lit(r)}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
 	}
@@ -2366,7 +2417,7 @@ export function bandVisible(height: number): number {
 
 /** The window over a list, with a scroll-off of one: while more lies past
  *  an edge the cursor stays a row inside it, so the edge row that carries
- *  a more-mark is never the selected one. Stateless, like atWindow. */
+ *  a more-mark is never the selected one. Stateless, like bandWindow. */
 export function bandWindow(total: number, selected: number, visible: number): { first: number; count: number } {
 	const count = Math.min(total, visible);
 	return { first: Math.max(0, Math.min(selected - count + 2, total - count)), count };

@@ -338,8 +338,13 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// carries the question, the args the artifact listing (the same rows
 	// the bodyLog below records, verbatim — the listing still lands in
 	// the scrollback; the panel is a bounded block, the record is not).
-	bodyLog(`[project .kiso] ${artifacts.root}`);
-	bodyLog(projectTrustRows(artifacts.files, "  ").join("\n")); // DC-51: one call, one cell
+	// The tasks round (owner, 2026-10-06): on a dock the question lists the
+	// files itself, so nothing is printed above it; the record lands after
+	// the answer (below). Off a dock the listing is the record, as before.
+	if (!dock.active) {
+		bodyLog(`[project .kiso] ${artifacts.root}`);
+		bodyLog(projectTrustRows(artifacts.files, "  ").join("\n")); // DC-51: one call, one cell
+	}
 	const home = homedir();
 	const shownRoot = artifacts.root === home ? "~" : artifacts.root.startsWith(`${home}/`) ? `~${artifacts.root.slice(home.length)}` : artifacts.root;
 	const verdict = await askPanel(input, projectTrustView(artifacts.root, artifacts.files, shownRoot));
@@ -349,6 +354,17 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// run can still decide later.
 	const granted = verdict.action === "allow";
 	recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
+	// the record of what was trusted stays in the scrollback: ONE meta row,
+	// once the person has answered — `PROJECT  trusted · ~/w/.kiso · <files>`
+	if (dock.active) {
+		const word = granted ? "trusted" : "not trusted";
+		const files = projectTrustRows(artifacts.files, "").map((r) => r.trim().replace(/\s{2,}/g, " ")).join(", ");
+		// a long root outside home keeps its last two parts — the folder's
+		// own name — so the row still has room for what was trusted
+		const parts = shownRoot.split("/");
+		const where = shownRoot.length > 40 && !shownRoot.startsWith("~") && parts.length > 3 ? `\u2026/${parts.slice(-2).join("/")}` : shownRoot;
+		body.metaNotice(`[project .kiso] ${word} \u2014 ${artifacts.root}`, [{ label: "PROJECT", sentence: `${word} \u00b7 ${where} \u00b7 ${files}`, ...(granted ? { mark: { text: word, tone: "ok" as const } } : {}) }]);
+	}
 	if (!granted) return null;
 	applyProjectMerges(artifacts);
 	return artifacts;

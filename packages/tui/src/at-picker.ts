@@ -119,19 +119,6 @@ export function atFilter(items: readonly AtItem[], query: string): { matches: At
 	return { matches, capped };
 }
 
-/**
- * KC3 §4 — the picker's WINDOW: which slice of the ranked list is on
- * screen. The window TRAILS the selection exactly as the composer's
- * own viewport trails the cursor (KC1 §5) — derived per read, never
- * stored, so it can never disagree with the selection it is meant to
- * follow.
- */
-export function atWindow(total: number, selected: number, visible = AT_VISIBLE): { first: number; count: number } {
-	const count = Math.min(total, visible);
-	const first = Math.max(0, Math.min(selected - count + 1, total - count));
-	return { first, count };
-}
-
 /** The path split into the two columns the panel draws: the file's own
  *  name, and the directory that qualifies it. A path with no slash is
  *  all name and no directory. */
@@ -177,24 +164,6 @@ export function atRow(match: AtMatch, selected: boolean, W: number, nameCol = 0,
 	const width = visibleWidth(shownName) + pad.length + visibleWidth(shownDir);
 	if (selected) return selectionBar(` ${text}`, width + 1, W);
 	return mark === null ? `  ${text}` : `${p.dim}${mark}${p.reset} ${text}`;
-}
-
-/**
- * KC3 §4 — the counter row: `(n/total)`, where n is the 1-based
- * position of the SELECTION in the whole ranked list, not in the
- * visible window. The user needs to know where they are in the list,
- * which the five visible rows cannot tell them.
- *
- * When the source list was truncated the row SAYS SO. A file picker
- * that quietly lists 2,000 of 40,000 files and shows a confident
- * "(3/1998)" is lying by omission; this one admits the horizon.
- * (Graphite P2: the band's own rows no longer use it — the count rides
- * the key row and the horizon the band's name.)
- */
-export function atCounterRow(selected: number, total: number, capped: boolean, W: number): string {
-	const p = palette();
-	const text = capped ? `  (${selected + 1}/${total}) · first ${AT_CAP} files only` : `  (${selected + 1}/${total})`;
-	return `${p.dim}${widthCut(text, W)}${p.reset}`;
 }
 
 /** The band's state as the editor hands it over. `query`, `total` and

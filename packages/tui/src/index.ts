@@ -50,7 +50,7 @@ export {
 	type PanelVerdict,
 	type PanelView,
 } from "./approval-panel.js";
-export { Container, foldLine, foldWords, infoSheetRows, visibleWidth, SPINNER, type Component, type FrameCtx } from "./components.js";
+export { Container, foldLine, foldWords, infoSheetRows, visibleWidth, SPINNER, type Component, type FrameCtx, type NoticeMark } from "./components.js";
 export {
 	Editor,
 	MENU_ITEMS,
@@ -109,7 +109,7 @@ export { contextRows, contextSheetRows, contextUnavailableRows, contextUnavailab
 export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type TrustArtifact } from "./strings.js";
 // KC3 §3/§5: the @ file picker's pure half — the subsequence filter, the
 // deterministic rank, and the ONE cap the CLI's file source shares.
-export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, bandHeader, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
+export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, bandHeader, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ①–③: the session picker's pure half — the durability badge,
 // the row (picked or printed), the band, and the filter. The CARDS are
 // the cli's projection (session-cards.ts); this turns them into bytes.

@@ -21,6 +21,8 @@ function recorder(): { body: ReplayBody; calls: Call[] } {
 		toolStart: (n, id) => calls.push(`tool ${n} ${id}`),
 		toolResult: (id, r) => calls.push(`result ${id} ${r.isError ? "err" : "ok"}${r.untimed === true ? " untimed" : ""}${r.reason ? ` (${r.reason})` : ""}`),
 		notice: (t) => calls.push(`notice ${t}`),
+		// the tasks round: a task notice records its pipe text, as notice did
+		metaNotice: (t) => calls.push(`notice ${t}`),
 		endTurn: () => calls.push("end-turn"),
 		fold: (label, replay, summary) => {
 			calls.push(`fold[ ${label}${summary ? ` | ${summary}` : ""}`);

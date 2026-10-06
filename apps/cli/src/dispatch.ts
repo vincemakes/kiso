@@ -21,7 +21,7 @@ import { settingRow, settingsFacts, settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
 import { queuedSwitchLines, seenUnknownTasks, tasksFor } from "./state.js";
-import { taskOutput, taskRow, taskStateLabel } from "./task-notice.js";
+import { taskOutput, taskRow, taskStateLabel, taskOutputSheetRows } from "./task-notice.js";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { contextWindowTokens, microcompactThresholdFor, startStatusSpinner, statedContextWindow, windowSourceNote } from "./chat.js";
 import { authForProfile, directWriteProfile, profileAvailable, resolveContextWindow, unavailableReason, type ModelProfile } from "./config.js";
@@ -741,11 +741,13 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			if (words === "") {
 				const named = readSessionName(root, ctx.session.id);
 				const derived = sessionTitle(ctx.session.log.all.map((event) => ({ runId: "", ts: 0, event }) as StoreRecord));
-				bodyLog(named !== null ? `name: ${escapeTerminal(named)} \u00b7 /name - clears it` : `unnamed \u2014 the title is "${escapeTerminal(derived)}" \u00b7 /name <words> names it`);
+				bodyLog(named !== null ? `name: ${escapeTerminal(named)} \u00b7 /name - clears it` : `unnamed \u2014 /resume lists it as "${escapeTerminal(derived)}" \u00b7 /name <words> names it`);
 			} else if (words === "-") {
 				writeSessionName(root, ctx.session.id, null);
 				setTitleName(null);
-				bodyLog("name cleared \u2014 the title is the first line again");
+				// the tasks round: the tab says kiso since the card round, so what the
+				// first line names again is the session in /resume
+				bodyLog("name cleared \u2014 /resume lists it by its first line again");
 			} else {
 				const name = [...words].slice(0, NAME_MAX).join("");
 				writeSessionName(root, ctx.session.id, name);
@@ -1530,6 +1532,14 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 		return;
 	}
 	const show = (t: TaskInfo): void => {
+		// the tasks round (owner, 2026-10-06): on a dock a task's output is a
+		// sheet over the input (§8.16) — the newest lines a screen can hold
+		// beside the composer; off one, the lines it always printed
+		if (dock.active && ctx.input.openSheet !== undefined) {
+			const lines = taskOutput(t, 12);
+			ctx.input.openSheet((W) => taskOutputSheetRows(t, lines, W));
+			return;
+		}
 		const lines = taskOutput(t);
 		bodyLog(`${t.id} — ${t.agent !== undefined ? "its answer" : "its last output"}${lines.length === 0 ? ": nothing yet" : ""}`);
 		for (const line of lines) bodyLog(`  ${line}`);
