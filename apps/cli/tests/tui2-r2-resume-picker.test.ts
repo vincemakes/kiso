@@ -126,8 +126,10 @@ describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () =
 		const { env, dirs } = isolatedEnv({ KISO_MODE: "default" });
 		await fixtureHome(dirs.home);
 		const raw = ptyRun([], env as NodeJS.ProcessEnv, { delays: [[3, "exit\r"]] });
-		// a fresh session id (the ISO stamp), never the picker's band
-		expect(raw).toMatch(/session \d{4}-\d{2}-\d{2}T\d{2}-\d{2}/);
+		// a fresh session id (the ISO stamp), never the picker's band.
+		// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the id is
+		// the opening's SESSION row — the `session <id>` line retired there
+		expect(raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toMatch(/SESSION {5}\d{4}-\d{2}-\d{2}T\d{2}-\d{2}\S* · new/);
 		expect(raw).not.toContain("⏎ resumes");
 	}, 240_000);
 });
