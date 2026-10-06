@@ -170,13 +170,15 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		expect(fresh.stop(a.id, "model")).toBe(false);
 	});
 
-	it("an identity that cannot be verified is never read as the runner: unknown, and a stop is only requested — no signal", async () => {
+	it("an identity that cannot be READ after it was verified is not a lost runner (Amendment 8), and a stop is only requested — no signal", async () => {
 		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
 		const backend = fakeBackend();
 		const m = new TaskManager({ root, backend, identifyEveryMs: 0 }); // the verdict as the identity changes
 		const t = await m.start({ command: "sleep 9", cwd: "/" });
-		backend.unverifiable.add(101); // the pid is live; whose it is cannot be told
-		expect(m.get(t.id)!.state.kind).toBe("unknown");
+		backend.unverifiable.add(101); // the pid is live; whose it is cannot be told right now
+		// the state keeps the last verified reading (§6 narrowed for the state
+		// by Amendment 8); a runner never verified still reads unknown
+		expect(m.get(t.id)!.state.kind).toBe("running");
 		expect(m.stop(t.id, "person")).toBe(true); // the runner, if it is ours, reads the journal
 		expect(readRecords(join(root, t.id, "journal.jsonl")).map((r) => r.type)).toContain("stop_requested");
 		expect(backend.stopped).toEqual([]); // never a signal to a pid that may be a stranger's
