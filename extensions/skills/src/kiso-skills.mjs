@@ -215,7 +215,9 @@ function skillsCatalog(index, broken) {
  *  `emptyBlocks` — the caller names it a broken entry, never an empty
  *  description. Anchors, flow collections and nesting stay out of scope:
  *  the index needs three string keys. */
-function parseFrontmatter(text) {
+function parseFrontmatter(raw) {
+	// a SKILL.md saved with CRLF (Windows) reads as one saved with LF
+	const text = raw.replace(/\r\n/g, "\n");
 	if (!text.startsWith("---\n")) return null;
 	const end = text.indexOf("\n---", 4);
 	if (end < 0) return null;

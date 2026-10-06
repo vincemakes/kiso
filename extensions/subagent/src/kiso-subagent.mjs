@@ -16,23 +16,41 @@
  * finding #8: this extension holds NO persistent resources — children are
  * spawned per call and exit on their own, the role-policy temp dirs are
  * cleaned in runChild's finally — so NO dispose is needed, explicitly.
+ *
+ * ADR-0058 3d — background children: a host that passes its task manager
+ * (`tasks`) gets `delegate({ …, background: true })`. Each child is then an
+ * agent TASK — the same child kiso, launched by argv under the task runner,
+ * so it outlives this process — and the call returns at once; the host's
+ * delivery tells the model when the children have ended. Explorer and
+ * reviewer only (D1), the whole batch within the session's cap or nothing
+ * (D4), no timeoutMs (D5), and a turn budget instead of a deadline (D6).
+ * Without `tasks` the schema and behaviour are exactly the foreground's.
  */
 
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Default per-child timeout (ms) — a subagent must never hang the parent. */
 const TIMEOUT_MS = 10 * 60 * 1000;
 /** Max simultaneous children — the concurrency cap (mapLimited). */
 const CONCURRENCY = 4;
+/** ADR-0058 3d (D4): live background children per session, by default. */
+const BACKGROUND_MAX = 20;
+/** ADR-0058 3d (D6): a background child's model requests, by default — about
+ *  twice the longest real explorer measured (17); 3f tunes it. */
+const BACKGROUND_MAX_TURNS = 32;
+/** ADR-0058 3d (D1): the roles whose unattended contract is defined. */
+const BACKGROUND_ROLES = ["explorer", "reviewer"];
 
 const SIX_TOOLS = ["read_file", "list_dir", "search_text", "write_file", "edit_file", "shell"];
 const READ_ONLY = ["read_file", "list_dir", "search_text"];
-const ROLES = ["explorer", "implementer", "reviewer", "tester"];
+// verifier: runs checks and reports evidence; its changes are never
+// collected (ADR-0032 Amendment 1 — it was called tester until 0.46.0)
+const ROLES = ["explorer", "implementer", "reviewer", "verifier"];
 
 // DT1a-F2 (owner dogfood 2026-09-08): the model's first delegate call was
 // refused twice — `scope` on an explorer, then an `acceptance` naming no
@@ -41,7 +59,7 @@ const ROLES = ["explorer", "implementer", "reviewer", "tester"];
 // check and profile names are written into the schema when the extension
 // loads (the tool table is snapshotted per request — F7b — so this is the
 // table the model reads).
-const delegateParameters = (cfg) => ({
+const delegateParameters = (cfg, background) => ({
 	type: "object",
 	properties: {
 		tasks: {
@@ -58,46 +76,67 @@ const delegateParameters = (cfg) => ({
 					// acceptance names a configured check ({ check }) or a parent-held
 					// evaluator ({ evaluator: absolute path outside the project }) —
 					// never a command; model names a configured profile; after names
-					// a completed implementer's childId (tester only): the tester runs
-					// in that worktree.
+					// a completed implementer's childId (verifier only): the verifier
+					// runs in a copy of that worktree.
 					scope: {
 						type: "array",
 						items: { type: "string", minLength: 1 },
 						maxItems: 32,
-						description: "implementer and tester tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
+						description: "implementer and verifier tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
 					},
 					acceptance: {
 						type: "object",
 						properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } },
 						additionalProperties: false,
-						description: `optional; implementer and tester only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
+						description: `optional; implementer and verifier only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
 					},
 					model: { type: "string", minLength: 1, description: `a model profile configured by the user (configured now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
-					after: { type: "string", minLength: 1, description: "tester only: the earlier task (by its index, 1-based) whose worktree this tester runs in" },
+					after: { type: "string", minLength: 1, description: "verifier only: the earlier task (by its index, 1-based) whose worktree this verifier runs in a copy of" },
 					timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" },
 				},
 				required: ["role", "task"],
 				additionalProperties: false,
 			},
 		},
+		// ADR-0058 3d: present only when the host wired tasks — without them
+		// the schema is byte-for-byte the foreground one
+		...(background
+			? {
+					background: {
+						type: "boolean",
+						description:
+							"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+					},
+				}
+			: {}),
 	},
 	required: ["tasks"],
 	additionalProperties: false,
 });
 
-export default async function createSubagentExtension() {
+/**
+ * @param {{ tasks?: (sessionId: string | undefined) => any, backgroundMax?: number, backgroundMaxTurns?: number }} [host]
+ *   ADR-0058 3d: the host's per-session task manager (the runtime's
+ *   TaskManager satisfies it structurally — no dependency), the cap on live
+ *   background children per session, and a background child's turn budget.
+ */
+export default async function createSubagentExtension(host = {}) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
 	if (depth >= 1) return { name: "subagent", tools: [] }; // depth guard — no nesting
+	const tasksOf = typeof host.tasks === "function" ? host.tasks : undefined;
+	const background = tasksOf === undefined ? undefined : { tasksOf, max: host.backgroundMax ?? BACKGROUND_MAX, maxTurns: host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS, reserved: new Map() };
 	return {
 		name: "subagent",
 		tools: [
 			{
 				name: "delegate",
-				description: "run subagent tasks (explorer/implementer/reviewer/tester) in child kiso processes",
-				parameters: delegateParameters(delegationConfig()),
+				description: "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
+				parameters: delegateParameters(delegationConfig(), background !== undefined),
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
 					if (tasks.length === 0) return { content: "delegate: no tasks", isError: true, errorKind: "precondition" };
+					const inBackground = (input ?? {}).background === true;
+					if (inBackground && background === undefined) return { content: "delegate: background is not available here — run the delegation in the foreground", isError: true, errorKind: "precondition" };
 					// 0.40.0: the parent's own folder (one per project), handed over
 					// by the CLI; a pinned KISO_SESSIONS_DIR, or the legacy folder,
 					// when no CLI said (a direct load)
@@ -130,6 +169,7 @@ export default async function createSubagentExtension() {
 						// applied" banner (loop.ts keys that banner on errorKind !== "precondition")
 						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true, errorKind: "precondition" };
 					}
+					if (inBackground) return startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir });
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({
 							childId: `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`,
@@ -161,6 +201,104 @@ export default async function createSubagentExtension() {
 			},
 		],
 	};
+}
+
+const refuse = (why) => ({ content: `delegate: refused — ${why}`, isError: true, errorKind: "precondition" });
+
+/**
+ * ADR-0058 3d — start the children as agent tasks and return at once.
+ *
+ * Everything up to the reservation is synchronous: the check that the
+ * whole batch fits (live agent tasks + slots reserved by calls still
+ * starting + this batch ≤ max) and the reservation are one step, so two
+ * calls can never both fit into the last slots (D4). Each child's inputs —
+ * its task file, role policy and manifest — are written and fsynced before
+ * its task is planned (the runner and the child need nothing a `finally`
+ * here could remove). The child is the same invocation a foreground child
+ * runs, launched by argv (no shell), with its turn budget and its result
+ * file beside its task (D6).
+ */
+async function startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir }) {
+	for (const task of tasks) {
+		if (!BACKGROUND_ROLES.includes(task.role)) return refuse(`background is not supported for the ${task.role} role in this release; run this delegation in the foreground`);
+		if (task.timeoutMs !== undefined) return refuse("timeoutMs applies to a foreground delegation; a background child has no wall-clock kill — task_stop stops one");
+	}
+	const manager = background.tasksOf(ctx.sessionId);
+	if (manager === undefined) return refuse("background is not available here — run the delegation in the foreground");
+	const key = ctx.sessionId ?? "";
+	const live = manager.list().filter((t) => t.agent !== undefined && t.state.kind !== "ended" && t.state.kind !== "not_run").length + (background.reserved.get(key) ?? 0);
+	if (live + tasks.length > background.max) {
+		return refuse(`${live} background children are running in this session and the cap is ${background.max}; this call asks for ${tasks.length}. Do not retry — wait for some to end, or stop one with task_stop`);
+	}
+	background.reserved.set(key, (background.reserved.get(key) ?? 0) + tasks.length);
+	let unstarted = tasks.length;
+	const release = (n) => background.reserved.set(key, Math.max(0, (background.reserved.get(key) ?? 0) - n));
+	const lines = [];
+	let failures = 0;
+	try {
+		for (let i = 0; i < tasks.length; i += 1) {
+			const task = tasks[i];
+			const childId = `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`;
+			try {
+				const inputs = writeChildInputs(manifestDir, childId, task, { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now() });
+				const started = await manager.start({
+					command: `${task.role}: ${task.task.split("\n")[0].slice(0, 80)}`,
+					cwd: process.cwd(),
+					env: childEnv(inputs.policyDir, sessionsDir),
+					...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
+					agent: { role: task.role, session: childId },
+					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, task.model), "--max-turns", String(background.maxTurns), "--result-file", join(dir, "result.md")] }),
+				});
+				lines.push(`${started.id} ${task.role} (session ${childId})`);
+			} catch (err) {
+				failures += 1;
+				lines.push(`task ${i + 1} (${task.role}) did not start: ${msg(err)}`);
+			}
+			unstarted -= 1;
+			release(1);
+		}
+	} finally {
+		release(unstarted);
+	}
+	const n = tasks.length - failures;
+	const content =
+		`started ${n} background ${n === 1 ? "child" : "children"}: ${lines.join(", ")}. ` +
+		"They read the workspace as it is while they run. You will be told when all of them have ended; task_stop stops one.";
+	return { content, isError: n === 0 };
+}
+
+/** The durable inputs of a background child: the task file (the fixed
+ *  UNRESOLVED trailer included), its role policy, its manifest — fsynced
+ *  with their directories before the task is planned. */
+function writeChildInputs(manifestDir, childId, task, manifest) {
+	const taskPath = join(manifestDir, `${childId}.task`);
+	const policyDir = join(manifestDir, `${childId}.policy`);
+	mkdirSync(policyDir, { recursive: true });
+	writeDurable(join(policyDir, "policy.mjs"), rolePolicyContent(task.role, undefined));
+	writeDurable(taskPath, `${task.task}\n\n${UNRESOLVED_INSTRUCTION}\n`);
+	writeDurable(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task: task.task, background: true, ...(task.model !== undefined ? { model: task.model } : {}) })}\n`);
+	fsyncPath(policyDir);
+	fsyncPath(manifestDir);
+	return { taskPath, policyDir };
+}
+
+function writeDurable(path, content) {
+	const fd = openSync(path, "w");
+	try {
+		writeSync(fd, content);
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+function fsyncPath(dir) {
+	const fd = openSync(dir, "r");
+	try {
+		fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
 }
 
 /**
@@ -213,20 +351,34 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 	}
 	// Isolation (DT-1a R2.2): implementer → its own detached worktree from
 	// the parent's HEAD (the parent's UNCOMMITTED changes are not visible —
-	// the section says so); tester → the implementer's kept worktree when
-	// `after` names one, else a fresh worktree from HEAD; explorer and
-	// reviewer → the parent's tree under a read-only policy. Non-git
-	// parents fail the task HONESTLY.
+	// the section says so); verifier → a COPY of the implementer's kept
+	// worktree when `after` names one (a fresh worktree at the same base
+	// with the implementer's changes applied — the kept worktree the
+	// parent was handed is never touched), else a fresh worktree from HEAD;
+	// explorer and reviewer → the parent's tree under a read-only policy.
+	// Non-git parents fail the task HONESTLY.
 	let worktree = null;
 	let baseRev = null;
 	let childCwd = parentCwd;
 	let ownsWorktree = false;
-	if (role === "tester" && after !== undefined) {
+	if (role === "verifier" && after !== undefined) {
 		const prior = readResultFile(manifestDir, after);
-		worktree = prior.worktree;
 		baseRev = prior.baseRev;
-		childCwd = worktree;
-	} else if (role === "implementer" || role === "tester") {
+		worktree = mkdtempSync(join(tmpdir(), "kiso-subagent-wt-"));
+		ownsWorktree = true;
+		try {
+			execFileSync("git", ["-C", parentCwd, "worktree", "add", "--detach", worktree, baseRev ?? "HEAD"], { stdio: "ignore" });
+			// the implementer's state against its base — committed or not,
+			// new files included (intent-to-add), binary-safe
+			execFileSync("git", ["-C", prior.worktree, "add", "-N", "."], { stdio: "ignore" });
+			const patch = execFileSync("git", ["-C", prior.worktree, "diff", "--binary", baseRev ?? "HEAD"], { maxBuffer: 256 * 1024 * 1024 });
+			if (patch.length > 0) execFileSync("git", ["-C", worktree, "apply", "--binary", "--whitespace=nowarn"], { input: patch, stdio: ["pipe", "ignore", "pipe"] });
+			childCwd = worktree;
+		} catch (err) {
+			removeWorktree(parentCwd, worktree);
+			return failSection(childId, role, task, `the verifier could not copy the implementer's worktree: ${msg(err)}`);
+		}
+	} else if (role === "implementer" || role === "verifier") {
 		worktree = mkdtempSync(join(tmpdir(), "kiso-subagent-wt-"));
 		ownsWorktree = true;
 		try {
@@ -252,28 +404,34 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 		// the fixed UNRESOLVED instruction the result parser reads back.
 		const taskPath = join(manifestDir ?? policyDir, `${childId}.task`);
 		writeFileSync(taskPath, `${task}\n\n${UNRESOLVED_INSTRUCTION}\n`, "utf8");
-		const { code, stdout, killed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal, model, sessionsDir);
+		const { code, stdout, killed, unconfirmed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal, model, sessionsDir);
 		const extraction = await extractChildResult(sessionsDir, childId, `exit ${code}\n${stdout}`);
 		const status = killed === "timeout" ? "timeout" : killed === "abort" ? "killed" : code !== 0 && extraction.outcome === "missing" ? "spawn-failed" : extraction.outcome;
 		let failed = code !== 0 || killed !== null || extraction.failed;
 		const lines = [];
+		// Windows P6: a kill that did not take is never reported as a kill
+		const killNote = unconfirmed.length > 0 ? ` — could not confirm the child exited (pid ${unconfirmed.join(", ")}): treat its side effects as UNCERTAIN` : " (the child process group was killed)";
 		if (killed === "timeout") {
-			lines.push(`  FAILED: timed out after ${timeout}ms (the child process group was killed)`);
+			lines.push(`  FAILED: timed out after ${timeout}ms${killNote}`);
 		} else if (killed === "abort") {
-			lines.push("  FAILED: aborted by the parent run (the child process group was killed)");
+			lines.push(`  FAILED: aborted by the parent run${killNote}`);
 		} else if (code !== 0) {
 			lines.push(`  FAILED: the child exited with code ${code}\n${stdout}`);
 		} else if (extraction.failed) {
 			lines.push(`  FAILED: ${extraction.reason}${extraction.diag !== "" ? `\n${extraction.diag}` : ""}`);
 		}
 		const unresolved = parseUnresolved(extraction.text);
-		// the collection (implementers only — a tester's worktree is the
-		// implementer's or a throwaway; its changes are not its result)
+		// the collection (implementers only — a verifier's worktree is a
+		// throwaway copy; its changes are not its result)
 		let changedFiles = null;
 		let patchPath = null;
 		let patchBytes = null;
 		let collection = null;
-		if (role === "implementer") {
+		// Windows P6: a child that may still be running keeps its worktree,
+		// and nothing is collected from it — a patch of a tree that may
+		// still change is not the child's result
+		if (unconfirmed.length > 0 && worktree !== null) keepWorktree = true;
+		if (role === "implementer" && unconfirmed.length === 0) {
 			// CX-1 F2 (audit F2): tri-state collection. `collected` is earned
 			// (the patch file closed AND git exited 0); a failure PRESERVES the
 			// worktree and says so; "consumed" is undefined, so a worktree
@@ -316,6 +474,7 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			patchPath,
 			patchBytes,
 			verification,
+			...(unconfirmed.length > 0 ? { unconfirmed } : {}),
 			unresolved,
 			answer: extraction.text,
 			usage: extraction.usage,
@@ -330,7 +489,8 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 		if (scope !== undefined) text += `\n  scoped: no shell · writes only under ${scope.join(", ")}`;
 		if (baseRev !== null) text += `\n  child saw HEAD ${baseRev.slice(0, 7)}; the parent's uncommitted changes were not visible`;
 		if (verification !== null && verification.skipped === undefined) {
-			text += `\n  verification: ${verification.kind} ${verification.passed ? "PASSED" : "FAILED"} · exit ${verification.exitCode === null ? "killed" : verification.exitCode} · ${verification.durationMs}ms · ${verification.kind === "check" ? verification.command : verification.evaluator}`;
+			const exit = verification.unconfirmed !== undefined ? `killed, not confirmed (pid ${verification.unconfirmed.join(", ")} may still be running — treat its side effects as UNCERTAIN)` : verification.exitCode === null ? "killed" : verification.exitCode;
+			text += `\n  verification: ${verification.kind} ${verification.passed ? "PASSED" : "FAILED"} · exit ${exit} · ${verification.durationMs}ms · ${verification.kind === "check" ? verification.command : verification.evaluator}`;
 			if (!verification.passed && verification.tail !== "") text += `\n${verification.tail}`;
 		}
 		for (const l of lines) text += `\n${l}`;
@@ -345,6 +505,8 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			} else if (collection.kind === "failed") {
 				text += `\n  FAILED: collecting the worktree's changes: ${collection.reason}${collection.partialPath !== undefined ? ` (partial patch at ${collection.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
 			}
+		} else if (unconfirmed.length > 0 && worktree !== null) {
+			text += `\n  worktree kept at: ${worktree} — the child may still be writing to it; nothing was collected`;
 		}
 		return { failed, ...(failed ? { failKind: failKindOf(status, verification) } : {}), text, toolCalls: extraction.toolCalls };
 	} finally {
@@ -416,11 +578,12 @@ function artifactDir(home, sessionsDir) {
 /** DT-1a: every task's inputs are judged BEFORE any child runs; a string is the refusal. */
 export function validateTask(task, cfg, parentCwd, manifestDir) {
 	if (task === null || typeof task !== "object") return "a task must be an object";
+	if (task.role === "tester") return 'unknown role "tester" — it is called "verifier" since 0.46.0';
 	if (!ROLES.includes(task.role)) return `unknown role ${JSON.stringify(task.role)}`;
 	if (typeof task.task !== "string" || task.task.trim() === "") return "task must be a non-empty string";
 	if (task.scope !== undefined) {
 		if (!Array.isArray(task.scope) || task.scope.length === 0 || task.scope.some((g) => typeof g !== "string" || g === "" || isAbsolute(g) || g.split("/").includes(".."))) return "scope must be a non-empty list of relative globs (no absolute paths, no ..)";
-		if (task.role !== "implementer" && task.role !== "tester") return "scope applies to implementer and tester tasks only";
+		if (task.role !== "implementer" && task.role !== "verifier") return "scope applies to implementer and verifier tasks only";
 	}
 	if (task.acceptance !== undefined) {
 		const a = task.acceptance;
@@ -449,7 +612,7 @@ export function validateTask(task, cfg, parentCwd, manifestDir) {
 	}
 	if (task.model !== undefined && !cfg.profiles.includes(task.model)) return `refused: unknown model profile ${JSON.stringify(task.model)} (configured: ${cfg.profiles.join(", ") || "none"})`;
 	if (task.after !== undefined) {
-		if (task.role !== "tester") return "refused: `after` is for tester tasks";
+		if (task.role !== "verifier") return "refused: `after` is for verifier tasks";
 		let prior;
 		try {
 			prior = readResultFile(manifestDir, task.after);
@@ -555,9 +718,95 @@ export function parseChangedFiles(numstat, nameStatus) {
 const ACCEPTANCE_OUTPUT_CAP = 64 * 1024;
 const ACCEPTANCE_TAIL = 2 * 1024;
 
+/** A child in its own process group, so a timeout or an abort kills it
+ *  whole; win32 has no groups — the child is hidden, and its tree dies by
+ *  taskkill /T (which walks it by parent). */
+const ownGroup = () => (process.platform === "win32" ? { windowsHide: true } : { detached: true });
+
+function killGroup(child) {
+	try {
+		if (process.platform === "win32") execFileSync("taskkill", ["/T", "/F", "/PID", String(child.pid)], { stdio: "ignore", windowsHide: true });
+		else process.kill(-child.pid, "SIGKILL");
+	} catch {
+		// already gone, or the kill was refused: the bounded wait decides
+	}
+}
+
+/** How long the wait after a kill lasts before the child's exit is
+ *  declared unconfirmed — tools-node's killTree uses the same fallback. */
+const KILL_CONFIRM_MS = 2_000;
+
+/** The child's exit, supervised: the timeout and the parent's abort kill
+ *  its group, and the wait after a kill is bounded (Windows P6). A kill
+ *  that does not take — taskkill refused, a group SIGKILL refused with
+ *  EPERM — leaves the child running; after KILL_CONFIRM_MS its pid comes
+ *  back in `unconfirmed` (tools-node's contract: the caller must not
+ *  report it gone) and the child is let go, so it never holds the parent. */
+function superviseExit(child, timeout, signal) {
+	return new Promise((resolve) => {
+		let killed = null;
+		let done = false;
+		let confirm;
+		const settle = (code, unconfirmed) => {
+			if (done) return;
+			done = true;
+			clearTimeout(timer);
+			clearTimeout(confirm);
+			signal?.removeEventListener("abort", onAbort);
+			resolve({ code, killed, unconfirmed });
+		};
+		const kill = (why) => {
+			if (killed !== null) return;
+			killed = why;
+			killGroup(child);
+			if (done) return;
+			confirm = setTimeout(() => {
+				child.stdout?.destroy();
+				child.stderr?.destroy();
+				child.unref();
+				settle(null, [child.pid]);
+			}, KILL_CONFIRM_MS);
+		};
+		const timer = setTimeout(() => kill("timeout"), timeout);
+		const onAbort = () => kill("abort");
+		child.on("error", () => settle(null, []));
+		child.on("exit", (code) => settle(code, []));
+		if (signal?.aborted) onAbort();
+		else signal?.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
+/** The bash a check runs through on win32 — this build's own copy of the
+ *  process module's rule (tools-node `process.ts`; zero dependencies here),
+ *  pinned to it by subagent-win32.test.ts. */
+function resolveBash(env) {
+	const fail = (message) => {
+		throw Object.assign(new Error(message), { code: "KISO_NO_BASH" });
+	};
+	const override = env.KISO_BASH;
+	if (override !== undefined && override !== "") {
+		if (!/^bash(\.exe)?$/i.test(win32.basename(override))) {
+			fail(`KISO_BASH must name a bash executable (bash.exe), not ${win32.basename(override)}: kiso's shell commands are POSIX shell`);
+		}
+		if (!existsSync(override)) fail(`KISO_BASH is set to ${override}, which does not exist`);
+		return override;
+	}
+	for (const root of [env.ProgramFiles ?? "C:\\Program Files", env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)"]) {
+		const candidate = win32.join(root, "Git", "bin", "bash.exe");
+		if (existsSync(candidate)) return candidate;
+	}
+	const system32 = win32.join(env.SystemRoot ?? "C:\\Windows", "System32").toLowerCase();
+	for (const dir of (env.PATH ?? "").split(win32.delimiter)) {
+		if (dir === "" || win32.join(dir, ".").toLowerCase() === system32) continue;
+		const candidate = win32.join(dir, "bash.exe");
+		if (existsSync(candidate)) return candidate;
+	}
+	return fail("no bash found — kiso runs shell commands through Git Bash on Windows: install Git for Windows, or set KISO_BASH to the path of bash.exe");
+}
+
 /** DT-1a R2.3: the parent runs the acceptance in the worktree — a configured check
- *  through /bin/sh (user-authored), or the evaluator binary with the worktree as
- *  its argument. Own process group (the abort and the timeout kill it whole), the
+ *  through /bin/sh (bash on win32; user-authored), or the evaluator binary with the
+ *  worktree as its argument. Own process group (the abort and the timeout kill it whole), the
  *  output capped, the tail kept. The exit code proves the command RAN on the tree
  *  as the child left it (patchSha256 names that state); only an evaluator proves
  *  correctness — the child can edit a check's tests. */
@@ -573,37 +822,23 @@ export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout,
 	} catch {
 		// a non-git worktree: the state hash stays the empty one
 	}
-	const child = kind === "check" ? spawn("/bin/sh", ["-c", command], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] }) : spawn(command, [worktree], { cwd: worktree, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+	let child;
+	try {
+		const options = { cwd: worktree, ...ownGroup(), stdio: ["ignore", "pipe", "pipe"] };
+		child = kind === "check" ? spawn(process.platform === "win32" ? resolveBash(process.env) : "/bin/sh", ["-c", command], options) : spawn(command, [worktree], options);
+	} catch (err) {
+		// win32 with no usable bash: the check fails with a message the model can act on
+		if (err?.code !== "KISO_NO_BASH") throw err;
+		const name = kind === "check" ? { name: acceptance.check, command } : { evaluator: command };
+		return { kind, ...name, exitCode: null, passed: false, tail: err.message, durationMs: Date.now() - started, patchSha256, baseRev };
+	}
 	let output = "";
 	const capture = (d) => {
 		if (output.length < ACCEPTANCE_OUTPUT_CAP) output += String(d).slice(0, ACCEPTANCE_OUTPUT_CAP - output.length);
 	};
 	child.stdout.on("data", capture);
 	child.stderr.on("data", capture);
-	let killed = null;
-	const killGroup = () => {
-		try {
-			process.kill(-child.pid, "SIGKILL");
-		} catch {
-			// already gone
-		}
-	};
-	const timer = setTimeout(() => {
-		killed = "timeout";
-		killGroup();
-	}, timeout);
-	const onAbort = () => {
-		killed = "abort";
-		killGroup();
-	};
-	if (signal?.aborted) onAbort();
-	else signal?.addEventListener("abort", onAbort, { once: true });
-	const exitCode = await new Promise((resolveExit) => {
-		child.on("error", () => resolveExit(null));
-		child.on("exit", (code) => resolveExit(code));
-	});
-	clearTimeout(timer);
-	signal?.removeEventListener("abort", onAbort);
+	const { code: exitCode, killed, unconfirmed } = await superviseExit(child, timeout, signal);
 	const code = killed !== null ? null : exitCode;
 	return {
 		kind,
@@ -611,6 +846,7 @@ export async function runAcceptance(acceptance, cfg, worktree, baseRev, timeout,
 		exitCode: code,
 		passed: code === 0,
 		...(killed !== null ? { killed } : {}),
+		...(unconfirmed.length > 0 ? { unconfirmed } : {}),
 		tail: output.slice(-ACCEPTANCE_TAIL),
 		durationMs: Date.now() - started,
 		patchSha256,
@@ -636,26 +872,32 @@ export function childArgs(bin, childId, taskPath, model) {
 	return [bin, ...(model !== undefined ? ["--model", model] : []), "chat", childId, "--task-file", taskPath];
 }
 
-function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, model, sessionsDir) {
+/** A child's environment — the parent's, plus the depth guard, its role
+ *  policy and the sessions folder (the foreground and background share it). */
+function childEnv(policyDir, sessionsDir) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
+	return {
+		...process.env,
+		KISO_SUBAGENT_DEPTH: String(depth + 1),
+		KISO_EXTENSIONS_DIR: policyDir,
+		// 0.40.0: the child writes its log beside its parent's — the
+		// parent reads it back from there — whatever cwd it runs in
+		KISO_SESSIONS_DIR: sessionsDir,
+		// Modes: a headless child has no human — the mode tiers'
+		// ask would stall it. Bypass is the neutral tier here; the
+		// role policy dir (allow/deny only — a child must never
+		// see an ask) stays the child's ONLY gate, exactly as
+		// before the mode tiers existed (deny>ask>allow honors its
+		// denials; the mode's all-allow never overrides them).
+		KISO_MODE: "bypass",
+	};
+}
+
+function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, model, sessionsDir) {
 	const child = spawn(process.execPath, childArgs(bin, childId, taskPath, model), {
 		cwd,
-		env: {
-			...process.env,
-			KISO_SUBAGENT_DEPTH: String(depth + 1),
-			KISO_EXTENSIONS_DIR: policyDir,
-			// 0.40.0: the child writes its log beside its parent's — the
-			// parent reads it back from there — whatever cwd it runs in
-			KISO_SESSIONS_DIR: sessionsDir,
-			// Modes: a headless child has no human — the mode tiers'
-			// ask would stall it. Bypass is the neutral tier here; the
-			// role policy dir (allow/deny only — a child must never
-			// see an ask) stays the child's ONLY gate, exactly as
-			// before the mode tiers existed (deny>ask>allow honors its
-			// denials; the mode's all-allow never overrides them).
-			KISO_MODE: "bypass",
-		},
-		detached: true,
+		env: childEnv(policyDir, sessionsDir),
+		...ownGroup(),
 		stdio: ["pipe", "pipe", "inherit"],
 	});
 	child.stdin.end(); // CX-1 F5: nothing rides stdin — the task is the file
@@ -663,41 +905,14 @@ function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, mod
 	child.stdout.on("data", (d) => {
 		stdout += String(d);
 	});
-	const exited = new Promise((resolve) => {
-		child.on("exit", (code, sig) => resolve({ code: code ?? -1, signal: sig }));
-	});
-	let killed = null;
-	const killGroup = () => {
-		try {
-			process.kill(-child.pid, "SIGKILL");
-		} catch {
-			// already gone
-		}
-	};
-	const timer = setTimeout(() => {
-		killed = "timeout";
-		killGroup();
-	}, timeout);
-	const onAbort = () => {
-		killed = "abort";
-		killGroup();
-	};
-	if (signal?.aborted) onAbort();
-	else signal?.addEventListener("abort", onAbort, { once: true });
-	// The timeout and abort listener live until the child EXITS — clearing
-	// them in a finally around the setup would disarm them before the exit.
-	return exited.then(({ code }) => {
-		clearTimeout(timer);
-		signal?.removeEventListener("abort", onAbort);
-		return { code, stdout, killed };
-	});
+	return superviseExit(child, timeout, signal).then(({ code, killed, unconfirmed }) => ({ code: code ?? -1, stdout, killed, unconfirmed }));
 }
 
 /** The role policy: read-only for explorer/reviewer, the full six for
- *  implementer/tester. Only allow/deny — NEVER ask (a headless child cannot
+ *  implementer/verifier. Only allow/deny — NEVER ask (a headless child cannot
  *  answer an approval prompt; ask would deadlock). */
 export function rolePolicyContent(role, scope) {
-	const allowed = role === "implementer" || role === "tester" ? SIX_TOOLS : READ_ONLY;
+	const allowed = role === "implementer" || role === "verifier" ? SIX_TOOLS : READ_ONLY;
 	if (scope === undefined) {
 		return `export default { name: "subagent-${role}", approvals: [{
 	decide(call) {

@@ -37,6 +37,18 @@ are already on disk before the crash — the next `kiso resume` asks only
 what the crash window made unknowable. The `kill -9` section below shows the
 scripted proof.
 
+**What it covers.** A process that dies — a crash, a `kill -9`, a closed
+terminal — loses nothing: every write is in the operating system before
+the next step runs. A power loss or an OS crash is a narrower promise. On
+macOS and Linux each correctness-bearing record is fsynced before it
+counts, and so is the directory a new log is created in; streamed text
+fragments are flushed by the next synced record, so an OS crash in the
+middle of a stream can leave a tail the strict loader refuses — reported
+as corruption, never guessed past (ADR-0025 Amendment 1). On Windows a
+program cannot flush a directory entry (only a whole volume, with
+administrator rights), so a log created just before a power loss may be
+missing afterwards; a process crash still loses nothing.
+
 ## The durable execution contract
 
 **The session format is a frozen contract, enforced by gates** — not a

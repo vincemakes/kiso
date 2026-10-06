@@ -95,6 +95,9 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			// and the computed stop is unchanged, because `/compact` is
 			// still the longest name.
 			"/copy        copy the last answer (raw markdown) — ctrl+x does the same",
+			// ADR-0058 3e — a DECLARED ADDITION: the session's tasks. The
+			// computed stop does not move: `/tasks` is six characters.
+			"/tasks       list this session's background tasks; stop one or show its output",
 			"/status      show session id, event count, and context estimate",
 			// Graphite R3d — a DECLARED ADDITION in the same class: /name sits
 			// beside /status, which shows the name. The computed stop does not
@@ -139,6 +142,10 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			// looks for a key, and a gesture the sheet does not name is a
 			// gesture nobody uses.
 			"ctrl+t       hide thinking to one line, and show it again (remembered)", // 0.40.6 (declared re-pin)
+			// ADR-0058 3e — a DECLARED ADDITION beside ctrl+t: the running row
+			// teaches ctrl+b while it applies; this is where it can be found
+			// the rest of the time.
+			"ctrl+b       move the running command to the background (twice inside tmux)",
 			// §2.4 — the same class again: the row names the variables because
 			// they are what a reader has to set for the key to do anything.
 			"ctrl+g       edit the composer in $VISUAL or $EDITOR — the text comes back unsent",
@@ -161,7 +168,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(25); // the main-sync round: Graphite R3d's /name and the modes round's /dont-ask, both declared // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's command rows
+		expect(helpRows()).toHaveLength(27); // the second main-sync round: main's ADR-0058 3e pair (/tasks + ctrl+b) on top of Graphite's 25 // the main-sync round: Graphite R3d's /name and the modes round's /dont-ask, both declared // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's command rows
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

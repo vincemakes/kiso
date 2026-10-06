@@ -158,6 +158,12 @@ export const fauxScript = (dir: string, turns: unknown[]): string => {
  * effect is KNOWN (no uncertainty) and the run still terminates aborted.
  * The abort-before-receipt ordering is the uncertainty round's fixture.
  */
+/** ADR-0058 3e: since a steer detaches a foreground command once it is 2 s
+ *  old, these fixtures — which hold a steer PENDING behind a long command
+ *  to test what esc, a redirect or the queue chip do with it — raise that
+ *  age through the rigs' knob. The detach itself is tasks-cli-3e-pty's. */
+const HOLD_STEERS = { KISO_AUTO_DETACH_MS: "600000" };
+
 const busyTurn = (seconds: number) => ({
 	events: [
 		{ type: "tool_call_end", callId: `c${seconds}`, name: "shell", input: { command: `sleep ${seconds}` } },
@@ -173,7 +179,7 @@ describe("KC2 T-R2 — a redirect mid-run: Run A aborts, the correction becomes 
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r2-"));
 		const script = fauxScript(dir, [busyTurn(8), quickTurn("run B done")]);
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r2", [
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass", ...HOLD_STEERS }, "kc2r2", [
 			["/mode to switch", "search the whole tree\r", 2],
 			["working", "no, only src/", 5], // typed WHILE run A is still busy
 			["only src/", ALT_ENTER, 6], // ONE gesture: ESC and CR in one write
@@ -204,7 +210,7 @@ describe("KC2 T-R5 — the redirect carries the steers that had not landed (ADR-
 			busyTurn(10),
 			quickTurn("answered one"),
 		]);
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r5", [
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass", ...HOLD_STEERS }, "kc2r5", [
 			["/mode to switch", "the original task\r", 2],
 			["working", "alpha\r", 4], // a steer — the tool is still running
 			["alpha", "beta\r", 5], // a second steer
@@ -224,7 +230,7 @@ describe("KC2 T-R5 — the redirect carries the steers that had not landed (ADR-
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r5b-"));
 		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one")]);
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r5b", [
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass", ...HOLD_STEERS }, "kc2r5b", [
 			["/mode to switch", "the original task\r", 2],
 			["working", "keeper\r", 4],
 			["keeper", "popme\r", 5],
@@ -247,7 +253,7 @@ describe("KC2 T-R6 — esc is a stop, not a send (ADR-0057)", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-r6-"));
 		const script = fauxScript(dir, [busyTurn(10), quickTurn("answered one")]);
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2r6", [
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass", ...HOLD_STEERS }, "kc2r6", [
 			["/mode to switch", "the original task\r", 2],
 			["working", "not landed yet\r", 4], // a steer — the tool is still running
 			["not landed yet", "\x1b", 6], // the bare esc, alone in its write — the run aborts
@@ -266,7 +272,7 @@ describe("KC2 T-S1 — Enter while a run is live steers it (ADR-0057)", () => {
 		const { env, dirs } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-kc2-s1-"));
 		const script = fauxScript(dir, [busyTurn(4), quickTurn("steered answer")]);
-		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass" }, "kc2s1", [
+		const out = ptyRun({ ...env, KISO_FAUX_SCRIPT: script, KISO_MODE: "bypass", ...HOLD_STEERS }, "kc2s1", [
 			["/mode to switch", "search the whole tree\r", 2], // Graphite: the idle bar teaches /mode; the input carries no placeholder (§7.8)
 			["working", "only src/\r", 3], // a steer while the tool runs
 		], 30, ["steered answer"]);

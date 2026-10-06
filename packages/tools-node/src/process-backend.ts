@@ -35,7 +35,7 @@ export function processTaskBackend(options: ProcessTaskBackendOptions = {}): Pro
 		async spawn({ dir, env }) {
 			const clean: Record<string, string> = {};
 			for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
-			const child = spawn(process.execPath, [runnerPath, dir], { detached: true, stdio: "ignore", env: clean });
+			const child = spawn(process.execPath, [runnerPath, dir], { detached: true, windowsHide: true, stdio: "ignore", env: clean });
 			child.unref();
 			const journal = join(dir, "journal.jsonl");
 			const deadline = Date.now() + (options.startTimeoutMs ?? 10_000);
@@ -62,6 +62,10 @@ export function processTaskBackend(options: ProcessTaskBackendOptions = {}): Pro
 			return id.startedAt === startedAt ? "verified" : "gone";
 		},
 		signalStop(pid) {
+			// win32: process.kill is TerminateProcess — the runner would die
+			// before its stop runs. The journal's stop_requested record, written
+			// before this call, is the channel there; the runner watches it.
+			if (process.platform === "win32") return;
 			try {
 				process.kill(pid, "SIGTERM");
 			} catch {

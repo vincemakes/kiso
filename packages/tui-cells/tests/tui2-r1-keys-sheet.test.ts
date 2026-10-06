@@ -48,6 +48,9 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 			"  ctrl+z  undo                          ctrl+y  redo",
 			"  ctrl+x  copy the answer               ctrl+v  attach an image",
 			"  !cmd    run it and send it            !!cmd   run it, show it here only",
+			// DECLARED ADDITION (the second main-sync round, ADR-0058 3e):
+			// ctrl+b, on a row of its own — the table's count is odd
+			"  ctrl+b  background a command",
 			`  ${SHEET_CLOSE}`,
 		]);
 	});
@@ -56,7 +59,7 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		setTTY(false);
 		for (const W of [20, 34, 50, 60, 80, 120]) {
 			const rows = keysSheetRows(W);
-			const two = rows.length === 1 + KEY_BINDINGS.length / 2 + 1;
+			const two = rows.length === 1 + Math.ceil(KEY_BINDINGS.length / 2) + 1;
 			expect(two || rows.length === 1 + KEY_BINDINGS.length + 1, `W=${W}: ${rows.length} rows`).toBe(true);
 			expect(two, `W=${W}`).toBe(W >= 74); // 2 + 6 + 2 + 27 + 3 + 6 + 2 + 26 cells
 			for (const row of rows) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
@@ -115,6 +118,6 @@ describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
 		// read in pairs, left then right; a key with two spellings is named
 		// by one; ctrl+t, ctrl+g and the `!` gestures joined from /help's
 		// table; `?` left (it is how you got here).
-		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual(["enter", "esc", "ctrl+j", "alt+⏎", "@", "/", "↑↓", "tab", "ctrl+o", "ctrl+r", "ctrl+t", "ctrl+g", "alt+←→", "alt+⌫", "ctrl+z", "ctrl+y", "ctrl+x", "ctrl+v", "!cmd", "!!cmd"]);
+		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual(["enter", "esc", "ctrl+j", "alt+⏎", "@", "/", "↑↓", "tab", "ctrl+o", "ctrl+r", "ctrl+t", "ctrl+g", "alt+←→", "alt+⌫", "ctrl+z", "ctrl+y", "ctrl+x", "ctrl+v", "!cmd", "!!cmd", "ctrl+b"]);
 	});
 });

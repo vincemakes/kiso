@@ -16,8 +16,10 @@ describe("DT-1a — config checks", () => {
 		expect(mergeConfigs(null, null).checks).toBeUndefined();
 	});
 	it("CS-1: evaluators are a list of absolute paths; both layers' lists join", () => {
-		const cfg = parseConfig(JSON.stringify({ evaluators: ["/opt/eval/strict.sh"] }), "~/.kiso/config.json");
-		expect(cfg.evaluators).toEqual(["/opt/eval/strict.sh"]);
+		// an absolute path for the platform (a drive path on Windows)
+		const EVAL = process.platform === "win32" ? "C:\\opt\\eval\\strict.sh" : "/opt/eval/strict.sh";
+		const cfg = parseConfig(JSON.stringify({ evaluators: [EVAL] }), "~/.kiso/config.json");
+		expect(cfg.evaluators).toEqual([EVAL]);
 		expect(() => parseConfig(JSON.stringify({ evaluators: { strict: "/opt/eval/strict.sh" } }), "x")).toThrow(/evaluators — expected a list/);
 		expect(() => parseConfig(JSON.stringify({ evaluators: ["eval/strict.sh"] }), "x")).toThrow(/evaluators — expected an absolute path/);
 		expect(mergeConfigs({ evaluators: ["/a.sh"] }, { evaluators: ["/b.sh"] }).evaluators).toEqual(["/a.sh", "/b.sh"]);

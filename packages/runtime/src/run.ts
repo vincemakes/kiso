@@ -120,6 +120,8 @@ export class Run implements AsyncIterable<Event> {
 	steer(content: string | readonly ContentBlock[]): void {
 		if (this.#sealed) throw new RunClosedError(this.runId);
 		this.#ingress.push({ kind: "human", content });
+		// ADR-0057 §5: a long foreground command no longer holds the steer
+		this.#session.detachForSteer();
 	}
 
 	/** ADR-0058 (3c) — hand this run a task delivery. It is admitted at the

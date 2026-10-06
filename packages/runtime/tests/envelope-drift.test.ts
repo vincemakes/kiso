@@ -11,6 +11,7 @@
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createAgent, SessionStore } from "../src/index.js";
@@ -48,10 +49,10 @@ describe("R-H 0.1.49 — the envelope-shape drift gate (R2a/B1a)", () => {
 	});
 
 	it("probe 2: every line of every generation sample has the exact envelope", () => {
-		const files = readdirSync(FIXTURE_DIR.pathname).filter((f) => f.endsWith(".jsonl")).sort();
+		const files = readdirSync(fileURLToPath(FIXTURE_DIR)).filter((f) => f.endsWith(".jsonl")).sort();
 		expect(files.length).toBeGreaterThan(0);
 		for (const f of files) {
-			const lines = readFileSync(join(FIXTURE_DIR.pathname, f), "utf8").split("\n").filter(Boolean);
+			const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), f), "utf8").split("\n").filter(Boolean);
 			for (const line of lines) {
 				expect(envelopeViolation(JSON.parse(line))).toBeNull();
 			}
@@ -59,9 +60,9 @@ describe("R-H 0.1.49 — the envelope-shape drift gate (R2a/B1a)", () => {
 	});
 
 	it("no event carries a schemaVersion — B1a: the envelope is the only shape", () => {
-		const files = readdirSync(FIXTURE_DIR.pathname).filter((f) => f.endsWith(".jsonl")).sort();
+		const files = readdirSync(fileURLToPath(FIXTURE_DIR)).filter((f) => f.endsWith(".jsonl")).sort();
 		for (const f of files) {
-			const lines = readFileSync(join(FIXTURE_DIR.pathname, f), "utf8").split("\n").filter(Boolean);
+			const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), f), "utf8").split("\n").filter(Boolean);
 			for (const line of lines) {
 				expect("schemaVersion" in JSON.parse(line).event).toBe(false);
 			}

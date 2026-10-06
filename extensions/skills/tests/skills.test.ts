@@ -10,7 +10,7 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import createSkillsExtension from "../dist/kiso-skills.mjs";
 import type { KisoExtension, Tool } from "@vincemakes/kiso-core";
@@ -120,7 +120,10 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		mkdirSync(join(fakeHome, ".kiso", "skills", "home-skill"), { recursive: true });
 		writeFileSync(join(fakeHome, ".kiso", "skills", "home-skill", "SKILL.md"), "---\ndescription: from home\n---\nbody\n", "utf8");
 		const origHome = process.env.HOME;
+		const origProfile = process.env.USERPROFILE;
 		process.env.HOME = fakeHome;
+		// Windows: the home directory is USERPROFILE (os.homedir reads it)
+		process.env.USERPROFILE = fakeHome;
 		delete process.env.KISO_HOME;
 		delete process.env.KISO_SKILLS_DIR;
 		try {
@@ -130,6 +133,8 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 			delete process.env.KISO_HOME;
 			if (origHome === undefined) delete process.env.HOME;
 			else process.env.HOME = origHome;
+			if (origProfile === undefined) delete process.env.USERPROFILE;
+			else process.env.USERPROFILE = origProfile;
 		}
 	});
 
@@ -169,7 +174,7 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 
 describe("⑤ safe-defaults (the round's only change outside extensions/)", () => {
 	it("read_skill joins the allow list — local user-installed docs, read_file trust", async () => {
-		const mod = (await import(pathToFileURL(join(new URL("../../../examples", import.meta.url).pathname, "extensions", "safe-defaults.mjs")).href)) as {
+		const mod = (await import(pathToFileURL(join(fileURLToPath(new URL("../../../examples", import.meta.url)), "extensions", "safe-defaults.mjs")).href)) as {
 			default: KisoExtension;
 		};
 		const decide = mod.default.approvals![0]!.decide;

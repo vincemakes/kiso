@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, writeFileSync, readdirSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { isolatedEnv, runCli } from "../../../tests/helpers/isolated-cli.mjs";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 
@@ -57,7 +58,7 @@ import { SessionStore } from "@vincemakes/kiso-runtime";
  * pretending a faux adapter serves 1M.)
  */
 
-const CLI = join(new URL("../..", import.meta.url).pathname, "cli", "dist", "index.js");
+const CLI = join(fileURLToPath(new URL("../..", import.meta.url)), "cli", "dist", "index.js");
 const SESSION = "s";
 /** KISO_FAUX_SCRIPT names a FILE, not inline JSON.
  *

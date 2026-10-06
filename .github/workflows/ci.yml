@@ -28,3 +28,26 @@ jobs:
       # tests, size gate (core only), pack gate, consumer smoke, demo check.
       - run: npm ci
       - run: npm run check
+
+  # Windows (plan rev 3.1, P5): not a required check while Windows stays
+  # install-refused. Build, typecheck, the process module probed for real
+  # (Git Bash, taskkill, the CIM start time), then the unit pool. The pty
+  # pool stays POSIX (its driver is Python's pty), and so do the check
+  # chain's sh / python3 / GNU tar steps.
+  windows:
+    runs-on: windows-latest
+    steps:
+      # the npm tarballs carry LF; a CRLF checkout would test bytes no user gets
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+      # --force until P6: kiso-code's "os" field still refuses win32 (the
+      # install gate), and npm ci applies it to a workspace too
+      - run: npm ci --force
+      - run: npm run build
+      - run: npm run typecheck
+      - run: node scripts/windows-probe.mjs
+      - run: npx vitest run -c vitest.unit.config.ts

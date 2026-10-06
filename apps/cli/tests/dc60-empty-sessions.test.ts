@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { findEmptySessions, moveToTrash } from "../src/empty-sessions.js";
 
@@ -59,7 +59,7 @@ describe("DC-60 — moveToTrash", () => {
 		const { empty } = findEmptySessions([dir], alive);
 		const target = moveToTrash(empty, trash, new Date("2026-09-23T03:00:00.000Z"));
 		expect(target).toBe(join(trash, "kiso-empty-sessions-2026-09-23T03-00-00-000Z"));
-		const project = join(target, dir.split("/").at(-1)!);
+		const project = join(target, basename(dir));
 		expect(readdirSync(project).sort()).toEqual(["ghost-a.meta.json", "ghost-b.lock", "ghost-b.meta.json", "traces"]);
 		expect(readdirSync(join(project, "traces"))).toEqual(["ghost-a.jsonl"]);
 		// gone from the folder; the session that ran and the one in use are untouched

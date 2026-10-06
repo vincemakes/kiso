@@ -586,3 +586,225 @@ it changed:
    adapters send them as they are (contract rigs); each dialect accepts
    it (the Messages API combines consecutive same-role turns). No
    wire-level merge is needed.
+
+## Amendment 3 — a start the model was told of (2026-10-01)
+
+An external review of 3c, after it merged. Amendment 2 item 5 derived the
+summary snapshot from "the tool executions that started tasks", and 3c
+read that as the execution's durable START. A start is not what the model
+was told: in the crash window the execution started and no result was
+ever written, and an execution resolved after a crash is answered with
+"not applied". Either way the summary named a task the model never heard
+of — the second, unreceipted channel item 5 forbids.
+
+The rule, exactly: a task is in the snapshot only when the log holds a
+successful `tool_result` for the execution that started it (the
+model-facing result, by `executionId`; its text is never parsed). A task
+the model was never told of reaches it only as a delivered notice.
+
+## Amendment 4 — background subagents, as built (3d, 2026-10-02, owner-approved)
+
+The 3d plan after two external reviews; the owner approved which roles
+and the turn budget's default. Beyond §5:
+
+1. **Which roles.** A role runs in the background only once its
+   unattended contract is defined; in 0.46 only explorer and reviewer
+   have one. An implementer's worktree, patch collection and acceptance,
+   and a tester's worktree, are held by the parent run; with no parent
+   run, who keeps, collects and removes them is not yet defined. A
+   background child reads the live workspace, not a snapshot: its
+   findings describe the workspace as it observed it.
+2. **The launch.** An agent task's `planned` record carries
+   `launch: { kind: "exec", file, args }` and the runner starts it with no
+   shell — the arguments a foreground child gets, plus its budget and its
+   result file; `command` is the label. The child's inputs (task file,
+   role policy, manifest) are fsynced before its task is planned.
+3. **The cap.** Live agent tasks + slots reserved by calls still starting
+   + the batch ≤ the host's `backgroundMax` (default 20), checked and
+   reserved in one synchronous step; a batch that does not fit starts
+   nothing.
+4. **No deadline: a turn budget.** §5's "the child's own turn and token
+   limits" did not exist — a child is `kiso chat --task-file`, and the
+   interactive door has no turn limit (R3e). A background child is bounded
+   by `--max-turns`, the host's `backgroundMaxTurns` (default 32, about
+   twice the longest real explorer measured — 17 requests; 3f tunes it).
+   The kernel stops the run at a model boundary; then ONE wrap-up request
+   (a system input, in a run limited to one request) asks for the answer
+   from what was found. The outcome is `incomplete`, never a plain
+   failure. `background` with `timeoutMs` is refused; `--max-turns` and
+   `--result-file` exist for a delegated child only.
+5. **The result.** The child writes its answer — the last assistant text
+   of its own session — to `result.md` beside its task, and
+   `{ outcome, requests, budget }` to `result.json`, atomically, before it
+   exits, so both exist when the runner records the end; a failed child
+   exits non-zero. `output.log` stays the child's printed run, for
+   diagnosis. (The plan had the delivery write `result.md` from the
+   child's session; the child writing its own projection is the same
+   source, needs no parse in the parent, and exists before any notice can
+   name it.)
+6. **The group.** The agent tasks started by the calls of one model turn.
+   It closes when that turn has ended and every call in it has its
+   result; only a closed group whose members have all ended (ended,
+   stopped or unknown) is delivered — ONE notice with every member's line
+   and excerpts of the answers within 4 KiB each and 16 KiB together;
+   members delivered before are named `reported="earlier"`, and only the
+   rest are receipted. Nothing new, no wake. A failure goes into a live
+   run at once and never wakes on its own; a restart notifies, never
+   wakes.
+
+## Amendment 5 — identity is checked less often (Windows P6, 2026-10-03, owner-approved)
+
+Checking a runner's identity starts a process — `ps` on POSIX, a
+PowerShell on win32 — and the TaskManager checked it on every read of every
+task, ended ones included, although an ended task's verdict is its
+terminal. A session that had run thirty tasks started thirty processes per
+listing, and the delivery lists several times per transition.
+
+The rule: a task whose journal has a terminal is never identified; "gone"
+is final for a pid and start time; any other verdict is reused for
+`identifyEveryMs` (default 5 s). The journal is still read on every poll,
+so an end is seen at once. **The worst case, stated:** a runner that dies
+WITHOUT a terminal keeps reading as `running` for up to `identifyEveryMs`
+after it died (its cached verdict is still "verified"), and only then
+reads `unknown` — not within one poll. A stop always checks afresh: it never signals a pid
+that is someone else's now.
+
+## Amendment 6 — the person's side of tasks, as built (3e, 2026-10-03, owner-approved)
+
+The 3e plan after an external review. Every detach goes through the
+TaskManager (§6): a running foreground command registers itself as
+detachable (`registerDetachable(executionId, { startedAt, detach })`)
+while it runs, and a detach unregisters before it promotes, so a second
+one — two steers, the key racing a pending auto-detach — is a no-op.
+
+1. **ctrl+b** moves the running foreground command(s) to the background
+   at once; the running row shows `ctrl+b background` while one can be.
+   Inside tmux the key is the prefix; pressed twice it is sent.
+2. **A steer detaches by the command's age** (ADR-0057 §5): the commands
+   registered when the steer arrives are each detached once they are 2 s
+   old — at once if they already are; a command that ends first returns
+   normally; a command started after the steer is never touched. The
+   tool result says why it moved; nothing else reaches the model.
+3. **Declared narrowing of §2:** only shell commands are detachable in
+   0.46. A foreground delegate child is spawned by the extension, not by
+   a runner; converting a running one is its own work. A steer during a
+   foreground delegate waits for it.
+4. **The status row** counts live tasks (`● N tasks running`) and the
+   unknown ones the person has not looked at in `/tasks` in this process
+   (`◌ N unknown`) — an unknown task is never only in the panel.
+5. **`/tasks`** lists the session's tasks; a task can be shown (its last
+   output, or a child's answer) or stopped. The inspection is drawn on
+   the screen only — no `user_input`, no event in the session log,
+   nothing the model sees, no effect on compaction or wakes. A stop is
+   requested; the row reads `stopping` until the journal says how it
+   ended.
+6. **The exit asks first** when tasks are live (on a dock; a pipe stops
+   all, as before) and says beforehand what each answer does. "Leave"
+   keeps a runner's tasks running and stops the moved commands, which this
+   process owns. Whatever is stopped, the exit reports what it could not
+   confirm (`t3: stop unconfirmed — outcome unknown`) and what it left
+   running; a stop requested is never presented as a stop.
+
+## Amendment 7 — a transition a result reports is not noticed again (2026-10-05, owner-approved)
+
+The 0.46.0 evaluation's paired runs found two defects in the model-facing
+task contract (findings 0460-B1 and 0460-B2). The owner ruled: fix before
+0.46.0, then re-measure. The fix was reviewed externally before it was
+built.
+
+- **0460-B2.1.** `task_stop` returned before the end ("you will be
+  notified"). The `stopped` notice for the model's own stop then landed
+  after the final answer and bought one request that only acknowledged it
+  (4 of 6 legs of the service task).
+- **0460-B2.2.** `background: true` with `readyWhen` returned at once. The
+  model's next command raced the server, and a `ready` notice repeated
+  what it had already assumed.
+- **0460-B1.** The `background` description invited "long jobs", so a test
+  run whose result was needed went to the background and the model slept
+  on it.
+
+**The rule.** Three facts, each with its own owner:
+
+1. **The transition happened** — the task journal (`terminal`, `ready`).
+2. **A tool execution claimed it** — the journal record
+   `result_claimed { transition, executionId }`, where `executionId` is the
+   CLAIMING call's own (task_stop's, the shell call's), not the task's
+   starter. A claimed transition is never noticed: the manager does not
+   announce it, and a restart does not deliver it.
+3. **The model knows it** — the session log: a durable, successful
+   `tool_result` for that execution. The summary snapshot (§7, Amendment
+   3) follows only this.
+
+The claim controls duplicate delivery. The log's `tool_result` controls
+model knowledge, and the summary follows only the latter: a journal
+record never tells the model anything by itself.
+
+1. **`awaitSettled(id, until, ms, { executionId, signal })`.** The
+   TaskManager waits for a task's end, or for its ready line (any end
+   settles that wait too), on behalf of a tool call. While it waits, the
+   watcher skips the task.
+   - **Order is frozen:** the claim is appended durably, then the
+     transition counts as seen, then the call returns.
+   - **Claims nothing:** a timeout, an abort, a call with no execution id,
+     or a claim that cannot be written. Those transitions are announced as
+     before; a duplicate is the lesser evil next to a lost one.
+   - **An agent task is never claimed.** Its end belongs to its group
+     (Amendment 4): a group re-checks only when a member's end is heard,
+     so claiming the last member's end would strand the others' answers.
+2. **`task_stop` waits up to 8 s** (the runner's poll, TERM, the 5 s grace,
+   KILL, the sweep) and reports how the task ended:
+   - `stopped task t2 (SIGTERM; it ran 11s)`;
+   - a task that cannot be confirmed stopped is an error.
+   Esc ends the wait at once. A stop that is not confirmed keeps the
+   notice path. **Only the model's own call claims.** The person's stop
+   (`/tasks stop`) and the exit's are never claimed: the model still
+   hears of them.
+3. **`background` with `readyWhen` waits for the ready line** (up to the
+   foreground wait). The task is the runner's from the start, so it
+   survives kiso and can be left running at exit (Amendment 6).
+   - **Ready:** the result says so, and the ready is claimed.
+   - **An end before ready** fails the call with the output's tail, and
+     the end is claimed.
+   - **Not ready in time:** the result says exactly that ("not ready after
+     N ms — … it keeps running as background task t1, and you will be
+     notified when it is ready") and claims nothing. It never implies
+     ready.
+   - **Detach releases the wait** (Amendment 6's seam): ctrl+b, a steer or
+     Esc ends the wait. The work is already a task, so nothing is promoted
+     and no second task is made. In general, a detach releases the current
+     invocation from waiting on work that can continue on its own; for a
+     foreground command that means a promotion first.
+4. **A promotion's ready is claimed too.** The foreground `readyWhen`
+   promotion's result says "ready —", so `adopt({ ready: true })` claims
+   it for the shell call. The summary then says `ready`, not `running`
+   (0460-S1).
+5. **Wording (0460-B1), +90 bytes per request**, measured on the first
+   request's body against the rc it replaces:
+   - `background`: "Run independently as a task. Use for services/watchers
+     or work whose exit result is not needed next. If you need the result,
+     keep it foreground and raise foregroundMs. You are notified when it
+     ends; do not sleep/poll."
+   - `readyWhen`: "For a continuing service, wait up to foregroundMs for
+     this literal output before returning; the task keeps running
+     afterward."
+   - `task_stop`: "Stop a task, wait briefly for its terminal state, and
+     report how it ended."
+6. **The crash window** (ADR-0025). Suppose kiso dies after a claim was
+   written.
+   - **The execution's success receipt landed:** receipt repair completes
+     the result, and the model is told.
+   - **It did not:** the execution is uncertain and waits for the person.
+     The delivery does not re-notice (the claim stands), and the summary
+     does not reveal the end (no durable successful result). If the person
+     abandons the call, the model may never learn that end. The person
+     ruled on the interrupted call, and no summary or notice goes around
+     that ruling.
+7. **§11 corrected.**
+   - The margins the evaluation used are BM-1 Amendment 1's
+     (`bm1-a1`: median ≤ +20%; a single pair over +50% is reported, not
+     blocking). The `bm1-frozen` figures §11 quoted were superseded.
+   - **F1's paired wall comparison is reversed.** The control has no
+     background delegation, so a fair comparison cannot be made. The
+     re-measure runs F1b instead: an rc-only probe of the background
+     delegate, the wake and the group delivery, which reports the child
+     requests that tune D6's budget.

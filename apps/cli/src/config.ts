@@ -34,7 +34,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { kisoHome } from "./state.js";
 import { MODE_VALUES, parseMode } from "./mode.js";
 import { AuthError, effectiveBaseUrl, endpointCredentialId, getCredential, providerIdOf } from "./auth/credentials.js";
@@ -223,13 +223,18 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		if (source.startsWith("<cwd>")) fail("floor", "belongs in the USER config — a project must never be able to lower the floor");
 		out.floor = obj.floor as "catastrophe" | "off";
 	}
+	// Windows P3: absolute for the host — on Windows a drive path with
+	// either separator (or a UNC share), never a drive-rooted `\x`, which
+	// would mean a different file on every drive
+	const windows = process.platform === "win32";
+	const absolute = (p: string): boolean => (windows ? win32.isAbsolute(p) && !/^[\\/](?![\\/])/.test(p) : p.startsWith("/"));
 	if (obj.protectedPaths !== undefined) {
 		if (source.startsWith("<cwd>")) fail("protectedPaths", "belongs in the USER config — a project must never be able to change what kiso guards");
 		if (!Array.isArray(obj.protectedPaths)) fail("protectedPaths", "expected an array of paths");
 		for (const [i, p] of (obj.protectedPaths as unknown[]).entries()) {
 			// a relative path would be read against whatever directory kiso
 			// runs in — a different file in every project
-			if (typeof p !== "string" || !(p.startsWith("/") || p.startsWith("~/"))) fail(`protectedPaths[${i}]`, "expected an absolute path or one starting with ~/");
+			if (typeof p !== "string" || !(absolute(p) || p.startsWith("~/"))) fail(`protectedPaths[${i}]`, "expected an absolute path or one starting with ~/");
 			// kiso protects FILES. A directory listed here would protect
 			// nothing under it — a security setting that silently does
 			// nothing — so it is refused where the person can see it.
@@ -237,7 +242,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 			// caught at the next start or /reload.)
 			const path = p as string;
 			const full = path.startsWith("~/") ? join(homedir(), path.slice(2)) : path;
-			if (path.endsWith("/") || statSync(full, { throwIfNoEntry: false })?.isDirectory() === true) {
+			if (path.endsWith("/") || (windows && path.endsWith("\\")) || statSync(full, { throwIfNoEntry: false })?.isDirectory() === true) {
 				fail(`protectedPaths[${i}]`, `${path} is a directory — kiso protects files, so list the files in it (for ~/.aws: "~/.aws/credentials", "~/.aws/config")`);
 			}
 		}
@@ -254,7 +259,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 	if (obj.evaluators !== undefined) {
 		if (!Array.isArray(obj.evaluators)) fail("evaluators", "expected a list of absolute paths to evaluator scripts");
 		for (const path of obj.evaluators as unknown[]) {
-			if (typeof path !== "string" || !path.startsWith("/")) fail("evaluators", `expected an absolute path, got ${JSON.stringify(path)}`);
+			if (typeof path !== "string" || !absolute(path)) fail("evaluators", `expected an absolute path, got ${JSON.stringify(path)}`);
 		}
 		out.evaluators = obj.evaluators as string[];
 	}

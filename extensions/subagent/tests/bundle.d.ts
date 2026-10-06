@@ -1,6 +1,6 @@
 /** The built artifact has no .d.ts — declare its exports for the tests. */
 declare module "*.mjs" {
-	const factory: () => Promise<import("@vincemakes/kiso-core").KisoExtension>;
+	const factory: (host?: import("../index.js").SubagentHost) => Promise<import("@vincemakes/kiso-core").KisoExtension>;
 	export default factory;
 	export function rolePolicyContent(role: string, scope?: { root: string; globs: readonly string[] }): string;
 	export function extractChildResult(
@@ -35,5 +35,5 @@ declare module "*.mjs" {
 		baseRev: string | null,
 		timeout: number,
 		signal?: AbortSignal,
-	): Promise<{ kind: string; exitCode: number | null; passed: boolean; tail: string; durationMs: number; patchSha256: string }>;
+	): Promise<{ kind: string; exitCode: number | null; passed: boolean; killed?: "timeout" | "abort"; unconfirmed?: number[]; tail: string; durationMs: number; patchSha256: string }>;
 }
