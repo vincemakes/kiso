@@ -11,6 +11,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { projectMessages } from "@vincemakes/kiso-core";
 
@@ -33,7 +34,7 @@ const pairClosed = (msgs: ReturnType<typeof projectMessages>): boolean => {
 describe("R-E 0.1.44 — the healing fixtures (the three poisoned real sessions)", () => {
 	for (const id of SESSIONS) {
 		it(`${id}: load → project is pair-clean — the poison heals retroactively`, () => {
-			const lines = readFileSync(join(FIXTURE_DIR.pathname, `${id}.jsonl`), "utf8")
+			const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), `${id}.jsonl`), "utf8")
 				.split("\n")
 				.filter(Boolean);
 			const events = lines.map((line) => JSON.parse(line).event);

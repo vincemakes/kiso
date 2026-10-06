@@ -69,3 +69,23 @@ under role policies that never ask.
   kept/deleted, non-git honest failure, P3 child ids);
   `extensions/subagent/tests/subagent-e2e.test.ts` (durable child
   session pinned: exists with a terminal).
+
+## Amendment 1 — the tester is the verifier (2026-10-03, owner-approved)
+
+The role named `tester` never produced changes: it works in a throwaway
+worktree and only its report is its result — it runs checks and reports
+evidence. The name made models read it as "writes tests", which is the
+implementer's work. From 0.46.0 it is `verifier`; its tools, worktree and
+policy are unchanged.
+
+- **No alias.** The kernel validates the role against the schema's enum,
+  so accepting `tester` would mean listing two names for one role in
+  every request — the confusion the rename removes, paid on every call.
+  A model that still writes `tester` gets a schema error and the schema it
+  reads names `verifier`; a direct caller is told it was renamed.
+- **`after` works on a copy.** A verifier chained to an implementer ran
+  in the implementer's KEPT worktree and could change it after its patch
+  was saved, so the worktree the parent was handed no longer matched the
+  patch. It now runs in a fresh worktree at the same base with the
+  implementer's changes applied, removed after the run like any other
+  verifier worktree.

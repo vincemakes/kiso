@@ -20,15 +20,15 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { appendFileSync, chmodSync, existsSync, linkSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, linkSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import type { SearchReply, SearchRequest } from "./search-worker.js";
-import { killTree, processStartTime, RotatingOutput, startCommand } from "./process.js";
+import { killTree, NO_BASH, processStartTime, RotatingOutput, startCommand } from "./process.js";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
+import { defineTool, type AbortSignalLike, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 // WR-1/WR-1A — the revision-guard primitives (unit-tested in wr1a-coda):
 import { strippedShellEnv } from "./secret-env.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
@@ -91,6 +91,9 @@ const DEFAULT_FOREGROUND_MS = 60_000;
 const TASK_OUTPUT_CAP = 64 * 1024 * 1024;
 /** A task's stop: SIGTERM, this long, then the confirmed sweep. */
 const TASK_STOP_GRACE_MS = 5_000;
+/** ADR-0058 Amendment 7: how long task_stop waits for the end it reports —
+ *  the runner's journal poll, TERM, the grace, KILL and the sweep. */
+const TASK_STOP_WAIT_MS = 8_000;
 // the token round: the scoped-read defaults — read_file shows the head 200 lines
 // of a large file (with an actionable continuation note, never a silent
 // drop), search_text caps at 50 excerpts, list_dir at 200 entries. The
@@ -379,6 +382,9 @@ async function inodeReadPolicy(root: string, full: string): Promise<string | nul
 	const st = statSync(full);
 	if (!st.isFile()) return `not a regular file — refusing to read (${full})`;
 	if (st.nlink <= 1) return null;
+	// Windows: no find can list a file's links (find there is the system's
+	// text search) — refused without a scan, and the refusal says why
+	if (process.platform === "win32") return `file has ${st.nlink} hard links, and on Windows kiso cannot check where they all are — refusing to read (${full})`;
 	const key = `${st.dev}:${st.ino}`;
 	const cached = inodeVerdict.get(key);
 	if (cached !== undefined) return cached;
@@ -1221,9 +1227,15 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// against the first one's output. Still all or nothing: nothing is
 				// written unless every hunk resolves, and each must match exactly
 				// once in the text it meets (ACI-2).
-				let edited = text;
+				// Windows P3: a uniformly CRLF file is matched on its LF form and
+				// written back CRLF — the model's search text uses LF, and an edit
+				// never changes the file's endings. A file mixing the two keeps
+				// exact matching: normalizing it would rewrite untouched lines.
+				const crlf = text.includes("\r\n") && !/(^|[^\r])\n/.test(text);
+				const lf = (t: string): string => (crlf ? t.replace(/\r\n/g, "\n") : t);
+				let edited = lf(text);
 				for (let i = 0; i < hunks.length; i += 1) {
-					const h = hunks[i]!;
+					const h = { search: lf(hunks[i]!.search), replace: lf(hunks[i]!.replace) };
 					const { count, offsets } = occurrencesOf(edited, h.search);
 					const which = hunks.length === 1 && edits === undefined ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, after ${i === 1 ? "hunk 1" : `hunks 1–${i}`} applied)`;
 					if (count === 0) {
@@ -1255,7 +1267,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				// E group: safe replacement — never rewrite a shared external inode via a hard link.
 				// round 8: the edited file keeps its mode.
 				preservedMode = statSync(full).mode & 0o7777;
-				writeFileSync(tmp, edited, "utf8");
+				// ONE buffer is written and hashed: the revision returned is the
+				// file's on disk, CRLF or not (the review's finding)
+				const bytesOut = Buffer.from(crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
+				writeFileSync(tmp, bytesOut);
 				chmodSync(tmp, preservedMode);
 				// WR-1A ③: revalidate against the citation right before the
 				// replacement commits.
@@ -1270,7 +1285,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					// WR-1A ①: post-effect — fatal, the rename already landed.
 					return postEffectEscape("edit", path);
 				}
-				return { content: `edited ${path}\n[${contentRevision(Buffer.from(edited, "utf8"))}]`, isError: false };
+				return { content: `edited ${path}\n[${contentRevision(bytesOut)}]`, isError: false };
 			} catch (err) {
 				// round 8: a failed edit never leaves a temp file behind.
 				try {
@@ -1332,6 +1347,56 @@ export interface ShellTasks {
 	};
 	stop(id: string, by: "model"): boolean;
 	get(id: string): { readonly state: { readonly kind: string } } | undefined;
+	/** ADR-0058 Amendment 7: wait for a task's end (or ready line) that this
+	 *  call's result will report; what it sees is claimed for `executionId`,
+	 *  so it is never noticed. Without it the calls return at once (today's
+	 *  results, a notice to follow). */
+	awaitSettled?(
+		id: string,
+		until: "end" | "ready",
+		ms: number,
+		opts: { readonly executionId?: string; readonly signal?: AbortSignalLike },
+	): Promise<{ readonly info: SettledTask; readonly settled: boolean; readonly claimed: boolean }>;
+	/** 3e: a running foreground command that can be moved to the background
+	 *  now (the person's key, a steer) — registered while it runs. */
+	registerDetachable?(executionId: string, detachable: { readonly startedAt: number; detach(by: "person" | "steer"): void }): () => void;
+}
+
+/** What a settled wait reports about its task. */
+interface SettledTask {
+	readonly state: { readonly kind: string; readonly ready?: boolean; readonly exitCode?: number | null; readonly signal?: string | null; readonly error?: string };
+	readonly outputPath: string;
+	readonly startedAt: number;
+	readonly endedAt?: number;
+}
+
+/** How a task ended, in a few words: its signal, its exit code, or why it
+ *  never ran. */
+function howEnded(task: SettledTask): string {
+	const s = task.state;
+	if (s.kind === "unknown") return "its runner is gone and its end is unknown";
+	if (s.error !== undefined) return `it never started: ${s.error}`;
+	if (s.signal !== undefined && s.signal !== null) return s.signal;
+	if (s.exitCode !== undefined && s.exitCode !== null) return `exit code ${s.exitCode}`;
+	return "no exit code";
+}
+
+/** The last `bytes` of a task's output file ("" when there is none). */
+function outputTail(path: string, bytes = 2_048): string {
+	try {
+		const fd = openSync(path, "r");
+		try {
+			const size = fstatSync(fd).size;
+			const len = Math.min(size, bytes);
+			const buf = Buffer.alloc(len);
+			readSync(fd, buf, 0, len, size - len);
+			return `${size > len ? "…" : ""}${buf.toString("utf8")}`.trim();
+		} finally {
+			closeSync(fd);
+		}
+	} catch {
+		return "";
+	}
 }
 
 type ShellInput = { command: string; timeoutMs?: number; foregroundMs?: number; background?: boolean; readyWhen?: string };
@@ -1350,19 +1415,25 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 	// ADR-0058 (3b): the task-aware contract exists only where tasks are
 	// wired; a host without them keeps today's schema byte for byte.
 	const withTasks = opts.tasks !== undefined;
+	// Windows P1: commands run through Git Bash there, /bin/sh elsewhere
+	const sh = process.platform === "win32" ? "bash" : "/bin/sh";
 	return defineTool<ShellInput>({
 		name: "shell",
 		description: withTasks
-			? "Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. A command still running after foregroundMs is never killed: it continues as a background task, the result gives its id and output path, and you are notified when it ends. Fails loudly on a non-zero exit."
-			: "Run a shell command through /bin/sh with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.",
+			? `Run a shell command through ${sh} with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. A command still running after foregroundMs is never killed: it continues as a background task, the result gives its id and output path, and you are notified when it ends. Fails loudly on a non-zero exit.`
+			: `Run a shell command through ${sh} with the workspace root as the working directory: builds, tests, git, package managers, curl for HTTP APIs, system queries. Side effects are real; the human may be asked to approve the run. Fails loudly on timeout or non-zero exit.`,
 		parameters: withTasks
 			? {
 					type: "object",
 					properties: {
 						command: { type: "string", description: "The command to run" },
 						foregroundMs: { type: "number", description: "How long to wait for the result, in ms (default 60000); if you need the result to go on, allow enough time" },
-						background: { type: "boolean", description: "Start as a background task and return at once: servers, watchers, long jobs" },
-						readyWhen: { type: "string", description: "A literal piece of the output that means ready (a server's ready line): the wait ends there and the command keeps running as a task" },
+						background: {
+							type: "boolean",
+							description:
+								"Run independently as a task. Use for services/watchers or work whose exit result is not needed next. If you need the result, keep it foreground and raise foregroundMs. You are notified when it ends; do not sleep/poll.",
+						},
+						readyWhen: { type: "string", description: "For a continuing service, wait up to foregroundMs for this literal output before returning; the task keeps running afterward." },
 						timeoutMs: { type: "number", description: "Deprecated: use foregroundMs" },
 					},
 					required: ["command"],
@@ -1402,13 +1473,23 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					...(readyWhen !== undefined ? { readyWhen } : {}),
 					profile: readyWhen !== undefined ? "service" : "oneshot",
 				});
-				return { content: `started background task ${task.id}. ${taskNote(task.outputPath)}`, isError: false };
+				const settle = tasks.awaitSettled?.bind(tasks);
+				if (readyWhen === undefined || settle === undefined) return { content: `started background task ${task.id}. ${taskNote(task.outputPath)}`, isError: false };
+				return waitForReady(tasks, settle, task, readyWhen, timeout, ctx);
 			}
 			return new Promise((resolvePromise) => {
 				// detached: the command gets its OWN process group, so a
 				// timeout/abort can kill the WHOLE TREE (children included),
 				// not just the outer shell (Area 4). cwd is the workspace.
-				const child = startCommand(command, { cwd: opts.workspaceRoot, env });
+				let child: ReturnType<typeof startCommand>;
+				try {
+					child = startCommand(command, { cwd: opts.workspaceRoot, env });
+				} catch (err) {
+					// win32 with no usable bash: an answer the model can act on
+					if ((err as { code?: string }).code !== NO_BASH) throw err;
+					resolvePromise({ content: `shell failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" });
+					return;
+				}
 				let stdout = "";
 				let stderr = "";
 				let stdoutDropped = 0;
@@ -1419,6 +1500,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				let promoted: { readonly task: ReturnType<ShellTasks["adopt"]>; readonly out: RotatingOutput } | null = null;
 				let stopping = false;
 				let readySeen = false;
+				/** 3e: the unregister of this command's detach — while it runs in the foreground */
+				let undetachable = (): void => {};
 				let recent = ""; // the tail readyWhen is matched against
 				const matchReady = (text: string): boolean => {
 					if (readyWhen === undefined || readySeen) return false;
@@ -1459,6 +1542,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				const settle = (result: { content: string; isError: boolean; errorKind?: "fatal" }): void => {
 					if (settled) return;
 					settled = true;
+					undetachable();
 					dropProgress();
 					clearTimeout(timer);
 					// E group: the abort listener is removed once settled — it
@@ -1537,7 +1621,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				ctx.signal.addEventListener("abort", onAbort);
 				/** ADR-0058 §3: the wait is over — the command continues as a
 				 *  task this process owns; nothing is killed. */
-				const promote = (reason: "waited" | "ready"): void => {
+				const promote = (reason: "waited" | "ready" | "person" | "steer"): void => {
 					if (settled || killing || promoted !== null || tasks === undefined) return;
 					const task = tasks.adopt({
 						command,
@@ -1555,7 +1639,13 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					const tail = sofar.length > 2048 ? `…${sofar.slice(-2048)}` : sofar;
 					settle({
 						content:
-							(reason === "ready" ? `ready — the output contains "${readyWhen}"; ` : `still running after ${timeout} ms; `) +
+							(reason === "ready"
+								? `ready — the output contains "${readyWhen}"; `
+								: reason === "person"
+									? "moved to the background by the person; "
+									: reason === "steer"
+										? "moved to the background so the person's message could land; "
+										: `still running after ${timeout} ms; `) +
 							`continued as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath)}` +
 							(tail !== "" ? `\nOutput so far:\n${tail}` : ""),
 						isError: false,
@@ -1584,6 +1674,11 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 						promoted.task.ended(e?.code ?? null, e?.signal ?? null);
 					});
 				};
+				// 3e: while it runs in the foreground, the person (ctrl+b) or a
+				// steer may move it to the background — through the manager
+				if (tasks?.registerDetachable !== undefined && ctx.executionId !== undefined) {
+					undetachable = tasks.registerDetachable(ctx.executionId, { startedAt: Date.now(), detach: (by) => promote(by) });
+				}
 				const timer = setTimeout(() => {
 					if (tasks !== undefined) {
 						promote("waited");
@@ -1604,6 +1699,55 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 	});
 }
 
+/** ADR-0058 Amendment 7: `background` with `readyWhen` — the task is the
+ *  runner's from the start; this call waits for its ready line (up to the
+ *  foreground wait) and reports what it saw. The ready (or an end before
+ *  it) is claimed for this call, so no notice repeats it. The person
+ *  (ctrl+b), a steer or Esc RELEASES the wait: the work is already a task,
+ *  so nothing is promoted and no second task is made. */
+async function waitForReady(
+	tasks: ShellTasks,
+	settle: NonNullable<ShellTasks["awaitSettled"]>,
+	task: { readonly id: string; readonly outputPath: string },
+	readyWhen: string,
+	timeout: number,
+	ctx: { readonly executionId?: string | undefined; readonly signal: AbortSignalLike },
+): Promise<ToolResult> {
+	const release = new AbortController();
+	let reason: "person" | "steer" | "interrupted" | null = null;
+	const onEsc = (): void => {
+		reason ??= "interrupted";
+		release.abort();
+	};
+	if (ctx.signal.aborted) onEsc();
+	else ctx.signal.addEventListener("abort", onEsc);
+	const undetach =
+		tasks.registerDetachable !== undefined && ctx.executionId !== undefined
+			? tasks.registerDetachable(ctx.executionId, {
+					startedAt: Date.now(),
+					detach: (by) => {
+						reason ??= by;
+						release.abort();
+					},
+				})
+			: (): void => {};
+	try {
+		const w = await settle(task.id, "ready", timeout, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), signal: release.signal });
+		const where = `Output: ${task.outputPath} (read it with read_file); task_stop stops it.`;
+		if (w.settled && w.info.state.kind === "running") return { content: `started background task ${task.id}; ready — the output contains "${readyWhen}". ${taskNote(task.outputPath)}`, isError: false };
+		if (w.settled) {
+			const tail = outputTail(task.outputPath);
+			return { content: `background task ${task.id} ended before it was ready (${howEnded(w.info)})${tail !== "" ? `\n${tail}` : ""}`, isError: true, errorKind: "fatal" };
+		}
+		if (reason === null) return { content: `not ready after ${timeout} ms — no "${readyWhen}" in the output yet; it keeps running as background task ${task.id}, and you will be notified when it is ready. ${where}`, isError: false };
+		const why = reason === "person" ? "moved on by the person" : reason === "steer" ? "so the person's message could land" : "interrupted";
+		return { content: `started background task ${task.id}; stopped waiting for "${readyWhen}" (${why}) — not ready yet; you will be notified when it is ready. ${where}`, isError: false };
+	} finally {
+		undetach();
+		ctx.signal.removeEventListener("abort", onEsc);
+	}
+}
+
 /** Where a task's output is, and what happens next — one wording for the
  *  shell's results. */
 function taskNote(outputPath: string): string {
@@ -1614,7 +1758,7 @@ function taskNote(outputPath: string): string {
 export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> {
 	return defineTool<{ id: string }>({
 		name: "task_stop",
-		description: "Stop a background task this session started, with its whole process group. The result says whether it was still running.",
+		description: "Stop a task, wait briefly for its terminal state, and report how it ended.",
 		parameters: {
 			type: "object",
 			properties: { id: { type: "string", description: "The task id, as the shell reported it (t1, t2, …)" } },
@@ -1627,9 +1771,15 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
 			const info = tasks?.get(id);
 			if (tasks === undefined || info === undefined) return { content: `no task ${id} in this session`, isError: true, errorKind: "precondition" };
 			if (info.state.kind === "ended") return { content: `task ${id} had already ended`, isError: false };
-			return tasks.stop(id, "model")
-				? { content: `stopping task ${id}; you will be notified when it has ended`, isError: false }
-				: { content: `task ${id} is not running (${info.state.kind}); nothing to stop`, isError: false };
+			if (!tasks.stop(id, "model")) return { content: `task ${id} is not running (${info.state.kind}); nothing to stop`, isError: false };
+			if (tasks.awaitSettled === undefined) return { content: `stopping task ${id}; you will be notified when it has ended`, isError: false };
+			// Amendment 7: wait for the end this result reports — claimed for
+			// THIS call, so no stopped notice follows (Esc: nothing claimed)
+			const w = await tasks.awaitSettled(id, "end", TASK_STOP_WAIT_MS, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), signal: ctx.signal });
+			if (!w.settled) return { content: `stop requested for task ${id}; its end is not confirmed yet — you will be notified when it ends`, isError: false };
+			if (w.info.state.kind === "unknown") return { content: `task ${id} could not be confirmed stopped — some of its processes may still be running`, isError: true, errorKind: "fatal" };
+			const ran = w.info.endedAt !== undefined ? `; it ran ${Math.round((w.info.endedAt - w.info.startedAt) / 100) / 10}s` : "";
+			return { content: `stopped task ${id} (${howEnded(w.info)}${ran})`, isError: false };
 		},
 	});
 }

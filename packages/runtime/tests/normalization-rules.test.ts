@@ -17,6 +17,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isKisoEvent, projectMessages, type Event } from "@vincemakes/kiso-core";
 import { deriveRecoveryPlan, invocationSeqOf } from "../src/recovery-plan.js";
@@ -25,7 +26,7 @@ const FIXTURE_DIR = new URL("./fixtures/sessions/", import.meta.url);
 
 describe("R-H 0.1.49 — the NORMALIZE class: absence semantics pinned read-time (R4/C1)", () => {
 	it("gen D: tool_result without invocationSeq is legal, projects, derives — the absence is implied", () => {
-		const lines = readFileSync(join(FIXTURE_DIR.pathname, "gen-d-0142-real.jsonl"), "utf8")
+		const lines = readFileSync(join(fileURLToPath(FIXTURE_DIR), "gen-d-0142-real.jsonl"), "utf8")
 			.split("\n")
 			.filter(Boolean);
 		const events = lines.map((line) => JSON.parse(line).event as Event);

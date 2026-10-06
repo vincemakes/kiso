@@ -23,7 +23,8 @@ let home = "";
 let root = "";
 
 beforeAll(() => {
-	home = join(realpathSync(mkdtempSync(join(tmpdir(), "kiso-floor-"))), "home");
+	// .native, as the product resolves: it also expands a Windows 8.3 short name
+	home = join(realpathSync.native(mkdtempSync(join(tmpdir(), "kiso-floor-"))), "home");
 	root = join(home, "proj");
 	mkdirSync(join(home, ".ssh"), { recursive: true });
 	mkdirSync(join(home, ".config", "app"), { recursive: true });
@@ -268,11 +269,20 @@ const RUNS: readonly string[] = [
 	"npm test",
 ];
 
+/** Windows (P2): a POSIX-rooted path under Git Bash is an MSYS mount — Git's
+ *  own tree, never resolved — so it is refused there whatever it names, and
+ *  the reason says so instead of naming the POSIX root. */
+const WINDOWS = process.platform === "win32";
+const MSYS_MOUNT = "an MSYS mount";
+const posixRooted = (cmd: string): boolean => /(^|[\s;&|(])\/(?!\/)/.test(cmd);
+
 describe("the floor refuses the unrecoverable, and says which", () => {
 	for (const [cmd, why] of REFUSED) {
 		it(JSON.stringify(cmd), () => {
 			const v = check(cmd);
 			expect(v.refused, cmd).toBe(true);
+			// (a cd to one leaves every relative path after it unreadable)
+			if (WINDOWS && posixRooted(cmd) && v.refused && /an MSYS mount|cannot be read/.test(v.why)) return;
 			if (typeof why === "string") expect(v.refused ? v.why : "", cmd).toContain(why);
 			else expect(v.refused ? v.why : "", cmd).toMatch(why);
 		});
@@ -282,6 +292,14 @@ describe("the floor refuses the unrecoverable, and says which", () => {
 describe("and nothing else — bypass stays bypass", () => {
 	for (const cmd of RUNS) {
 		it(JSON.stringify(cmd), () => {
+			// Windows: a POSIX-rooted target is an MSYS mount there — a
+			// destructive command over one is refused for that reason, and
+			// for no other; the rest run
+			if (WINDOWS && posixRooted(cmd)) {
+				const v = check(cmd);
+				expect(!v.refused || v.why.includes(MSYS_MOUNT), cmd).toBe(true);
+				return;
+			}
 			expect(check(cmd)).toEqual({ refused: false });
 		});
 	}
@@ -324,7 +342,7 @@ describe("the chain member", () => {
 		const v = (await decide(true, "shell", "rm -rf /")) as { action: string; reason?: string };
 		expect(v.action).toBe("deny");
 		expect(v.reason).toContain("the floor refused this");
-		expect(await decide(true, "shell", "rm -rf /tmp/probe")).toEqual({ action: "abstain" });
+		expect(await decide(true, "shell", "rm -rf build")).toEqual({ action: "abstain" });
 		expect(await decide(true, "write_file", "rm -rf /")).toEqual({ action: "abstain" });
 	});
 

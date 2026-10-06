@@ -37,7 +37,8 @@ that has not finished speaking.
   Accepted
 - 0031 — Credential boundaries — strip by default, pass explicitly under
   human approval — Accepted
-- 0032 — Subagents are durable sessions — Accepted
+- 0032 — Subagents are durable sessions — Accepted (Amendment 1,
+  2026-10-03: the tester role is the verifier; `after` works on a copy)
 - 0033 — Skills load progressively through existing surfaces — Accepted
 - 0034 — npm identity — a personal scope, the pi pattern — Accepted
 - 0035 — The upgrade contract is quarantine, not seamless rolling —
@@ -131,14 +132,19 @@ not another recalibration)
   `onUserMessage` once and the runtime's never. Overturns architecture
   §5 ("Run — one user turn") and "input lands between runs".
 - 0058 — Tasks: execution that outlives the tool call that started it —
-  **Accepted**, 2026-09-28, ratified by the owner; Amendment 1
-  2026-09-30. A foreground command that outlives `foregroundMs` (60 s by
+  **Accepted**, 2026-09-28, ratified by the owner; Amendments 1–2
+  2026-09-30, Amendment 3 2026-10-01, Amendments 4–6 2026-10-02/03. A foreground command that outlives `foregroundMs` (60 s by
   default; the model's value wins) is promoted to a task, never killed;
   `background: true` starts one under a detached runner that survives
   kiso; `readyWhen` ends the wait on a ready line. A write-ahead journal
   per task and a verified runner identity decide every state after a
   crash; nothing is ever re-run. Completions reach the model through
   ADR-0057's admission seam, batched, with at most one autonomous wake.
+  `delegate` runs explorer and reviewer children in the background as
+  agent tasks, bounded by a turn budget, delivered once per group. The
+  person moves a running command to the background with ctrl+b, a steer
+  no longer waits for one, `/tasks` lists and stops them, and an exit
+  with live tasks asks first.
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's

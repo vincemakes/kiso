@@ -11,12 +11,28 @@
  *
  * The session log is conversation truth and never records a process
  * lifecycle; this journal never records what the model knows. Neither
- * decides the other's facts.
+ * decides the other's facts. `result_claimed` (ADR-0058 Amendment 7) is no
+ * exception: it says which tool execution took a transition over — so the
+ * delivery never notices it — not that the model saw it; that is the
+ * session log's, a durable successful tool_result for that execution.
  */
 
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from "node:fs";
 
 export type TaskProfile = "oneshot" | "service";
+
+/** A launch without a shell: the file and its arguments, verbatim. */
+export interface TaskLaunch {
+	readonly kind: "exec";
+	readonly file: string;
+	readonly args: readonly string[];
+}
+
+/** Who an agent task is: its role and the child's session id. */
+export interface TaskAgent {
+	readonly role: string;
+	readonly session: string;
+}
 
 export type TaskRecord =
 	| {
@@ -34,6 +50,11 @@ export type TaskRecord =
 			readonly executionId?: string;
 			/** A literal substring of the output that means "ready". */
 			readonly readyWhen?: string;
+			/** ADR-0058 3d: an argv launch — the runner starts `file` with
+			 *  exactly `args`, no shell; `command` is then only the label. */
+			readonly launch?: TaskLaunch;
+			/** ADR-0058 §5: an agent task — a child kiso and its own session. */
+			readonly agent?: TaskAgent;
 	  }
 	| { readonly type: "runner_started"; readonly ts: number; readonly pid: number; readonly startedAt: string }
 	| { readonly type: "command_started"; readonly ts: number }
@@ -44,13 +65,34 @@ export type TaskRecord =
 	| { readonly type: "stop_unconfirmed"; readonly ts: number; readonly pids: readonly number[] }
 	/** `error`: the command never started (no shell, a missing cwd) — then
 	 *  there is no exit code and none is invented. */
-	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null; readonly error?: string };
+	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null; readonly error?: string }
+	/** ADR-0058 Amendment 7: the tool execution `executionId` — the CLAIMING
+	 *  call (task_stop's own, the shell call's own), not the task's starter —
+	 *  reports `transition` in its result, so it is never noticed. */
+	| { readonly type: "result_claimed"; readonly ts: number; readonly transition: ClaimedTransition; readonly executionId: string };
+
+/** A transition as the model is told it — a notice's or a result's name. */
+export type ClaimedTransition = "ready" | "exited" | "failed" | "stopped" | "unknown";
 
 /** Append one record and fsync it before returning — the write-ahead step. */
 export function appendRecord(file: string, record: TaskRecord): void {
 	const fd = openSync(file, "a");
 	try {
 		writeSync(fd, `${JSON.stringify(record)}\n`);
+		if (process.platform === "win32") syncFile(file);
+		else fsyncSync(fd);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+/** Windows: an append handle cannot be flushed (FlushFileBuffers needs
+ *  write access, which append mode drops), and the append must stay an
+ *  append (the runner and the manager both write the journal) — so the
+ *  flush goes through a read-write handle of its own. */
+export function syncFile(file: string): void {
+	const fd = openSync(file, "r+");
+	try {
 		fsyncSync(fd);
 	} finally {
 		closeSync(fd);
@@ -59,6 +101,11 @@ export function appendRecord(file: string, record: TaskRecord): void {
 
 /** fsync a directory, so a file created in it survives a power loss too. */
 export function fsyncDir(dir: string): void {
+	// Windows opens no directory as a file, so the entry is not flushed
+	// here: a process crash loses nothing, but the entry's power-loss
+	// ordering is not the guarantee POSIX's directory fsync gives (the
+	// Windows durability contract is P6's to state)
+	if (process.platform === "win32") return;
 	const fd = openSync(dir, "r");
 	try {
 		fsyncSync(fd);

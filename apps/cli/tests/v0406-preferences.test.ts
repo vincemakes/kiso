@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { preferences, resetPreferences, setPreference, usePreferences } from "../src/preferences.js";
 
+/** Mode bits are POSIX: Windows guards these files with ACLs, and Node reports 0666 there. */
+const POSIX_MODES = process.platform !== "win32";
+
 /**
  * 0.40.6 — the choices kiso remembers, in a kiso-owned file. Every path
  * here is under a mkdtemp root; nothing names the home directory.
@@ -21,7 +24,7 @@ describe("preferences.json", () => {
 		const f = file();
 		usePreferences(f);
 		expect(setPreference("thinking", "hidden")).toBe(true);
-		expect(statSync(f).mode & 0o777).toBe(0o600);
+		if (POSIX_MODES) expect(statSync(f).mode & 0o777).toBe(0o600);
 		expect(JSON.parse(readFileSync(f, "utf8"))).toEqual({ thinking: "hidden" });
 		resetPreferences();
 		usePreferences(f);

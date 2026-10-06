@@ -19,15 +19,19 @@ import {
 	kUnit,
 	workingRow,
 	type BarInput,
+	namedPickView,
 	type PanelArgs,
 	type PanelView,
+	type PickOption,
+	type PickResult,
 	type RenderInput,
 	type RunUsage,
+	type TaskCountsOnRow,
 } from "@vincemakes/kiso-tui";
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
-import { mergedConfig, queuedSwitchLines, tasksFor } from "./state.js";
-import { taskNoticeRow } from "./task-notice.js";
+import { liveTasks, mergedConfig, queuedSwitchLines, seenUnknownTasks, setExitTasks, tasksFor } from "./state.js";
+import { taskCounts, taskNoticeRow } from "./task-notice.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget, tiersFor } from "@vincemakes/kiso-runtime/internal";
@@ -322,7 +326,7 @@ export function displayCtxRatio(session: AgentSession): number {
  * compaction tiers as shares of the same window (`tiersFor`, never a
  * fixed fraction); an unknown window is `ctx ?`.
  */
-export function barFor(session: AgentSession, measured: { readonly tokPerSec: number | null } = { tokPerSec: null }): BarInput {
+export function barFor(session: AgentSession, measured: { readonly tokPerSec: number | null; readonly tasks?: TaskCountsOnRow | undefined } = { tokPerSec: null }): BarInput {
 	const window = knownContextWindow();
 	const used = displayCtxRatio(session);
 	const tiers = window === null ? null : tiersFor(window, 0);
@@ -338,6 +342,9 @@ export function barFor(session: AgentSession, measured: { readonly tokPerSec: nu
 		model: statusModelLabel(session),
 		ctx: tiers === null || window === null || !Number.isFinite(used) ? null : { used, soft: tiers.soft / window, hard: tiers.hard / window },
 		tokPerSec: measured.tokPerSec,
+		// ADR-0058 (3e): the session's tasks — the bar is where they are
+		// counted in Graphite (§8.9); absent, the bar is unchanged
+		...(measured.tasks !== undefined ? { tasks: measured.tasks } : {}),
 		branch: currentBranch(cwd),
 		folder: cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd,
 	};
@@ -1399,9 +1406,36 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	 *  run only after currentRun was nulled). */
 	const exitAtEmptyPrompt = (): void => {
 		if (pendingAsk !== null || input.line() !== "") return;
-		cancelled = true;
-		console.log("\n[exit requested]");
-		input.close();
+		void confirmExit().then((leave) => {
+			if (!leave) {
+				eotSeen = false; // stayed: a later run's end must not ask again
+				input.prompt();
+				return;
+			}
+			cancelled = true;
+			console.log("\n[exit requested]");
+			input.close();
+		});
+	};
+	/** ADR-0058 (3e): a clean exit with live tasks asks first — on a dock
+	 *  only; a pipe or a task-file run stops them all, as before. The
+	 *  question says beforehand what each answer does. True: exit. */
+	const confirmExit = async (): Promise<boolean> => {
+		const live = liveTasks();
+		const total = live.durable + live.moved;
+		if (total === 0 || !dock.active) return true;
+		const n = (k: number, what: string): string => `${k} ${what}${k === 1 ? "" : "s"}`;
+		const options: PickOption[] = [{ label: "stop all and exit" }];
+		if (live.durable > 0) options.push({ label: live.moved > 0 ? `leave ${n(live.durable, "background task")} running; ${n(live.moved, "moved command")} will stop` : `leave ${n(live.durable, "background task")} running` });
+		options.push({ label: "stay" });
+		const picked = await new Promise<PickResult | null>((resolve) => {
+			input.panelAsk(namedPickView("exit", { header: `${n(total, "task")} ${total === 1 ? "is" : "are"} running`, options }, `▸ ${modeDisplay()}`, "stop the running tasks and exit? "), (v) => resolve(v.action === "picked" ? v.result : null));
+		});
+		paintIdle();
+		const label = picked !== null && "index" in picked ? options[picked.index]?.label : undefined;
+		if (label === undefined || label === "stay") return false;
+		setExitTasks(label.startsWith("leave") ? "leave" : "stop");
+		return true;
 	};
 
 	const turn = (text: string, via?: UserInputVia): Promise<void> =>
@@ -1498,9 +1532,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		} else if (pendingAsk !== null) {
 			pendingAsk?.(); // a startup/trust question — cancel it
 		} else if (input.line() === "") {
-			cancelled = true;
-			console.log("\n[exit requested]");
-			input.close();
+			void confirmExit().then((leave) => {
+				if (!leave) {
+					input.prompt();
+					return;
+				}
+				cancelled = true;
+				console.log("\n[exit requested]");
+				input.close();
+			});
 		} else {
 			input.clearLine(); // v2c: Ctrl+C on a non-empty line clears it
 		}
@@ -1615,6 +1655,27 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// nullish, so the guard is `> 0` rather than `??` (the same shape the
 	// compositor's own width call uses).
 	const rowWidth = (): number => (process.stdout.columns > 0 ? process.stdout.columns : 80);
+	// ADR-0058 (3e): the session's tasks on the rows. Each read walks the
+	// journals, so the running row (repainted many times a second) reads at
+	// most once a second; the idle row (repainted rarely) always reads —
+	// a task promoted or moved to the background makes no transition to
+	// hear, and the row the turn ends on must already count it
+	let taskRow: { readonly at: number; readonly seen: number; readonly counts: TaskCountsOnRow } | null = null;
+	const taskCountsNow = (fresh = false): TaskCountsOnRow | undefined => {
+		const manager = tasksFor(session.id);
+		if (manager === undefined) return undefined;
+		if (fresh || taskRow === null || Date.now() - taskRow.at > 1_000 || taskRow.seen !== seenUnknownTasks.size) {
+			let list: ReturnType<typeof manager.list> = [];
+			try {
+				list = manager.list();
+			} catch {
+				// a corrupt journal is reported where it is read on purpose
+			}
+			taskRow = { at: Date.now(), seen: seenUnknownTasks.size, counts: taskCounts(list, seenUnknownTasks) };
+		}
+		return taskRow.counts;
+	};
+	const detachableNow = (): boolean => (tasksFor(session.id)?.detachable().length ?? 0) > 0;
 	// KC2 §5: the STATE (the glyph, the run's start, the usage, the dock)
 	// stays here; the ROW's text is the tui's status formatter.
 	const paintRunning = (): void => {
@@ -1626,8 +1687,11 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// the composer; the status bar keeps the session's (its ctx moves as
 		// the turn reads).
 		if (!dock.active) return;
-		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow()));
-		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec }));
+		// the main-sync round (ADR-0058 3e): the live row teaches ctrl+b exactly
+		// while a command can be moved to the background; the bar counts the
+		// session's tasks (§8.9)
+		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow(), detachableNow()));
+		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec, tasks: taskCountsNow() }));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4
 	// parentheses idiom names the read-only constraint. The tier is the
@@ -1640,7 +1704,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// unmeasured, so a session that has not called the model paints no
 		// rate.
 		dock.setLive(null);
-		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec }));
+		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec, tasks: taskCountsNow(true) }));
 	};
 	// TUI2-R2 ⑥ — the BOOT status line. The row is the product's one
 	// persistent claim about itself (the tier, how to change it, the model,
@@ -1751,7 +1815,29 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// the same chain a person's turn takes (taskWake: false keeps it for
 	// the next message). Released when this chat ends.
 	const taskManager = tasksFor(session.id);
-	const stopTasks = taskManager === undefined ? () => {} : session.useTasks(taskManager, { wake: mergedConfig.taskWake !== false, onWake: (w) => queueTurn(w.content, w.via) });
+	// KISO_AUTO_DETACH_MS — the test rigs' knob (like KISO_STREAM_IDLE_MS):
+	// how old a command must be before a steer detaches it (3e D1). The
+	// rigs that hold a steer pending behind a long command raise it.
+	const autoDetachFromEnv = Number.parseInt(process.env.KISO_AUTO_DETACH_MS ?? "", 10);
+	const stopDelivery =
+		taskManager === undefined
+			? () => {}
+			: session.useTasks(taskManager, {
+					wake: mergedConfig.taskWake !== false,
+					onWake: (w) => queueTurn(w.content, w.via),
+					...(Number.isFinite(autoDetachFromEnv) && autoDetachFromEnv >= 0 ? { autoDetachMinAgeMs: autoDetachFromEnv } : {}),
+				});
+	// 3e: a task's change repaints the row it is counted on
+	const stopHearing =
+		taskManager?.subscribe(() => {
+			taskRow = null;
+			if (currentRun !== null) paintRunning();
+			else paintIdle();
+		}) ?? (() => {});
+	const stopTasks = (): void => {
+		stopHearing();
+		stopDelivery();
+	};
 	/** The mirror of the last `n` steers the run handed back; clears it. */
 	const handed = (n: number): Steer[] => {
 		const out = n > 0 ? steering.slice(-n) : [];
@@ -1797,6 +1883,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		session,
 		input,
 		chainRef,
+		confirmExit,
 		isRunning: () => currentRun !== null,
 		paintIdle,
 		modelSwitched,
@@ -1857,6 +1944,8 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// "expand" turn is never intercepted).
 	input.onExpand(() => dispatch("\x12expand", dispatchCtx));
 	input.onThink?.(() => dispatch("\x14think", dispatchCtx));
+	// ADR-0058 (3e): ctrl+b — the running command to the background, now
+	input.onBackground?.(() => dispatch("\x02background", dispatchCtx));
 	input.onEditor?.(() => dispatch("\x07editor", dispatchCtx));
 	// E1 §3 — ctrl+x and `/copy` are the same action reached two ways, so
 	// they are the same sentinel: one implementation, one behaviour.

@@ -38,6 +38,7 @@ import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
 import { defaultTrashRoot, findEmptySessions, moveToTrash } from "./empty-sessions.js";
+import { browserCommand, launchCommand } from "./launch.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemakes/kiso-tools-node";
 import { OFFERED_MODES, applyModeState, envModeLayer, getDontAsk, modeDisplay, parseMode, resolveModeLayers, type ModeLayer } from "./mode.js";
@@ -45,7 +46,8 @@ import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, 
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers, stopAllTasks } from "./state.js";
+import { settingsLayers, setChildTurnBudget, stopAllTasks } from "./state.js";
+import { finishChild, type ChildEnd } from "./child-result.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
@@ -79,13 +81,13 @@ export { applyProjectMerges } from "./trust-ui.js";
  *  path's exact semantics (auto-denied asks, no chips, no pops). */
 /** OR-4: hand a URL to the platform's opener, detached, and never let a
  *  missing or failing opener touch the sign-in — the printed URL is the
- *  path that always works. macOS `open`, Linux `xdg-open`; elsewhere the
- *  URL stays printed (Windows is unsupported by the CLI as a whole). */
+ *  path that always works. macOS `open`, Linux `xdg-open`, Windows
+ *  rundll32's URL handler (launch.ts); elsewhere the URL stays printed. */
 function openInBrowser(url: string): void {
-	const opener = process.platform === "darwin" ? "open" : process.platform === "linux" ? "xdg-open" : null;
+	const opener = browserCommand(url);
 	if (opener === null) return;
 	try {
-		spawn(opener, [url], { detached: true, stdio: "ignore" }).unref();
+		spawn(opener[0], [...opener[1]], { detached: true, stdio: "ignore" }).unref();
 	} catch {
 		// the URL is on screen; opening it is the person's fallback
 	}
@@ -186,6 +188,9 @@ function readlineInput(rl: ReturnType<typeof createInterface>): LineInput {
 			/* §2.3: same as ctrl+o above — readline has no binding, and a
 			 * dock-less session has no committed rows to reprint. */
 		},
+		onBackground() {
+			/* 3e: readline has no ctrl+b — /tasks and a steer still work. */
+		},
 		onEditor() {
 			/* §2.4: readline has no ctrl+g, and a piped session has no
 			 * composer to hand over. */
@@ -281,6 +286,9 @@ function editorInput(editor: Editor): LineInput {
 		},
 		onThink(cb) {
 			editor.onThink(cb);
+		},
+		onBackground(cb) {
+			editor.onBackground(cb);
 		},
 		onEditor(cb) {
 			editor.onEditor(cb);
@@ -869,6 +877,10 @@ class CliUsageError extends Error {
 	readonly exitCode = 2;
 }
 
+/** ADR-0058 3d: set when this process is a background child (its budget
+ *  and where its answer goes) — finished once its turn is done. */
+let childEnd: ChildEnd | null = null;
+
 /** The /resume+/clear mini-spec — the chat LOOP: chat() ends with a
  *  directive; a switch re-enters it on another session with the SAME
  *  editor. First entry paints the banner; a switch paints one notice
@@ -1152,7 +1164,10 @@ async function chatLoop(
 			...(process.stdin.isTTY ? { pick: () => pickSession(agent, input) } : {}),
 		};
 		const end = await chat(session, currentFaux, input, autoCompact, nav, seed);
-		if (end.next === "exit") return;
+		if (end.next === "exit") {
+			if (childEnd !== null) await finishChild(session, childEnd);
+			return;
+		}
 		// DC-57: the lines that arrived with the switch command ride INTO the
 		// next entry — they were aimed at the session being asked for.
 		seed = end.lines ?? [];
@@ -1340,6 +1355,28 @@ async function main(): Promise<void> {
 			}
 			args.splice(i, 2);
 		}
+	}
+	// ADR-0058 3d: a background child's --max-turns N (its budget, D6) and
+	// --result-file <path> (where its answer goes). Child-only: without
+	// --task-file they are refused — the interactive door has no turn
+	// limit (R3e).
+	{
+		const end: { maxTurns?: number; resultFile?: string } = {};
+		for (const flag of ["--max-turns", "--result-file"] as const) {
+			const i = args.indexOf(flag);
+			if (i === -1) continue;
+			const value = args[i + 1];
+			if (taskFile === undefined) throw new CliUsageError(`${flag} needs --task-file — it is for a delegated child only`);
+			if (value === undefined || value.startsWith("--")) throw new CliUsageError(`${flag} needs a value`);
+			if (flag === "--max-turns") {
+				const n = Number(value);
+				if (!Number.isInteger(n) || n < 1) throw new CliUsageError(`--max-turns: expected a whole number of at least 1, got ${value}`);
+				end.maxTurns = n;
+			} else end.resultFile = value;
+			args.splice(i, 2);
+		}
+		if (end.maxTurns !== undefined || end.resultFile !== undefined) childEnd = end;
+		setChildTurnBudget(end.maxTurns);
 	}
 	// 0.40.0: `kiso sessions --all | --current` — the one command that takes
 	// them. Parsed only there, so neither ever becomes a session id. Absent
@@ -1595,7 +1632,7 @@ async function main(): Promise<void> {
 						console.log(`${n(empty.length, "empty session")} — a sidecar and no log; none of them ever ran:`);
 						for (const s of empty) console.log(`  ${basename(s.dir)}/${s.id}`);
 						console.log("kiso sessions --prune-empty --yes moves them to the Trash");
-					} else console.log(`moved ${n(empty.length, "empty session")} to ${moveToTrash(empty, defaultTrashRoot())}`);
+					} else console.log(`moved ${n(empty.length, "empty session")} to ${moveToTrash(empty, defaultTrashRoot(kisoHome()))}`);
 					if (inUse > 0) console.log(`skipped ${n(inUse, "empty session")} in use — a live process holds the lock`);
 					break;
 				}
@@ -1752,7 +1789,9 @@ async function main(): Promise<void> {
 				// npm's to explain; the message names the manual command so
 				// the person can run it with whatever their setup needs.
 				const [bin, ...installArgs] = INSTALL_COMMAND;
-				const r = spawnSync(bin, installArgs, { stdio: "inherit" });
+				// Windows: npm is npm.cmd — through cmd.exe (launch.ts)
+				const l = launchCommand(bin, installArgs);
+				const r = spawnSync(l.file, [...l.args], { stdio: "inherit", ...(l.windowsVerbatimArguments === true ? { windowsVerbatimArguments: true } : {}) });
 				if (r.error !== undefined || r.status !== 0) {
 					const why = r.error !== undefined ? `could not run npm (${r.error.message})` : `npm exited ${r.status ?? "on a signal"}`;
 					process.stderr.write(`kiso update: ${why} — run it yourself: ${INSTALL_COMMAND.join(" ")}\n`);
@@ -1830,8 +1869,10 @@ async function main(): Promise<void> {
 		// variable now). A signal death skips this and leaves the dead-pid
 		// residue — the dead-holder takeover recovers it by design
 		// (ADR-0050); the lock never outlives a live writer either way.
-		// ADR-0058: a clean exit stops the session's tasks first.
-		await stopAllTasks();
+		// ADR-0058: a clean exit stops the session's tasks first — or, when
+		// the person chose to leave them (3e), only the moved commands. What
+		// could not be confirmed is said, never called stopped.
+		const tasksAtExit = await stopAllTasks();
 		agent?.close();
 		// v2b: the dock tears down on EVERY exit path — CSI r resets the
 		// scroll region, the cursor lands at the input line, no broken
@@ -1840,6 +1881,8 @@ async function main(): Promise<void> {
 		// Graphite §8.10: a closed session never leaves a working or
 		// waiting mark in the tab
 		setTitleState("ready");
+		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — outcome unknown`);
+		if (tasksAtExit.left.length > 0) console.error(`left running: ${tasksAtExit.left.join(", ")} — reopen this session to hear how ${tasksAtExit.left.length === 1 ? "it ends" : "they end"}`);
 		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.
 		await disposeExtensions(loadedExtensions);

@@ -74,15 +74,62 @@ export function tasksFor(sessionId: string | undefined): TaskManager | undefined
 	return manager;
 }
 
-/** A clean exit stops every live task and waits for its terminal
- *  (ADR-0058 lifecycle). Asking first is the panel's step (3e). */
-export async function stopAllTasks(): Promise<void> {
+/** 3e: what the exit does with the tasks — the exit question's answer.
+ *  "leave": a runner's task keeps running (the reopened session hears how
+ *  it ends); a moved command is owned by this process and is stopped. */
+let exitTasks: "stop" | "leave" = "stop";
+export function setExitTasks(choice: "stop" | "leave"): void {
+	exitTasks = choice;
+}
+
+/** 3e: the unknown tasks the person has looked at in `/tasks` in this
+ *  process — the status row stops counting them. */
+export const seenUnknownTasks = new Set<string>();
+
+/** 3e: the live tasks of every session this process opened — a runner's
+ *  (`durable`, it survives this process) and moved commands (`moved`). */
+export function liveTasks(): { readonly durable: number; readonly moved: number } {
+	let durable = 0;
+	let moved = 0;
+	for (const manager of taskManagers.values()) {
+		let list: ReturnType<TaskManager["list"]> = [];
+		try {
+			list = manager.list();
+		} catch {
+			continue; // a corrupt journal is reported where it is read on purpose
+		}
+		for (const t of list) {
+			if (t.state.kind !== "running" && t.state.kind !== "starting") continue;
+			if (t.backend === "foreground") moved += 1;
+			else durable += 1;
+		}
+	}
+	return { durable, moved };
+}
+
+/** A clean exit stops the session's tasks — all of them, or (the exit
+ *  question's "leave") only the moved commands — and waits for their
+ *  terminals. It returns what it could NOT confirm stopped, and what it
+ *  left running: a stop requested is never reported as a stop (3e). */
+export async function stopAllTasks(): Promise<{ readonly unconfirmed: readonly string[]; readonly left: readonly string[] }> {
+	const unconfirmed: string[] = [];
+	const left: string[] = [];
+	const many = taskManagers.size > 1;
 	await Promise.all(
-		[...taskManagers.values()].map(async (manager) => {
-			await manager.stopAll("exit");
+		[...taskManagers].map(async ([sessionId, manager]) => {
+			const name = (id: string): string => (many ? `${sessionId}/${id}` : id);
+			if (exitTasks === "leave") {
+				try {
+					for (const t of manager.list()) if (t.backend === "process" && (t.state.kind === "running" || t.state.kind === "starting")) left.push(name(t.id));
+				} catch {
+					// a corrupt journal: nothing to report as left
+				}
+			}
+			for (const id of await manager.stopAll("exit", 8_000, exitTasks === "leave" ? "moved" : "all")) unconfirmed.push(name(id));
 			manager.close();
 		}),
 	);
+	return { unconfirmed, left };
 }
 
 /** The user config's `protectedPaths`, as read at the agent's build (and
@@ -339,6 +386,9 @@ export interface LineInput {
 	onThink?(cb: () => void): void;
 	/** §2.4: the external-editor key (ctrl+g). */
 	onEditor?(cb: () => void): void;
+	/** ADR-0058 (3e): the background key (ctrl+b). Optional: the readline
+	 *  input has no such key — `/tasks` and a steer still reach the tasks. */
+	onBackground?(cb: () => void): void;
 	/** §2.4: hand the terminal over, run `edit`, take it back. The editor
 	 *  owns the handover; the CLI owns the spawn. */
 	externalEdit?(edit: (text: string) => string | null): void;
@@ -437,6 +487,14 @@ export function setSessionStore(value: { load(id: string): readonly StoreRecord[
 /** The folder createCodingAgent built the store on — written there and by
  *  the resume picker's folder switch, read by the listings. */
 export let activeStoreDir = "";
+
+/** ADR-0058 3d (D6): a background child's turn budget (`--max-turns`, with
+ *  `--task-file` only) — the agent's maxTurns. Unset everywhere else: the
+ *  interactive door has no turn limit (R3e). */
+export let childTurnBudget: number | undefined;
+export function setChildTurnBudget(n: number | undefined): void {
+	childTurnBudget = n;
+}
 export function setActiveStoreDir(value: string): void {
 	activeStoreDir = value;
 }

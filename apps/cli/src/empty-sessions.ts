@@ -84,9 +84,12 @@ export function findEmptySessions(dirs: readonly string[], alive: (pid: number) 
 	return { empty, inUse };
 }
 
-/** The platform's Trash: ~/.Trash on macOS, the freedesktop one elsewhere. */
-export function defaultTrashRoot(): string {
+/** The platform's Trash: ~/.Trash on macOS, kiso's own folder on Windows
+ *  (its Recycle Bin is not a folder a program moves files into), the
+ *  freedesktop one elsewhere. */
+export function defaultTrashRoot(kisoHome: string): string {
 	if (process.platform === "darwin") return join(homedir(), ".Trash");
+	if (process.platform === "win32") return join(kisoHome, "trash");
 	return join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "Trash", "files");
 }
 

@@ -32,7 +32,7 @@
 
 import { closeSync, fsyncSync, openSync, readFileSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { killTree, processStartTime, RotatingOutput, startCommand } from "./process.js";
+import { killTree, processStartTime, RotatingOutput, startCommand, startExec } from "./process.js";
 
 const OUTPUT_CAP_DEFAULT = 64 * 1024 * 1024;
 const STOP_GRACE_MS = 5_000;
@@ -43,7 +43,16 @@ function append(journal: string, record: Record<string, unknown>): void {
 	const fd = openSync(journal, "a");
 	try {
 		writeSync(fd, `${JSON.stringify(record)}\n`);
-		fsyncSync(fd);
+		// Windows: an append handle cannot be flushed; the flush goes
+		// through a read-write handle (the runtime journal's syncFile)
+		if (process.platform === "win32") {
+			const sync = openSync(journal, "r+");
+			try {
+				fsyncSync(sync);
+			} finally {
+				closeSync(sync);
+			}
+		} else fsyncSync(fd);
 	} finally {
 		closeSync(fd);
 	}
@@ -53,6 +62,8 @@ interface Planned {
 	readonly command: string;
 	readonly cwd: string;
 	readonly readyWhen?: string;
+	/** 3d: an argv launch — no shell; `command` is then the label */
+	readonly launch?: { readonly kind: "exec"; readonly file: string; readonly args: readonly string[] };
 }
 
 function plannedOf(journal: string): Planned {
@@ -104,7 +115,7 @@ function main(dir: string): void {
 	};
 	let child: ReturnType<typeof startCommand>;
 	try {
-		child = startCommand(planned.command, { cwd: planned.cwd, env });
+		child = planned.launch?.kind === "exec" ? startExec(planned.launch.file, planned.launch.args, { cwd: planned.cwd, env }) : startCommand(planned.command, { cwd: planned.cwd, env });
 	} catch (err) {
 		// win32 without bash throws here (the Windows line's process module)
 		notStarted(err instanceof Error ? err : new Error(String(err)));

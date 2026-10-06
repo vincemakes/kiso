@@ -8,7 +8,7 @@
  * the body is not edited beyond the rename and activeStoreDir's setter.
  */
 
-import { activeStoreDir, setActiveStoreDir, body, bodyLog, codingToolOptions, extensionsDir, floorOn, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
+import { activeStoreDir, childTurnBudget, setActiveStoreDir, body, bodyLog, codingToolOptions, extensionsDir, floorOn, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
 import { claimProjectDir, projectLayoutActive } from "./projects.js";
 import { migrationNotice, pendingLegacyIds, planMigration, runMigration } from "./session-migration.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
@@ -320,6 +320,8 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		// Modes: the five tiers join at the CHAIN HEAD, before the user/
 		// project extensions (the deny>allow>ask composition keeps a user
 		// deny winning over any mode tier — bypass included).
+		// ADR-0058 3d (D6): a background child's budget, its only bound.
+		...(childTurnBudget !== undefined ? { maxTurns: childTurnBudget } : {}),
 		extensions,
 		...(resolved !== null
 			? {

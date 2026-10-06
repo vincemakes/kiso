@@ -6,7 +6,7 @@
  * `taskWake: false` the notice waits for the person's next message.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,17 +15,16 @@ import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
-/** Run the CLI piped, keeping stdin open for `openMs` after `lines`. */
-function runOpen(env: NodeJS.ProcessEnv, cwd: string, lines: string, openMs: number): Promise<{ code: number | null; out: string }> {
-	return new Promise((resolve) => {
-		const child = spawn("node", [CLI, "chat", "wk"], { env, cwd, stdio: ["pipe", "pipe", "pipe"] });
-		let out = "";
-		child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-		child.stderr.on("data", (d: Buffer) => (out += d.toString()));
-		child.stdin.write(lines);
-		setTimeout(() => child.stdin.end(), openMs);
-		child.on("close", (code) => resolve({ code, out }));
-	});
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Wait until `file` holds `needle` — never a fixed sleep: on a loaded
+ *  runner the CLI's boot and the runner's spawn alone can outlast one. */
+async function until(file: string, needle: string, deadlineMs = 30_000): Promise<void> {
+	const end = Date.now() + deadlineMs;
+	while (!(existsSync(file) && readFileSync(file, "utf8").includes(needle))) {
+		if (Date.now() > end) throw new Error(`${needle} never appeared in ${file}`);
+		await sleep(100);
+	}
 }
 
 type Ev = { type: string; source?: string; via?: { kind: string; items?: { taskId: string; transition: string }[] }; content?: unknown };
@@ -52,7 +51,16 @@ describe("ADR-0058 (3c) — an idle session wakes when its task ends", () => {
 	it("the wake turn's first input is the notice; the model answers it; the transcript shows a task row", async () => {
 		const { env, dirs } = isolatedEnv({ KISO_MODE: "bypass" });
 		const cwd = mkdtempSync(join(tmpdir(), "kiso-wake-ws-"));
-		const run = await runOpen({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, cwd, "build it\n", 4_000);
+		const child = spawn("node", [CLI, "chat", "wk"], { env: { ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, cwd, stdio: ["pipe", "pipe", "pipe"] });
+		let out = "";
+		child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+		child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+		const closed = new Promise<number | null>((r) => child.on("close", r));
+		child.stdin.write("build it\n");
+		// stdin stays open until the wake turn has begun: its input is in the log
+		await until(join(dirs.home, "sessions", "wk.jsonl"), '"kind":"tasks"');
+		child.stdin.end();
+		const run = { code: await closed, out };
 		expect(run.code).toBe(0);
 		const inputs = eventsOf(dirs.home).filter((e) => e.type === "user_input");
 		expect(inputs.map((e) => e.source ?? "user")).toEqual(["user", "system"]);
@@ -69,7 +77,10 @@ describe("ADR-0058 (3c) — an idle session wakes when its task ends", () => {
 		// the second line arrives after the task ended: its turn carries the notice
 		const child = spawn("node", [CLI, "chat", "wk"], { env: { ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, cwd, stdio: ["pipe", "pipe", "pipe"] });
 		child.stdin.write("build it\n");
-		await new Promise((r) => setTimeout(r, 2_500));
+		await until(join(dirs.home, "sessions", "wk.tasks", "t1", "journal.jsonl"), '"type":"terminal"');
+		// the terminal is durable; the delivery hears it within one poll
+		// (500 ms) and one window (1 s) — held for the next message
+		await sleep(3_000);
 		child.stdin.write("and now?\n");
 		child.stdin.end();
 		await new Promise((r) => child.on("close", r));

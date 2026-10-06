@@ -180,7 +180,39 @@ export function retrySegment(r: RetryOnRow): string {
 	return r.remainingMs > 0 ? `${head} · ${Math.ceil(r.remainingMs / 1000)}s` : head;
 }
 
-export function runningStatus(glyph: string, since: number, outTokens: number | null, ctxRatio: number, tokPerSec: number | null = null, W?: number, retry?: RetryOnRow | null): string {
+/** ADR-0058 (3e): the session's tasks, as the status rows count them. */
+export interface TaskCountsOnRow {
+	/** running or starting */
+	readonly running: number;
+	/** an outcome that cannot be known, not yet looked at in `/tasks` */
+	readonly unknown: number;
+}
+
+/** `● 2 tasks running · ◌ 1 unknown`, `◌ 1 task unknown` — or nothing.
+ *  An unknown task is never hidden behind the panel: it is the one that
+ *  needs the person most. */
+export function tasksSegment(c: TaskCountsOnRow | undefined): string {
+	if (c === undefined) return "";
+	const n = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
+	if (c.running > 0 && c.unknown > 0) return `● ${n(c.running, "task")} running · ◌ ${c.unknown} unknown`;
+	if (c.running > 0) return `● ${n(c.running, "task")} running`;
+	if (c.unknown > 0) return `◌ ${n(c.unknown, "task")} unknown`;
+	return "";
+}
+
+export function runningStatus(
+	glyph: string,
+	since: number,
+	outTokens: number | null,
+	ctxRatio: number,
+	tokPerSec: number | null = null,
+	W?: number,
+	retry?: RetryOnRow | null,
+	// 3e: the session's tasks, and whether a running command can be moved
+	// to the background now (the row teaches ctrl+b exactly then)
+	tasks?: TaskCountsOnRow,
+	detachable = false,
+): string {
 	const out = outTokens !== null ? ` ↓ ${kUnit(outTokens)} tokens` : "";
 	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
 	return composeRow(`${glyph} working ${elapsedLabel(seconds)}${out}`, [
@@ -194,7 +226,9 @@ export function runningStatus(glyph: string, since: number, outTokens: number | 
 		// honest rule spelled as a default — the recovery flow has no
 		// per-call timing state, so its row says nothing rather than guessing.
 		tokPerSec !== null ? { kind: "fact", text: `${tokPerSec} tok/s` } : null,
+		{ kind: "fact", text: tasksSegment(tasks) },
 		{ kind: "hint", text: "esc stop" },
+		detachable ? { kind: "hint", text: "ctrl+b background" } : null,
 		{ kind: "hint", text: "alt+⏎ redirect" },
 		{ kind: "fact", text: ctxSegment(ctxRatio) },
 	], W);
@@ -337,12 +371,14 @@ function elideMiddle(text: string, max: number): string {
  * No `W` means no dropping, which is what the callers that do not know
  * their width should get: today's row, unchanged.
  */
-export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter, W?: number, floorOff = false): string {
+export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter, W?: number, floorOff = false, tasks?: TaskCountsOnRow): string {
 	return composeRow(`▸ ${tier}`, [
 		// 0.40.0: the catastrophe floor is on by default and says nothing;
 		// OFF is the state worth seeing, and a fact beside the tier it
 		// changes the meaning of.
 		floorOff ? { kind: "fact", text: "floor off" } : null,
+		// 3e: work still going on (or gone unknown) after the turn ended
+		{ kind: "fact", text: tasksSegment(tasks) },
 		{ kind: "hint", text: "/mode to switch" },
 		{ kind: "label", text: model },
 		meter?.cacheHitPct != null ? { kind: "fact", text: `CH ${Math.round(meter.cacheHitPct)}%` } : null,
@@ -387,6 +423,9 @@ export interface BarInput {
 	 *  shares of the same window; null when the window is not known. */
 	readonly ctx: { readonly used: number; readonly soft: number; readonly hard: number } | null;
 	readonly tokPerSec: number | null;
+	/** The main-sync round (ADR-0058 3e): the session's tasks — running, and
+	 *  unknown not yet looked at in `/tasks`. Absent or all zero, nothing. */
+	readonly tasks?: TaskCountsOnRow;
 	readonly branch: string | null;
 	readonly folder: string | null;
 }
@@ -448,6 +487,12 @@ export function statusBar(b: BarInput, W: number, expand: "expand all" | "collap
 	// drop: 0 = never; otherwise the order it gives way in (1 first)
 	const left: (Seg | null)[] = [
 		b.floorOff ? { text: fail("floor off"), drop: 0 } : null,
+		// the main-sync round (ADR-0058 3e, §8.9): the session's tasks, right
+		// after the mode as 0.46.0's status row has them (owner, 2026-10-06): a
+		// FACT, which never gives way — `●` in the machine's blue (running), `◌`
+		// in gold (an outcome nobody can know is the one that needs the
+		// person, §4); the words quiet like the rest of the bar
+		tasksSegment(b.tasks) === "" ? null : { text: painted ? tasksOnBar(b.tasks!) : tasksSegment(b.tasks), drop: 0 },
 		{ text: quiet("/mode to switch"), drop: 4 },
 		{ text: b.model, drop: 0 },
 		{ text: ctxMeter(b.ctx), drop: 0 },
@@ -483,6 +528,15 @@ export function statusBar(b: BarInput, W: number, expand: "expand all" | "collap
 	return cutLine(row, W);
 }
 
+/** The bar's task segment, painted: the marks coloured, the words dim. */
+function tasksOnBar(c: TaskCountsOnRow): string {
+	const p = palette();
+	const n = (k: number, word: string): string => `${k} ${word}${k === 1 ? "" : "s"}`;
+	const running = c.running > 0 ? `${p.blue}\u25cf${p.fgEnd} ${p.dim}${n(c.running, "task")} running${p.reset}` : "";
+	const unknown = c.unknown > 0 ? `${p.gold}\u25cc${p.fgEnd} ${p.dim}${c.running > 0 ? `${c.unknown} unknown` : `${n(c.unknown, "task")} unknown`}${p.reset}` : "";
+	return [running, unknown].filter((x) => x !== "").join(`${p.dim} \u00b7 ${p.reset}`);
+}
+
 /**
  * §8.7 — the LIVE ROW's words for a running turn: `working` for the whole
  * turn, whatever the model is doing (it never switches to "thinking" —
@@ -490,7 +544,7 @@ export function statusBar(b: BarInput, W: number, expand: "expand all" | "collap
  * the decode rate. A pending retry replaces it. The keys ride the row's
  * right end.
  */
-export function workingRow(glyph: string, since: number, outTokens: number | null, tokPerSec: number | null, W: number, retry?: RetryOnRow | null): string {
+export function workingRow(glyph: string, since: number, outTokens: number | null, tokPerSec: number | null, W: number, retry?: RetryOnRow | null, detachable = false): string {
 	// a pending retry REPLACES `working` while it lasts (§8.7): it is the one
 	// thing that explains why nothing is arriving (ADR-0005 Amendment 2),
 	// and its countdown is the row's pulse — whole seconds, rounded up, so
@@ -502,6 +556,9 @@ export function workingRow(glyph: string, since: number, outTokens: number | nul
 	const out = outTokens !== null ? ` · ↓ ${kUnit(outTokens)}` : "";
 	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
 	const facts = [`${glyph} working ${elapsedLabel(seconds)}${out}`, ...(tokPerSec !== null ? [`${tokPerSec} tok/s`] : [])].join(" · ");
+	// the main-sync round (ADR-0058 3e): ctrl+b exactly while a running
+	// command can be moved to the background — it gives way after esc
+	if (detachable) return liveRow(facts, ["esc stop \u00b7 ctrl+b background \u00b7 \u23ce steer \u00b7 alt+\u23ce redirect", "esc stop \u00b7 ctrl+b background \u00b7 \u23ce steer", "esc stop \u00b7 ctrl+b background", "esc stop"], W);
 	return liveRow(facts, ["esc stop · ⏎ steer · alt+⏎ redirect", "esc stop · ⏎ steer", "esc stop"], W);
 }
 
