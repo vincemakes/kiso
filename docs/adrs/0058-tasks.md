@@ -808,3 +808,64 @@ record never tells the model anything by itself.
      re-measure runs F1b instead: an rc-only probe of the background
      delegate, the wake and the group delivery, which reports the child
      requests that tune D6's budget.
+
+## Amendment 8 — "lost track", said once (2026-10-06, owner-approved)
+
+On 0.46.1 the owner found `◌ 1 unknown` a burden: the person is left to
+guess what "unknown" means, and beside `● 2 tasks running` it reads as a
+second kind of running. While planning the wording, a defect turned up:
+a probe that failed for a moment made a running task `unknown` for good,
+and its later end was never announced. The state itself stays. A task
+whose outcome kiso cannot know is never shown as ended (§6). What changes
+is how the person meets it, and when kiso concludes it.
+
+1. **The status row counts only what kiso manages: `● N tasks running`,
+   or nothing.** **DECLARED REVERSAL** of Amendment 6 item 4 ("an unknown
+   task is never only in the panel", which held it on the row). A state
+   the person cannot act on at a glance does not belong on a row read at
+   a glance.
+2. **Losing track is an event, said once in the transcript.** It uses the
+   task row of every other delivery, with its own words:
+   `✦ lost track of t3 (npm run dev) — it may still be running · /tasks shows it`.
+   - The command is the first line of what the task ran. Without it, the
+     row reads `✦ lost track of t3 — …`.
+   - The opening and the tail (the LAST ` — ` part) are pinned by test, so
+     a redesigned task row carries them.
+   - It comes with the delivery, as every task row does: at once in a live
+     run; when idle, with the next run (a lost task is a notice, never a
+     wake, §8), live and on resume alike.
+   - One delivery per loss: the model's notice and the person's row are
+     the same `user_input` (`via: tasks`).
+3. **`/tasks`** labels it `lost track — may still be running`. This
+   retires §9's `◌ outcome unknown` wording, not the state.
+   `/tasks show t3` first says why, read from the journal:
+   - a moved command: "the kiso that held it ended without recording its
+     end";
+   - a stop the runner could not confirm: "its stop could not be confirmed
+     (pids …)";
+   - otherwise: "its runner is gone without recording its end".
+   The exit reports an unconfirmed stop as
+   `t3: stop unconfirmed — it may still be running`.
+4. **The model's side is unchanged.** Notices still say
+   `status="unknown"`, a value of the protocol's `TaskDeliveryItem`.
+5. **A probe that cannot READ an identity is not a lost runner.**
+   **DECLARED NARROWING** of §6 ("when identity cannot be verified, the
+   verdict is the gone row") and of Amendment 2 item 1, **for the state
+   only**:
+   - When the probe itself fails (the backend answers `unverifiable` for a
+     runner with a recorded start time), a runner last verified keeps that
+     verdict for the next `identifyEveryMs` window (Amendment 5), and is
+     probed again then.
+   - **Unknown, as before:** a runner verifiably gone (no such pid, or
+     another start time; final, Amendment 5); a start time recorded as
+     `""`; a first probe that fails (nothing verified to keep).
+   - **The stop path is unchanged.** A stop probes afresh and gets the raw
+     answer, so a runner not verified NOW is never signalled.
+   - **The worst case, stated:** while the probe keeps failing, a runner
+     last verified keeps reading `running`. The journal is still read on
+     every poll, so a recorded end is seen at once.
+6. **An end after "unknown" is still announced.** The watcher keeps
+   reading a task it last saw as `unknown`. A gone runner's verdict is
+   cached as final, so this costs a journal read, not a probe. When a
+   terminal appears, `ended` is announced, so a model told "unknown"
+   learns how it ended.
