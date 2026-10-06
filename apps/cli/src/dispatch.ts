@@ -5,7 +5,7 @@
  */
 
 import type { SessionRoute } from "./projects.js";
-import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, infoSheetRows, kUnit, modePickView, modelPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, displayVerb, escapeTerminal, helpRows, infoSheetRows, kUnit, modePickView, modelPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
@@ -28,7 +28,7 @@ import { dirname, join } from "node:path";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import type { UserInputVia } from "@vincemakes/kiso-core";
-import { resolveSkillLine, skillsRows } from "./skill-invoke.js";
+import { resolveSkillLine, skillsRows, skillsSheetRows } from "./skill-invoke.js";
 import { setTitleName, setTitleState } from "./window-title.js";
 
 /** Where a skill directory really lives. Project and user skills are
@@ -347,6 +347,18 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			// between any two elements, so a row-per-call group comes out
 			// double-spaced — which is what the owner photographed on the
 			// ctrl+o expansion.
+			//
+			// The sheets round (owner, 2026-10-06): on a dock /help opens the
+			// command list — the band a typed `/` opens, every command and
+			// installed skill with its description, filtered as you type —
+			// so the list you read is the list you pick from (§8.16). Its
+			// keys and gestures are the keys sheet's (`?`). Off a dock (a
+			// pipe, -p) the table below is what it always printed.
+			if (dock.active && ctx.input.openCommands !== undefined) {
+				ctx.input.openCommands();
+				ctx.input.prompt();
+				return;
+			}
 			bodyLog(helpRows().join("\n"), "words");
 			ctx.input.prompt();
 		});
@@ -562,8 +574,20 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// derivation still does zero I/O and still ignores trace-shaped data.
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const ledger = readContextLedger(ctx.session.id, ctx.contextWindow());
+			const reason = "the ledger is written per request \u2014 run a turn, then ask again";
+			// the sheets round (owner, 2026-10-06): on a dock /context is a
+			// sheet over the input, read and then typed past (§8.16); off one
+			// (a pipe, -p) the lines below are what it always printed
+			if (dock.active && ctx.input.openSheet !== undefined) {
+				const win = ctx.contextWindow();
+				const t = win > 0 ? tiersFor(win, 0) : null;
+				const tiers = t === null ? null : { soft: t.soft / win, hard: t.hard / win };
+				ctx.input.openSheet((W) => (ledger === null ? contextUnavailableSheetRows(reason, W) : contextSheetRows(ledger, tiers, W)));
+				ctx.input.prompt();
+				return;
+			}
 			for (const row of ledger === null
-				? contextUnavailableRows("the ledger is written per request — run a turn, then ask again")
+				? contextUnavailableRows(reason)
 				: contextRows(ledger)) {
 				bodyLog(row);
 			}
@@ -1415,7 +1439,13 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			return;
 		}
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-			if (skill?.kind === "list") bodyLog(skillsRows(loadedSkillsCatalog(), skillSource, tildePath(join(kisoHome(), "skills"))).map(escapeTerminal).join("\n"));
+			// the sheets round: on a dock /skills is a sheet over the input
+			// (§8.16); off one it prints the lines it always printed
+			if (skill?.kind === "list" && dock.active && ctx.input.openSheet !== undefined) {
+				const catalog = loadedSkillsCatalog();
+				const userDir = tildePath(join(kisoHome(), "skills"));
+				ctx.input.openSheet((W) => skillsSheetRows(catalog, skillSource, userDir, W));
+			} else if (skill?.kind === "list") bodyLog(skillsRows(loadedSkillsCatalog(), skillSource, tildePath(join(kisoHome(), "skills"))).map(escapeTerminal).join("\n"));
 			else if (skill?.kind === "error") bodyLog(escapeTerminal(skill.message));
 			ctx.input.prompt();
 		});

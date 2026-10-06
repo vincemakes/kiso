@@ -371,8 +371,12 @@ export interface LineInput {
 	 *  cause does — `null` still means a failure with nothing to add. */
 	panelAsk(view: PanelView, onCommit: (v: PanelVerdict) => void, opts?: { safer?: () => Promise<SaferAnswer> }): void;
 	/** Graphite R3e: a read-only sheet over the input with the caller's rows
-	 *  (`/status`); any key closes it. Absent off a dock. */
+	 *  (`/status`, `/context`, `/skills`); any key closes it. Absent off a
+	 *  dock. */
 	openSheet?(rows: (W: number) => string[]): void;
+	/** The sheets round: open the command list, as a typed `/` does
+	 *  (`/help`). Absent off a dock. */
+	openCommands?(): void;
 	/** W21: cancel the panel — the SIGINT pair to panelAsk. */
 	panelCancel(): void;
 	/** TUI2-R2 ②: open the session picker — the editor takes the keys

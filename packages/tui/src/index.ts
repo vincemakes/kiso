@@ -101,7 +101,7 @@ export { editFileDiff, editFileHunksDiff, hunksDiff, hunksOf, truncateDiff, writ
 export { STATUS_GLYPHS, cacheHitPct, compactingStatus, composeRow, ctxMeter, decodeRate, idleStatus, liveRow, retrySegment, runningStatus, statusBar, workingRow, type BarInput, type CompactingProgress, type RetryOnRow, type RowSegment, type StatusMeter } from "./status.js";
 // TUI2-R1 (E): /context's attribution rows — a pure function of the
 // counts the trace sidecar already records (the CLI reads, this renders).
-export { contextRows, contextUnavailableRows, type ContextLedger } from "./context-ledger.js";
+export { contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, meterCells, type ContextLedger } from "./context-ledger.js";
 // KC3 §1 (the extraction): the human-facing strings — the prompt, the
 // project-trust listing/view/note, the uncertain execution's view. The
 // FLOW (who is asked, what a verdict means) stays in the cli.
@@ -165,4 +165,4 @@ export { currentGroundRgb, parseOscColor, resolveGround, type Ground, type Rgb }
 // one duration form: the CLI's own surfaces label a settled duration the
 // way a settled card does, rather than writing a second one.
 export { settledLabel } from "@vincemakes/kiso-tui-cells";
-export { KEY_BINDINGS, PANEL_KEYS_ROW, coldResumeLine, coldResumeView, displayVerb, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, slashCommandNames, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";
+export { KEY_BINDINGS, SHEET_CLOSE, coldResumeLine, coldResumeView, displayVerb, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, slashCommandNames, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";

@@ -1087,7 +1087,8 @@ steer still waiting puts its text back in the input. The queued row and
 
 **8.8 The panels (R3e).** `/status`, `/settings` and the model picker are
 bands (§8.1–8.4). Off a dock (a pipe, `-p`) `/status` and `/settings`
-print the lines they always printed.
+print the lines they always printed. `/status`'s shape is every read-only
+sheet's (§8.16).
 
 - `/status` is a read-only SHEET over the input: the named hairline, a
   fact per row, its label `dim` in a column and its value folded under
@@ -1095,9 +1096,10 @@ print the lines they always printed.
   its host, its profile), context (used, and where the window figure comes
   from), compaction (its two thresholds; `/context` has the split),
   colour (24-bit, 256 or off, and the ground), version — and
-  `esc closes · typing goes to the input`. Unlike the keys sheet, what is
-  typed after it is typed (the chunk is parsed whole, so an arrow is an
-  arrow); only `esc` is eaten. CACHE rides the seal (§7.11), not here.
+  `esc closes · typing goes to the input`. What is typed after it is
+  typed (the chunk is parsed whole, so an arrow is an arrow); only `esc`
+  is eaten — and since the sheets round every sheet closes this way
+  (§8.16). CACHE rides the seal (§7.11), not here.
 - `/settings` is a pick panel, a row per setting (owner, 2026-09-29). The
   SESSION's own settings change in it: the mode, don't ask and thinking
   walk their own axis with `←→` (the key row names it: `←→ mode`) and
@@ -1427,6 +1429,55 @@ question kiso asks itself (§8.12) — take §8.2's shape:
   drops the retired key ladder. The input row is the composer's — DECLARED
   REVERSAL of `pick>` and `amend›`; an empty note or answer row carries a
   dim `tell kiso what to do instead` or `your answer`.
+
+**8.16 The read-only sheets** (the sheets round, owner, 2026-10-06, all
+four recommendations). The places a person reads and does not answer —
+`/status`, the keys sheet (`?`), `/context`, `/skills` — take `/status`'s
+shape (§8.8), and `/help` opens the command list. Off a dock (a pipe,
+`-p`) each command prints what it always printed, byte for byte.
+
+- A SHEET is over the input: the band names it and carries its facts
+  (§8.1), the rows start at the content edge in columns measured over the
+  whole sheet — names in ink, descriptions `dim`, the command list's
+  tones — and one closing row, `esc closes · typing goes to the input`.
+  Any key closes it and what is typed is typed (the chunk is parsed whole,
+  so an arrow is an arrow); only `esc` is eaten, and on the keys sheet the
+  `?` that opened it. Nothing stays in the conversation. DECLARED REVERSAL
+  of the keys sheet eating the key that closed it (TUI2-R1 D).
+- The keys sheet: the bindings two to a row, left then right, in the key
+  table's order (`KEY_BINDINGS`, the one source); narrower than two
+  columns need, one column. A key with two spellings is named by one
+  (`alt+⏎`, `alt+←→`); `ctrl+w` stays named beside `alt+⌫` (§8.6).
+  `ctrl+t`, `ctrl+g`, `!cmd` and `!!cmd` joined from `/help`'s table;
+  `? this sheet` left. DECLARED REVERSAL of the prototype's grid (column
+  0, hand-set stops, bold keys — DC-1/DC-3) and of the panels row
+  (`panels: … t types`, R1.5 pin 6, R6/D2): every panel's own key row
+  says its keys, and the row had gone stale.
+- `/context`: the band names the total (`context · 2.7k of 200k · 1%`);
+  then the status bar's own meter (§8.9 — one function draws both, so
+  they cannot disagree) with when compaction happens beside it; the
+  surfaces as a table, the label, the count right-aligned, the detail
+  `dim`; the free remainder `dim`. Before any request the band says
+  `context · no ledger yet` and the row says what produces one. DECLARED
+  REVERSAL of the printed rows (column 0, a blank between each, the `▰▱`
+  meter).
+- `/skills`: the band says how many, how many cannot load, and where they
+  live when that is one place — cut from the LEFT when the band cannot
+  hold it (§8.15's rule for a path). One row per skill: `/name` in a
+  measured column and its description `dim`, cut by cells; with more than
+  one place, the place ends the row. A skill that cannot load says why in
+  the failure colour. The closing row says how to run one:
+  `/<name> runs one · a built-in wins its name · esc closes`.
+- `/help` opens the command list (§8.13) — the band a typed `/` opens,
+  every command and installed skill with its description, filtered as
+  the person types — on an empty composer. The list you read is the list
+  you pick from. DECLARED REVERSAL of `/help`'s own 25-row table on a
+  dock; its keys sentence is the keys sheet's now.
+- A sheet sits ON the composer. When the window's top cannot come back
+  down (§5, R13 — a taller band such as the `/` list pushed rows into the
+  scrollback) the rows a shorter sheet leaves free go ABOVE it, between
+  the conversation and the sheet, never between the sheet and the
+  composer's rail.
 
 ## 9. The transcript viewer
 

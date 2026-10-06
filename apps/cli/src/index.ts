@@ -316,9 +316,14 @@ function editorInput(editor: Editor): LineInput {
 		panelCancel() {
 			editor.cancelPanel();
 		},
-		// Graphite R3e: a read-only sheet over the input (`/status`)
+		// Graphite R3e: a read-only sheet over the input (`/status`,
+		// `/context`, `/skills`)
 		openSheet(rows) {
 			editor.openSheet(rows);
+		},
+		// the sheets round: `/help` opens the command list
+		openCommands() {
+			editor.openCommands();
 		},
 		// TUI2-R2 ②: the session picker — the editor owns the keys (the
 		// selection walk, the filter, enter/esc), the compositor draws the

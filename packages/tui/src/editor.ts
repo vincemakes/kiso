@@ -658,11 +658,23 @@ export class Editor {
 	}
 
 	/** Graphite R3e: open a read-only sheet over the input with the caller's
-	 *  rows (`/status`). It closes like the keys sheet: any key, consumed. */
+	 *  rows (`/status`, `/context`, `/skills`). Any key closes it, and what
+	 *  is typed goes to the input; esc is eaten. */
 	openSheet(rows: (W: number) => string[]): void {
 		this.#sheetRows = rows;
 		this.#sheetOpen = true;
 		this.#onRender();
+	}
+
+	/** The sheets round (owner, 2026-10-06): `/help` opens the command
+	 *  list — the band a typed `/` opens, filtered as the person types. On
+	 *  an empty composer only: a line already being written is theirs. */
+	openCommands(): void {
+		if (this.#chars.length > 0) return;
+		this.#chars = ["/".codePointAt(0)!];
+		this.#cursor = 1;
+		this.#verticalGoalCol = null;
+		this.#refreshMenu();
 	}
 
 	clearLine(): void {
@@ -1226,22 +1238,22 @@ export class Editor {
 	#feedKeys(raw: Uint8Array): void {
 		const text = this.#pending + this.#decoder.decode(raw, { stream: true });
 		this.#pending = "";
-		// TUI2-R1 (D): the sheet is up — ANY key closes it, and the key
-		// that closed it is CONSUMED. The whole chunk goes, deliberately:
-		// an arrow key is three bytes, and closing on the first while
-		// letting `[A` fall through as literal text would be a sheet that
-		// types into your composer on the way out. A dismissal costs one
-		// keystroke; that is the entire contract.
+		// TUI2-R1 (D): the sheet is up — ANY key closes it. Graphite R3e: a
+		// sheet is read and then typed past — the whole chunk is typed as it
+		// would have been (it is parsed whole, so an arrow is an arrow, never
+		// `[A`); only esc, which means nothing else here, is eaten.
+		//
+		// DECLARED REVERSAL (the sheets round, owner, 2026-10-06): the keys
+		// sheet ate the key that closed it, where `/status` let it through;
+		// every sheet now closes the same way, and says so on its last row.
+		// The `?` that opens the keys sheet is eaten too: typed onto an
+		// empty composer it would open the sheet it just closed.
 		if (this.#sheetOpen) {
-			const callers = this.#sheetRows !== null;
+			const keys = this.#sheetRows === null;
 			this.#sheetOpen = false;
 			this.#sheetRows = null;
 			this.#onRender();
-			// Graphite R3e: a caller's sheet (`/status`) is read and then
-			// typed past — the whole chunk is typed as it would have been
-			// (it is parsed whole, so an arrow is an arrow, never `[A`);
-			// only esc, which means nothing else here, is eaten
-			if (!callers || text === "\x1b") return;
+			if (text === "\x1b" || (keys && text === "?")) return;
 		}
 		// R5 — while the viewer is up it OWNS the keyboard. Unlike the
 		// sheet (which any key dismisses) this surface is INTERACTIVE, so

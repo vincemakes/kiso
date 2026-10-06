@@ -46,9 +46,12 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 			],
 		});
 		const out = strip(raw);
-		// the list: name — description, the model-only tag
-		expect(out).toContain("/hello — say hello properly");
-		expect(out).toContain("/inner — only for the model (model only)");
+		// the list: name — description, the model-only tag. Re-derived for
+		// the sheets round (owner, 2026-10-06): on a dock /skills is a sheet,
+		// the name in a measured column and the description beside it (the
+		// pipe keeps `name — description`, pinned in graphite-skills-sheet)
+		expect(out).toMatch(/\/hello +say hello properly/);
+		expect(out).toMatch(/\/inner +only for the model \(model only\)/);
 		// the refusals, one line each
 		expect(out).toContain('skill "inner" is for the model only (user-invocable: false)');
 		expect(out).toContain('no skill named "helo" — nearest: hello (/skills lists them)');

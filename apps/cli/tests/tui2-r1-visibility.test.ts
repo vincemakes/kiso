@@ -349,19 +349,21 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 				[
 					["▌ ", "hi\r"], // a normal turn first — the composer works
 					["hello there.", "?"], // the REAL key, on an empty composer
-					["expand cells", "x"], // any key closes it
+					// re-derived for the sheets round (owner, 2026-10-06): the
+					// needle is a row only the sheet draws (`ctrl+o expand cells`
+					// became `expand all`, which the bar can show too)
+					["take back a steer", "x"], // any key closes it
 				],
-				// the driver stops the process itself: `exit` typed while the
-				// sheet is up would be EATEN by the close (any key closes,
-				// and the whole chunk goes with it), which is the contract —
-				// so the transcript, not a clean exit, is the evidence here.
+				// the driver stops the process itself; the transcript, not a
+				// clean exit, is the evidence here.
 				12,
 				ws,
 			),
 		);
 		// the sheet was on screen, in full
-		expect(out).toContain("enter send");
-		expect(out).toContain("ctrl+o expand cells");
+		// re-derived for the sheets round: key · what in measured columns
+		expect(out).toMatch(/enter +send/);
+		expect(out).toMatch(/ctrl\+o +expand all/);
 		// MOVED (R1.5 pin 6, the wrap/copy class): see the tui-cells unit.
 		// DECLARED SUPERSESSION (R6/D2): the row claims only what is true
 		// of EVERY panel now. `1-4 instant` was false on the ask's
@@ -369,13 +371,19 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		// both, and "1-4" was wrong for any panel with a different option
 		// count — while the row's own comment said it was true of every
 		// flavor. Each panel's own affordance row states its whole truth.
-		expect(out).toContain("panels: ↑↓ move · ⏎ confirms · digits act on their row · t types");
+		// DECLARED REVERSAL (the sheets round): the panels row retired —
+		// each panel's own key row says its keys — and the sheet closes on
+		// the row every sheet has
+		expect(out).not.toContain("panels: ");
+		expect(out).toContain("esc closes \u00b7 typing goes to the input");
 		// the `?` never became text, and neither did the key that closed it.
 		// R2: the composer has no wall and no prompt glyph, so the needle
 		// is the row's erase-to-end immediately followed by the character —
 		// which is what a `?` typed into the composer would look like.
 		expect(out).not.toContain("\x1b[0K?");
-		expect(out).not.toContain("\x1b[0Kx");
+		// re-derived for the sheets round: the key that closed it is typed
+		// now (only esc and the `?` are eaten) — it stays in the composer,
+		// unsent, which the user_input check below still pins
 		// the session carried on normally afterwards
 		expect(out).toContain("hello there.");
 		const events = logLines(env.KISO_HOME as string, "r1-sheet").map((l) => l.event);
