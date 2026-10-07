@@ -199,6 +199,15 @@ a broken config file fails loudly with the file named.
 - The project's own `.kiso/config.json` rides the E3 trust gate: a
   granted project's config applies, an untrusted one is never even read
   (its digest covers the config file).
+- **A project config can only make kiso stricter** (0.46.2). Its `mode`
+  may be as strict as yours or stricter (plan, then default, then
+  accept-edits, then full-access), never looser. Its `dontAsk` may turn the
+  switch on, never off. It may pick one of your profiles with `model` but
+  never define `models`, because a profile says where requests and your key
+  go. Each of these is a loud startup error naming the file. `--mode` and
+  `KISO_MODE` are your own choice and still win. A trusted project's
+  extensions, checks and evaluators are code: the trust gate, not this
+  rule, governs them.
 - **Migration from the kiso-ds wrapper pattern** (a shell wrapper
   exporting `OPENAI_API_KEY`/`OPENAI_BASE_URL`/`OPENAI_MODEL`): the
   wrapper still works — the env layer is second in the chain — but the
