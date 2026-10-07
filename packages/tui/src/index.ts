@@ -99,7 +99,7 @@ export {
 export { editFileDiff, editFileHunksDiff, hunksDiff, hunksOf, truncateDiff, writeFileDiff, type DiffLine, type DiffResult, type Hunk } from "./diff.js";
 // KC2 §5: the status rows' formatters — the CLI keeps the state and the
 // repaint, the terminal layer owns what the row says.
-export { STATUS_GLYPHS, cacheHitPct, compactingStatus, composeRow, ctxMeter, decodeRate, idleStatus, liveRow, retrySegment, runningStatus, statusBar, tasksSegment, workingRow, type BarInput, type CompactingProgress, type RetryOnRow, type RowSegment, type StatusMeter, type TaskCountsOnRow } from "./status.js";
+export { STATUS_GLYPHS, cacheHitPct, compactingStatus, composeRow, ctxMeter, decodeRate, liveRow, retrySegment, statusBar, tasksSegment, workingRow, type BarInput, type CompactingProgress, type RetryOnRow, type RowSegment, type TaskCountsOnRow } from "./status.js";
 // TUI2-R1 (E): /context's attribution rows — a pure function of the
 // counts the trace sidecar already records (the CLI reads, this renders).
 export { contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, meterCells, type ContextLedger } from "./context-ledger.js";

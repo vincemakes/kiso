@@ -56,25 +56,6 @@ import { displayWidth, visibleWidth } from "@vincemakes/kiso-tui-cells/width";
  */
 export const STATUS_GLYPHS = TWINKLE;
 
-/**
- * The ~ctx estimate as the whole-percent LEFT, or `ctx ?` when there is no
- * window to divide by.
- *
- * A percentage needs a denominator. When the model's context window is not
- * KNOWN — the registry records null for it, nobody set one in the profile,
- * no env — there is no denominator, and this row's rule is the same as
- * every other number on it: a measurement, or nothing. It used to print
- * `ctx left ~null%`, which at least did not invent a figure; `ctx ?` says
- * the same thing to a reader.
- *
- * The failure this replaces is worse than either: the window fell back to
- * a hardcoded 200,000 and the row printed a confident `ctx left ~82%`
- * against a number nobody had measured. A reader had no way to tell that
- * percentage from one computed against a real window.
- */
-function ctxSegment(ratio: number): string {
-	return Number.isFinite(ratio) ? `ctx left ~${Math.round((1 - ratio) * 100)}%` : "ctx ?";
-}
 
 /**
  * TPS-1 — the settled DECODE rate of one model call: its output tokens
@@ -198,39 +179,6 @@ export function tasksSegment(c: TaskCountsOnRow | undefined): string {
 	return `● ${c.running} task${c.running === 1 ? "" : "s"} running`;
 }
 
-export function runningStatus(
-	glyph: string,
-	since: number,
-	outTokens: number | null,
-	ctxRatio: number,
-	tokPerSec: number | null = null,
-	W?: number,
-	retry?: RetryOnRow | null,
-	// 3e: the session's tasks, and whether a running command can be moved
-	// to the background now (the row teaches ctrl+b exactly then)
-	tasks?: TaskCountsOnRow,
-	detachable = false,
-): string {
-	const out = outTokens !== null ? ` ↓ ${kUnit(outTokens)} tokens` : "";
-	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
-	return composeRow(`${glyph} working ${elapsedLabel(seconds)}${out}`, [
-		// ADR-0005 Amendment 2: a pending retry is a FACT and sits first — it
-		// is the one thing on the row that explains why nothing is arriving,
-		// and a retry budget of minutes with nothing on screen reads as a
-		// hung session.
-		retry != null ? { kind: "fact", text: retrySegment(retry) } : null,
-		// TPS-1: after each call SETTLES within the turn, between the tokens
-		// segment and the stop hint. The default is null and that is the
-		// honest rule spelled as a default — the recovery flow has no
-		// per-call timing state, so its row says nothing rather than guessing.
-		tokPerSec !== null ? { kind: "fact", text: `${tokPerSec} tok/s` } : null,
-		{ kind: "fact", text: tasksSegment(tasks) },
-		{ kind: "hint", text: "esc stop" },
-		detachable ? { kind: "hint", text: "ctrl+b background" } : null,
-		{ kind: "hint", text: "alt+⏎ redirect" },
-		{ kind: "fact", text: ctxSegment(ctxRatio) },
-	], W);
-}
 
 /**
  * The COMPACTING row (W18): the covered rounds, the pre-call token
@@ -286,37 +234,6 @@ export function compactingStatus(
 	], W);
 }
 
-/**
- * TUI2-R1 (E) — the idle row's meter: what the session has SPENT, next
- * to what it has left.
- *
- * Both fields are optional and both are omitted when unknown, because
- * the row's job is to be true rather than complete:
- *
- *   - `cacheHitPct` is cacheRead / (fresh + cacheRead) — the E2
- *     denominator (the pinned sentence: it cannot exceed 100%). A
- *     session with no usage yet has no cache hit rate, and an
- *     unmeasured cache is NOT a 0% cache, so it renders nothing.
- *   - `costUsd` is the CANONICAL cost, which is null whenever the
- *     pricing table has no rate for the route. Null renders nothing.
- *     No rate table, no number — kiso does not invent a price.
- */
-export interface StatusMeter {
-	readonly cacheHitPct: number | null;
-	/** RETIRED from the row (the owner's 2026-08-23 directive): live
-	 *  prices fluctuate and the canonical table is "an approximation,
-	 *  not a bill" — a four-decimal figure on the status bar claimed a
-	 *  precision the data never had. The canonical cost STAYS recorded
-	 *  (trace ledger, /context); the field is kept so callers need not
-	 *  change shape, and it renders NOTHING. */
-	readonly costUsd: number | null;
-	/** TPS-1 — the decode rate of the LAST settled call, carried into the
-	 *  idle row so the figure a person watched during the turn is still
-	 *  there when the turn ends. Null renders nothing (see `decodeRate`);
-	 *  a new model binding starts with none, exactly as the cache figure
-	 *  does (DF-0311-F1: an unmeasured binding has no measurement). */
-	readonly tokPerSec: number | null;
-}
 
 /** DF-0330-F1 — how far a LABEL may be squeezed on the ROW; the model id
  *  is the one there is. Twenty visible columns keeps a head and a tail:
@@ -354,50 +271,6 @@ function elideMiddle(text: string, max: number): string {
 	return `${head}…${tail}`;
 }
 
-/**
- * The IDLE row: the approval tier as the CALLER names it, the /mode hint,
- * the model driving the session, the TUI2-R1 meter when there is one, and
- * the ctx estimate. Called without a meter — or with one that knows
- * nothing — the row is byte-identical to the pre-round row.
- *
- * DF-0330-F1 — THE DROP ORDER. `W` is the row's budget; given one, the row
- * gives ground in a fixed order rather than letting invariant ① cut its
- * end off. Found the hard way: at 100 columns the ` · N tok/s` segment
- * never appeared and at 140 it did, because the row was 102 columns wide
- * and the segment TPS-1 added sat last.
- *
- *   1. the MODEL ID is elided in its middle. It is the only segment that
- *      varies, it is the one that grew (the owner's is 35 columns of a
- *      90-column row), and eliding it gives the row back a budget instead
- *      of re-allocating a deficit;
- *   2. `/mode to switch` is dropped. It teaches a gesture; `/mode` and `?`
- *      still exist and the row is not the only place they are taught;
- *   3. the FACTS are never dropped and never cut — the tier, CH, the ctx
- *      estimate and the rate. A row that silently drops a measurement is
- *      the defect this rule exists to prevent.
- *
- * The elision is ON THE ROW only. `/model`, the session log and the trace
- * ledger all keep the id whole — the row is a view, never the record.
- *
- * No `W` means no dropping, which is what the callers that do not know
- * their width should get: today's row, unchanged.
- */
-export function idleStatus(tier: string, model: string, ctxRatio: number, meter?: StatusMeter, W?: number, floorOff = false, tasks?: TaskCountsOnRow): string {
-	return composeRow(`▸ ${tier}`, [
-		// 0.40.0: the catastrophe floor is on by default and says nothing;
-		// OFF is the state worth seeing, and a fact beside the tier it
-		// changes the meaning of.
-		floorOff ? { kind: "fact", text: "floor off" } : null,
-		// 3e: work still going on (or gone unknown) after the turn ended
-		{ kind: "fact", text: tasksSegment(tasks) },
-		{ kind: "hint", text: "/mode to switch" },
-		{ kind: "label", text: model },
-		meter?.cacheHitPct != null ? { kind: "fact", text: `CH ${Math.round(meter.cacheHitPct)}%` } : null,
-		// costUsd deliberately NOT rendered — see StatusMeter.costUsd.
-		{ kind: "fact", text: ctxSegment(ctxRatio) },
-		meter?.tokPerSec != null ? { kind: "fact", text: `${meter.tokPerSec} tok/s` } : null, // TPS-1: last, after the ctx estimate
-	], W);
-}
 
 /** TUI2-R1 (E) — the cache hit rate the status row shows, from the usage
  *  the CLI already tracks. The denominator is the TOTAL the model was

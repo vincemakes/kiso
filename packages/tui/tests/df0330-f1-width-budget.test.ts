@@ -20,89 +20,69 @@
  * dropped and never cut. The unit stays `tok/s`: readable beats two columns.
  * Invariant ①'s `…` cut is the last resort and must be UNREACHABLE at 100
  * columns for any id up to forty characters.
+ *
+ * RE-DERIVED (the legacy rows retired, owner 2026-10-06): the idle row is
+ * the bar now (`statusBar`, §8.9) and the running row the live row
+ * (`workingRow`, §8.7). The bar's own drop order (§8.5: the ctrl+o hint,
+ * the folder, the branch, the model's middle, last `/mode to switch`) is
+ * pinned in graphite-composer with a 23-character id; the lesson above is
+ * why it is pinned here again with the REAL one.
  */
 import { describe, expect, it } from "vitest";
 import { displayWidth } from "@vincemakes/kiso-tui-cells/width";
-import { idleStatus, runningStatus } from "../src/status.js";
+import { statusBar, workingRow, type BarInput } from "../src/status.js";
 
 /** The owner's own, and the reason this finding exists. */
 const REAL = "deepseek-v4.1-flash-expires-on-0910"; // 35
-const METER = { cacheHitPct: 91, costUsd: null, tokPerSec: 178 };
+const BAR: BarInput = { mode: "default", floorOff: false, model: REAL, ctx: { used: 0.01, soft: 0.5, hard: 0.8 }, tokPerSec: 178, branch: "main", folder: "~/code/kiso" };
+const FACTS = ["default", "ctx 1%", "178 tok/s"];
 
-describe("DF-0330-F1 — the idle row at the widths people use", () => {
-	it("at 140 columns nothing is dropped and the row is byte-identical to the unbudgeted one", () => {
-		const wide = idleStatus("default", REAL, 0.01, METER, 140);
-		expect(wide).toBe(idleStatus("default", REAL, 0.01, METER));
-		expect(wide).toContain(REAL);
-		expect(wide).toContain("/mode to switch");
-		expect(wide).toContain("178 tok/s");
+describe("DF-0330-F1 — the bar at the widths people use, with the real id", () => {
+	it("at 140 columns nothing gives way", () => {
+		const wide = statusBar(BAR, 140, null);
+		for (const s of [REAL, "/mode to switch", ...FACTS, "main", "~/code/kiso"]) expect(wide).toContain(s);
 	});
 
 	it("at 100 columns it FITS, the rate survives, and the hint is still there", () => {
-		const row = idleStatus("default", REAL, 0.01, METER, 100);
-		expect(displayWidth(row), `row was ${displayWidth(row)} columns: ${row}`).toBeLessThanOrEqual(100);
-		expect(row).toContain("178 tok/s");
-		expect(row).toContain("/mode to switch");
-		expect(row).toContain("CH 91%");
-		expect(row).toContain("ctx left");
-		// the worked number from the finding: 87 with the id elided to twenty
-		expect(displayWidth(row)).toBe(87);
+		const row = statusBar(BAR, 100, null);
+		expect(displayWidth(row)).toBeLessThanOrEqual(100);
+		for (const s of [REAL, "/mode to switch", ...FACTS]) expect(row).toContain(s);
 	});
 
-	it("the elision keeps the HEAD and the TAIL — the tail is what distinguishes", () => {
-		const row = idleStatus("default", REAL, 0.01, METER, 100);
-		expect(row).toContain("deepseek-v");
-		expect(row).toContain("0910");
-		expect(row).not.toContain(REAL);
-	});
-
-	it("at 80 columns the HINT goes and every fact stays", () => {
-		const row = idleStatus("default", REAL, 0.01, METER, 80);
-		expect(displayWidth(row), `row was ${displayWidth(row)} columns: ${row}`).toBeLessThanOrEqual(80);
-		expect(row).not.toContain("/mode to switch");
-		expect(row).toContain("▸ default");
-		expect(row).toContain("CH 91%");
-		expect(row).toContain("ctx left");
-		expect(row).toContain("178 tok/s");
-	});
-
-	it("an ORDINARY model id is untouched at 100 columns — the drop order is a no-op with room", () => {
-		const row = idleStatus("default", "gpt-6-astra", 0.01, METER, 100);
-		expect(row).toBe(idleStatus("default", "gpt-6-astra", 0.01, METER));
-		expect(row).toContain("gpt-6-astra");
-		expect(row).toContain("/mode to switch");
+	it("at 80 the model's middle goes — HEAD and TAIL kept, the tail is what distinguishes — and every fact stays", () => {
+		const row = statusBar(BAR, 80, null);
+		expect(displayWidth(row)).toBeLessThanOrEqual(80);
+		expect(row).toMatch(/deepseek-v…[^ ]*-0910/);
+		for (const s of FACTS) expect(row).toContain(s);
 	});
 
 	it("the `…` CUT is unreachable at 100 columns for every id up to forty characters", () => {
-		for (let n = 1; n <= 40; n += 1) {
-			const id = "m".repeat(n);
-			const row = idleStatus("default", id, 0.01, METER, 100);
-			expect(displayWidth(row), `id of ${n} chars produced ${displayWidth(row)} columns`).toBeLessThanOrEqual(100);
+		for (let L = 1; L <= 40; L += 1) {
+			const id = `${"m".repeat(Math.max(0, L - 4))}0910`.slice(-L);
+			const row = statusBar({ ...BAR, model: id }, 100, null);
+			expect(displayWidth(row), `L=${L}: ${row}`).toBeLessThanOrEqual(100);
+			for (const s of FACTS) expect(row, `L=${L}`).toContain(s);
+			expect(row, `L=${L}`).toContain(id);
 		}
 	});
 
 	it("the budget is in DISPLAY COLUMNS, so a wide-character id cannot slip back over it", () => {
 		// No model id looks like this today. The guarantee should not depend on
 		// that staying true: a first version of the elision sliced code points
-		// and produced 28 columns while claiming 20, which would have put the
-		// row straight back under invariant ①'s cut — the exact defect this
-		// change exists to prevent.
+		// and produced 28 columns while claiming 20.
 		const wide = "モデル-フラッシュ-expires-on-0910"; // 33 display columns, 25 code points
-		const row = idleStatus("default", wide, 0.01, METER, 100);
-		expect(displayWidth(row), `row was ${displayWidth(row)} columns: ${row}`).toBeLessThanOrEqual(100);
-		expect(row).toContain("178 tok/s");
-	});
-
-	it("no width given means no dropping — the callers that do not know stay exactly as they were", () => {
-		expect(idleStatus("default", REAL, 0.01, METER)).toContain(REAL);
-		expect(idleStatus("default", REAL, 0.01)).toBe("▸ default · /mode to switch · " + REAL + " · ctx left ~99%");
+		for (const W of [100, 80]) {
+			const row = statusBar({ ...BAR, model: wide }, W, null);
+			expect(displayWidth(row), `W=${W}: ${row}`).toBeLessThanOrEqual(W);
+			expect(row).toContain("178 tok/s");
+		}
 	});
 });
 
-describe("DF-0330-F1 — the running row", () => {
-	it("with a rate it still fits 100 columns; its text is unchanged by this round", () => {
-		const row = runningStatus("✦", Date.now() - 3_000, 398, 0.01, 178);
+describe("DF-0330-F1 — the live row", () => {
+	it("with a rate it still fits 100 columns", () => {
+		const row = workingRow("✦", Date.now() - 3_000, 398, 178, 100);
 		expect(row).toContain("178 tok/s");
-		expect(displayWidth(row), `running row was ${displayWidth(row)} columns`).toBeLessThanOrEqual(100);
+		expect(displayWidth(row), `live row was ${displayWidth(row)} columns`).toBeLessThanOrEqual(100);
 	});
 });

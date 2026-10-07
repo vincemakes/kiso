@@ -24,7 +24,7 @@
  * and renders nothing.
  */
 import { describe, expect, it } from "vitest";
-import { decodeRate, idleStatus, runningStatus } from "../src/status.js";
+import { decodeRate, statusBar, workingRow, type BarInput } from "../src/status.js";
 
 describe("TPS-1: the rate itself", () => {
 	it("is output tokens over the decode seconds, as an integer", () => {
@@ -65,41 +65,32 @@ describe("TPS-1: the rate itself", () => {
 	});
 });
 
-describe("TPS-1: the running row", () => {
-	it("with no rate the row is byte-identical to the pre-round row", () => {
-		const at = Date.now() - 3_000;
-		expect(runningStatus("▖", at, 1234, 0.1, null)).toBe(runningStatus("▖", at, 1234, 0.1));
-		expect(runningStatus("▖", at, 1234, 0.1)).toBe("▖ working 3s ↓ 1.2k tokens · esc stop · alt+⏎ redirect · ctx left ~90%");
+// RE-DERIVED (the legacy rows retired, owner 2026-10-06): the running row
+// is the live row (§8.7), the idle row the bar (§8.9). The rules hold:
+// no rate, no segment; the rate after the tokens on the live row and last
+// on the bar; the two independent.
+const BAR: BarInput = { mode: "default", floorOff: false, model: "faux", ctx: { used: 0.25, soft: 0.5, hard: 0.8 }, tokPerSec: null, branch: null, folder: null };
+
+describe("TPS-1: the live row", () => {
+	it("with no rate there is no segment", () => {
+		expect(workingRow("▖", Date.now() - 3_000, 1234, null, 120)).toMatch(/^▖ working 3s · ↓ 1\.2k +esc stop/);
 	});
 
-	it("the segment sits between the tokens segment and the stop hint", () => {
-		expect(runningStatus("▖", Date.now() - 3_000, 1234, 0.1, 42)).toBe(
-			"▖ working 3s ↓ 1.2k tokens · 42 tok/s · esc stop · alt+⏎ redirect · ctx left ~90%",
-		);
+	it("the segment sits after the tokens, before the keys", () => {
+		expect(workingRow("▖", Date.now() - 3_000, 1234, 42, 120)).toMatch(/^▖ working 3s · ↓ 1\.2k · 42 tok\/s +esc stop/);
 	});
 
 	it("a rate with no token count yet still renders — the two are independent", () => {
-		expect(runningStatus("▘", Date.now(), null, 0, 42)).toBe("▘ working 1s · 42 tok/s · esc stop · alt+⏎ redirect · ctx left ~100%");
+		expect(workingRow("▘", Date.now(), null, 42, 120)).toMatch(/^▘ working 1s · 42 tok\/s +esc stop/);
 	});
 });
 
-describe("TPS-1: the idle row", () => {
-	it("with no rate the row is byte-identical to the pre-round row", () => {
-		expect(idleStatus("default", "faux", 0.25, { cacheHitPct: null, costUsd: null, tokPerSec: null })).toBe(
-			"▸ default · /mode to switch · faux · ctx left ~75%",
-		);
-		expect(idleStatus("default", "faux", 0.25)).toBe("▸ default · /mode to switch · faux · ctx left ~75%");
+describe("TPS-1: the bar", () => {
+	it("with no rate there is no segment", () => {
+		expect(statusBar(BAR, 120, null)).toBe("▸ default · /mode to switch · faux · ctx 25%");
 	});
 
 	it("the segment comes LAST, after the ctx estimate", () => {
-		expect(idleStatus("default", "faux", 0.25, { cacheHitPct: null, costUsd: null, tokPerSec: 42 })).toBe(
-			"▸ default · /mode to switch · faux · ctx left ~75% · 42 tok/s",
-		);
-	});
-
-	it("sits beside the cache figure without disturbing its place", () => {
-		expect(idleStatus("default", "faux", 0.25, { cacheHitPct: 91, costUsd: null, tokPerSec: 42 })).toBe(
-			"▸ default · /mode to switch · faux · CH 91% · ctx left ~75% · 42 tok/s",
-		);
+		expect(statusBar({ ...BAR, tokPerSec: 42 }, 120, null)).toBe("▸ default · /mode to switch · faux · ctx 25% · 42 tok/s");
 	});
 });
