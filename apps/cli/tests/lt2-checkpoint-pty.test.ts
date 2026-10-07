@@ -37,7 +37,7 @@ describe("LT2B-F1 — long interactive runs do not require periodic consent", ()
 		});
 		const raw = ptyRun(["--mode", "bypass", id], env as NodeJS.ProcessEnv, {
 			cwd: mkdtempSync(join(tmpdir(), "kiso-unattended-")),
-			feeds: [["/ commands · ↑ history", "go\r"], ["long-run complete.", "exit\r"], ...oldPanelEscape],
+			feeds: [["/mode to switch", "go\r"], ["long-run complete.", "exit\r"], ...oldPanelEscape],
 			timeout: 90,
 		});
 		const log = events(dirs.home, id);
@@ -61,7 +61,7 @@ describe("LT2B-F1 — long interactive runs do not require periodic consent", ()
 		});
 		const raw = ptyRun(["--mode", "bypass", id], env as NodeJS.ProcessEnv, {
 			cwd: mkdtempSync(join(tmpdir(), "kiso-cancel-long-")),
-			feeds: [["/ commands · ↑ history", "go\r"], ["sleep 20", "\x1b"], ["[aborting run]", "exit\r"], ...oldPanelEscape],
+			feeds: [["/mode to switch", "go\r"], ["sleep 20", "\x1b"], ["[aborting run]", "exit\r"], ...oldPanelEscape],
 			timeout: 90,
 		});
 		const log = events(dirs.home, id);

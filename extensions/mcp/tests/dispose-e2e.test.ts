@@ -206,7 +206,11 @@ def driver(cli, home, workdir, ext_dir, mcp_config, script_path):
         # 0.1.26 (lazy connection): the sleepy server's 15s connect timeout must
         # ELAPSE before the status call — the bounded SOFT failure is then
         # visible in the status ("sleepy: error") and the fake works.
-        time.sleep(16)
+        # read while waiting, as a terminal does: a PTY that nobody drains
+        # fills, and kiso's synchronous TTY write then blocks its event
+        # loop — the handshakes this case measures would stall with it
+        # (the Graphite opening's larger first screen crossed that line)
+        read_until(b"\\x00never\\x00", 16)
         os.write(fd, b"go\\r")
         read_until(b"approve mcp__status", 15)
         os.write(fd, b"y\\r")

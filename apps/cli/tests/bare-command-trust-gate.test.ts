@@ -110,7 +110,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
             pass
     try:
         # the trust panel must present (the crash's own branch) — answer y
-        if not read_until(b"trust this project's .kiso?", 8):
+        if not read_until(b"trust this project", 8):
             # the pre-patch red: the process died at the panel — the capture
             # holds the TypeError; nothing to answer.
             sys.stdout.write(full.decode(errors="replace"))
@@ -138,7 +138,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
         else:
             # R2: the composer has no prompt glyph, so what says "the panel
             # closed and the dock is back" is the idle status hint.
-            if not read_until("/ commands".encode(), 8):
+            if not read_until("/mode to switch".encode(), 8):
                 sys.stdout.write(full.decode(errors="replace"))
                 sys.exit(4)
             send(b"go\\r")
@@ -158,7 +158,7 @@ def driver(cli, home, script_path, workdir, args, sessions_mode):
                 if b"Cannot read properties of undefined" in full:
                     crashed = True
                     break
-                if not approved and b"needs approval" in full:
+                if not approved and b"asked by" in full:  # Graphite P4: the approval band names who asked
                     send(b"1\\r")
                     approved = True
                     continue
@@ -244,7 +244,7 @@ describe("R-I-p2: the first-run trust gate", () => {
 			// panel (pre-patch: "Cannot read properties of undefined" in the
 			// capture, no trust question).
 			expect(out).not.toContain("Cannot read properties of undefined");
-			expect(out).toContain("trust this project's .kiso?");
+			expect(out).toContain("trust this project");
 			// The session was USABLE: the trajectory's shell ran, the
 			// terminal is durable, the lock released, exit 0.
 			expect(existsSync(join(workdir, "trusted.txt"))).toBe(true);
@@ -273,7 +273,7 @@ describe("R-I-p2: the first-run trust gate", () => {
 			// dock): no TypeError, the trust question presented and was
 			// answered, the listing exited 0 on its own.
 			expect(out).not.toContain("Cannot read properties of undefined");
-			expect(out).toContain("trust this project's .kiso?");
+			expect(out).toContain("trust this project");
 			expect(out).toMatch(/EXIT=0/);
 		},
 		120_000,

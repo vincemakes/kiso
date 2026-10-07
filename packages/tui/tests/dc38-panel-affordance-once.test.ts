@@ -25,7 +25,9 @@ import { Body } from "../src/compositor.js";
 import { Screen } from "./helpers/screen.js";
 import type { PanelView } from "../src/approval-panel.js";
 
-const AFFORDANCE = "↑↓ move · ⏎ or click confirms · 1-4 instant · esc";
+// Graphite P4 (owner, 2026-10-04): an approval's esc says it denies, and the
+// range is an en dash — the words moved; the once-only property did not
+const AFFORDANCE = "↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies";
 
 function makeBody(W: number, H: number) {
 	const writes: string[] = [];
@@ -97,7 +99,8 @@ describe("DC-38 — the panel key hint is printed once", () => {
 		tick();
 		const rows = rowsOf(writes, W, 24);
 		const at = rows.findIndex((r) => r.includes(AFFORDANCE));
-		const status = rows.findIndex((r) => r.includes("❯ run paused"));
+		// Graphite §8.7 (R3b): the status row says `needs you` before the phase
+		const status = rows.findIndex((r) => r.includes("❯ needs you · run paused"));
 		expect(at).toBeGreaterThanOrEqual(0);
 		expect(status).toBeGreaterThanOrEqual(0);
 		// the panel's block sits ABOVE the status row; keeping the hint
@@ -115,6 +118,6 @@ describe("DC-38 — the panel key hint is printed once", () => {
 		tick();
 		// W21's other half is untouched: the panel's status REPLACES the
 		// CLI's painting status. Only the hint moves out.
-		expect(rowsOf(writes, W, 24).some((r) => r.includes("❯ run paused"))).toBe(true);
+		expect(rowsOf(writes, W, 24).some((r) => r.includes("❯ needs you · run paused"))).toBe(true);
 	});
 });

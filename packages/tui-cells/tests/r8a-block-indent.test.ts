@@ -90,11 +90,18 @@ describe("R8a — the indent is the fact, and it survives a pipe", () => {
 });
 
 describe("R8a — the notes join the block", () => {
-	it("the collapse footer is an indented note, not a second corner", () => {
-		const rows = body(tool({ expanded: true }));
+	// Graphite §7.4: the way back is the card's FOOT — right-aligned, never
+	// a second corner — and it exists only while collapsing would hide
+	// something again.
+	it("the collapse footer is the card's foot, not a second corner", () => {
+		const rows = body(tool({ expanded: true, resultText: Array.from({ length: 8 }, (_, i) => `line ${i}`).join("\n") }));
 		const last = rows[rows.length - 1]!;
-		expect(last).toContain("ctrl+o collapses");
-		expect(last.startsWith("    ")).toBe(true);
+		expect(last.trim()).toBe("ctrl+o collapses");
+		expect(last).not.toContain("\u2514");
+	});
+
+	it("…and a card whose whole body always shows offers no way back", () => {
+		expect(body(tool({ expanded: true })).join("\n")).not.toContain("ctrl+o");
 	});
 
 	/* R13 — the case that exercised `exploreRows` retired with

@@ -120,12 +120,12 @@ describe("A1: the menu Enter executes the EXACT selection directly", () => {
 				["▌ ", "/compact\r"],
 				// W18 re-baseline: the settled notice is the RECAP — the ✦
 				// glyph is unique to it (the live row uses ▘).
-				["[/compact] ✦ compacted", "exit\r"],
+				["COMPACTED", "exit\r"], // Graphite §7.12: the result is a meta row
 			],
 			dir,
 			"f1",
 		);
-		expect(stripANSI(out)).toContain("[/compact] ✦ compacted ·"); // the recap
+		expect(stripANSI(out)).toMatch(/COMPACTED +\d+ rounds → 1 summary/); // the recap, as a meta row
 		const durable = readFileSync(join(dirs.home, "sessions", "f1.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');
 	});
@@ -168,11 +168,12 @@ describe("A2: ↑↓ recall the session history", () => {
 		// land in ONE frame, so the recalled row's render merges with the
 		// submit; the recall's proof is the RESUBMITTED turn above. The
 		// typed row rendered (the "hello" needle waited for it).
-		// R2: no prompt glyph — the recalled text stands alone at COLUMN
-		// ONE, so what identifies the composer's row in the stream is the
-		// row's erase-to-end immediately followed by the text. (A `^hello`
-		// on the stripped text does not work: stripping the CUP sequences
-		// joins the rows, so there is no line start to anchor to.)
+		// R2, and again since Graphite R1f (owner, 2026-09-29): no prompt
+		// glyph — the recalled text stands at COLUMN ONE, so what identifies
+		// the composer's row in the stream is the row's erase-to-end
+		// immediately followed by the text. (A `^hello` on the stripped text
+		// does not work: stripping the CUP sequences joins the rows, so
+		// there is no line start to anchor to.)
 		expect((out.match(/\x1b\[0Khello/g) ?? []).length).toBeGreaterThanOrEqual(1);
 	});
 });

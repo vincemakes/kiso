@@ -7,7 +7,8 @@
  */
 
 import { charWidth, displayWidth, visibleWidth, widthCut } from "./width.js";
-import type { Ground } from "./ground.js";
+import type { Ground, Rgb } from "./ground.js";
+import { bg, breathRamp, colourTier, fg, graphiteColours, mix, type Tier } from "./graphite.js";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
@@ -117,6 +118,64 @@ export interface Palette {
 	readonly washDim: string;
 	readonly washDimEnd: string;
 	readonly reset: string;
+	/** Graphite (design.md §2) — the tokens the redesign reads. Each is an
+	 *  SGR open for its colour in the resolved tier (§2: 24-bit or the
+	 *  nearest xterm-256 index), and EMPTY where the ground is unknown or
+	 *  colour is off: §3.1 forbids an absolute colour on a ground nobody
+	 *  established, so every one of them degrades to the terminal's own.
+	 *  Foregrounds close with `fgEnd` (39), backgrounds with `washEnd`
+	 *  (49), for the reason `rv` closes with 27. */
+	readonly ink2: string;
+	readonly rail: string;
+	readonly line: string;
+	readonly gold: string;
+	readonly goldMark: string;
+	readonly blue: string;
+	readonly ok: string;
+	readonly fail: string;
+	readonly humanInk: string;
+	readonly track: string;
+	readonly washRun: string;
+	readonly washDone: string;
+	readonly washFail: string;
+	readonly washAsk: string;
+	readonly human: string;
+	readonly codeBg: string;
+	readonly add: string;
+	readonly del: string;
+	/** Graphite §6 (R2a) — the changed words inside a `+` / `-` row: the
+	 *  row's ground deepened toward its colour, as a BACKGROUND. */
+	readonly addWord: string;
+	readonly delWord: string;
+	/** Graphite §5 (R2b) — the bar down a quote's rows, and an alert's
+	 *  (NOTE / TIP / IMPORTANT in blue, WARNING in gold, CAUTION in the
+	 *  failure colour): one cell of the ground deepened toward the colour,
+	 *  as a BACKGROUND (§1.5 — a glyph bar seams between rows). */
+	/** Graphite §5 (R2b) — a table's rails: between `line` and `rail`, so
+	 *  the grid reads without outweighing the words in it. */
+	readonly edge: string;
+	readonly quoteBar: string;
+	readonly noteBar: string;
+	readonly warnBar: string;
+	readonly cautionBar: string;
+	/** Graphite §7.4 — a card's EDGE: one cell of its ground deepened
+	 *  toward the state's colour, as a BACKGROUND (§1.5: a glyph bar down
+	 *  several rows shows a break at every row in Apple Terminal; a cell's
+	 *  background does not). One per card state. */
+	readonly runEdge: string;
+	readonly failEdge: string;
+	readonly askEdge: string;
+	/** Graphite §7.9 — the person's block's edge: one cell of gold toward
+	 *  the warm ground, as a BACKGROUND, the same width as a card's edge.
+	 *  A half-cell `▌` is thinner but shows a break at every row in Apple
+	 *  Terminal (the owner's seam tests, 2026-09-29). */
+	readonly humanEdge: string;
+	readonly fgEnd: string;
+	/** §5.2 — the command breath's seven foreground opens; empty where
+	 *  the mark freezes (no ground, or no colour). */
+	readonly breath: readonly string[];
+	/** The tier the colours were written in, or null when none were. */
+	readonly tier: Tier | null;
 }
 const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m", italic: "\x1b[3m", italicEnd: "\x1b[23m", underline: "\x1b[4m", underlineEnd: "\x1b[24m", rv: "\x1b[7m", rvEnd: "\x1b[27m", reset: "\x1b[0m" } as const;
 /**
@@ -129,11 +188,8 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
  * cannot degrade to an attribute the way `dim` does — it needs a value
  * per ground, and the ground is what §3's ladder is for.
  *
- * 256-cube indices, never truecolor (§2). Measured against the grounds
- * §2 measures against — white, and #1E1E1E:
- *
- *   light  124 `#af0000`  7.44:1
- *   dark   173 `#d7875f`  5.97:1
+ * Its values are Graphite's `fail` (design.md §2), written in the
+ * resolved tier.
  *
  * With NO ground established the token stays ANSI 31 — the TERMINAL's
  * own red, which its theme picked for its own background. That is the last rung
@@ -143,8 +199,44 @@ const BASE = { bold: "\x1b[1m", dim: "\x1b[2m", red: "\x1b[31m", green: "\x1b[32
 /** `washDimEnd` is DERIVED, never passed: a grey that cannot be closed
  *  without taking the wash with it is not a usable token, and deriving
  *  the close makes the pair impossible to mis-wire at a call site. */
+/** The Graphite members, empty — the unknown ground's and colour-off's. */
+const NO_GRAPHITE = {
+	ink2: "",
+	rail: "",
+	line: "",
+	gold: "",
+	goldMark: "",
+	blue: "",
+	ok: "",
+	fail: "",
+	humanInk: "",
+	track: "",
+	washRun: "",
+	washDone: "",
+	washFail: "",
+	washAsk: "",
+	human: "",
+	codeBg: "",
+	add: "",
+	del: "",
+	addWord: "",
+	delWord: "",
+	edge: "",
+	quoteBar: "",
+	noteBar: "",
+	warnBar: "",
+	cautionBar: "",
+	runEdge: "",
+	failEdge: "",
+	askEdge: "",
+	humanEdge: "",
+	fgEnd: "",
+	breath: [],
+	tier: null,
+} as const;
 const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: string = BASE.dim, washDim = ""): Palette => ({
 	...BASE,
+	...NO_GRAPHITE,
 	red,
 	dim,
 	wash,
@@ -153,12 +245,90 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
 	washDimEnd: washDim === "" ? "" : "\x1b[39m",
 	code: wash,
 });
+
+/**
+ * Graphite (design.md §2, §3.4) — the palette for a KNOWN ground.
+ *
+ * The colours come from `graphite.ts`: the table's values for the kind,
+ * with the surfaces derived from the reported ground when there is one.
+ * The members the pre-Graphite code reads keep their names and take the
+ * Graphite value of the same job: `dim` the dim token, `red` the failure
+ * colour, `green` the success colour, `warn` gold (the uncertain badge
+ * is a question for the person, which is gold's meaning), `wash` the
+ * settled card's ground, and `washDim` the dim token — which clears the
+ * floor on every card ground (§2.1), so the separate grey retires in
+ * value while the name stays for its call sites.
+ */
+/** How far a card's edge cell is deepened from its ground toward the
+ *  state's colour — quiet enough to read as the card's own edge, not a
+ *  stripe (the owner's seam test, B6, 2026-09-29). */
+const EDGE_DEPTH = 0.22;
+/** The person's edge is gold, quieted toward the warm ground so a whole
+ *  cell reads as an edge and not a stripe (the seam test's B4). */
+const HUMAN_EDGE_DEPTH = 0.55;
+/** How far a changed word's ground is deepened from its row's toward the
+ *  row's colour: enough to find the word, not so much that ink stops
+ *  reading on it. */
+const WORD_DEPTH = 0.3;
+/** How far a quote's or an alert's bar is deepened from the ground toward
+ *  its colour: a bar, not a stripe (the person's edge's measure). */
+const BAR_DEPTH = 0.5;
+
+export function paletteFor(kind: "light" | "dark", ground: Rgb | null, tier: Tier): Palette {
+	const c = graphiteColours(kind, ground, tier);
+	const f = (x: Rgb): string => fg(x, tier);
+	const b = (x: Rgb): string => bg(x, tier);
+	return {
+		...BASE,
+		dim: f(c.dim),
+		red: f(c.fail),
+		green: f(c.ok),
+		warn: f(c.gold),
+		wash: b(c.washDone),
+		washEnd: "\x1b[49m",
+		washDim: f(c.dim),
+		washDimEnd: "\x1b[39m",
+		code: b(c.washDone),
+		ink2: f(c.ink2),
+		rail: f(c.rail),
+		line: f(c.line),
+		gold: f(c.gold),
+		goldMark: f(c.goldMark),
+		blue: f(c.blue),
+		ok: f(c.ok),
+		fail: f(c.fail),
+		humanInk: f(c.humanInk),
+		track: f(c.track),
+		washRun: b(c.washRun),
+		washDone: b(c.washDone),
+		washFail: b(c.washFail),
+		washAsk: b(c.washAsk),
+		human: b(c.human),
+		codeBg: b(c.code),
+		add: b(c.add),
+		del: b(c.del),
+		addWord: b(mix(c.add, c.ok, WORD_DEPTH)),
+		delWord: b(mix(c.del, c.fail, WORD_DEPTH)),
+		edge: f(mix(c.line, c.rail, 0.5)),
+		quoteBar: b(mix(c.ground, c.rail, BAR_DEPTH)),
+		noteBar: b(mix(c.ground, c.blue, BAR_DEPTH)),
+		warnBar: b(mix(c.ground, c.goldMark, BAR_DEPTH)),
+		cautionBar: b(mix(c.ground, c.fail, BAR_DEPTH)),
+		runEdge: b(mix(c.washRun, c.blue, EDGE_DEPTH)),
+		failEdge: b(mix(c.washFail, c.fail, EDGE_DEPTH)),
+		askEdge: b(mix(c.washAsk, c.goldMark, EDGE_DEPTH)),
+		humanEdge: b(mix(c.human, c.goldMark, HUMAN_EDGE_DEPTH)),
+		fgEnd: "\x1b[39m",
+		breath: breathRamp(c).map(f),
+		tier,
+	};
+}
 /**
  * DC-3 — one table per ground.
  *
- * R3 (owner, 2026-08-27) — `dim` is ABSOLUTE once the ground is known,
- * and design.md §2's table always said so: light `243` `#767676` at
- * 4.54:1, dark `246` `#949494` at 5.50:1 (both re-measured here).
+ * R3 (owner, 2026-08-27) — `dim` is ABSOLUTE once the ground is known:
+ * Graphite's `dim`, measured against the floor on every surface it can
+ * reach (design.md §2.1).
  *
  * DC-3 shipped SGR 2 instead, on the argument that an attribute adapts
  * to the ground while an absolute grey asserts one. That argument is
@@ -174,24 +344,40 @@ const withWash = (wash: string, washEnd: string, red: string = BASE.red, dim: st
  * attribute is exactly the "correct on any ground" degradation there.
  */
 export const COLOR_NEUTRAL: Palette = withWash("\x1b[7m", "\x1b[27m");
-export const COLOR_LIGHT: Palette = withWash("\x1b[48;5;255m", "\x1b[49m", "\x1b[38;5;124m", "\x1b[38;5;243m", "\x1b[38;5;241m");
-export const COLOR_DARK: Palette = withWash("\x1b[48;5;236m", "\x1b[49m", "\x1b[38;5;173m", "\x1b[38;5;246m", "\x1b[38;5;247m");
+/** The two reference palettes: Graphite on its reference grounds, in the
+ *  24-bit tier. `paletteFor` is the general form. */
+export const COLOR_LIGHT: Palette = paletteFor("light", null, "24bit");
+export const COLOR_DARK: Palette = paletteFor("dark", null, "24bit");
 /** The historical name — the palette for a colour TTY whose ground has
  *  not been established. Unchanged in every byte except `code`, which
  *  was the defect. */
 export const COLOR_ON: Palette = COLOR_NEUTRAL;
-export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", washDim: "", washDimEnd: "", reset: "" };
+export const COLOR_OFF: Palette = { bold: "", dim: "", red: "", green: "", warn: "", code: "", italic: "", italicEnd: "", underline: "", underlineEnd: "", rv: "", rvEnd: "", wash: "", washEnd: "", washDim: "", washDimEnd: "", reset: "", ...NO_GRAPHITE };
 
 /** DC-3 — the resolved ground, set once at startup when the terminal
  *  answers (see `ground.ts`). It starts UNKNOWN and may stay that way
  *  forever; that is a supported state, not a failure. */
 let ground: Ground = "unknown";
-export function setGround(g: Ground): void {
+/** §3.4 — the colour the terminal reported, when it reported one; the
+ *  surfaces are derived from it. Null when the ground was resolved
+ *  without a colour. */
+let groundRgb: Rgb | null = null;
+export function setGround(g: Ground, rgb: Rgb | null = null): void {
 	ground = g;
+	groundRgb = g === "unknown" ? null : rgb;
 }
 export function currentGround(): Ground {
 	return ground;
 }
+export function currentGroundRgb(): Rgb | null {
+	return groundRgb;
+}
+/** One palette per (ground, reported colour, tier): `palette()` runs on
+ *  every render and the derivation is not free, so the last answer is
+ *  kept and reused while none of its inputs changed. The inputs are
+ *  compared field by field (the render-perf pass, 2026-10-07): a key
+ *  string built on every call was the hottest line of a Graphite frame. */
+let memo: { ground: Ground; r: number; g: number; b: number; tier: Tier; p: Palette } | null = null;
 export function palette(): Palette {
 	// PH-1a (finding PH-F5): the no-color.org contract is "present AND
 	// non-empty" — the old `=== undefined` check let an EMPTY `NO_COLOR=`
@@ -201,7 +387,13 @@ export function palette(): Palette {
 	// it was a bug.
 	const noColor = process.env.NO_COLOR;
 	if (!((noColor === undefined || noColor === "") && process.stdout.isTTY)) return COLOR_OFF;
-	return ground === "light" ? COLOR_LIGHT : ground === "dark" ? COLOR_DARK : COLOR_NEUTRAL;
+	if (ground === "unknown") return COLOR_NEUTRAL;
+	const tier = colourTier(process.env.COLORTERM);
+	const r = groundRgb === null ? -1 : groundRgb.r;
+	const g = groundRgb === null ? -1 : groundRgb.g;
+	const b = groundRgb === null ? -1 : groundRgb.b;
+	if (memo === null || memo.ground !== ground || memo.tier !== tier || memo.r !== r || memo.g !== g || memo.b !== b) memo = { ground, r, g, b, tier, p: paletteFor(ground, groundRgb, tier) };
+	return memo.p;
 }
 
 /**
@@ -491,23 +683,42 @@ export function renderTerminalGap(statusLine: string | null): string {
  *  Emoji (§6.1's test, run). */
 export const TWINKLE = ["\u2727", "\u2726", "\u2736", "\u2738", "\u273a", "\u2738", "\u2726"] as const;
 
-/** The COMMAND breath — brightness only, one glyph. The ramps bottom out
- *  EXACTLY on the ground's dim token (§2.2: "the floor is a floor,
- *  including mid-animation"): light ends at 243 (4.54:1 on white), dark
- *  at 246 (5.50:1 on #1e1e1e). Measured, not assumed. */
-const BREATH_LIGHT = [232, 236, 240, 243, 240, 236, 232] as const;
-const BREATH_DARK = [255, 251, 248, 246, 248, 251, 255] as const;
+/**
+ * Graphite §7.8 — the composer's top rule: `gold-mark` for its first eighth,
+ * fading to `line` by a third of the width, `line` after. Drawn in a
+ * handful of runs, not a colour per cell, so the row costs a few escapes
+ * rather than one per column. Off a known ground it is the plain dim rule.
+ */
+export function fadeRule(W: number): string {
+	const p = palette();
+	const n = Math.max(0, W);
+	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;
+	const c = graphiteColours(ground, groundRgb, p.tier);
+	const solid = Math.max(1, Math.round(n / 8));
+	const end = Math.max(solid + 1, Math.round(n / 3));
+	const STEPS = 6;
+	let out = `${fg(c.goldMark, p.tier)}${"\u2500".repeat(Math.min(n, solid))}`;
+	let at = solid;
+	for (let k = 1; k <= STEPS && at < Math.min(n, end); k += 1) {
+		const to = k === STEPS ? Math.min(n, end) : Math.min(n, solid + Math.round(((end - solid) * k) / STEPS));
+		if (to > at) out += `${fg(mix(c.goldMark, c.line, k / (STEPS + 1)), p.tier)}${"\u2500".repeat(to - at)}`;
+		at = Math.max(at, to);
+	}
+	if (at < n) out += `${fg(c.line, p.tier)}${"\u2500".repeat(n - at)}`;
+	return `${out}${p.fgEnd}`;
+}
 
-/** The breath's frame: `●` at the step's grey, for the CURRENT ground.
- *  With no ground — or under NO_COLOR — it freezes to a static `●`,
- *  because a brightness ramp needs a background to be a ramp against and
- *  §3.1 forbids guessing one. The glyph never changes, so the freeze
- *  degrades the motion and never the meaning. */
+/** The breath's frame: `●` at the step's brightness (§5.2 — seven steps
+ *  of gold toward the running card's ground, never under the graphic
+ *  floor, `graphite.ts` `breathRamp`). With no ground — or under
+ *  NO_COLOR — it freezes to a static `●`, because a brightness ramp needs
+ *  a background to be a ramp against and §3.1 forbids guessing one. The
+ *  glyph never changes, so the freeze degrades the motion and never the
+ *  meaning. */
 export function breathFrame(step: number): string {
 	const p = palette();
-	const ramp = currentGround() === "light" ? BREATH_LIGHT : currentGround() === "dark" ? BREATH_DARK : null;
-	if (ramp === null || p.bold === "") return "\u25cf";
-	return `\x1b[38;5;${ramp[step % ramp.length]}m\u25cf${p.reset}`;
+	if (p.breath.length === 0) return "\u25cf";
+	return `${p.breath[step % p.breath.length]}\u25cf${p.reset}`;
 }
 
 /** The twinkle's frame — pure glyph, no palette involved. */
@@ -521,43 +732,55 @@ export const MOTION_FRAMES = 7;
 
 export const TAGLINE = "the coding agent that survives kill -9";
 /**
- * R2 — the wordmark is retired (2026-08-27, the nineteen-screen review).
+ * Graphite §7.10 — the opening: the wordmark, then what loaded.
  *
- * TT-1B had already cut the 36x6 pixel art down to two rows because a
- * tall banner's mid-scroll cut state renders as glyph garbage. The
- * remaining two rows go now for a different reason: they say the word
- * `kiso` in fifteen columns of block glyphs, and the word `kiso` says it
- * in four. A rendered clover mark was tried first, at 4x2, 10x5, 14x7
- * and 16x8, and rejected on measurement — below fourteen columns the
- * centre star closes and the mark reads as a domino, and at fourteen it
- * costs seven rows.
+ * DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28) of R2's "no logo,
+ * the name is the mark". R2 retired the wordmark because it cost the rows
+ * a first screen needed for three questions — what model, where am I, what
+ * is loaded. The model and the folder moved to the status bar (§8.9), what
+ * is loaded moved beside the wordmark, and the wordmark came back: ten
+ * rows, once, at the top of a session — including in the 80×24 window a
+ * Mac opens by default (owner, 2026-09-29: a wordmark the default window
+ * never shows is not worth drawing). Under 20 rows, on a terminal too
+ * narrow for it, and on a resume (the history is above the opening there,
+ * and ten rows of wordmark would bury its tail) the opening is one line.
  *
- * What takes the room is not decoration. A first screen is asked three
- * questions — what model, where am I, what is loaded — and it now
- * answers them in one aligned column.
+ * The R2 keys row retires with it: `?` lists the keys (§8.5).
  */
-/** R2 — the keys a first screen teaches. One dim row, and deliberately
- *  NOT derived from KEY_BINDINGS: the sheet is the complete list and
- *  this is the opening's five, chosen rather than generated. */
-// R2: the keys row names bindings the product ACTUALLY has. The first
-// draft advertised `! bash` — there is no bang passthrough in kiso and
-// KEY_BINDINGS never had one, so the opening screen was teaching a key
-// that does nothing. A first screen that lies is worse than a short one.
-const BANNER_KEYS = "esc interrupt · ctrl+c exit · / commands · @ files · ? keys";
-/** R2 — the labels. Uppercase mono, dim, letter-spaced by the column
- *  rather than by SGR: they mark sections and are never content. */
-const BANNER_LABELS = ["MODEL", "WORKSPACE", "EXTENSIONS"] as const;
-const LABEL_STOP = Math.max(...BANNER_LABELS.map((l) => l.length)) + 2;
+export const MOTTO = "intent \u2192 effect \u2192 durable fact";
+const WORDMARK = [
+	"\u2588\u2588\u2557  \u2588\u2588\u2557\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2557",
+	"\u2588\u2588\u2551 \u2588\u2588\u2554\u255d\u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255d\u2588\u2588\u2554\u2550\u2550\u2550\u2588\u2588\u2557",
+	"\u2588\u2588\u2588\u2588\u2588\u2554\u255d \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551   \u2588\u2588\u2551",
+	"\u2588\u2588\u2554\u2550\u2588\u2588\u2557 \u2588\u2588\u2551\u255a\u2550\u2550\u2550\u2550\u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551",
+	"\u2588\u2588\u2551  \u2588\u2588\u2557\u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551\u255a\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255d",
+	"\u255a\u2550\u255d  \u255a\u2550\u255d\u255a\u2550\u255d\u255a\u2550\u2550\u2550\u2550\u2550\u2550\u255d \u255a\u2550\u2550\u2550\u2550\u2550\u255d",
+] as const;
+/** The wordmark's width in cells (its widest row). */
+export const WORDMARK_W = Math.max(...WORDMARK.map((r) => displayWidth(r)));
+/** The content edge (§1.8) the opening's rows start at. */
+const OPENING_EDGE = 2;
+/** §7.10: the facts sit beside the wordmark from this width, below it under. */
+const FACTS_BESIDE_W = 96;
+/** §7.10: under this height the opening is one line. */
+const OPENING_TALL_H = 20;
+/** The facts' label column: the longest label and two spaces. */
+const FACT_LABEL_W = "EXTENSIONS".length + 2;
 
-/** R2 — what the opening knows about the session. Optional because the
- *  off-TTY caller prints a banner before a model is bound. */
+/** One fact the opening states: its label, the fact, and a quieter note
+ *  after it. An empty label continues the fact above it. */
+export interface BannerFact {
+	readonly label: string;
+	readonly value: string;
+	readonly note?: string;
+}
+
+/** §7.10 — what the opening knows: what loaded (the CLI composes the
+ *  facts; this module only lays them out), and whether the session was
+ *  resumed (a resumed session opens on the one-line form). */
 export interface BannerMeta {
-	readonly model: string;
-	readonly mode: string;
-	readonly cwd: string;
-	/** DC-49 — the workspace IS the user's home directory. Computed by the
-	 *  CLI (realpath on both sides); the banner only renders it. */
-	readonly homeWorkspace?: boolean;
+	readonly facts: readonly BannerFact[];
+	readonly resumed?: boolean;
 }
 
 /** W20 — the ONE-ROW cut with the honest mark, SGR-aware. A line that
@@ -633,97 +856,172 @@ export function truncateRow(row: string, width: number): string {
 	}
 }
 
-/** v3 §01 (V6-2) + W1: the banner lines for a width W and height H —
- *  the tier table (extends the existing "under 40 columns, skip the
- *  logo" rule with a HEIGHT input; VD-14 merged the two art tiers):
- *    W ≥ 40 and H ≥ 14 → the 2-row wordmark, 2-column indent
- *    anything smaller → text rows only
- *  then the blank, then "vX — tagline" — the art IS the wordmark, so the
- *  text row does not repeat the name — then extensions — then the W5
- *  resume list (BIG only, W5). Every row truncates at the terminal width
- *  with a " (+N)" marker. Pure. */
+/**
+ * Graphite §7.10 — the opening's rows for a width W and height H. Pure;
+ * invariant ① holds at every width (each row is cut to W).
+ *
+ *  - The tall form (H ≥ 30, W ≥ the wordmark at the content edge, not a
+ *    resume): the wordmark, its rule, the tagline with the version, the
+ *    motto. The facts sit beside it behind one hairline when W ≥ 96, and
+ *    below it otherwise.
+ *  - The one-line form otherwise: `✦ kiso <version> · <tagline>`, the
+ *    facts below it.
+ *
+ * On a known ground the block cells take `mix(ink, dim, row / 4)` top to
+ * bottom, the box-drawing shadow `mix(rail, ground, 0.35)`, and the rule
+ * fades from `dim` to the ground; there is no gold (§1.2 — gold is the
+ * edge, and the opening has none). Off one the wordmark is the terminal's
+ * own foreground. `<version>` is the caller's, never a literal.
+ */
 export function bannerLines(W: number, H: number, version: string, extensionsText: string, resume: readonly ResumeMeta[] = [], now = Date.now(), meta?: BannerMeta | undefined): string[] {
 	const p = palette();
-	// R2: the banner styles itself per span. It used to be wrapped in one
-	// blanket dim by its component, which made the answers as faint as the
-	// labels asking the questions — the labels are the quiet half, the
-	// values are what a human came to read.
-	//
-	// Every width decision below is taken on PLAIN text and the styling is
-	// applied after, because truncateRow measures with displayWidth, which
-	// counts SGR bytes as columns. Style then measure is a bug waiting.
-	// DC-18: the name row is CUT like every other row here. It was the one
-	// row in this function pushed unguarded, so at W ≤ 10 `kiso 0.16.4`
-	// measured 11 cells and invariant ① threw AT STARTUP — the function
-	// whose own comment preaches "invariant ① holds at every width".
-	// The cut is taken on the plain text, per the note above.
-	const namePlain = widthCut(`kiso ${version}`, Math.max(1, W));
-	const nameCut = namePlain.slice(0, 4); // "kiso", or its surviving prefix
-	const verCut = namePlain.slice(5); // the version, if the width left room for it
-	const rows: string[] = [`${p.bold}${nameCut}${p.reset}${verCut === "" ? "" : `${p.dim} ${verCut}${p.reset}`}`];
-	const facts: [string, string][] = [];
-	if (meta !== undefined) {
-		facts.push([BANNER_LABELS[0], `${meta.model}${meta.mode === "" ? "" : ` · ${meta.mode}`}`], [BANNER_LABELS[1], meta.cwd]);
-		// DC-49 — ONE row under the cwd, and only when the workspace is the
-		// home directory. It STATES a fact and names the remedy; it does not
-		// warn, because the configuration is ALLOWED (owner, 2026-09-06) and
-		// a warning about an allowed thing teaches people to skip rows.
-		//
-		// An empty label puts it in the value column under `WORKSPACE`,
-		// where it reads as a note on that fact rather than a fact of its
-		// own. It must FIT at W=80 under the label indent: a cut row loses
-		// the remedy, which is the only actionable half of the sentence.
-		if (meta.homeWorkspace === true) facts.push(["", "home directory as workspace — cd into a project to narrow it"]);
-	}
-	if (extensionsText !== "") facts.push([BANNER_LABELS[2], extensionsText]);
-	if (facts.length > 0) {
-		rows.push("");
-		// The value column HANGS rather than truncating. The label costs
-		// columns the value used to have, and an extension list cut at the
-		// width would hide which extensions loaded — on the one screen whose
-		// job is to say what is loaded.
-		const indent = 2 + LABEL_STOP;
-		// a terminal too narrow to hold the label column at all: the room is
-		// what is left, floored at one column, and the assembled row is
-		// truncated as a unit so invariant ① holds at every width.
-		const room = Math.max(1, W - indent);
-		for (const [label, value] of facts) {
-			const lead = `  ${p.dim}${label}${p.reset}${" ".repeat(LABEL_STOP - label.length)}`;
-			const hang = " ".repeat(indent);
-			const lines: string[] = [];
-			let line = "";
-			for (const word of value.split(" ")) {
-				if (line === "") line = word;
-				else if (displayWidth(`${line} ${word}`) <= room) line += ` ${word}`;
-				else {
-					lines.push(line);
-					line = word;
+	const width = Math.max(1, W);
+	const cut = (row: string): string => cutLine(row, width);
+	const facts: readonly BannerFact[] = meta !== undefined ? meta.facts : extensionsText !== "" ? [{ label: "EXTENSIONS", value: extensionsText }] : [];
+	const tall = H >= OPENING_TALL_H && width >= OPENING_EDGE + WORDMARK_W && meta?.resumed !== true;
+	const pad = " ".repeat(OPENING_EDGE);
+	const rows: string[] = [];
+	if (!tall) {
+		rows.push(cut(`\u2726 ${p.bold}kiso${p.reset} ${p.dim}${version} \u00b7 ${TAGLINE}${p.reset}`));
+		if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
+	} else {
+		const head = [...wordmarkRows(), openingRule(WORDMARK_W), `${p.ink2}${TAGLINE}${p.fgEnd}${p.dim} \u00b7 ${version}${p.reset}`, `${p.dim}${MOTTO}${p.reset}`];
+		// two cells after the wordmark's widest row, the hairline, two more,
+		// then the facts
+		const factsCol = OPENING_EDGE + WORDMARK_W + 5;
+		// beside the wordmark from 96 columns, as long as the facts' rows fit
+		// in its six; below it otherwise
+		const beside = width >= FACTS_BESIDE_W ? factRows(facts, width - factsCol) : [];
+		if (beside.length > 0 && beside.length <= WORDMARK.length) {
+			const rule = p.line !== "" ? `${p.line}\u2502${p.fgEnd}` : `${p.dim}\u2502${p.reset}`;
+			for (const [i, h] of head.entries()) {
+				if (i >= WORDMARK.length) {
+					rows.push(cut(`${pad}${h}`));
+					continue;
 				}
+				const gap = " ".repeat(WORDMARK_W + 2 - visibleWidth(h));
+				rows.push(cut(`${pad}${h}${gap}${rule}${beside[i] === undefined ? "" : `  ${beside[i]}`}`));
 			}
-			if (line !== "") lines.push(line);
-			for (const [i, l] of lines.entries()) {
-				const styled = `${i === 0 ? lead : hang}${truncateRow(l, room)}`;
-				rows.push(displayWidth(styled) - (i === 0 ? p.dim.length + p.reset.length : 0) <= W ? styled : truncateRow(`${hang}${l}`, W));
-			}
+		} else {
+			rows.push(...head.map((h) => cut(`${pad}${h}`)));
+			if (facts.length > 0) rows.push("", ...factRows(facts, width - OPENING_EDGE).map((r) => cut(`${pad}${r}`)));
 		}
-	}
-	if (meta !== undefined && W >= 40) {
-		// R2/DC-2's device: the keys row is a list of independent clauses,
-		// so a narrow terminal drops whole clauses from the end rather than
-		// cutting one in half. `ctrl+o ex (+8)` teaches nothing.
-		const clauses = BANNER_KEYS.split(" \u00b7 ");
-		let keys = clauses[0]!;
-		for (let n = clauses.length; n > 1; n -= 1) {
-			const row = clauses.slice(0, n).join(" \u00b7 ");
-			if (displayWidth(row) <= W - 2) {
-				keys = row;
-				break;
-			}
-		}
-		rows.push("", `  ${p.dim}${truncateRow(keys, W - 2)}${p.reset}`);
 	}
 	if (W >= 40 && H >= 20 && resume.length > 0) {
 		rows.push("", ...renderResumeList(resume, W, now));
+	}
+	return rows;
+}
+
+/**
+ * The wordmark's six rows, coloured per §7.10 on a known ground. The
+ * letters' cells are BACKGROUND, not `█` glyphs (§1.5): a glyph stops short
+ * of its cell in Apple Terminal and every row showed a white line through
+ * the letters (the owner's seam test, C1 against C2, 2026-09-29). The
+ * shadow stays in box-drawing glyphs, lighter than the letters. Off a known
+ * ground there is no background to paint, and the letters are `█`.
+ */
+function wordmarkRows(): string[] {
+	const p = palette();
+	const tier = p.tier;
+	if (tier === null || ground === "unknown") return [...WORDMARK];
+	const c = graphiteColours(ground, groundRgb, tier);
+	const shadow = fg(mix(c.rail, c.ground, 0.35), tier);
+	return WORDMARK.map((row, i) => {
+		const block = bg(mix(c.ink, c.dim, Math.min(1, i / 4)), tier);
+		// the shadow's colour holds for the whole row (a letter cell is a
+		// space, which has no foreground to show); the letters open and
+		// close their background in runs
+		let out = shadow;
+		let inBlock = false;
+		for (const ch of row) {
+			const isBlock = ch === "\u2588";
+			if (isBlock !== inBlock) out += isBlock ? block : "\x1b[49m";
+			inBlock = isBlock;
+			out += isBlock ? " " : ch;
+		}
+		return `${out}${inBlock ? "\x1b[49m" : ""}${p.fgEnd}`;
+	});
+}
+
+/** The rule under the wordmark: `dim` fading to the ground, in a few runs.
+ *  Off a known ground, the plain dim rule. */
+/** Graphite §5 (R2b) — the rule under an answer's `#` heading: `gold-mark`
+ *  fading to the ground over `n` cells (the prototype's forty). Off a known
+ *  ground, the plain dim rule. */
+export function headingRule(n: number): string {
+	const p = palette();
+	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;
+	const c = graphiteColours(ground, groundRgb, p.tier);
+	const STEPS = 7;
+	let out = "";
+	let at = 0;
+	for (let k = 0; k < STEPS && at < n; k += 1) {
+		const to = k === STEPS - 1 ? n : Math.round((n * (k + 1)) / STEPS);
+		if (to > at) out += `${fg(mix(c.goldMark, c.ground, k / STEPS), p.tier)}${"\u2500".repeat(to - at)}`;
+		at = Math.max(at, to);
+	}
+	return `${out}${p.fgEnd}`;
+}
+
+function openingRule(n: number): string {
+	const p = palette();
+	if (p.tier === null || ground === "unknown") return `${p.dim}${"\u2500".repeat(n)}${p.reset}`;
+	const c = graphiteColours(ground, groundRgb, p.tier);
+	const STEPS = 7;
+	let out = "";
+	let at = 0;
+	for (let k = 0; k < STEPS && at < n; k += 1) {
+		const to = k === STEPS - 1 ? n : Math.round((n * (k + 1)) / STEPS);
+		if (to > at) out += `${fg(mix(c.dim, c.ground, k / STEPS), p.tier)}${"\u2500".repeat(to - at)}`;
+		at = Math.max(at, to);
+	}
+	return `${out}${p.fgEnd}`;
+}
+
+/** The facts as rows `room` cells wide: the label dim in its column, the
+ *  fact in ink, the note dim after it. A row that does not fit loses its
+ *  note first — from its end, one ` · ` part at a time (the last sweep,
+ *  owner 2026-10-06: `<id> · new · resumable after kill -9` keeps `new`
+ *  beside the wordmark when a 24-cell session id leaves no room for the
+ *  rest); a fact still too long HANGS under itself, folded by word — an
+ *  extensions list cut at the width would hide which extensions loaded, on
+ *  the one screen whose job is to say so. */
+function factRows(facts: readonly BannerFact[], room: number): string[] {
+	const p = palette();
+	const rows: string[] = [];
+	for (const f of facts) {
+		const label = `${p.dim}${f.label}${p.reset}${" ".repeat(Math.max(1, FACT_LABEL_W - f.label.length))}`;
+		const value = escapeTerminal(f.value);
+		const parts = f.note === undefined || f.note === "" ? [] : escapeTerminal(f.note).split(" \u00b7 ");
+		let fitted: string | null = null;
+		for (let n = parts.length; n >= 0 && fitted === null; n -= 1) {
+			const kept = parts.slice(0, n).join(" \u00b7 ");
+			const row = `${label}${value}${kept === "" ? "" : `${p.dim} \u00b7 ${kept}${p.reset}`}`;
+			if (visibleWidth(row) <= room) fitted = row;
+		}
+		if (fitted !== null) {
+			rows.push(fitted);
+			continue;
+		}
+		const valueRoom = room - FACT_LABEL_W;
+		if (valueRoom < 8) {
+			rows.push(cutLine(`${label}${value}`, Math.max(1, room)));
+			continue;
+		}
+		const lines: string[] = [];
+		let line = "";
+		for (const word of value.split(" ")) {
+			if (line === "") line = word;
+			else if (displayWidth(`${line} ${word}`) <= valueRoom) line += ` ${word}`;
+			else {
+				lines.push(line);
+				line = word;
+			}
+		}
+		if (line !== "") lines.push(line);
+		const hang = " ".repeat(FACT_LABEL_W);
+		for (const [i, l] of lines.entries()) rows.push(cutLine(`${i === 0 ? label : hang}${l}`, Math.max(1, room)));
 	}
 	return rows;
 }

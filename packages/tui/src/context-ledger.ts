@@ -18,6 +18,8 @@
  * estimates, projects, or predicts.
  */
 
+import { SHEET_CLOSE, bandHeader } from "@vincemakes/kiso-tui-cells/strings";
+import { cutLine } from "@vincemakes/kiso-tui-cells/render";
 import { palette } from "./lines.js";
 
 /** The counts one request's ledger yields, already grouped by surface.
@@ -132,4 +134,60 @@ export function contextRows(ledger: ContextLedger): string[] {
 export function contextUnavailableRows(reason: string): string[] {
 	const p = palette();
 	return [`${p.bold}context — no ledger yet${p.reset}`, `  ${p.dim}${reason}${p.reset}`];
+}
+
+/** §8.9 — the meter's cells, ONE rule for the status bar's ctx meter and
+ *  the `/context` sheet (the sheets round, owner 2026-10-06: the two
+ *  meters cannot disagree). Ten `▆` cells filled to the percentage SHOWN
+ *  (`0%` is empty; from 1% at least one cell), `ink2` below the soft
+ *  compaction tier, gold to the hard one, the failure colour past it; the
+ *  empty cells `track`. "" off a known ground: the colours carry nothing
+ *  there, and the percentage says it alone. `used`, `soft` and `hard`
+ *  are shares of the window. */
+export const METER_CELLS = 10;
+export function meterCells(used: number, soft: number, hard: number): string {
+	const p = palette();
+	if (p.track === "") return "";
+	const shown = Math.round(Math.max(0, used) * 100);
+	const filled = shown <= 0 ? 0 : Math.min(METER_CELLS, Math.max(1, Math.round(shown / 10)));
+	const tone = used >= hard ? p.fail : used >= soft ? p.gold : p.ink2;
+	return `${tone}${"\u2586".repeat(filled)}${p.track}${"\u2586".repeat(METER_CELLS - filled)}${p.fgEnd}`;
+}
+
+/**
+ * The sheets round (owner, 2026-10-06) — `/context` on a dock is a sheet
+ * over the input, the shape `/status` has (§8.16): the band names the
+ * total (`context · 2.7k of 200k · 1%`), the bar's meter with when
+ * compaction happens beside it, the surfaces as a table — the label, the
+ * count right-aligned, the detail dim — the free remainder dim, and the
+ * closing row. No blank rows: the printed form spent a cell per row and
+ * came out double-spaced. On a pipe `/context` prints `contextRows`,
+ * unchanged. `tiers` are the compaction thresholds as shares of the
+ * window, or null when the window is not known.
+ */
+export function contextSheetRows(ledger: ContextLedger, tiers: { readonly soft: number; readonly hard: number } | null, W: number): string[] {
+	const p = palette();
+	const used = ledger.systemPrompt + ledger.toolTable + ledger.skillsIndex + ledger.envelope + ledger.messages;
+	const free = Math.max(0, ledger.window - used);
+	const ratio = ledger.window > 0 ? Math.min(1, used / ledger.window) : 1;
+	const rows = [bandHeader(`context \u00b7 ${k(used)} of ${k(ledger.window)} \u00b7 ${Math.round(ratio * 100)}%`, W)];
+	const cells = meterCells(ratio, tiers?.soft ?? Number.POSITIVE_INFINITY, tiers?.hard ?? Number.POSITIVE_INFINITY);
+	const when = tiers === null ? "" : `compaction past ${Math.round(tiers.soft * 100)}% at a phase end, past ${Math.round(tiers.hard * 100)}% at once`;
+	if (cells !== "" || when !== "") rows.push(`  ${cells}${cells !== "" && when !== "" ? "  " : ""}${when === "" ? "" : `${p.dim}${when}${p.reset}`}`);
+	const row = (label: string, value: number, detail: string): string => `  ${label.padEnd(15)}${k(value).padStart(6)}${detail === "" ? "" : `   ${p.dim}${detail}${p.reset}`}`;
+	if (ledger.systemPrompt > 0) rows.push(row("system prompt", ledger.systemPrompt, `base ${k(ledger.systemBase)}${ledger.appends > 0 ? ` + ${ledger.appends} extension append${ledger.appends === 1 ? "" : "s"}` : ""}`));
+	if (ledger.toolTable > 0) rows.push(row("tool table", ledger.toolTable, `${ledger.tools} tool${ledger.tools === 1 ? "" : "s"}`));
+	if (ledger.skillsIndex > 0) rows.push(row("skills index", ledger.skillsIndex, `${ledger.skills > 0 ? `${ledger.skills} skill${ledger.skills === 1 ? "" : "s"}, ` : ""}tier-1 lines only`));
+	if (ledger.envelope > 0) rows.push(row("envelope", ledger.envelope, ""));
+	if (ledger.messages > 0) rows.push(row("messages", ledger.messages, `${ledger.turns} turn${ledger.turns === 1 ? "" : "s"}`));
+	rows.push(`  ${p.dim}${"free".padEnd(15)}${k(free).padStart(6)}${p.reset}`);
+	rows.push(`  ${p.dim}${SHEET_CLOSE}${p.reset}`);
+	return rows.map((r) => cutLine(r, W));
+}
+
+/** The sheets round — `/context` before any request, as a sheet: the band
+ *  says there is no ledger yet, the row says what produces one. */
+export function contextUnavailableSheetRows(reason: string, W: number): string[] {
+	const p = palette();
+	return [bandHeader("context \u00b7 no ledger yet", W), `  ${p.dim}${reason}${p.reset}`, `  ${p.dim}${SHEET_CLOSE}${p.reset}`].map((r) => cutLine(r, W));
 }

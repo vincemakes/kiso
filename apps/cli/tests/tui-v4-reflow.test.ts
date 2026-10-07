@@ -200,7 +200,7 @@ describe("TUI #17 — the reflow gate (real PTY, screen state via the VT emulato
 			"utf8",
 		);
 		const { markers, full } = reflowRun({ ...env, KISO_FAUX_SCRIPT: script }, [
-			["/ commands · \u2191 history", "look around\r"], // the turn itself — the driver sends exit after the sequence
+			["/mode to switch", "look around\r"], // the turn itself — the driver sends exit after the sequence
 		]);
 		// The sequence really ran (5 winches) and the turn completed.
 		expect(markers.resizes).toHaveLength(5);

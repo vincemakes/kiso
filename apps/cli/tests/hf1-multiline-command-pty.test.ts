@@ -37,7 +37,7 @@ describe("HF-1 — a heredoc shell command on a real PTY", () => {
 		const raw = ptyRun(["--mode", "bypass", "hf1-heredoc"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["The heredoc ran fine.", "exit\r"],
 			],
 			timeout: 60,

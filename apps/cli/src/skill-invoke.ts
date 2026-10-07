@@ -17,6 +17,9 @@
 
 import type { UserInputVia } from "@vincemakes/kiso-core";
 import type { SkillsCatalog } from "@vincemakes/kiso-skills-ext";
+import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
+import { cutLine, escapeTerminal, palette } from "@vincemakes/kiso-tui-cells/render";
+import { visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/width";
 
 export type SkillOutcome =
 	| { readonly kind: "submit"; readonly content: string; readonly via: UserInputVia }
@@ -120,6 +123,63 @@ export function skillsRows(catalog: SkillsCatalog | null, sourceOf: (dir: string
 	for (const [src, list] of groups) rows.push(src, ...list);
 	rows.push("/<name> [args] or /skill <name> [args] runs one · a built-in command wins a shared name");
 	return rows;
+}
+
+/** The last `cells` cells of `text`, by display width. */
+function leftCut(text: string, cells: number): string {
+	const chars = Array.from(text);
+	let out = "";
+	for (let i = chars.length - 1; i >= 0; i -= 1) {
+		if (visibleWidth(chars[i]! + out) > cells) break;
+		out = chars[i]! + out;
+	}
+	return out;
+}
+
+/**
+ * The sheets round (owner, 2026-10-06) — `/skills` on a dock is a sheet
+ * over the input, the shape `/status` has (§8.16). The band says how many,
+ * how many cannot load, and where they live when that is one place
+ * (`skills · 3 · 1 cannot load · ~/.kiso/skills`); each skill is one row,
+ * `/name` in ink in a measured column and its description dim, cut by
+ * cells; with more than one place, the place ends the row. A skill that
+ * cannot load says why, in the failure colour. How to run one is the
+ * closing row. On a pipe `/skills` prints `skillsRows`, unchanged.
+ */
+export function skillsSheetRows(catalog: SkillsCatalog | null, sourceOf: (dir: string) => string, userDir: string, W: number): string[] {
+	const p = palette();
+	const entries = catalog?.entries ?? [];
+	const broken = catalog?.broken ?? [];
+	const close = `  ${p.dim}/<name> runs one \u00b7 a built-in wins its name \u00b7 esc closes${p.reset}`;
+	if (entries.length === 0 && broken.length === 0) {
+		return [bandHeader("skills \u00b7 none", W), `  ${p.dim}add one as ${escapeTerminal(userDir)}/<name>/SKILL.md${p.reset}`, close].map((r) => cutLine(r, W));
+	}
+	const places = [...new Set([...entries.map((e) => sourceOf(e.dir)), ...broken.map((b) => sourceOf(b.dir))])];
+	const facts = [String(entries.length), ...(broken.length > 0 ? [`${broken.length} cannot load`] : [])];
+	// the place is cut from the LEFT when the band cannot hold it (P4's
+	// rule for a path in a band name): its end — the folder's own name —
+	// and the rule after it stay on screen
+	const head = `skills \u00b7 ${facts.join(" \u00b7 ")}`;
+	const where = places.length === 1 ? escapeTerminal(places[0]!) : "";
+	const roomFor = Math.max(0, W - 8 - visibleWidth(head) - 3);
+	const shown = where === "" || roomFor < 2 ? "" : visibleWidth(where) <= roomFor ? where : `\u2026${leftCut(where, roomFor - 1)}`;
+	const rows = [bandHeader(shown === "" ? head : `${head} \u00b7 ${shown}`, W)];
+	const names = [...entries.map((e) => `/${escapeTerminal(e.name)}`), ...broken.map((b) => escapeTerminal(b.dir))];
+	const nw = Math.max(...names.map((n) => visibleWidth(n))) + 2;
+	const fit = (text: string, room: number): string => (visibleWidth(text) <= room ? text : `${widthCut(text, Math.max(1, room - 1))}…`);
+	const place = (dir: string): string => (places.length > 1 ? ` \u00b7 ${escapeTerminal(sourceOf(dir))}` : "");
+	const room = Math.max(1, W - 2 - nw - 1);
+	for (const e of entries) {
+		const name = `/${escapeTerminal(e.name)}`;
+		const what = `${escapeTerminal(e.description)}${e.userInvocable ? "" : " (model only)"}${place(e.dir)}`;
+		rows.push(`  ${name}${" ".repeat(nw - visibleWidth(name))}${p.dim}${fit(what, room)}${p.reset}`);
+	}
+	for (const b of broken) {
+		const name = escapeTerminal(b.dir);
+		rows.push(`  ${p.dim}${name}${" ".repeat(nw - visibleWidth(name))}${p.reset}${p.fail}${fit(`cannot load: ${escapeTerminal(b.reason)}${place(b.dir)}`, room)}${p.fgEnd}`);
+	}
+	rows.push(close);
+	return rows.map((r) => cutLine(r, W));
 }
 
 /**

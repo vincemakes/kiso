@@ -97,27 +97,25 @@ describe("TUI v2a (real PTY)", () => {
 		// echo AND the body's `you> probe-one` record (the v2a filter
 		// retired; the chip is the record, the echo is UI).
 		//
-		// Counted with the OSC dropped: 0.39.1 puts the session's title in
-		// the WINDOW title, so the words appear a third time in the stream,
-		// inside a sequence the terminal consumes and never paints. This
-		// claim is about what is ON SCREEN, and the window is not the screen.
+		// Counted with the OSC dropped: this claim is about what is ON
+		// SCREEN, and the window is not the screen.
 		const onScreen = stripOsc(out);
 		expect((onScreen.match(/probe-one/g) ?? []).length).toBe(2);
 		// The prompt + echo read "you> probe-one" once — readline's redraw
 		// control sequences sit between them in the raw transcript, so count
 		// on the control-stripped stream.
-		// …and the words DO reach the WINDOW (0.39.1): the session opens
-		// titled by its workspace and is renamed by its first substantive
-		// prompt. The negative above and this positive are the same claim
-		// from both sides — the title is in the stream, and it is not on
-		// the screen. Proven on a real PTY rather than on the formatter,
-		// because "does a terminal get this" is not a question a pure
-		// function can answer.
+		// The window title is kiso's (the card round, owner 2026-10-05):
+		// DECLARED REVERSAL of 0.39.1's prompt-derived name and of the
+		// working `\u2726`. Re-derived from "the words reach the window" to
+		// "they never do": the prompt is on the screen twice and in no title,
+		// and a turn that works writes no new title (one write, the ready
+		// form). Proven on a real PTY rather than on the formatter, because
+		// "does a terminal get this" is not a question a pure function can
+		// answer.
 		const titles = [...out.matchAll(/\u001b\]0;([^\u0007]*)\u0007/g)].map((m) => m[1]!);
-		expect(titles.length).toBeGreaterThanOrEqual(2);
-		expect(titles[0]).toMatch(/^kiso — \S/); // the opening form: kiso — <workspace>
-		expect(titles.at(-1)).toContain("probe-one"); // renamed by the prompt
-		expect(titles.at(-1)).toMatch(/^kiso — probe-one — \S/);
+		expect(titles.length).toBeGreaterThanOrEqual(1);
+		for (const t of titles) expect(t, titles.join(" | ")).toMatch(/^kiso \u2014 \S/);
+		expect((out.match(/probe-one/g) ?? []).length, "the prompt reached a title").toBe(2);
 
 		const clean = onScreen.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").replace(/\r/g, "");
 		expect((clean.match(/▌ probe-one/g) ?? []).length).toBe(1);

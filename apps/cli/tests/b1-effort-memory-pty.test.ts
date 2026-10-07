@@ -19,7 +19,10 @@ describe("B1 — the effort last picked is where a new session starts", () => {
 		const first = stripANSI(
 			ptyRun(["chat", "b1-first", "--model", "ds"], env, {
 				feeds: [
-					["/ commands · ↑ history", "/model ds max\r"],
+					// the main sync (tui/graphite): the boot row offers no key ladder
+					// (the tasks round, §8.5) — the idle bar's `/mode to switch` is
+					// the sign the session is ready
+					["/mode to switch", "/model ds max\r"],
 					["takes effect on the next turn", "exit\r"],
 				],
 			}),

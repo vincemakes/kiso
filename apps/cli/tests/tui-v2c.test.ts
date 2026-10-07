@@ -6,12 +6,12 @@
  * it (ADR-0057) and is answered next, Esc cancels a paused approval (the
  * conservative denial continues the run — the old abort is gone), and
  * exit turns bracketed paste off (?2004l) and resets the region (CSI r).
- * W22 adds the visibility invariant's e2e — since ADR-0057 the chips are
- * steers that have not landed: they pre-render ABOVE the input row as the
- * SAME UserMessage chips (the dim □ gutter marks them), ↑ takes the last
- * back into the editor and esc one more, a steer taken back NEVER lands,
- * and a piped session shows no chips (the pipe path has no raw keys and
- * keeps one turn per line).
+ * W22 adds the visibility invariant's e2e — since ADR-0057 the rows are
+ * steers that have not landed: they pre-render ABOVE the input row
+ * (Graphite §8.7, the main-sync round: one gold `◇` row each, with what
+ * happens next and its key), ↑ takes the last back into the editor and
+ * esc one more, a steer taken back NEVER lands, and a piped session shows
+ * no rows (the pipe path has no raw keys and keeps one turn per line).
  */
 
 import { execFileSync } from "node:child_process";
@@ -79,6 +79,12 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(env)}, ${JSON.stringify(feeds)},
 `;
 	return execFileSync("python3", ["-c", phase], { encoding: "utf8", timeout: 90_000, env: process.env });
 }
+
+// Graphite §8.7 / §7.8 — the queue band's row and the composer's row, as
+// they reach the terminal on an unknown ground (the test PTY answers no
+// OSC 11, so the lead and the word carry no colour of the ground's).
+const STEER = (text: string): string => `\u25c7 ${text}`; // the mark in column 0, the text at the content edge (the main-sync round)
+const COMPOSER = (text: string): string => `\x1b[0K${text}`; // §7.8 (R1f): no prompt glyph, the text at column 0
 
 describe("TUI v2c (real PTY, 24×80)", () => {
 	it("wide input (fullwidth) lands the cursor on the DISPLAY-width column — ＡＡ is 4 cells, not 2", () => {
@@ -228,22 +234,25 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				["▌ ", "go\r"],
-				["needs approval", "\x1b"], // the rule line's dim run — Esc at the panel = the cancel
+				["needs you · asked by", "\x1b"], // Graphite P4: the band's facts — Esc at the panel = the cancel
 				// The cancel is a CONSERVATIVE DENIAL (a RESULT, not an
 				// abort): the run continues and the script's turn 2 ("the
 				// tour is done") completes the SAME run.
-				["[approval cancelled — treated as a denial]", ""],
+				// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the
+				// reply has no brackets
+				["approval cancelled — treated as a denial", ""],
 				["the tour is done", "exit\r"],
 			],
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("[approval cancelled — treated as a denial]");
+		expect(clean).toContain("approval cancelled — treated as a denial");
+		expect(clean).not.toContain("[approval cancelled");
 		expect(clean).not.toContain("[aborting run]"); // the old abort is GONE — the denial continues the run
 		// The REPL survived the cancel — the SAME run completed its turn.
 		expect(clean).toContain("the tour is done");
 	}, 90_000);
 
-	it("W22 / ADR-0057: steers that have not landed pre-render as the □ chips — ↑ takes the last back, esc one more, the re-submit is answered and a steer taken back NEVER lands", () => {
+	it("W22 / ADR-0057: steers that have not landed pre-render as `◇` rows above the input row — ↑ takes the last back, esc one more, the re-submit is answered and a steer taken back NEVER lands", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v2c-"));
 		const script = join(dir, "faux.json");
@@ -263,35 +272,35 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			[
 				// "one" submits; "two" + "three" are steers while turn one runs.
 				["▌ ", "one\rtwo\rthree\r"],
-				// The three-chip needle — ↑ pops the LAST queued line back
-				// into the editor (the chip leaves the queue).
-				["\x1b[2m□\x1b[0m \x1b[7m  three", "\x1b[A"],
+				// The third steer's row — ↑ takes the LAST steer back into the
+				// editor (its row leaves).
+				[STEER("three"), "\x1b[A"],
 				// The popped line in the input row — esc pops ONE MORE
 				// ("two") and ends the pop-mode.
-				// R2: the composer has no `\u203a` — the popped line stands at
-				// COLUMN ONE, so the needle is the row's erase-to-end
-				// immediately followed by the text. The queue CHIP for the
-				// same word cannot collide: it opens with its dim `□`
-				// gutter, so `\x1b[0Kthree` is the composer's row alone.
-				["\x1b[0Kthree", "\x1b"],
+				// Graphite §7.8: the composer's row opens with its `›` lead,
+				// so the needle is the row's erase-to-end, the lead, then the
+				// text. A steer's row for the same word cannot collide: it
+				// opens with `◇`.
+				[COMPOSER("three"), "\x1b"],
 				// The esc-popped line — submit it: it runs as a fresh turn.
-				["\x1b[0Ktwo", "\r"],
+				[COMPOSER("two"), "\r"],
 				// MOVED (the boot-status class, TUI2-R2 ⑥): see above — the
 				// idle row is on screen from the first paint, so it can no
 				// longer stand in for "a turn ended". Here it mattered twice
-				// over: the early exit also let the queued turns drain, which
+				// over: the early exit also let the steers land, which
 				// is exactly what this case asserts must NOT happen.
 				["turn two done", "exit\r"],
 			],
 		);
-		// The chips are the SAME UserMessage chip as the body record — the
-		// dim □ gutter marks the queued state (never dimmed: the chip
-		// inverts the CURRENT colours).
-		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m  two");
-		expect(out).toContain("\x1b[2m□\x1b[0m \x1b[7m  three");
-		// The status hint carries the count and where they land.
-		expect(out).toContain("+2 steer");
-		expect(out).toContain("+1 steer");
+		// Graphite §8.7 (the main-sync round, owner 2026-09-30): each steer
+		// that has not landed is ONE row — the gold `◇` and the text, no
+		// label word — with what happens next and the key that takes it
+		// back. DECLARED: main's `+N steer` status hint is not drawn on a
+		// Graphite bar; the steers are on screen as their own rows.
+		expect(out).toContain(STEER("two"));
+		expect(out).toContain(STEER("three"));
+		expect(out).toContain("next step · ↑ takes back");
+		expect(out).not.toContain("+2 steer");
 		const clean = stripANSI(out);
 		expect(clean).toContain("turn one done");
 		// The resubmitted "two" ran as a fresh turn...

@@ -25,7 +25,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveGround } from "@vincemakes/kiso-tui";
+import { parseOscColor, resolveGround } from "@vincemakes/kiso-tui";
 
 const SRC = readFileSync(join(import.meta.dirname, "..", "src", "index.ts"), "utf8");
 
@@ -128,5 +128,24 @@ describe("the colour-scheme probe is asked, heard, and used", () => {
 	it("the USER's theme reaches the ladder too, and the environment outranks it", () => {
 		expect(SRC).toContain("loadUserConfig()?.theme");
 		expect(SRC, "KISO_THEME must win over the config file").toContain("process.env.KISO_THEME ?? userTheme");
+	});
+});
+
+describe("Graphite §3.4 — only the OSC 11 answer is the ground, and its colour reaches the palette", () => {
+	it("the listener drops every OSC reply that is not the answer to OSC 11, before it is kept", () => {
+		const at = SRC.indexOf("editor.onOsc(");
+		const listener = SRC.slice(at, SRC.indexOf("});", at));
+		const filter = listener.indexOf('if (!reply.startsWith("11;")) return;');
+		expect(filter, "no OSC 11 filter in the listener").toBeGreaterThan(0);
+		expect(filter, "the filter must run before the reply is kept").toBeLessThan(listener.indexOf("osc = reply"));
+	});
+
+	it("…because the parser alone would take any colour answer — an OSC 10 reply is the FOREGROUND", () => {
+		expect(parseOscColor("10;rgb:ffff/ffff/ffff")).not.toBeNull();
+	});
+
+	it("the reported colour is parsed and handed to setGround with the ground", () => {
+		expect(SRC).toContain("parseOscColor(osc)");
+		expect(SRC).toMatch(/setGround\(next, rgb\)/);
 	});
 });

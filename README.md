@@ -1,6 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
 
-<p align="center"><b>v0.46.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
+<p align="center"><b>v0.47.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
 
 **kiso is an AI coding agent for your terminal.** It runs on its own agent runtime, which you can also embed in your own program through [the SDK](#using-it).
 
@@ -9,7 +9,7 @@
 - **You decide, and the floor holds.** Four approval modes and a don't-ask switch; "don't ask again" becomes a rule file you can delete; even in full access, a command that would destroy something unrecoverable is refused.
 - **Any model you have.** DeepSeek, Claude, GPT, a ChatGPT subscription, and any OpenAI-compatible endpoint or gateway. Keys never go in the config file.
 - **You can see where it goes.** Each turn ends with its fresh input, output and cache hits; `/context` shows what fills the context; `/status` says where the window figure comes from.
-- **Small and inspectable.** The kernel is capped at 2,200 lines (2,192 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 45 ADRs, with why, and when to overturn it.
+- **Small and inspectable.** The kernel is capped at 2,200 lines (2,194 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 45 ADRs, with why, and when to overturn it.
 
 ## Install
 
@@ -103,7 +103,7 @@ Say what you want done. The model has six tools — read, list, search, write, e
 | `plan` | reads only; everything else is refused |
 | `full-access` | everything runs without asking — a user deny and the floor still hold |
 
-A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again.
+A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. It never carries a destructive command, a write into `.git/` or `.kiso/`, a destructive `git push` (force, mirror, delete, prune) or a registry write (publish, unpublish, deprecate, a dist-tag change) — those reach you every time, unless the mode is full access. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again.
 
 **Don't ask** is a second setting beside the mode: may kiso stop for you? Turned on — `--dont-ask`, `/dont-ask`, `KISO_DONT_ASK=1` or `"dontAsk": true` — it never does. Whatever would ask is refused and the model is told why, the model is offered no questions, and a call cut off mid-flight stays unresolved rather than guessed. It grants nothing: `full-access` with don't ask is the hands-off pair, `default` with don't ask the careful one for CI. The old names still work — `bypass` is `full-access`, and `dontAsk` is `default` with the switch on.
 

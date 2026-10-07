@@ -34,7 +34,7 @@ describe("DC-58 — /model on a real pty: twelve profiles, one screen, arrows th
 		writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify(twelve())}\n`);
 		const raw = ptyRun(["chat", "scroll-a", "--model", "p1"], { ...env, SCROLL_KEY: "fake" } as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				["takes effect on the next turn", "exit\r"],
 			],
 			// twelve downs (the panel is up by ~2.5s — the R1.5 lesson), then
@@ -57,8 +57,12 @@ describe("DC-58 — /model on a real pty: twelve profiles, one screen, arrows th
 			],
 		});
 		const t = plain(raw);
-		expect(t, "the block names the rows on screen and the gesture that moves them").toContain("— ↑↓ scrolls");
-		expect(t, "and it names the whole list, not nine of twelve").toMatch(/↕ \d+-\d+ \/ 12/);
+		// MOVED (Graphite P3 — DECLARED): the `↕ A-B / N — ↑↓ scrolls` row is
+		// gone; the band's name counts the whole list, a dim ↑ says it goes
+		// on above, and the key row's counter says where the cursor is
+		expect(t, "the band names the whole list, not nine of twelve").toContain("model · 12 profiles");
+		expect(t, "the key row counts the cursor to the END of the list").toMatch(/esc +12\/12/);
+		expect(t, "and a more-mark says the list goes on above").toMatch(/\u2191 model-shared/);
 		expect(t, "the notice names the TWELFTH profile — the reach is the list").toContain("model → p12 (");
 		// the durable half, DC-60 (declared): this session never received a
 		// turn, so nothing of it is on disk — the selection lands with its

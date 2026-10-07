@@ -177,7 +177,11 @@ describe("KC1 T-C4 — the menu, the queue chips and N=3 stack in their unchange
 		const boxTop = railRows(bytes)[0]!;
 		expect(boxTop).toBe(19); // H−2−N — unchanged by the bands below it
 		expect(rowOf(bytes, "a queued turn")).toBe(boxTop - 1); // the chip band sits directly above
-		expect(rowOf(bytes, "switch the approval tier")).toBe(boxTop - 2); // the menu above the chips
+		// MOVED (Graphite P2, the band-shape class — DECLARED): the menu band
+		// closes with its key row now, so the command row is one higher; the
+		// ORDER under test (menu above chips above the box) is unchanged
+		expect(rowOf(bytes, "\u23ce completes")).toBe(boxTop - 2); // the menu's key row above the chips
+		expect(rowOf(bytes, "switch the approval tier")).toBe(boxTop - 3); // the command above its key row
 		expect(rowOf(bytes, "one")).toBe(20);
 		expect(rowOf(bytes, "three")).toBe(22);
 	});

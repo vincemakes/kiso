@@ -39,6 +39,7 @@ import {
 	pickAffordance,
 	pickBlockRows,
 	pickLead,
+	pickList,
 	pickLeadPlain,
 	pickStatus,
 	type AskAnswer,
@@ -51,8 +52,10 @@ import {
 	type PanelState,
 	type PanelView,
 	type PickRuntime,
+	foldAtSpaces,
 } from "./approval-panel.js";
-import { cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
+import { boxBottom, cutLine, selectionBar, visibleWidth, widthCut } from "@vincemakes/kiso-tui-cells/components";
+import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 import { escapeTerminal, palette } from "./lines.js";
 
 /** The schema's own bounds — the registry refuses anything outside them
@@ -256,16 +259,25 @@ export function askCommitCustom(spec: AskSpec, state: AskRuntime, text: string):
  * A narrow block has no room for two columns; `stop` arrives as 0 and
  * the em-dash form is what it degrades to.
  */
-function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0): string {
+function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, multi: boolean, W: number, stop = 0, markCol = multi, opened = false): string {
 	const p = palette();
-	const mark = multi ? (picked ? "◉" : "◯") : picked ? "◉" : " ";
+	// Graphite P4 follow-up: a single-select spends no mark column until one
+	// of its options is picked (walking back to an answered question shows
+	// its ◉) — the approved `1 vite`, where `1   vite` was drawn
+	const mark = multi ? (picked ? "◉" : "◯") : !markCol ? "" : picked ? "◉" : " ";
 	const lead = askOptionLead(o, n, mark, cursor);
 	const head = `${cursor ? p.bold : ""}${lead}${p.reset}`;
 	const room = Math.max(1, W - 2);
 	let body: string;
-	if (o.description === undefined) body = "";
+	// an OPENED option says its description on the rows under it, whole —
+	// its own row carries the label alone, so nothing is said twice
+	if (o.description === undefined || opened) body = "";
 	else if (stop > 0) {
-		const desc = widthCut(escapeTerminal(o.description), Math.max(0, room - stop));
+		// cut by cells WITH an ellipsis — a bare cut reads as the whole
+		// sentence (the P2/P3 class, here in the model's descriptions)
+		const left = Math.max(0, room - stop);
+		const said = escapeTerminal(o.description);
+		const desc = visibleWidth(said) <= left ? said : left <= 1 ? "" : `${widthCut(said, left - 1)}…`;
 		body = `${" ".repeat(Math.max(1, stop - visibleWidth(lead)))}${p.dim}${desc}${p.reset}`;
 	} else body = `${p.dim} — ${escapeTerminal(o.description)}${p.reset}`;
 	const text = cutLine(`${head}${body}`, Math.max(1, W - 2));
@@ -277,12 +289,36 @@ function optionRow(o: AskOption, n: number, picked: boolean, cursor: boolean, mu
 	return cursor ? selectionBar(text, visibleWidth(text), W) : ` ${text}`; // R2: the frame is a rule, so a row is just indented
 }
 
+/** Whether an option's description fits its row as drawn — in the column
+ *  when there is one, after an em dash when there is not. */
+function descriptionFits(o: AskOption, n: number, mark: string, stop: number, W: number): boolean {
+	const room = Math.max(1, W - 2);
+	const said = escapeTerminal(o.description ?? "");
+	if (stop > 0) return visibleWidth(said) <= Math.max(0, room - stop);
+	return visibleWidth(askOptionLead(o, n, mark, false)) + 3 + visibleWidth(said) <= room;
+}
+
+/** The OPENED rows of the selected option: its description, whole, folded
+ *  at its spaces under the label's first cell, on the selection's wash. At
+ *  most three rows, the third cut with an ellipsis when it must be. */
+const OPENED_MAX = 3;
+function openedDescription(description: string, labelCol: number, W: number): string[] {
+	const p = palette();
+	const width = Math.max(8, W - labelCol - 1);
+	let rows = foldAtSpaces(escapeTerminal(description), width);
+	if (rows.length > OPENED_MAX) {
+		const last = rows.slice(OPENED_MAX - 1).join(" ");
+		rows = [...rows.slice(0, OPENED_MAX - 1), visibleWidth(last) <= width ? last : `${widthCut(last, width - 1)}\u2026`];
+	}
+	return rows.map((r) => selectionBar(`${" ".repeat(Math.max(0, labelCol - 1))}${p.dim}${r}${p.reset}`, labelCol - 1 + visibleWidth(r), W));
+}
+
 /** The row's left span, PLAIN — the one place its shape is written, so
  *  the column arithmetic below and the row above cannot disagree about
  *  how wide it is. The arrow's cell is spent on every row so the digit
  *  column does not move as the cursor walks. */
 function askOptionLead(o: AskOption, n: number, mark: string, cursor: boolean): string {
-	return `${cursor ? "→" : " "} ${n} ${mark} ${escapeTerminal(o.label)}`;
+	return `${cursor ? "→" : " "} ${n} ${mark === "" ? "" : `${mark} `}${escapeTerminal(o.label)}`;
 }
 
 /** Below this many cells a right column is not a column, it is a
@@ -293,10 +329,10 @@ const ASK_DESC_MIN = 18;
  *  the widest label, never past the half-width, and 0 (meaning "no
  *  column, use the em dash") when what is left would not hold a
  *  readable description. */
-export function askDescriptionStop(q: AskQuestion, W: number): number {
+export function askDescriptionStop(q: AskQuestion, W: number, markCol = q.multiSelect === true): number {
 	const multi = q.multiSelect === true;
 	if (!q.options.some((o) => o.description !== undefined)) return 0;
-	const widest = Math.max(...q.options.map((o, i) => visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : " ", false))));
+	const widest = Math.max(...q.options.map((o, i) => visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : markCol ? " " : "", false))));
 	const room = Math.max(1, W - 2);
 	const stop = widest + 2;
 	if (stop > Math.floor(room / 2) || room - stop < ASK_DESC_MIN) return 0;
@@ -312,25 +348,33 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 	const spec = view.ask!;
 	const q = spec.questions[state.qIndex]!;
 	const multi = q.multiSelect === true;
-	const counter = spec.questions.length > 1 ? `${p.dim} ‹ ${state.qIndex + 1}/${spec.questions.length} ›${p.reset}` : "";
 	const rows: string[] = [];
-	// R2: the same dashed rule the composer and the approval panel use.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
-	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}${counter}`, Math.max(1, W - 2))}`);
-	const header = q.header === undefined ? "the question" : escapeTerminal(q.header.slice(0, ASK_HEADER_CAP));
-	// R2: the divider row is gone (the opening rule says a block starts
-	// here), but the multi-select gesture it carried is INFORMATION and
-	// rides the header instead — dropping it would have been a regression
-	// wearing a restyle's clothes.
-	// R6/D2: the header names the MODE; the keys live on the keys row,
-	// once. It used to name `space toggles` there and nowhere say what
-	// finishes the set.
-	const gesture = multi ? `${p.dim} · pick any${p.reset}` : "";
-	rows.push(`  ${cutLine(`${p.dim}${header}${p.reset}${gesture}`, Math.max(1, W - 2))}`);
-	rows.push("");
+	// Graphite P4 (owner, 2026-10-04): the band's name carries the facts — the
+	// question's header, its place in the set, `pick any` — and the question
+	// is the first row, bold. DECLARED REVERSAL of the `‹ 1/2 ›` after the
+	// question, of the header's row of its own and of the blank row (R2,
+	// R6/D2): three rows before the options became one.
+	const facts = [
+		...(q.header === undefined ? [] : [escapeTerminal(q.header.slice(0, ASK_HEADER_CAP))]),
+		...(spec.questions.length > 1 ? [`${state.qIndex + 1} of ${spec.questions.length}`] : []),
+		...(multi ? ["pick any"] : []),
+	];
+	rows.push(bandHeader(["question", ...facts].join(" \u00b7 "), W));
+	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(q.question)}${p.reset}`, Math.max(1, W - 2))}`);
 	const picks = state.picks[state.qIndex] ?? [];
-	const stop = askDescriptionStop(q, W);
-	const body = q.options.map((o, i) => optionRow(o, i + 1, picks.includes(i), state.cursor === i, multi, W, stop));
+	const markCol = multi || picks.length > 0;
+	const stop = askDescriptionStop(q, W, markCol);
+	// Graphite P4 (owner, 2026-10-05): the selected option OPENS when its
+	// description does not fit its row — its row keeps the label and the
+	// rows under it, on the same wash, say the description whole (the
+	// /resume and /model shape). The others keep their one row, cut.
+	const body: string[] = [];
+	q.options.forEach((o, i) => {
+		const on = state.cursor === i;
+		const opens = on && state.phase !== "custom" && o.description !== undefined && !descriptionFits(o, i + 1, multi ? "◯" : markCol ? " " : "", stop, W);
+		body.push(optionRow(o, i + 1, picks.includes(i), on, multi, W, stop, markCol, opens));
+		if (opens) body.push(...openedDescription(o.description!, visibleWidth(askOptionLead(o, i + 1, multi ? "◯" : markCol ? " " : "", false)) - visibleWidth(escapeTerminal(o.label)) + 1, W));
+	});
 	// REL-0152-D3: the row is part of the list, so it carries the same
 	// cursor affordance the options do. Dim-always made a reachable row
 	// look like a footnote.
@@ -352,15 +396,15 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 			? `${onCustom || typingHere ? p.bold : ""}${customLead}◉ ${escapeTerminal(typed)}${p.reset}`
 			: typingHere
 				? `${p.bold}${customLead}▸${p.reset} ${p.dim}type your answer — enter sends, esc backs out${p.reset}`
-				: `${onCustom ? p.bold : p.dim}${customLead}  type your own answer${p.reset}`,
+				: `${onCustom ? p.bold : p.dim}${customLead}${markCol ? "  " : ""}type your own answer${p.reset}`,
 		Math.max(1, W - 2),
 	);
 	body.push(onCustom ? selectionBar(customText, visibleWidth(customText), W) : ` ${customText}`);
 	// the bounded block: the options fold nothing and cut individually,
 	// so the cap drops whole rows with the W21 notice row.
-	// R2: SIX rows of frame — the block opens with a rule as well as
-	// closing with one, and the divider became a blank.
-	const budget = Math.max(1, maxRows - 6);
+	// P4: THREE rows of frame — the band's name, the question and the key
+	// row (no header row, no blank, no closing rule)
+	const budget = Math.max(1, maxRows - 3);
 	if (body.length > budget) {
 		const kept = Math.max(0, budget - 1);
 		rows.push(...body.slice(0, kept));
@@ -369,14 +413,12 @@ export function askBlockRows(view: PanelView, state: AskRuntime, W: number, maxR
 		rows.push(...body);
 	}
 	// R6/D2: FITTED, and the two-space indent is inside the budget —
-	// the uncut push here is what made a narrow ask throw.
-	rows.push(`  ${p.dim}${askAffordanceFit(state, q, Math.max(1, W - 2))}${p.reset}`);
-	// R2, shared with the approval panel: the block closes with the SAME
-	// dashed rule it opened with, and the same one the composer uses.
-	// TUI2-R1.5 ⑪ had already replaced a two-cell `\u2514 ` stub with a
-	// real rule for the reason that stub read as the cut-notice prefix it
-	// collides with; this keeps that finding and only changes which rule.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	// the uncut push here is what made a narrow ask throw. Graphite P4: the
+	// counter rides the right margin (§8.2), and the composer's rail closes
+	// the band — DECLARED REVERSAL of the block's own bottom rule (R2).
+	const count = `${state.cursor + 1}/${customRow(q) + 1}`;
+	const keys = askAffordanceFit(state, q, Math.max(1, W - 1 - 2 - count.length - 2));
+	rows.push(`  ${p.dim}${keys}${" ".repeat(Math.max(2, W - 1 - 2 - visibleWidth(keys) - count.length))}${count}${p.reset}`);
 	return rows;
 }
 
@@ -402,8 +444,8 @@ export function askAffordance(state: AskRuntime, q?: AskQuestion): string {
 	const multi = q?.multiSelect === true;
 	const back = state.qIndex > 0 ? ["← back"] : [];
 	return (multi
-		? ["↑↓ move", `space or 1-${n} marks`, "⏎ sends the set", "t types", ...back, "esc declines"]
-		: ["↑↓ move", "⏎ confirms", `1-${n} instant`, "t types", ...back, "esc declines"]
+		? ["↑↓ move", `space or 1–${n} marks`, "⏎ sends the set", "t types", ...back, "esc declines"]
+		: ["↑↓ move", "⏎ confirms", `1–${n} instant`, "t types", ...back, "esc declines"]
 	).join(" · ");
 }
 
@@ -427,13 +469,13 @@ export function askAffordanceFit(state: AskRuntime, q: AskQuestion | undefined, 
 	const n = q?.options.length ?? 4;
 	const multi = q?.multiSelect === true;
 	const back = state.qIndex > 0 ? ["← back"] : [];
-	const act = multi ? `space or 1-${n} marks` : `1-${n} instant`;
+	const act = multi ? `space or 1–${n} marks` : `1–${n} instant`;
 	const go = multi ? "⏎ sends the set" : "⏎ confirms";
 	const tiers: string[][] = [
 		["↑↓ move", act, go, "t types", ...back, "esc declines"],
 		["↑↓ move", act, go, ...back, "esc declines"],
 		[act, go, ...back, "esc declines"],
-		[multi ? "space marks" : `1-${n} picks`, multi ? "⏎ sends" : "⏎ confirms", "esc declines"],
+		[multi ? "space marks" : `1–${n} picks`, multi ? "⏎ sends" : "⏎ confirms", "esc declines"],
 		[multi ? "⏎ sends" : "⏎ confirms", "esc declines"],
 	];
 	for (const tier of tiers) {
@@ -458,17 +500,19 @@ export function askStatus(view: PanelView, state: AskRuntime): string {
 
 /** The input row's lead: the digit lead while picking, the typing lead
  *  in the custom phase (the rule-input phase's shape, reused). */
-export function askLeadPlain(state: AskRuntime): string {
-	// REL-0152-D3: "1-4> " was hard-coded and wrong twice over — it named
-	// a range even when there were two options, and it excluded the
-	// type-your-own row the list shows.
-	return state.phase === "custom" ? "your answer: " : "pick> ";
+export function askLeadPlain(_state: AskRuntime): string {
+	// REL-0152-D3: "1-4> " was hard-coded and wrong twice over. Graphite P4
+	// (owner, 2026-10-04): a panel leaves the input row to the composer —
+	// `pick>` and `your answer:` retired; an empty answer row carries a dim
+	// hint instead (`panelHintOf`).
+	return "";
 }
 
 // ── the dispatchers: the panel slot, with the ask branch folded in ────
 
-export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, ask?: AskRuntime, pick?: PickRuntime, note?: string, safer?: SaferRuntime): string[] {
-	if (view.pick !== undefined && pick !== undefined) return pickBlockRows(view, pick, W, maxRows);
+export function panelBlockRows(view: PanelView, phase: PanelPhase, cursor: number, W: number, maxRows: number, ask?: AskRuntime, pick?: PickRuntime, note?: string, safer?: SaferRuntime, height = 24): string[] {
+	// Graphite P3: a pick's window is §8.2's, so it reads the terminal's height
+	if (view.pick !== undefined && pick !== undefined) return pickBlockRows(view, pick, W, maxRows, height);
 	if (view.ask !== undefined && ask !== undefined) return askBlockRows(view, ask, W, maxRows);
 	return basePanelBlockRows(view, phase, cursor, W, maxRows, note, safer);
 }
@@ -493,7 +537,10 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number, 
 }
 
 export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, ask?: AskRuntime, pick?: PickRuntime, safer?: SaferRuntime): string {
-	if (view.pick !== undefined && pick !== undefined) return pickAffordance(pick, view.pick.options[pick.cursor]?.levels !== undefined);
+	if (view.pick !== undefined && pick !== undefined) {
+		const here = view.pick.options[pickList(view.pick, pick).cursor];
+		return pickAffordance(pick, here?.levels !== undefined ? (here.axisLabel ?? true) : false);
+	}
 	if (view.ask !== undefined && ask !== undefined) return askAffordance(ask, view.ask.questions[ask.qIndex]);
 	return basePanelAffordance(view, phase, cursor, safer);
 }
@@ -501,8 +548,8 @@ export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: numb
 /** The whole panel state in one call — the compositor's four reads share
  *  one source, so an ask can never render half as an approval (TUI2-R2
  *  ④: nor a pick as either). */
-export const panelRowsOf = (s: PanelState, W: number, maxRows: number): string[] =>
-	panelBlockRows(s.view, s.phase, s.cursor, W, maxRows, s.ask, s.pick, s.note, s.safer);
+export const panelRowsOf = (s: PanelState, W: number, maxRows: number, height = 24): string[] =>
+	panelBlockRows(s.view, s.phase, s.cursor, W, maxRows, s.ask, s.pick, s.note, s.safer, height);
 
 /**
  * TUI2-R3v2 ② — the rows AND where the clickable ones are, from ONE
@@ -524,8 +571,9 @@ export const panelFrameOf = (
 	s: PanelState,
 	W: number,
 	maxRows: number,
+	height = 24,
 ): { rows: string[]; options: { offset: number; count: number; first: number } | null } => {
-	if (s.view.pick !== undefined || s.view.ask !== undefined) return { rows: panelRowsOf(s, W, maxRows), options: null };
+	if (s.view.pick !== undefined || s.view.ask !== undefined) return { rows: panelRowsOf(s, W, maxRows, height), options: null };
 	const layout = panelBlockLayout(s.view, s.phase, s.cursor, W, maxRows, s.note, s.safer);
 	return {
 		rows: layout.rows as string[],
@@ -533,6 +581,15 @@ export const panelFrameOf = (
 	};
 };
 export const panelLeadOf = (s: PanelState): string => panelLead(s.view, s.phase, s.cursor, s.ask, s.pick);
+/** Graphite P3/P4: what an EMPTY input row says while a panel is up and the
+ *  composer is where the person types — a pick's filter, the note an
+ *  approval's amend sends, a typed answer to a question. Null: the row stays
+ *  empty, as §7.8 has it everywhere else. */
+export const panelHintOf = (s: PanelState): string | null => {
+	if (s.view.pick !== undefined) return s.view.pick.input === "filter" ? (s.view.pick.filterHint ?? null) : null;
+	if (s.view.ask !== undefined) return s.ask?.phase === "custom" ? "your answer" : null;
+	return s.phase === "amend" ? "tell kiso what to do instead" : null;
+};
 export const panelStatusOf = (s: PanelState): string => panelStatus(s.view, s.phase, s.cursor, s.ask, s.pick);
 export const panelAffordanceOf = (s: PanelState): string => panelAffordance(s.view, s.phase, s.cursor, s.ask, s.pick, s.safer);
 

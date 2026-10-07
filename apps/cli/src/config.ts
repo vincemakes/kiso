@@ -36,7 +36,7 @@ import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, win32 } from "node:path";
 import { kisoHome } from "./state.js";
-import { MODE_VALUES, parseMode } from "./mode.js";
+import { MODE_VALUES, parseMode, type Mode } from "./mode.js";
 import { AuthError, effectiveBaseUrl, endpointCredentialId, getCredential, providerIdOf } from "./auth/credentials.js";
 import { BUILTIN_MANIFESTS } from "@vincemakes/kiso-runtime/internal";
 
@@ -272,6 +272,9 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		out.model = obj.model as string;
 	}
 	if (obj.models !== undefined) {
+		// 0.46.2: a profile names where requests go and which of the
+		// person's env vars is the key — a repository must never choose that
+		if (source.startsWith("<cwd>")) fail("models", 'belongs in the USER config — a project may pick one of your profiles with "model", never define one');
 		if (obj.models === null || typeof obj.models !== "object" || Array.isArray(obj.models)) fail("models", "expected an object of profiles");
 		const models: Record<string, ModelProfile> = {};
 		for (const [name, v] of Object.entries(obj.models as Record<string, unknown>)) {
@@ -373,15 +376,45 @@ export function loadProjectConfig(cwd: string, trusted: boolean): KisoConfig | n
 	return readConfigFile(join(cwd, ".kiso", "config.json"), "<cwd>/.kiso/config.json");
 }
 
-/** Merge: project wins over user (each layer's own keys only). */
+/** 0.46.2 — how much a tier lets run without a person, strictest first;
+ *  `manual` sits with `default` (both ask). */
+const MODE_LOOSENESS: Readonly<Record<Mode, number>> = { plan: 0, manual: 1, default: 1, "accept-edits": 2, "full-access": 3 };
+
+/**
+ * 0.46.2 — a repository's config may only make kiso STRICTER. A project
+ * mode looser than the user level (the user config's mode, else
+ * `default`) is refused, and a project may turn don't-ask on but never off
+ * — including the switch the old `dontAsk` mode spelling carries. Flags
+ * and env are the person's own choice and are not judged here.
+ */
+function assertProjectTightens(u: KisoConfig, p: KisoConfig): void {
+	const where = "config <cwd>/.kiso/config.json";
+	const base = parseMode(u.mode ?? "default");
+	const proj = p.mode !== undefined ? parseMode(p.mode) : undefined;
+	if (proj !== undefined && base !== undefined && MODE_LOOSENESS[proj.mode] > MODE_LOOSENESS[base.mode]) {
+		const than = u.mode !== undefined ? `your config's "${u.mode}"` : "the default";
+		throw new ConfigError(`${where}: mode — "${p.mode}" is looser than ${than}: a project can make the mode stricter, never looser`);
+	}
+	if (p.dontAsk === false) {
+		throw new ConfigError(`${where}: dontAsk — a project can turn don't-ask on, never off`);
+	}
+	if (base?.dontAsk === true && proj !== undefined && proj.dontAsk !== true && p.dontAsk !== true) {
+		throw new ConfigError(`${where}: mode — "${p.mode}" would turn off the don't-ask switch your config's "${u.mode}" carries: a project can turn don't-ask on, never off`);
+	}
+}
+
+/** Merge: a project's keys win over the user's (each layer's own keys
+ *  only) — except that a project may only tighten (assertProjectTightens). */
 export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null): KisoConfig {
 	const u = user ?? {};
 	const p = project ?? {};
+	assertProjectTightens(u, p);
 	return {
 		...(u.model !== undefined ? { model: u.model } : {}),
 		...(p.model !== undefined ? { model: p.model } : {}),
+		// 0.46.2: profiles come from the user config only — parseConfig
+		// refuses a project's `models`, so there is nothing here to merge
 		...(u.models !== undefined ? { models: u.models } : {}),
-		...(p.models !== undefined ? { models: { ...u.models, ...p.models } } : u.models !== undefined ? { models: u.models } : {}),
 		...(u.mode !== undefined ? { mode: u.mode } : {}),
 		...(p.mode !== undefined ? { mode: p.mode } : {}),
 		...(u.dontAsk !== undefined ? { dontAsk: u.dontAsk } : {}),
@@ -646,8 +679,11 @@ export function resolveAutoCompact(merged: KisoConfig): AutoCompactConfig | unde
 	return merged.autoCompact;
 }
 
-/** Project-trust policy: config.projectTrust (project wins over user) —
- *  "ask" (the E3 gate, default) or "never" (the gate auto-refuses). */
+/** Project-trust policy: the USER config's projectTrust — "ask" (the E3
+ *  gate, default) or "never" (the gate auto-refuses). The gate passes
+ *  loadUserConfig() alone (trust-ui.ts): a project never relaxes its own
+ *  gate, and it could not anyway, since an untrusted project's config is
+ *  never read. */
 export function resolveProjectTrustPolicy(merged: KisoConfig): "ask" | "never" {
 	return merged.projectTrust ?? "ask";
 }

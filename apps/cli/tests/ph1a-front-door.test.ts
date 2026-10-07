@@ -210,7 +210,7 @@ describe("PH-F4 — the zero-profile /model hint uses accepted syntax", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-ph1a-f4-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["/ commands · \u2191 history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				["deepseek-reasoner", "\x1bexit\r"], // esc leaves the panel first
 			], workdir),
 		);
@@ -282,7 +282,7 @@ describe("PH-F8 (P0) — the /model switch is atomic on the wire", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-ph1a-f8-"));
 		const out = stripANSI(
 			await ptyRunAsync(env, [
-				["/ commands · \u2191 history", "hello\r"],
+				["/mode to switch", "hello\r"],
 				["reply-from-alpha-model", "/model beta\r"],
 				["takes effect on the next turn", "again\r"],
 				["reply-from-beta-model", "exit\r"],
@@ -304,14 +304,16 @@ describe("PH-F8 (P0) — the /model switch is atomic on the wire", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-ph1a-f11-"));
 		const out = stripANSI(
 			await ptyRunAsync(env, [
-				["/ commands · \u2191 history", "hello\r"],
+				["/mode to switch", "hello\r"],
 				// "working" is the in-flight status row — the exit lands MID-RUN.
 				// The pre-fix CLI closed the input surface immediately (the v2b
 				// "readline was closed" edge) and the reply was lost.
 				["working", "exit\r"],
 			], workdir, 30),
 		);
-		expect(out).toContain("[exit queued — closing after the current run completes]");
+		// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the reply
+		// is a sentence without its brackets; a pipe still prints them
+		expect(out).toContain("exit queued — closing after the current run completes");
 		expect(out).toContain("reply-from-slow-model");
 		expect(seenModels.length).toBe(before + 1);
 	});

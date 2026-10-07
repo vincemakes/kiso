@@ -100,6 +100,11 @@ def driver(mode, cli, home, script_path, session_id, workdir):
         # DISK (kill9's predicate style). The brick re-renders on every
         # repaint (run start, each token frame), so it can NOT tell "the
         # turn finished" apart from "the run began" — the JSONL can.
+        # The pty is DRAINED while it waits, as a terminal would: kiso's
+        # tty writes are synchronous, and an undrained pty whose buffer
+        # fills freezes its event loop (the Graphite opening's bytes did,
+        # and the turn then landed on disk only when this wait gave up).
+        nonlocal out, full
         end = time.time() + timeout
         while time.time() < end:
             try:
@@ -108,7 +113,14 @@ def driver(mode, cli, home, script_path, session_id, workdir):
                     return True
             except FileNotFoundError:
                 pass
-            time.sleep(0.05)
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if r:
+                try:
+                    data = os.read(fd, 4096)
+                    out += data
+                    full += data
+                except OSError:
+                    pass
         return False
     if mode in ("eot", "fdclose"):
         # One text-only turn (the lock is acquired at the first append), then

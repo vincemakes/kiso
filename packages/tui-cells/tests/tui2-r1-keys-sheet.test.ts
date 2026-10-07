@@ -15,7 +15,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { KEY_BINDINGS, PANEL_KEYS_ROW, helpRows, keysHelpRow, keysSheetRows } from "../src/strings.js";
+import { KEY_BINDINGS, SHEET_CLOSE, helpRows, keysHelpRow, keysSheetRows } from "../src/strings.js";
 
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
@@ -27,141 +27,97 @@ afterEach(() => {
 });
 
 describe("TUI2-R1 T-V4 — the keys sheet's rows", () => {
-	it("the sheet is the prototype's frame, one screen, the grid aligned", () => {
+	// Re-derived for the sheets round (owner, 2026-10-06): the sheet is two
+	// columns of key · what at the content edge, measured over the table,
+	// closed by the row every sheet has. DECLARED REVERSAL of the
+	// prototype's grid (its hand-set stops 16/43/36/39, column 0, the bold
+	// keys of DC-3) and of the panels row (R1.5 pin 6, R6/D2): each panel's
+	// own key row says its keys, and `t types` had left /model in P3.
+	it("the sheet is one screen: the band, the bindings two to a row, the closing row", () => {
 		setTTY(false);
-		// The prototype's own frame, transcribed — with ONE correction it
-		// asked for: its row 2 put the third column at 42 while row 1 put
-		// it at 43, which is a hand-spacing slip, not a design. The stops
-		// are 16/43 on both rows, so the column the prototype was drawing
-		// is the column that renders.
-		// DECLARED ADDITION (R5): ctrl+r joins at index 8 and the tail
-		// shifts by one, so the last two bindings now share a row and the
-		// undo row is no longer alone. The stops are untouched.
-		// DECLARED SUPERSESSION (R8b, 2026-09-01): the sheet opens with a
-		// LABELLED RULE now, like every other band (`─── commands ───`,
-		// `─── files ───`, `─── sessions ───`). It used to be a bare bold
-		// word at column 0 — the exact condition TUI2-R1.5 ⑦(b) named
-		// when it made the rule, since with scrollback behind an overlay
-		// nothing said where the surface began. The GRID below is
-		// untouched, which is what this case is actually about.
 		const sheet = keysSheetRows(80);
 		expect(sheet[0]).toMatch(/^─── keys ─+$/);
 		expect(sheet.slice(1)).toEqual([
-			"enter send      ctrl+j / shift+⏎ newline   @ files",
-			"esc stop        alt+⏎ / ctrl+⏎ redirect    / commands",
-			"↑↓ history / take back a steer      ctrl+o expand cells",
-			"ctrl+r transcript                   tab complete (menu / @)",
-			"? this sheet                        alt+←→ / ctrl+←→ word motion",
-			"alt+⌫ / alt+d delete word (ctrl+w too) ctrl+x copy the last answer",
-			// DECLARED ADDITION (REL-0152-D15/D16, 0.32.2): ctrl+v joins the
-			// undo row rather than taking one of its own — the count is even
-			// again, and the stop is 39, the same as its neighbour above.
-			// The image key is on the sheet because a terminal's own Cmd+V
-			// pastes only TEXT, so the obvious gesture does not lead a human
-			// to it: precisely the case the sheet exists for.
-			"ctrl+z / ctrl+y undo / redo            ctrl+v attach a clipboard image",
-			// MOVED (the TUI2-R3v2 panel-selection supersession class): R1.5
-			// pin 6 chose "digits pick · ⏎ confirms" as the one sentence true
-			// of an approval where a digit SELECTED and an ask where a digit
-			// ANSWERED. This round removed that disagreement — every panel is
-			// a list with a bar on it — so the row names the gestures
-			// outright, in the SAME words the live panel's own hint line
-			// uses ("↑↓ move · ⏎ or click confirms · 1-4 instant").
-			// DECLARED SUPERSESSION (R6/D2): the row claims only what is
-			// true of EVERY panel. `1-4 instant` was false on the ask's
-			// multi-select and on the pick panel (a digit there only moves
-			// the cursor), `or click` was false on both (their frames
-			// report no clickable span), and "1-4" was wrong for any panel
-			// with a different option count — while its own comment said
-			// the sentence was true of every flavor. Each panel's own row
-			// now states that panel's whole truth.
-			"panels: ↑↓ move · ⏎ confirms · digits act on their row · t types",
+			"  enter   send                          esc     stop the run",
+			"  ctrl+j  newline (shift+⏎ too)         alt+⏎   stop it, send this",
+			"  @       files                         /       commands",
+			"  ↑↓      history · take back a steer   tab     complete",
+			"  ctrl+o  expand all                    ctrl+r  transcript",
+			"  ctrl+t  hide thinking                 ctrl+g  edit in $EDITOR",
+			"  alt+←→  word motion                   alt+⌫   delete a word (ctrl+w too)",
+			"  ctrl+z  undo                          ctrl+y  redo",
+			"  ctrl+x  copy the answer               ctrl+v  attach an image",
+			"  !cmd    run it and send it            !!cmd   run it, show it here only",
+			// DECLARED ADDITION (the second main-sync round, ADR-0058 3e):
+			// ctrl+b, on a row of its own — the table's count is odd
+			"  ctrl+b  background a command",
+			`  ${SHEET_CLOSE}`,
 		]);
 	});
 
-	it("every row fits the width — the sheet cuts, it never wraps into a second screen", () => {
+	it("every row fits the width — the sheet cuts, it never wraps; narrower than two columns, it is one", () => {
 		setTTY(false);
 		for (const W of [20, 34, 50, 60, 80, 120]) {
 			const rows = keysSheetRows(W);
-			expect(rows).toHaveLength(9); // E1: the grid grew by two rows for the three new bindings
+			const two = rows.length === 1 + Math.ceil(KEY_BINDINGS.length / 2) + 1;
+			expect(two || rows.length === 1 + KEY_BINDINGS.length + 1, `W=${W}: ${rows.length} rows`).toBe(true);
+			expect(two, `W=${W}`).toBe(W >= 74); // 2 + 6 + 2 + 27 + 3 + 6 + 2 + 26 cells
 			for (const row of rows) expect(row.length, `W=${W}`).toBeLessThanOrEqual(W);
 		}
 	});
 
-	it("the header is bold, the keys tinted, the panel row dim — the prototype's placement", () => {
+	it("the band names it; the key in ink, what it does dim; the closing row dim — the command list's tones", () => {
 		setTTY(true);
 		const rows = keysSheetRows(80);
-		// R8b: the header is the band's dim labelled rule now, not a bold
-		// word — see the frame case above for why.
-		expect(rows[0]).toMatch(/^\x1b\[2m─── keys ─+\x1b\[0m$/);
-		// DC-3 supersession: the key NAMES borrowed the inline-code tint
-		// (#d0d0d0, 1.54:1 on a white terminal), which made the least
-		// readable thing on screen the one screen whose whole job is being
-		// read. They are the sheet's CONTENT, so they are bold.
-		expect(rows[1]).toContain("\x1b[1menter\x1b[0m send");
-		expect(rows.at(-1)).toBe(`\x1b[2m${PANEL_KEYS_ROW}\x1b[0m`); // the panel row is always LAST — indexing from the end survives a grid that grows
+		expect(rows[0]).toMatch(/─── keys ─+/);
+		expect(rows[1]).toContain(`  enter   \x1b[2msend\x1b[0m`);
+		expect(rows[1]).not.toContain("\x1b[1menter");
+		expect(rows.at(-1)).toBe(`  \x1b[2m${SHEET_CLOSE}\x1b[0m`);
 	});
 
-	it("ONE SOURCE — every binding in the table reaches the sheet, and nothing but the table does", () => {
+	it("ONE SOURCE — every binding in the table reaches the sheet, on one row, and nothing but the table does", () => {
 		setTTY(false);
-		const sheet = keysSheetRows(200).join("\n");
+		const sheet = keysSheetRows(200);
 		for (const binding of KEY_BINDINGS) {
-			expect(sheet, `the sheet must show ${binding.keys}`).toContain(`${binding.keys} ${binding.what}`);
+			const row = sheet.find((r) => r.includes(binding.what));
+			expect(row, `the sheet must show ${binding.keys}`).toBeDefined();
+			expect(row!.indexOf(binding.keys), `${binding.keys} stands before what it does`).toBeLessThan(row!.indexOf(binding.what));
 		}
-		// and the sheet invents nothing: strip the table's own text and the
-		// header/footer, and what is left is whitespace
-		let residue = sheet;
-		for (const b of KEY_BINDINGS) residue = residue.replace(`${b.keys} ${b.what}`, "");
-		// R8b: strip the band header as a HEADER — matching the bare word
-		// left its rule behind and the residue stopped being whitespace.
-		residue = residue.replace(/─+ keys ─+/, "").replace(PANEL_KEYS_ROW, "");
+		// and the sheet invents nothing: strip the table's own text, the band
+		// and the closing row, and what is left is whitespace
+		let residue = sheet.slice(1, -1).join("\n");
+		for (const b of KEY_BINDINGS) residue = residue.replace(b.what, "").replace(b.keys, "");
 		expect(residue.trim()).toBe("");
+		expect(sheet.at(-1)).toBe(`  ${SHEET_CLOSE}`);
 	});
 
 	it("the DRIFT GUARD on /help — its keys sentence still mentions every gesture the table names", () => {
 		setTTY(false);
-		// /help's row is deliberately NOT derived this round: rewriting it
-		// would move an assertion outside the two declared supersession
-		// classes. This is the guard that keeps the two honest until a
-		// round is allowed to make the swap (keysHelpRow exists for it).
+		// /help's printed table (a pipe's) is unchanged; on a dock /help
+		// opens the command list now (§8.16).
 		const keysRow = helpRows().join("\n").split("\n").find((r) => r.startsWith("keys"));
 		expect(keysRow).toBeDefined();
-		// the gestures /help spells out, in its own words
 		for (const gesture of ["enter", "ctrl+J", "shift+enter", "esc", "alt+⏎", "@"]) {
 			expect(keysRow, `/help must mention ${gesture}`).toContain(gesture);
 		}
-		expect(keysHelpRow()).toContain("? this sheet");
+		// re-derived for the sheets round: `? this sheet` left the table —
+		// `?` is how you got there — and the derived row follows the table
+		expect(keysHelpRow()).toBe(KEY_BINDINGS.map((b) => `${b.keys} ${b.what}`).join(" · "));
 	});
 
 	it("the table names the REAL bindings — every gesture the editor implements is in it", () => {
 		// the editor's gesture set, transcribed from editor.ts's feed():
-		// enter submits, ctrl+j/shift+⏎ insert a newline, esc stops,
-		// alt+⏎/ctrl+⏎ redirect, @ picks files, / opens the menu, ↑↓ walk
-		// the history and pop the queue, ctrl+o expands, tab completes,
-		// ? opens this sheet, ctrl+z/ctrl+y undo and redo (UD-1), and
-		// E1's three: word motion, word deletion, copy the last answer.
+		// enter submits, esc stops, ctrl+j inserts a newline, alt+⏎
+		// redirects, @ picks files, / opens the menu, ↑↓ walk the history
+		// and pop the queue, tab completes, ctrl+o expands, ctrl+r opens the
+		// transcript, ctrl+t hides thinking, ctrl+g edits in $EDITOR, E1's
+		// word motion and deletion, UD-1's undo and redo, ctrl+x copies,
+		// ctrl+v attaches an image, and the two shell gestures.
 		//
-		// This case is why the round updated the table rather than only
-		// the code — it FAILED when the three gestures existed in the
-		// editor and not in KEY_BINDINGS, which is exactly the drift it
-		// is here to catch.
-		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual([
-			"enter",
-			"ctrl+j / shift+⏎",
-			"@",
-			"esc",
-			"alt+⏎ / ctrl+⏎",
-			"/",
-			"↑↓",
-			"ctrl+o",
-			"ctrl+r", // R5: the transcript viewer
-			"tab",
-			"?",
-			"alt+←→ / ctrl+←→", // E1 §1
-			"alt+⌫ / alt+d", // E1 §1 (ctrl+w is the everywhere baseline)
-			"ctrl+x", // E1 §3
-			"ctrl+z / ctrl+y",
-			"ctrl+v", // REL-0152-D15/D16: the clipboard image attach
-		]);
+		// Re-derived for the sheets round (owner, 2026-10-06): the table is
+		// read in pairs, left then right; a key with two spellings is named
+		// by one; ctrl+t, ctrl+g and the `!` gestures joined from /help's
+		// table; `?` left (it is how you got here).
+		expect(KEY_BINDINGS.map((b) => b.keys)).toEqual(["enter", "esc", "ctrl+j", "alt+⏎", "@", "/", "↑↓", "tab", "ctrl+o", "ctrl+r", "ctrl+t", "ctrl+g", "alt+←→", "alt+⌫", "ctrl+z", "ctrl+y", "ctrl+x", "ctrl+v", "!cmd", "!!cmd", "ctrl+b"]);
 	});
 });
