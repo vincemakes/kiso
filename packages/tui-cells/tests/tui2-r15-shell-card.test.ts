@@ -68,19 +68,20 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
 		expect(rows[0]).not.toContain('{"command"');
 		expect(rows[0]).not.toContain('\\"');
-		expect(rows[0]).toContain("shell for i in 1 2 3 4 5 6;");
+		expect(rows[0]).toContain("SHELL for i in 1 2 3 4 5 6;");
 	});
 
-	it("the duration is its OWN row — never glued to a cut word", () => {
+	it("the duration is its OWN segment at the head row's end — never glued to a cut word", () => {
 		// MOVED (R13 E2): the duration left the head row for the card's
 		// METADATA row, which is where the settled card keeps it — so the
 		// settle changes what that row says and never where anything sits.
 		// VD-4's subject survives the move intact and is what is asserted:
 		// the duration is never welded to the cut head.
+		// Graphite §7.3: the running status rides the head row's right end,
+		// separated from the (cut) target by at least two spaces.
 		const rows = render(shellCell({ resultText: "x" }), 60);
-		expect(rows.at(-1)).toMatch(/^\s*\d+s · esc stops/); // DC-46: the gestures share the row
-		expect(rows[0]).not.toMatch(/[A-Za-z0-9]\d+s$/);
-		expect(rows[0]).not.toMatch(/\ds$/);
+		expect(rows[0]).toMatch(/\S {2,}running · \d+s(?: · esc stops.*)?$/);
+		expect(rows[0]).not.toMatch(/[A-Za-z0-9]running/);
 	});
 
 	it("the row still fits the width — invariant ① holds at every width", () => {
@@ -94,31 +95,35 @@ describe("TUI2-R1.5 ④(a) — the running shell header is the clean one (VD-4)"
 		for (const state of ["pending", "approval"] as const) {
 			const rows = render(shellCell({ state }));
 			expect(rows[0], state).not.toContain('{"command"');
-			expect(rows[0], state).toContain("shell for i in");
+			expect(rows[0], state).toContain("SHELL for i in");
 		}
 	});
 });
 
 describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)", () => {
+	// Re-derived for the card round (owner, 2026-10-05): LONG now folds
+	// onto a second head row, so the body is read after the head's rows —
+	// the subject (the tail's first row) is unchanged.
+	const afterHead = (rows: string[]): string[] => rows.slice(1 + rows.slice(1).findIndex((r) => !r.startsWith(" ".repeat(8))));
 	it("one line of output renders one tail row, not a blank one above it", () => {
 		const rows = render(shellCell({ resultText: "step 1 · compiling module 1 of 6" }));
-		const body = rows.slice(1);
+		const body = afterHead(rows);
 		expect(body[0]).toContain("step 1 · compiling module 1 of 6");
 		// DC-46: there is no pad. The window is the output, so ONE line of
 		// output is one row — which is this case's subject stated exactly
 		// (the first tail row is never blank, because there are no other
 		// rows for it to be) — and the status row closes the card.
-		expect(body).toHaveLength(2);
+		expect(body).toHaveLength(1);
 		// R7a's "the pad is BLANK, not a bar" RETIRES with the pad (DC-46):
 		// there are no reserved rows left to draw anything on. The subject
 		// — the first tail row is never blank — is asserted above and is
 		// now true by construction.
-		expect(body[1]).toContain("esc stops");
+		expect(rows[0], "the running status rides the head row").toMatch(/running · \d+s/);
 	});
 
 	it("LEADING empty output lines are skipped — the sidecar's own blanks", () => {
 		const rows = render(shellCell({ resultText: "\n\nfirst real line" }));
-		const body = rows.slice(1);
+		const body = afterHead(rows);
 		expect(body[0]).toContain("first real line");
 	});
 
@@ -127,7 +132,11 @@ describe("TUI2-R1.5 ④(b) — the live tail's first row is never blank (VD-4)",
 		// DC-46: the footer no longer spends a window row — its two keys
 		// ride the status row, where they cost nothing and where the settle
 		// rewrites them in place.
-		expect(rows.at(-1)).toContain("esc stops · alt+⏎ redirects");
+		// a long command: the gestures give way before the command is cut to
+		// nothing (the live row names the same keys); a short one keeps them
+		expect(rows[0]).toMatch(/running · \d+s$/);
+		expect(render({ ...shellCell({ resultText: "a\nb\nc" }), inputFull: JSON.stringify({ command: "npm test" }) } as BodyCell)[0]).toContain("esc stops · alt+⏎ redirects");
+		expect(rows.at(-1)!.trim(), "no footer row after the window").toBe("c");
 	});
 });
 
@@ -165,10 +174,13 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 			...over,
 		} as Partial<Extract<BodyCell, { kind: "tool" }>>);
 
-	it("the head row names the call; the outcome closes the block on its own row", () => {
+	// Re-derived for the card round (owner, 2026-10-05): the key stands at
+	// the cut note's right margin, so the output's last row closes the card.
+	it("the head row names the call; the cut note carries the key; the output closes the block", () => {
 		const rows = render(done());
-		expect(rows[0]).toBe("  shell npm test");
-		expect(rows.at(-1)).toBe("    exit 0 · 7 lines · 6.0s");
+		expect(rows[0]).toMatch(/^ {2}SHELL npm test +exit 0 · 7 lines · 6\.0s$/);
+		expect(rows[1]).toMatch(/… 2 earlier lines +ctrl\+o expands$/);
+		expect(rows.at(-1)!.trim()).toBe("build done");
 	});
 
 	it("the tail is the LAST five rows, with a note above saying what was cut", () => {
@@ -176,20 +188,20 @@ describe("R9 P2 / D4 — the settled shell keeps its tail (reversing VD-5)", () 
 		// R8a's corner still opens it — the corner is the surface's
 		// alternative, not part of the note.
 		const rows = render(done()).map((r) => r.trim().replace(/^└ /, ""));
-		expect(rows).toContain("… 2 earlier lines · ctrl+o expands");
+		expect(rows[1]).toMatch(/^… 2 earlier lines +ctrl\+o expands$/);
 		expect(rows.slice(2, 7)).toEqual(["step 3", "step 4", "step 5", "step 6", "build done"]);
 	});
 
 	it("an output inside the cap is whole, and gets no note", () => {
 		const rows = render(done({ resultText: "one\ntwo\nthree" })).map((r) => r.trim().replace(/^└ /, ""));
 		expect(rows.join("\n")).not.toContain("earlier lines");
-		expect(rows.filter((r) => r !== "")).toEqual(["shell npm test", "one", "two", "three", "exit 0 · 3 lines · 6.0s"]);
+		expect(rows.filter((r) => r !== "")).toEqual([expect.stringMatching(/^SHELL npm test +exit 0 · 3 lines · 6\.0s$/), "one", "two", "three"]);
 	});
 
 	it("the line count is stated EXACTLY ONCE, and it is on the outcome row", () => {
 		const rows = render(done());
 		expect(rows.join("\n").match(/\d+ lines/g) ?? []).toHaveLength(1);
-		expect(rows[0]).not.toContain("lines");
+		expect(rows[0]).toMatch(/exit 0 · 7 lines/);
 	});
 
 	it("no SECOND affordance: the note names the key, the head row does not", () => {

@@ -85,17 +85,20 @@ describe("/clear — a fresh conversation, history untouched", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w1-"));
 		const out = strip(
 			ptyRun(["chat", "first-conv"], env, [
-				["/ commands · \u2191 history", "hello there\r"],
+				["/mode to switch", "hello there\r"],
 				["What would you like me to inspect", "/clear\r"], // the faux script's turn-1 reply — a SETTLED anchor (the spinner shares the recap glyph)
 				// a turn IN the new session — a run-less session writes no
 				// file by design (the E1 lazy-marker semantics), so the new
 				// log materializes here
-				["previous: first-conv", "fresh hello\r"],
+				// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the
+				// switch is a SESSION row that says the way back, and the opening
+				// names the id (the `session <id>` lines retired there)
+				["/resume first-conv returns", "fresh hello\r"],
 				["fresh hello", "exit\r"],
 			], workdir),
 		);
-		expect(out).toContain("session first-conv");
-		expect(out).toContain("previous: first-conv");
+		expect(out).toMatch(/SESSION {5}first-conv · new/);
+		expect(out).toMatch(/SESSION {5}\S+ · \/resume first-conv returns/);
 		// the old durable log is INTACT (clear never erases history) and
 		// the new turn never leaked into it
 		const old = readFileSync(join(dirs.home, "sessions", "first-conv.jsonl"), "utf8");
@@ -116,13 +119,14 @@ describe("/resume — the in-session door", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w2-"));
 		const out = strip(
 			ptyRun(["chat", "conv-a"], env, [
-				["/ commands · \u2191 history", "alpha turn\r"],
+				["/mode to switch", "alpha turn\r"],
 				["What would you like me to inspect", "/clear\r"],
-				["previous: conv-a", "/resume conv-a\r"],
-				["session conv-a (switched", "exit\r"],
+				["/resume conv-a returns", "/resume conv-a\r"],
+				// RE-DERIVED (the last sweep): back in conv-a, the row names it
+				["conv-a · /resume", "exit\r"],
 			], workdir),
 		);
-		expect(out).toContain("session conv-a (switched");
+		expect(out).toMatch(/SESSION {5}conv-a · \/resume \S+ returns/);
 		// conv-a's log still ends where it ended — the switch appended nothing
 		const log = readFileSync(join(dirs.home, "sessions", "conv-a.jsonl"), "utf8");
 		expect(log).toContain("alpha turn");
@@ -133,7 +137,7 @@ describe("/resume — the in-session door", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w3-"));
 		const out = strip(
 			ptyRun(["chat", "conv-b"], env, [
-				["/ commands · \u2191 history", "/resume no-such-session\r"],
+				["/mode to switch", "/resume no-such-session\r"],
 				["no such session", "exit\r"],
 			], workdir),
 		);
@@ -146,7 +150,7 @@ describe("/resume — the in-session door", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w4-"));
 		const out = strip(
 			ptyRun(["chat", "lonely"], env, [
-				["/ commands · \u2191 history", "/resume\r"],
+				["/mode to switch", "/resume\r"],
 				["no other sessions", "exit\r"],
 			], workdir),
 		);
@@ -160,8 +164,8 @@ describe("the guard no longer fires for the two new commands", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-rc-w5-"));
 		const out = strip(
 			ptyRun(["chat", "guard-check"], env, [
-				["/ commands · \u2191 history", "/clear\r"],
-				["previous: guard-check", "exit\r"],
+				["/mode to switch", "/clear\r"],
+				["/resume guard-check returns", "exit\r"],
 			], workdir),
 		);
 		expect(out).not.toContain("unknown command: /clear");

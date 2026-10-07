@@ -155,12 +155,14 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				// R13: the fold is retired, so the denial is back on the
 				// denied call's OWN row — the full call name, the target and
 				// the reason, which is strictly more than the fold's clause.
-				["write_file out.txt", ""], // the write is denied, not asked
+				// Graphite §7.4: a refused card — the needle is the target, which
+				// sits inside one styled span (feeds match the RAW stream)
+				["out.txt", ""], // the write is denied, not asked
 				["plan mode: read-only", ""], // the guiding reason reaches the model
 				["plan turn done", ""],
-				["▸ plan (read-only) · /mode to switch", ""], // W19: the idle row names the read-only posture (the v3 idle state)
+				["▸ plan · read-only · /mode to switch", ""], // Graphite §8.9: the chip reads `plan · read-only` // W19: the idle row names the read-only posture (the v3 idle state)
 				["▌ ", "/mode default\r"],
-				["mode → default", ""], // the notice cell — the switch is on the record
+				["MODE\x1b[0m", ""], // the notice cell — the switch is on the record (Graphite R3e: the MODE row)
 				["▌ ", "go\r"],
 				// The diff row marks the decision moment — the human sees the
 				// change BEFORE answering (the v2d redraw paints the approval
@@ -173,7 +175,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "plan", session: "modes1" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("▸ plan (read-only) · /mode to switch"); // W19 re-baseline: the idle row names the posture
+		expect(clean).toContain("▸ plan · read-only · /mode to switch"); // W19 re-baseline: the idle row names the posture
 		// MOVED (R13): the fold is retired, so the denial is back on the
 		// denied call's OWN row — which is where it was before R3i put it
 		// on a fold line, and it says strictly more there: the full call
@@ -181,15 +183,22 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// is what is asserted — WHICH call was refused, and WHY.
 		expect(clean).toContain("out.txt");
 		expect(clean).toContain("plan mode: read-only");
-		expect(clean).toContain("mode → default");
+		expect(clean).toMatch(/MODE\s+plan → default/); // Graphite R3e: MODE over from → to
 		// MOVED (TUI2-R2pre ④, the display-verb class — DECLARED THIS ROUND):
 		// the panel's rule line names the ACT. The tool is still write_file
 		// on the wire, and the dock-less fallbackQuestion still says so.
-		expect(clean).toContain("write needs approval"); // the switch restored the ask — the panel's rule line
+		expect(clean).toContain("needs you · asked by"); // the switch restored the ask — Graphite P4: the band
+		expect(clean).toContain("WRITE "); // …and the call's head
 		// v2e: the approval-time diff + the frozen one-line summary.
 		expect(clean).toContain("+ hello"); // the diff row (new file, all +)
-		expect(clean).toContain("  write"); // W3 (sanctioned): the verb strips the _file suffix — the settled row is "write" padded
-		expect(clean).toContain("+1 -0"); // the frozen ± stats
+		// W3 (sanctioned): the verb strips the _file suffix. Graphite P4: this
+		// was met by the approval's retired `write needs approval` row; the
+		// settled card's head says it now
+		expect(clean).toMatch(/WRITE \S/);
+		expect(clean).not.toContain("WRITE_FILE");
+		// Graphite §6 (R2a): a write that creates its file says so on the
+		// settled head (it was the approval's `+1 -0`)
+		expect(clean).toContain("new file · 1 line");
 		expect(clean).toContain("▸ default · /mode to switch"); // after /mode default the idle state shows the default tier
 
 		// The audit trail: r1 + w1 decided by the plan tier (decidedBy
@@ -233,14 +242,15 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				// long, and enough of those starve the reporter's RPC
 				// ("Timeout calling onTaskUpdate") — the same trap DC-34's
 				// file hit from the other direction.
-				["mode \u2192 full access", "exit\r"],
+				["MODE\x1b[0m", "exit\r"], // Graphite R3e: the MODE row
 			],
 			workdir,
 			{ session: "pick" },
 		);
 		const plain = out.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");
 		// the PANEL, not a printed list
-		expect(plain, "bare /mode did not open a picker").toContain("mode — current: default");
+		// Graphite P3 (DECLARED): the current tier rides the band's name now
+		expect(plain, "bare /mode did not open a picker (Graphite §8.1: the named opening row)").toMatch(/\u2500{3} mode \u00b7 current: default \u2500/);
 		// every tier is offered, each saying what it DOES — the notes are
 		// transcribed from decide(), so a drifting description is a bug
 		for (const tier of ["default", "accept edits", "plan", "full access"]) expect(plain, `${tier} is not on the panel`).toContain(tier);
@@ -264,7 +274,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		// panel as "type the answer".
 		expect(plain, "the pick row does not name the arrows").toContain("↑↓ move");
 		// and choosing switched it — no word was typed
-		expect(plain, "the pick did not take effect").toContain("mode → full access");
+		expect(plain, "the pick did not take effect").toMatch(/MODE\s+\S+ → full access/);
 	}, 120_000);
 
 	it("DC-36: with no dock — a PIPE — /mode prints exactly what it always printed", () => {
@@ -429,7 +439,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "dontAsk", session: "modes-dontask" },
 		);
 		const clean = stripANSI(out);
-		expect(clean, "the one-line notice").toContain("[dontAsk] shell would ask — denied");
+		// the main-sync round (owner, 2026-09-30): on a terminal the refusal is
+		// the dim DENIED meta row; a pipe prints #203's line as written
+		expect(clean, "the one-line notice").toMatch(/DENIED\s+shell would ask — denied/);
 		expect(clean, "the run went on to its end").toContain("dontask done");
 		const decided = decidedEvents(env, "modes-dontask");
 		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "read-only-shell" });
@@ -495,7 +507,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		const out = ptyRun(
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
-				["left unresolved", ""],
+				["left undecided", ""],
 				["▌ ", "go\r"],
 				["turn held", "exit\r"],
 			],
@@ -503,7 +515,9 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			{ modeFlag: "dontAsk", session: "modes-unc" },
 		);
 		const clean = stripANSI(out);
-		expect(clean).toContain("[dontAsk] 1 uncertain execution left unresolved — resolve them in an asking mode");
+		// Graphite P1b (owner, 2026-09-30) — RE-DERIVED: on a terminal the line is
+		// the UNCERTAIN meta row (notice-meta.ts); a pipe keeps the words as written
+		expect(clean).toMatch(/UNCERTAIN\s+1 interrupted command left undecided — asked once don't ask is off/);
 		expect(clean, "no recovery panel opened").not.toContain("rerun");
 		expect(clean).toContain("turn held");
 		// nothing was fabricated: no resolution was recorded
@@ -529,7 +543,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		);
 		const clean = stripANSI(out);
 		expect(clean).toContain("[dontAsk] [project .kiso] found 1 artifact(s)");
-		expect(clean, "no trust panel opened").not.toContain("trust this project's .kiso?");
+		expect(clean, "no trust panel opened").not.toContain("trust this project");
 		// no sticky refusal: a later asking session can still decide
 		const store = join(env.KISO_HOME!, "trust.jsonl");
 		expect(existsSync(store) ? readFileSync(store, "utf8") : "").not.toContain(realpathSync(workdir));
@@ -637,17 +651,20 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 				["▌ ", "/mode\r"],
 				// the panel is up: keep the tier in force, by its digit
 				["reads run; all else is denied", "3\r"],
-				["mode \u2192 plan", "exit\r"],
+				["MODE\x1b[0m", "exit\r"], // Graphite: the MODE row
 			],
 			workdir,
 			{ modeFlag: "plan", session: "pick-switch" },
 		);
 		const plain = stripANSI(out);
-		expect(plain).toContain("mode — current: plan (read-only) · don't ask");
+		// the main-sync round: the panel names itself `mode` on its hairline and
+		// says what is current under it, the switch included
+		expect(plain).toContain("current: plan (read-only) · don't ask");
 		expect(plain, "a don't-ask row was offered").not.toMatch(/don't ask: o(n|ff)/);
-		// choosing a tier leaves the switch as it was
-		expect(plain).not.toContain("don't ask → ");
-		expect(plain).toContain("▸ plan (read-only) · don't ask");
+		// choosing a tier leaves the switch as it was: no DON'T ASK row
+		expect(plain).not.toContain("DON'T ASK");
+		// the bar, off a known ground: the tier, then the switch
+		expect(plain).toContain("▸ plan · read-only · don't ask");
 	}, 120_000);
 
 	it("the old name: a switch that came with dontAsk leaves with it on shift+tab — and says so", () => {
@@ -663,15 +680,16 @@ describe("the don't-ask switch (real PTY, 24×80) — a second question beside t
 				// the settled first turn is the REPL-ready anchor (R3a)
 				["▌ ", "hi\r"],
 				["What would you like me to inspect", "\x1b[Z"],
-				["don't ask \u2192 off", "exit\r"],
+				["DON'T ASK", "exit\r"], // Graphite: the switch's own row
 			],
 			workdir,
 			{ envMode: "dontAsk", session: "old-name-leaves" },
 		);
 		const plain = stripANSI(out);
 		expect(plain).toContain("▸ default · don't ask");
-		expect(plain).toContain("mode → accept edits (shift+tab cycles)");
-		expect(plain).toContain("don't ask → off");
+		// the main-sync round: the MODE row, then the switch's own row
+		expect(plain).toMatch(/MODE\s+default → accept edits/);
+		expect(plain).toMatch(/DON'T ASK\s+on → off/);
 	}, 120_000);
 });
 
@@ -744,7 +762,10 @@ describe("the remote boundary (real PTY, 24×80) — a saved shell rule does not
 			workdir,
 			{ modeFlag: "default", session: "boundary-dontask" },
 		);
-		expect(stripANSI(out)).toContain("[dontAsk] shell would ask — denied");
+		// RE-DERIVED (tui/graphite, the main sync): on a dock the refusal is the
+		// dim DENIED meta row, as the don't-ask leg above reads it; a pipe
+		// prints the line as written
+		expect(stripANSI(out)).toMatch(/DENIED\s+shell would ask — denied/);
 		const decided = decidedEvents(env, "boundary-dontask");
 		expect(decided.find((e) => e.callId === "s1")).toMatchObject({ decision: "approved", decidedBy: "dont-ask-again" });
 		expect(decided.find((e) => e.callId === "s2")).toMatchObject({ decision: "denied" });

@@ -190,7 +190,7 @@ describe("DC-52 — the inode guard never writes to the terminal", () => {
 		// evidence is the call's own head row and the two notes — which is
 		// the whole of what this case is about: it FINISHED, and it did
 		// not lie about being complete.
-		expect(out, "the search never ran").toMatch(/search alpha/);
+		expect(out, "the search never ran").toMatch(/SEARCH +alpha/); // Graphite §7.5
 		expect(out, "the multi-link skip is silent").toMatch(/multi-link files? skipped/);
 		expect(out, "the unreadable directory is unaccounted for").toMatch(/unreadable director/);
 	}, 120_000);
@@ -210,8 +210,8 @@ describe("TUI2-R1 T-V2 — the exploration rollup is display-side (real CLI)", (
 		// not) moot. What survives, and is the half that mattered, is that
 		// the durable record carries every call in full: the pipe leg
 		// below still proves it, and the PTY now shows the same calls.
-		expect(out).toContain("read  ");
-		expect(out).toContain("search ");
+		expect(out).toContain("READ ");
+		expect(out).toContain("SEARCH ");
 		expect(out, "an exploration row survived the retirement").not.toContain("explored ");
 		// R4a: the fold row prints no key — the row above IS the settled
 		// form, and what `ctrl+o` opens is pinned in the unit suite.
@@ -300,10 +300,11 @@ describe("TUI2-R1 T-V3 — the live tail on a real PTY", () => {
 		// verdict is what the row records. `approved by mode:*` was the
 		// runtime's backfill for "no policy expressed an opinion", read by
 		// a human as an attribution (VD-11).
-		expect(out).toContain("  shell sh steps.sh");
-		expect(out).toMatch(/ {4}exit 0 · 6 lines · \d+\.\ds/);
-		expect(out).toMatch(/… 1 earlier line · ctrl\+o expands/);
-		const settledAt = out.lastIndexOf("  shell");
+		// Graphite §7.4: the outcome at the head row's end, the key on the foot
+		expect(out).toMatch(/SHELL +sh steps\.sh +exit 0 · 6 lines · \d+\.\ds/);
+		expect(out).toMatch(/… 1 earlier line/);
+		expect(out).toContain("ctrl+o expands");
+		const settledAt = out.lastIndexOf("SHELL");
 		expect(settledAt).toBeGreaterThan(0);
 		expect(out.slice(settledAt)).not.toContain("live tail");
 
@@ -348,19 +349,21 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 				[
 					["▌ ", "hi\r"], // a normal turn first — the composer works
 					["hello there.", "?"], // the REAL key, on an empty composer
-					["expand cells", "x"], // any key closes it
+					// re-derived for the sheets round (owner, 2026-10-06): the
+					// needle is a row only the sheet draws (`ctrl+o expand cells`
+					// became `expand all`, which the bar can show too)
+					["take back a steer", "x"], // any key closes it
 				],
-				// the driver stops the process itself: `exit` typed while the
-				// sheet is up would be EATEN by the close (any key closes,
-				// and the whole chunk goes with it), which is the contract —
-				// so the transcript, not a clean exit, is the evidence here.
+				// the driver stops the process itself; the transcript, not a
+				// clean exit, is the evidence here.
 				12,
 				ws,
 			),
 		);
 		// the sheet was on screen, in full
-		expect(out).toContain("enter send");
-		expect(out).toContain("ctrl+o expand cells");
+		// re-derived for the sheets round: key · what in measured columns
+		expect(out).toMatch(/enter +send/);
+		expect(out).toMatch(/ctrl\+o +expand all/);
 		// MOVED (R1.5 pin 6, the wrap/copy class): see the tui-cells unit.
 		// DECLARED SUPERSESSION (R6/D2): the row claims only what is true
 		// of EVERY panel now. `1-4 instant` was false on the ask's
@@ -368,13 +371,19 @@ describe("TUI2-R1 T-V4 — the ? keys sheet on a real PTY", () => {
 		// both, and "1-4" was wrong for any panel with a different option
 		// count — while the row's own comment said it was true of every
 		// flavor. Each panel's own affordance row states its whole truth.
-		expect(out).toContain("panels: ↑↓ move · ⏎ confirms · digits act on their row · t types");
+		// DECLARED REVERSAL (the sheets round): the panels row retired —
+		// each panel's own key row says its keys — and the sheet closes on
+		// the row every sheet has
+		expect(out).not.toContain("panels: ");
+		expect(out).toContain("esc closes \u00b7 typing goes to the input");
 		// the `?` never became text, and neither did the key that closed it.
 		// R2: the composer has no wall and no prompt glyph, so the needle
 		// is the row's erase-to-end immediately followed by the character —
 		// which is what a `?` typed into the composer would look like.
 		expect(out).not.toContain("\x1b[0K?");
-		expect(out).not.toContain("\x1b[0Kx");
+		// re-derived for the sheets round: the key that closed it is typed
+		// now (only esc and the `?` are eaten) — it stays in the composer,
+		// unsent, which the user_input check below still pins
 		// the session carried on normally afterwards
 		expect(out).toContain("hello there.");
 		const events = logLines(env.KISO_HOME as string, "r1-sheet").map((l) => l.event);
@@ -438,7 +447,7 @@ describe("TUI2-R1 T-V5 — /context reads the REAL trace sidecar", () => {
 			ptyRun(["--mode", "bypass", "r1-meter"], env as NodeJS.ProcessEnv, [["▌ ", "hi\r"], ["answered.", "exit\r"]], 25, ws),
 		);
 		// the idle row painted, and it carries no invented price
-		expect(out).toContain("▸ full access · /mode to switch · faux · ctx left ~");
+		expect(out).toMatch(/▸ full access · \/mode to switch · faux · ctx \d+%/); // Graphite §8.9, the tier by its name (#203)
 		expect(out).not.toMatch(/\$\d/);
 	}, 120_000);
 

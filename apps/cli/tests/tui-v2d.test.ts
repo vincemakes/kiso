@@ -161,6 +161,11 @@ const CELL_LINE = [
 	/^… \d+ (?:more|earlier) lines? · ctrl\+o(?: expands)?$/, // the card's cut note
 	/^answer truncated at max_tokens.*$/, // D4: the truncation notice row — R2 (law 1.1): a notice is a sentence, it wears no box corner
 	/^✦.*$/, // v3: the recap line ends the run
+	// Graphite §7.4: a card's HEAD row (trimmed) — the mark cell, the verb
+	// upper case, the target, the outcome at its end — and its FOOT, the key
+	/^(?:[●❯] )?[A-Z]+ +\S.*$/,
+	/^ctrl\+o (?:expands|collapses)$/,
+	/^(?:[✧✦✶✸✺] )?thinking · hidden · ctrl\+t$/, // Graphite §7.2 (R1e): hidden thinking's one row — no THINK label
 	/^│(?: .*)?$/, // v7 W7/W10: the bounded block's body rows — the settled tail + the W8 window's blank-padded rows (the "  │ " family, W2's gutter)
 	// MOVED (R1.5 slice 11, the panel-frame class — DECLARED THIS ROUND):
 	// the panel's bottom edge is a real RULE now (└ + a ─ run to the
@@ -189,13 +194,11 @@ const CELL_LINE = [
 	/^streaming text.*$/, // the TextCell body
 	/^session \S+$/, // the session header
 	/^\[faux mode.*$/, // the faux banner line
-	// R2 supersession: the wordmark, the tagline and the version row are
-	// retired. The opening is the name, three labelled facts (whose values
-	// hang under their label when they are long), and one keys row.
-	/^kiso \d+\.\d+\.\d+.*$/, // the name row
-	/^(MODEL|WORKSPACE|EXTENSIONS) {2,}.*$/, // a labelled fact (the lint trims the indent)
-	/^esc interrupt · .*$/, // the keys row
-	/^\[.*extensions?:.*$/, // an EXTENSIONS value continuing on its own row
+	// Graphite §7.10 (a declared reversal of R2's name row, three labelled
+	// facts and keys row): at 24 rows the opening is one line, then what
+	// loaded — one labelled fact per row.
+	/^✦ kiso \d+\.\d+\.\d+ · the coding agent that survives kill -9$/, // the one-line opening
+	/^(SESSION|RULES|SKILLS|MCP|EXTENSIONS) {2,}\S.*$/, // a labelled fact (the lint trims the indent)
 	/^▌\s?.*$/, // the editor's SELF-RENDER row — the LINE-MODE brick (W6-kept byte-for-byte): the editor's first paint rides the CLI's pre-dock console.log message on the same row
 	// TUI v5 #16f: the user block — the SGR-7 chip alone (the 2026-08-09
 	// ruling retired the ▍ rail + the indent). Classified by its RAW byte
@@ -205,9 +208,10 @@ const CELL_LINE = [
 	// (`╭─╮` / `╰─╯`) and the panel's own `─` divider are both retired,
 	// and the divider became a blank row, which the lint already skips.
 	/^\u2500+$/,
-	// R2: the input row is the typed text at COLUMN ONE — no wall, no
-	// prompt glyph — so it is classified by its CONTENT like any other
-	// plain row, and an EMPTY composer is the blank the lint skips.
+	// Graphite §7.8 (a declared reversal of R2's bare column one): the
+	// input row opens with the `›` lead in the mark column, then the typed
+	// text or, when the input is empty on an idle composer, the key ladder.
+	/^\u203a(?: \S.*)?$/,
 	//
 	// R2, the PANEL's own rows. They used to be classified by the `│`
 	// gutter they all carried; a gutter SCOPES a verbatim block and an
@@ -215,7 +219,11 @@ const CELL_LINE = [
 	// indent now and are classified by SHAPE, one shape per row kind.
 	// This is stricter than the gutter was — `│ anything` admitted every
 	// panel row at once, where these name four distinct forms.
-	/^\S+ needs approval — asked by .*$/, // the rule line (+ its · fix hint)
+	// Graphite P4 (DECLARED): the rule line retired into the band's name and
+	// the call's head (`SHELL sleep 1; echo hi`), and the fix hint has a row
+	/^\u2500{3} needs you · (?:amended · )?asked by \S+ \u2500+$/, // the band row
+	/^[A-Z][A-Z_]*(?: \S.*)?$/, // the call's head, as its card reads (a call with no target is its verb)
+	/^\/mode \S.*$/, // the fix hint's own row
 	/^[1-9] \S.*$/, // an option row — the digit IS the key (the cursor's row rides the reverse bar and is classified by it)
 	/^↑↓ move · .*$/, // the panel's affordance row
 	// the panel's TITLE is the call's own subject — arbitrary text, like
@@ -267,7 +275,11 @@ const lint = (rawWithOsc: string): string[] => {
 		// prose; the owner ruled the edge outranks that, and §1.2 carries
 		// the exception. The classifier is the dim+italic PAIR, which is
 		// what actually separates them, and it always was.
-		if (/^ {2}\x1b\[2m\x1b\[3m/.test(seg)) continue;
+		// Graphite §1.8: the lead is the content edge, FOUR columns.
+		// R1e: no label row — while a block streams, its FIRST row carries
+		// the twinkle in the mark column instead of the edge's spaces (R1f:
+		// the edge is column 2, the mark column 0).
+		if (/^(?: {2}|[✧✦✶✸✺] )\x1b\[2m\x1b\[3m/.test(seg)) continue;
 		// R13 — A CARD'S BODY ROW, classified on the RAW segment for the
 		// same reason the chip and the thinking are: stripped and trimmed,
 		// a line of a tool's output is arbitrary text, and a pattern that
@@ -276,7 +288,10 @@ const lint = (rawWithOsc: string): string[] => {
 		// the four-column R8a indent; painted, it is the wash. Before this
 		// round a settled non-shell call had no body at all, so these rows
 		// never reached the transcript and the set never needed them.
-		if (/^\x1b\[2m {4}/.test(seg) || /^\x1b\[48;5;(?:255|236)m/.test(seg)) continue;
+		// Graphite §7.4 (R1f): unpainted, the body sits at column 4 (the
+		// indent before the dim opener) and `└` opens it at column 2; painted,
+		// every card row starts in column 0 with the card's edge cell.
+		if (/^ {4}\x1b\[2m/.test(seg) || /^ {2}\u2514 /.test(seg) || /^\x1b\[48;/.test(seg)) continue;
 		const t = seg
 			.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
 			.replace(/\[[0-9;]*m/g, "") // any residual SGR fragment (the split can strand a "[2m")
@@ -371,7 +386,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 				// bare "(approved," and the "· approved," forms — by which time
 				// the second
 				// panel is mounted.
-				["needs approval", "y\r"],
+				["needs you · asked by", "y\r"],
 				["{}", "y\r"],
 				["the tour is done", "exit\r"],
 			],
@@ -387,8 +402,8 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// a panel post-commit — the rule line ("asked by …"), the settled
 		// cells carry the "approved" decision tag, and the 1s shell's
 		// spinner row paints (the spinner IS the gutter).
-		expect(clean).toContain("shell needs approval"); // the shell panel's rule line
-		expect(clean).toContain("asky_read needs approval"); // the asky panel's rule line
+		expect(clean).toContain("SHELL "); // Graphite P4: the shell panel's head
+		expect(clean).toContain("ASKY_READ "); // …and the asky panel's
 		// MOVED (R1.5 slice ④, the running-header class — DECLARED THIS
 		// ROUND): the running header used to print a 60-char slice of the
 		// call's JSON while the done card printed the plain command
@@ -399,7 +414,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// settle changes what a row says and never where it sits. VD-4's
 		// subject (one formatter, the duration its own segment) holds on
 		// that row.
-		expect(clean).toMatch(/● shell sleep 1; echo hi/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
+		expect(clean).toMatch(/● SHELL +sleep 1; echo hi/); // the running shell — R3 (§5.2): a running command BREATHES — one glyph, seven greys; the rotation is retired (§5.3)
 		// A4: the target rides the settled head row (list_dir's input is {}
 		// → the "(root)" fallback); A5: the decider is NAMED on the rows
 		// that auto-approve (the extension's ask lost to the tier's allow).
@@ -416,7 +431,7 @@ describe("TUI v2d (real PTY, 24×80)", () => {
 		// case pins — one screen, one wording, `list` and not `list_dir` —
 		// is asserted where it now lives: on each call's OWN head row,
 		// which is where R2pre ④ put it in the first place.
-		expect(clean).toMatch(/\blist\s+\S/);
+		expect(clean).toMatch(/\bLIST\s+\S/); // Graphite §7.5
 		expect(clean).not.toContain("list_dir");
 
 

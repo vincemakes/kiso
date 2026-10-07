@@ -275,6 +275,42 @@ export interface RecapStats {
 	 *  the plan, not the tool count — the timing and tool-count parts
 	 *  drop, and the two /mode hints replace them. */
 	readonly mode?: string;
+	/** Graphite §7.11 — the person stopped the turn (esc): the seal says
+	 *  so, and that everything before the stop is on disk. */
+	readonly stopped?: boolean;
+}
+
+/**
+ * Graphite §7.11 — THE SEAL's forms, widest first, without the `✦`: the
+ * compositor draws the mark and picks the widest form that fits. The
+ * same facts as `renderRecap`, in its words, with two differences: no
+ * context share — the status bar's meter carries it — and a stopped turn
+ * says so. The pipe keeps `renderRecap`'s line.
+ */
+export function sealTiers(s: RecapStats): string[] {
+	if (s.mode === "plan") return [["plan ready", "/mode default executes", "/mode accept-edits auto-approves edits"].join(" \u00b7 ")];
+	const time = s.stopped === true ? `stopped by you after ${elapsedLabel(s.seconds)}` : `took ${elapsedLabel(s.seconds)}`;
+	const parts = [time];
+	const cold = s.coldAfterMinutes !== undefined && s.usage.known && s.usage.in !== null;
+	let coldLabel: string | null = null;
+	if (cold) {
+		coldLabel = `cache cold after ${s.coldAfterMinutes} min`;
+		parts.push(coldLabel, `re-read ${kUnit(s.missed ?? s.usage.in ?? 0)}`);
+		if (s.usage.out !== null) parts.push(`out ${kUnit(s.usage.out)}`);
+	} else if (s.usage.known) {
+		const seg = `${s.usage.in !== null ? `fresh ${kUnit(s.usage.in)}` : ""}${s.usage.in !== null && s.usage.out !== null ? " " : ""}${s.usage.out !== null ? `out ${kUnit(s.usage.out)}` : ""}`;
+		if (seg !== "") parts.push(seg);
+		if (s.usage.cache !== null && s.usage.in !== null && (s.usage.in > 0 || s.usage.cache > 0)) {
+			const hit = `cache ${Math.round((s.usage.cache / (s.usage.in + s.usage.cache)) * 100)}%`;
+			parts.push(s.missed !== undefined && s.missed > 0 ? `${hit} \u00b7 miss ${kUnit(s.missed)}` : hit);
+		}
+	}
+	if (s.stopped === true) parts.push("everything up to here is saved");
+	const full = parts.join(" \u00b7 ");
+	if (coldLabel === null) return [full];
+	// R3g: a cold turn sheds its LABEL before anything is cut — the gap and
+	// the re-read are the facts.
+	return [full, parts.map((x) => (x === coldLabel ? `cold ${s.coldAfterMinutes} min` : x)).join(" \u00b7 ")];
 }
 
 /** R3d — the per-tool terms of a settled turn (`read 4 files · ran 1

@@ -194,7 +194,7 @@ sys.argv = [""]
 exec(open(${JSON.stringify(driverPath)}).read())
 driver(${JSON.stringify(CLI)}, ${JSON.stringify({ ...env, KISO_FAUX_SCRIPT: script })}, ${JSON.stringify([
 		["▌ ", "go\r"], // the submit
-		["needs approval", "y\r"], // the rule line's dim run — the default tier ASKS the shell, answer the panel
+		["needs you · asked by", "y\r"], // Graphite P4: the band's facts — the default tier ASKS the shell, answer the panel
 	])}, 30, ${cols}, ${JSON.stringify(postResizes)})
 `;
 	let out: string;
@@ -241,15 +241,20 @@ function finalGrid(hex: string, cols: number): string[] {
  *  fold rows are skipped, then the contiguous body-prefixed rows (the
  *  tail rows + the renderer cut) are collected. */
 function shellBody(grid: string[]): string[] {
-	const h = grid.findIndex((l) => l.includes("  shell"));
+	const h = grid.findIndex((l) => l.includes("SHELL "));
 	expect(h).toBeGreaterThanOrEqual(0);
 	// R1.5 ④: a settled shell has NO body rows at all, so "none" is a legal
 	// answer here now — the helper reports what it finds.
 	// R8a: a tool block's rows are INDENTED (four columns), with `└`
 	// opening the first one — the bar is gone. The needle moves; the
 	// claim does not.
+	// Graphite §7.4 (unpainted, R1f): `└` at column 2, the body at column 4.
 	const BLOCK = (l: string): boolean => l.startsWith("  \u2514 ") || l.startsWith("    ");
-	const start = grid.findIndex((l, i) => i > h && BLOCK(l));
+	// Re-derived for the card round (owner, 2026-10-05): the head's own
+	// fold rows hang under the command at eight columns, which BLOCK also
+	// matches — so the body starts where `└` opens it, which is what this
+	// helper's comment always said ("the fold rows are skipped").
+	const start = grid.findIndex((l, i) => i > h && l.startsWith("  \u2514 "));
 	if (start < 0) return [];
 	const body: string[] = [];
 	for (let i = start; i < grid.length; i += 1) {
@@ -276,7 +281,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// body rows" is this case's claim and it is now true by
 		// construction; what the grid must show is the FOLD, and what it
 		// must still not show is the tail.
-		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the fold OR the recap — the claim is that the turn settled
+		expect(grid.findIndex((l) => l.trimStart().startsWith("✦ "))).toBeGreaterThanOrEqual(0); /* Graphite §7.11: the seal's mark hangs in column 2 */ // R3g: the fold OR the recap — the claim is that the turn settled
 		// the shell's OUTPUT is behind the key: no tail rows, no cut row
 		expect(grid.join("")).not.toContain("earlier rows");
 		expect(grid.join("\n")).not.toMatch(/^\u2502 (seq|1[012])/m);
@@ -296,7 +301,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// plus the behaviour the unit suite pins (ctrl+o appends the run's
 		// rows). A row cannot promise which fold a key opens, so it stopped
 		// promising; the reference implementation's row is clean too.
-		expect(grid.join("\n")).toMatch(/ {2}read /);
+		expect(grid.join("\n")).toMatch(/READ /); // Graphite §7.5
 	}, 60_000);
 
 	it("R1.5 4 at 120 cols: the same, at the wide width — no body rows, no cut row", () => {
@@ -308,11 +313,11 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the point. What survives, and is the half this case was really
 		// about, is that the wide width behaves like the narrow one: the
 		// tail is CAPPED, and the cap is named.
-		expect(grid.findIndex((l) => l.startsWith("✦ "))).toBeGreaterThanOrEqual(0); // R3g: the recap — the claim is that the turn settled
-		expect(grid.join("\n"), "the preview is not capped at 120 columns").toMatch(/… \d+ earlier lines · ctrl\+o expands/);
+		expect(grid.findIndex((l) => l.trimStart().startsWith("✦ "))).toBeGreaterThanOrEqual(0); /* Graphite §7.11: the seal's mark hangs in column 2 */ // R3g: the recap — the claim is that the turn settled
+		expect(grid.join("\n"), "the preview is not capped at 120 columns").toMatch(/… \d+ earlier lines/);
 		// the display-verb class (TUI2-R2pre ④): one screen, one vocabulary,
 		// asserted on the call's own head row now that it has one.
-		expect(grid.join("\n")).toMatch(/ {2}read /);
+		expect(grid.join("\n")).toMatch(/READ /); // Graphite §7.5
 	}, 60_000);
 
 	/** DC-46 — a running card's MAXIMUM height: the head row, five window
@@ -353,7 +358,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// needs is back to what it originally was — a settled read's own
 		// card on screen beside a running shell. A finished call commits
 		// now instead of waiting for a fold, so the pair occurs again.
-		const running = frames.filter((f) => f.grid.some((l) => /^ {2}read {2}\S/.test(l)) && f.grid.some((l) => /^● shell /.test(l)));
+		const running = frames.filter((f) => f.grid.some((l) => /^ {2}READ \S/.test(l)) && f.grid.some((l) => /^● SHELL /.test(l)));
 		expect(running.length).toBeGreaterThanOrEqual(2); // NON-vacuous: the moment really spans frames
 		// the window EXISTS, and it IS the output. DECLARED REVERSAL
 		// (DC-46) of W8's fixed three rows and of R13's first draft, which
@@ -385,13 +390,14 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// does not move on its own, and nothing below it is repainted.
 		const first = running[0]!.grid;
 		expect(first.join("\n"), "a call with nothing back still claims a window").not.toContain("waiting for output");
-		const shellAt = first.findIndex((l) => /^● shell /.test(l));
+		const shellAt = first.findIndex((l) => /^● SHELL /.test(l));
 		// DC-46: there is no pad to be blank — the window is the output, so
 		// R7a's "blank, not a bar" retires with the rows it governed.
 		// DC-48: with nothing back yet the card is ONE row — the call and
 		// its status joined, cut against the room they have. Either way
 		// there is no pad, which is what "the window is its content" means.
-		const statusAt = first.findIndex((l, i) => i >= shellAt && /\d+s · esc stops/.test(l));
+		// Graphite §7.3: the running status rides the head row's end
+		const statusAt = first.findIndex((l, i) => i >= shellAt && /running · \d+s/.test(l));
 		expect(statusAt, "the running card has no status row").toBeGreaterThanOrEqual(shellAt);
 		expect(statusAt - shellAt, "the card grew past its ceiling").toBeLessThanOrEqual(CARD_ROWS - 1);
 		expect(first.slice(shellAt + 1, statusAt).filter((l) => l.trim() === ""), "the window padded").toEqual([]);
@@ -409,9 +415,9 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			// head row — the two selectors swap prefixes back, because the
 			// breathing mark is on the running CALL again now that there is
 			// no activity line to carry it.
-			const readIdx = g1.findIndex((l) => /^ {2}read {2}\S/.test(l));
+			const readIdx = g1.findIndex((l) => /^ {2}READ \S/.test(l));
 			const readBottom = readIdx; // the head row is where the card starts
-			const shellHeader = g1.findIndex((l) => /^● shell /.test(l));
+			const shellHeader = g1.findIndex((l) => /^● SHELL /.test(l));
 			expect(shellHeader).toBeGreaterThan(readBottom); // the shell sits BELOW the streaming cell
 			// AMENDED (R13 E2): the allowed variance is the running cell's
 			// WHOLE CARD, not just its header span. The elapsed moved off
@@ -424,7 +430,11 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 			// own variance is IN PLACE (its height never moves).
 			const cardEnd = shellHeader + CARD_ROWS;
 			expect(g2.length, "the frames are different heights").toBe(g1.length);
-			for (let r = readBottom + 1; r <= 19; r += 1) {
+			// Graphite §8.7: row 19 is the LIVE ROW above the composer — its
+			// glyph and its clock tick every frame by design. It is chrome,
+			// not content, so the byte-identity claim ends above it.
+			expect(g1[19], "the live row sits above the composer").toMatch(/working \d+s/);
+			for (let r = readBottom + 1; r <= 18; r += 1) {
 				if (r >= shellHeader && r < cardEnd) continue; // the running card's own span
 				expect(g2[r], `row ${r} moved under a card that is supposed to hold its height`).toBe(g1[r]);
 			}
@@ -433,7 +443,7 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// spinner glyph + the elapsed) differs across the run — ≥ 2 distinct
 		const headers = new Set(
 			running.map((f) => {
-				const h = f.grid.findIndex((l) => /^● shell /.test(l));
+				const h = f.grid.findIndex((l) => /^● SHELL /.test(l));
 				return f.grid.slice(h, h + CARD_ROWS).join("");
 			}),
 		);
@@ -462,7 +472,10 @@ describe("TUI v7 — the flow contract (real PTY, the VT emulator)", () => {
 		// the outcome that closes it). VD-5's bound of five was the cap
 		// alone, when the note was spent out of it and there was no
 		// outcome row.
+		// Re-derived for the card round (owner, 2026-10-05): the key rides
+		// the cut note's row and the foot row is gone, so the block is the
+		// note and the five rows.
 		const CAP_SHELL_SETTLED = 5;
-		expect(body.length).toBeLessThanOrEqual(CAP_SHELL_SETTLED + 2);
+		expect(body.length, body.join("\n")).toBe(CAP_SHELL_SETTLED + 1);
 	}, 60_000);
 });

@@ -81,6 +81,8 @@ describe("R8b — the keys sheet names itself", () => {
 
 	it("naming it did not cost a row of content", () => {
 		const rows = keysSheetRows(92).map(plain);
-		expect(rows.slice(1).join("\n")).toContain("ctrl+r transcript");
+		// re-derived for the sheets round: the key and what it does stand in
+		// measured columns now, so they are apart by the column's padding
+		expect(rows.slice(1).join("\n")).toMatch(/ctrl\+r +transcript/);
 	});
 });

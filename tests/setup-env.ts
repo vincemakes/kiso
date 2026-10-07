@@ -17,6 +17,16 @@ delete process.env.NO_COLOR;
 // Tests that TEST the mode set the variable inside the test body.
 delete process.env.TERM_PROGRAM;
 
+// Graphite (design.md §2, §3) — the colour inputs are the same class of
+// leak. COLORTERM picks the tier (24-bit or 256), and KISO_THEME and
+// COLORFGBG are rungs of the ground ladder; left to the host, the palette
+// a test sees would depend on the terminal that ran the suite. The suite
+// runs in the 24-bit tier with no ground set; tests that TEST a tier or a
+// rung set the variable inside the test body.
+process.env.COLORTERM = "truecolor";
+delete process.env.KISO_THEME;
+delete process.env.COLORFGBG;
+
 // DC-48 — INVARIANT ① THROWS UNDER TEST.
 //
 // In the field it cuts the row to width and says so once, because the

@@ -10,12 +10,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkS
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView, type SaferAnswer } from "@vincemakes/kiso-tui";
+import { askDeclineAll, askView, projectTrustRows, projectTrustView, projectUntrustedNote, toolTarget, uncertainView, unansweredAskView, type AskResult, type AskSpec, type PanelVerdict, type PanelView, type SaferAnswer } from "@vincemakes/kiso-tui";
 import type { AskUI } from "@vincemakes/kiso-ask-ext";
 import { projectArtifacts, recordTrust, trustFor, type ProjectArtifacts } from "@vincemakes/kiso-runtime";
 import type { AgentSession, KisoExtension } from "@vincemakes/kiso-runtime";
-import { bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedTempPaths, neverInherited, type LineInput } from "./state.js";
+import { body, bodyLog, currentAgentExtensions, dock, extensionsDir, kisoHome, mergedTempPaths, neverInherited, type LineInput } from "./state.js";
 import { guardSavedAllow } from "./protected-writes.js";
+import { setTitleState, titleState } from "./window-title.js";
 import { mergeDirPrefix } from "./temp-sweep.js";
 import { loadUserConfig, resolveProjectTrustPolicy } from "./config.js";
 import { getDontAsk } from "./mode.js";
@@ -57,7 +58,15 @@ export function askPanel(
 		console.log(`[non-interactive — no human to ask: ${view.fallbackQuestion}]`);
 		return Promise.resolve({ action: "deny", reason: "no human to ask" });
 	}
-	return new Promise((resolve) => {
+	// Graphite §8.10: while the person is asked, the title says so; the
+	// answer (or the cancel) puts back what it said before
+	const before = titleState();
+	setTitleState("needs-you");
+	return new Promise<PanelVerdict>((settle) => {
+		const resolve = (v: PanelVerdict): void => {
+			setTitleState(before);
+			settle(v);
+		};
 		let settled = false;
 		pendingAsk = () => {
 			if (settled) return;
@@ -153,7 +162,7 @@ export function askUi(input: LineInput): AskUI {
 			// question the model puts is declined, recorded as unanswered,
 			// exactly as a non-interactive session declines it.
 			if (getDontAsk()) {
-				bodyLog("[dontAsk] the model's question was declined — nothing asks in dontAsk");
+				body.notice("[dontAsk] the model's question was declined — nothing asks in dontAsk");
 				return askDeclineAll(spec);
 			}
 			const verdict = await askPanel(input, askView(spec));
@@ -329,15 +338,33 @@ export async function resolveProjectTrust(input: LineInput): Promise<ProjectArti
 	// carries the question, the args the artifact listing (the same rows
 	// the bodyLog below records, verbatim — the listing still lands in
 	// the scrollback; the panel is a bounded block, the record is not).
-	bodyLog(`[project .kiso] ${artifacts.root}`);
-	bodyLog(projectTrustRows(artifacts.files, "  ").join("\n")); // DC-51: one call, one cell
-	const verdict = await askPanel(input, projectTrustView(artifacts.root, artifacts.files));
+	// The tasks round (owner, 2026-10-06): on a dock the question lists the
+	// files itself, so nothing is printed above it; the record lands after
+	// the answer (below). Off a dock the listing is the record, as before.
+	if (!dock.active) {
+		bodyLog(`[project .kiso] ${artifacts.root}`);
+		bodyLog(projectTrustRows(artifacts.files, "  ").join("\n")); // DC-51: one call, one cell
+	}
+	const home = homedir();
+	const shownRoot = artifacts.root === home ? "~" : artifacts.root.startsWith(`${home}/`) ? `~${artifacts.root.slice(home.length)}` : artifacts.root;
+	const verdict = await askPanel(input, projectTrustView(artifacts.root, artifacts.files, shownRoot));
 	// A cancel is a "no" HERE — refused is sticky, the project does not
 	// load (re-evaluate by deleting the trust line or changing a file).
 	// The non-TTY branch above returned WITHOUT a record so an interactive
 	// run can still decide later.
 	const granted = verdict.action === "allow";
 	recordTrust({ root: artifacts.root, digest: artifacts.digest, decision: granted ? "granted" : "refused" });
+	// the record of what was trusted stays in the scrollback: ONE meta row,
+	// once the person has answered — `PROJECT  trusted · ~/w/.kiso · <files>`
+	if (dock.active) {
+		const word = granted ? "trusted" : "not trusted";
+		const files = projectTrustRows(artifacts.files, "").map((r) => r.trim().replace(/\s{2,}/g, " ")).join(", ");
+		// a long root outside home keeps its last two parts — the folder's
+		// own name — so the row still has room for what was trusted
+		const parts = shownRoot.split("/");
+		const where = shownRoot.length > 40 && !shownRoot.startsWith("~") && parts.length > 3 ? `\u2026/${parts.slice(-2).join("/")}` : shownRoot;
+		body.metaNotice(`[project .kiso] ${word} \u2014 ${artifacts.root}`, [{ label: "PROJECT", sentence: `${word} \u00b7 ${where} \u00b7 ${files}`, ...(granted ? { mark: { text: word, tone: "ok" as const } } : {}) }]);
+	}
 	if (!granted) return null;
 	applyProjectMerges(artifacts);
 	return artifacts;
@@ -470,6 +497,22 @@ function readdirSyncSafe(dir: string): string[] {
  *  execution stays uncertain and durable — no rerun/abandoned is
  *  fabricated, round 10). The resolution feedback lands in the body —
  *  the body is the single stdout writer, never a stray console.log. */
+/** Graphite P1b — what an uncertain execution's panel quotes: a shell
+ *  command verbatim (every line of it), any other call's target as its
+ *  tool card names it. From the execution record's own input. */
+export function uncertainTarget(name: string, input: Readonly<Record<string, unknown>>): string[] {
+	if (name === "shell") return String(input.command ?? "").split(/\r\n|\n|\r/);
+	return [toolTarget(name, { ...input })];
+}
+
+/** Graphite P1b — an interrupted ask_user's questions, as the model wrote
+ *  them; empty when the input carries none (the panel then quotes the id). */
+export function askedQuestions(input: Readonly<Record<string, unknown>>): string[] {
+	const qs = input.questions;
+	if (!Array.isArray(qs)) return [];
+	return qs.flatMap((q) => (typeof q === "object" && q !== null && typeof (q as { question?: unknown }).question === "string" ? [(q as { question: string }).question] : []));
+}
+
 export async function resolveUncertains(
 	session: AgentSession,
 	input: LineInput,
@@ -481,7 +524,9 @@ export async function resolveUncertains(
 	// line says what to do. An unattended session must not sit on a panel.
 	if (getDontAsk()) {
 		const n = session.uncertainExecutions().length;
-		if (n > 0) bodyLog(`[dontAsk] ${n} uncertain execution${n === 1 ? "" : "s"} left unresolved — resolve them in an asking mode`);
+		// Graphite P1b: a notice, so a dock draws it as the UNCERTAIN meta row
+		// (notice-meta.ts); a pipe prints the same line it always did
+		if (n > 0) body.notice(`[dontAsk] ${n} uncertain execution${n === 1 ? "" : "s"} left unresolved — resolve them in an asking mode`);
 		return;
 	}
 	for (const uncertain of session.uncertainExecutions()) {
@@ -489,7 +534,7 @@ export async function resolveUncertains(
 		// have applied — it is a question nobody answered. The COPY says
 		// so; the mechanism is untouched (allow → the runtime's own rerun
 		// resolution, whose error-fill text this round never edits).
-		const view = uncertain.name === "ask_user" ? unansweredAskView(uncertain.executionId) : uncertainView(uncertain.name, uncertain.executionId);
+		const view = uncertain.name === "ask_user" ? unansweredAskView(uncertain.executionId, askedQuestions(uncertain.input)) : uncertainView(uncertain.name, uncertain.executionId, uncertainTarget(uncertain.name, uncertain.input));
 		const verdict = await askPanel(input, view);
 		if (isCancelled() || verdict.action === "cancel") {
 			// round 10: a cancellation NEVER records a verdict — the execution

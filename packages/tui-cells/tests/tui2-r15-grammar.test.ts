@@ -60,7 +60,7 @@ describe("TUI2-R1.5 ⑤ — the line count is stated exactly once (VD-6)", () =>
 	it("a read card names its lines in the SUFFIX, not in the parens as well", () => {
 		const row = render(toolCell())[0]!;
 		expect(row.match(/\d+ lines?/g) ?? []).toHaveLength(1);
-		expect(row).toBe("  read  src/parser.ts · 2 lines · 2.4s · ctrl+o expands");
+		expect(row).toMatch(/^ {2}READ src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
 	});
 
 	it("a read whose result the TOOL truncated keeps its own of-N meta — that is a different fact", () => {
@@ -87,7 +87,7 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		const row = render(toolCell({ verdict: { decision: "approved", decidedBy: "mode:default" } }))[0]!;
 		expect(row).not.toContain("approved by");
 		expect(row).not.toContain("mode:default");
-		expect(row).toBe("  read  src/parser.ts · 2 lines · 2.4s · ctrl+o expands");
+		expect(row).toMatch(/^ {2}READ src\/parser\.ts +2 lines · 2\.4s · ctrl\+o expands$/);
 	});
 
 	it("a HUMAN approval says `approved` — the thing the human actually did", () => {
@@ -106,13 +106,14 @@ describe("TUI2-R1.5 ⑤ — approval attribution is about humans (VD-11)", () =>
 		expect(bare).not.toContain("approved by");
 	});
 
-	it("a HUMAN denial says ` · denied`; a policy denial keeps only its reason", () => {
+	it("a HUMAN denial says `denied by you`; a policy denial says only `denied` and its reason", () => {
 		const human = render(toolCell({ isError: true, reason: "no touch", resultText: "[Permission denied] no touch", verdict: { decision: "denied" } }))[0]!;
-		expect(human).toContain("(no touch · denied)");
+		expect(human).toContain("denied by you · no touch");
 		const policy = render(
 			toolCell({ isError: true, reason: "no touch", resultText: "[Permission denied] no touch", verdict: { decision: "denied", decidedBy: "mode:plan" } }),
 		)[0]!;
-		expect(policy).toContain("(no touch)");
+		expect(policy).toContain("denied · no touch");
+		expect(policy).not.toContain("by you");
 		expect(policy).not.toContain("mode:plan");
 	});
 

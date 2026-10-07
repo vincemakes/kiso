@@ -30,7 +30,9 @@ const journal = (home: string, id: string, task: string): string => {
 };
 const shellCall = (input: object) => ({ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input }, { type: "stop", reason: "tool_use" }] });
 const text = (t: string) => ({ events: [{ type: "text_delta", text: t }, { type: "stop", reason: "end_turn" }] });
-const PROMPT = "/ commands · ↑ history";
+// the idle bar: the boot row offers no key ladder (the tasks round, §8.5),
+// so a session is ready when the bar is bound and teaches `/mode`
+const PROMPT = "/mode to switch";
 
 describe("ADR-0058 (3e) — the person's side of tasks", () => {
 	it("ctrl+b moves the running command to the background; /tasks show is the person's alone; exit asks and stops it", () => {
@@ -106,21 +108,25 @@ describe("ADR-0058 (3e) — the person's side of tasks", () => {
 		const raw = ptyRun(["chat", "t3e-d"], env as NodeJS.ProcessEnv, {
 			feeds: [
 				[PROMPT, "go\r"],
-				// said when kiso concludes it — no message has carried it yet
-				["lost track of t1", "next\r"],
+				// said when kiso concludes it — no message has carried it yet.
+				// RE-DERIVED (tui/graphite, the main sync): on a dock the line is
+				// the TASK row, `lost track — may still be running` in gold, and
+				// /tasks show is the output sheet, its first row the reason
+				["lost track — may still be running", "next\r"],
 				["heard", "/tasks show t1\r"],
-				["t1 — lost track:", "exit\r"],
+				["lost track: its runner", "exit\r"],
 			],
 			// tall enough that nothing scrolls off: the settled screen is the whole transcript
 			rows: 60,
 			timeout: 60,
 		});
-		expect(raw).toContain(`✦ lost track of t1 (${cmd})`);
-		expect(raw).toContain("it may still be running · /tasks shows it");
-		expect(raw).toContain("t1 — lost track: its runner is gone without recording its end; it may still be running");
+		// one row, cut at the width: what ran is what gives way
+		const screen = settledScreen(raw, 60, 100);
+		expect(screen.join("\n")).toMatch(/TASK {8}t1 lost track — may still be running · \/tasks shows it · sleep 1; kill -9/);
+		expect(raw).toContain("lost track: its runner is gone without recording its end; it may still be running");
 		// said once on the screen, though the model was told with "next" (the
 		// byte stream repaints the row as it scrolls — count the settled rows)
-		expect(settledScreen(raw, 60, 100).filter((r) => r.includes("✦ lost track of t1")).length).toBe(1);
+		expect(screen.filter((r) => r.includes("t1 lost track")).length).toBe(1);
 		const notices = eventsOf(dirs.home, "t3e-d").filter((e) => e.type === "user_input" && e.via?.kind === "tasks");
 		expect(notices.map((e) => e.via?.items)).toEqual([[{ taskId: "t1", transition: "unknown" }]]);
 		expect(String(notices[0]?.content)).toContain('status="unknown"');
@@ -157,8 +163,9 @@ describe("ADR-0058 (3e) — the person's side of tasks", () => {
 		const until = Date.now() + 20_000;
 		while (alive() && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
 		expect(alive()).toBe(false);
-		const reopened = ptyRun(["chat", "t3e-e"], env as NodeJS.ProcessEnv, { feeds: [["lost track of t1", "exit\r"]], timeout: 60 });
-		expect(reopened).toContain(`✦ lost track of t1 (${cmd})`);
+		// RE-DERIVED (tui/graphite, the main sync): the TASK row, its gold word
+		const reopened = ptyRun(["chat", "t3e-e"], env as NodeJS.ProcessEnv, { feeds: [["lost track — may still be running", "exit\r"]], rows: 60, timeout: 60 });
+		expect(settledScreen(reopened, 60, 100).join("\n")).toMatch(/t1 lost track — may still be running · \/tasks shows it · sleep 4; kill -9/);
 		// the model has not been told yet: its notice rides the next run
 		expect(eventsOf(dirs.home, "t3e-e").filter((e) => e.type === "user_input" && e.via?.kind === "tasks")).toEqual([]);
 	}, 180_000);

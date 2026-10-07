@@ -37,7 +37,7 @@
  * described twice.
  */
 
-import { palette } from "./render.js";
+import { headingRule, palette } from "./render.js";
 import { breakable, charWidth, displayWidth } from "./width.js";
 import { escapeTerminal } from "./render.js";
 import { visibleWidth } from "./components.js";
@@ -45,7 +45,7 @@ import { visibleWidth } from "./components.js";
 /** The block kinds. `fence-open`/`fence-line` are separate kinds on
  *  purpose: a fence's rows must be able to freeze ONE AT A TIME, and
  *  MD-1.4's `code-line` is the same shape for the same reason. */
-export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close" | "code-line";
+export type MdKind = "para" | "heading" | "list" | "table" | "quote" | "rule" | "fence-open" | "fence-line" | "fence-close" | "code-line" | "refdef";
 
 /** One block: its SOURCE lines, never a rendered form. The render is a
  *  pure function of (block, width), which is what makes the freeze
@@ -75,6 +75,14 @@ const HEADING = /^ {0,3}(#{1,6}) +(\S.*)$/;
 const RULE = /^ {0,3}(?:-{3,}|\*{3,}|_{3,}) *$/;
 const QUOTE = /^ {0,3}> ?(.*)$/;
 const TABLE = /^ {0,3}\|/;
+/** A link reference definition: `[label]: url "title"` (the title may be
+ *  double-, single- or paren-quoted, and may be absent). Graphite R2f
+ *  (owner, 2026-09-30): it is its own block, one row per definition, dim.
+ *  DECLARED DEVIATION: CommonMark lets a definition not interrupt a
+ *  paragraph; here a complete line that is one starts its own block,
+ *  because the decision is taken line by line and a model writes its
+ *  definitions after a blank anyway. */
+const REFDEF = /^ {0,3}\[([^\]\n]+)\]:[ \t]*(\S+)(?:[ \t]+("[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*$/;
 const ITEM = /^( *)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
 /** MD-1.4 — a SETEXT underline. Only meaningful under an OPEN paragraph,
  *  which is the only place `#line` consults it. Before this, `=` was not a
@@ -125,6 +133,7 @@ function classify(line: string): MdKind | null {
 	if (HEADING.test(line)) return "heading";
 	if (QUOTE.test(line)) return "quote";
 	if (TABLE.test(line)) return "table";
+	if (REFDEF.test(line)) return "refdef";
 	if (ITEM.test(line)) return "list";
 	if (CODE.test(line)) return "code-line";
 	return "para";
@@ -151,6 +160,8 @@ function joins(kind: MdKind, line: string): boolean {
 			return c === "table";
 		case "quote":
 			return c === "quote";
+		case "refdef":
+			return c === "refdef";
 		default:
 			return false;
 	}
@@ -387,17 +398,34 @@ function fenceLang(line: string): string {
 
 /** The whole message at once — the freeze property's oracle, and the
  *  path a non-streaming caller takes. */
-export function renderMarkdown(text: string, W: number): string[] {
+export function renderMarkdown(text: string, W: number, opts: { readonly hardBreaks?: boolean } = {}): string[] {
 	const s = new MdStream();
 	s.push(text);
 	s.end();
-	return s.blocks().flatMap((b) => renderBlock(b, W));
+	return s.blocks().flatMap((b) => renderBlock(b, W, opts.hardBreaks === true));
 }
 
 /** One block's screen rows. Pure in (block, W) — this is the whole
  *  freeze guarantee: same source, same width, same bytes, forever. */
-export function renderBlock(b: MdBlock, W: number): string[] {
-	return withGap(b, blockBody(b, Math.max(1, W), 0));
+export function renderBlock(b: MdBlock, W: number, hardBreaks = false): string[] {
+	return withGap(b, blockBody(b, Math.max(1, W), 0, "", hardBreaks));
+}
+
+/** Graphite §5 (R2b): a heading block's level, or null — the prose column
+ *  puts `§` in the mark column beside a `##`, which is outside the block. */
+export function headingLevel(b: MdBlock): number | null {
+	return b.kind === "heading" ? headingShape(b.lines).level : null;
+}
+
+/** Graphite §5 (R2b): the Graphite styles apply where the palette has its
+ *  colours; elsewhere (the unknown ground, no colour) the mono forms stay,
+ *  since a marker is the only carrier that survives there (DC-4). */
+const graphite = (): boolean => palette().blue !== "";
+
+/** `####` and deeper are upper case — outside code spans, whose text is
+ *  literal (an identifier upper-cased is a different identifier). */
+function upperOutsideCode(text: string): string {
+	return text.replace(/(`[^`]*`)|([^`]+)/g, (_m, code: string | undefined, rest: string | undefined) => code ?? (rest ?? "").toUpperCase());
 }
 
 /** The markdown rhythm: a block that carries `gap` opens with a blank row.
@@ -415,8 +443,13 @@ function withGap(b: MdBlock, rows: readonly string[]): string[] {
  *  over-wide prefix instead of throwing. */
 const QUOTE_DEPTH = 4;
 
-function blockBody(b: MdBlock, W: number, depth: number): string[] {
+/** `base` is the style the text of a paragraph or list starts in and
+ *  returns to (a quote's italic `ink2`); `hard` keeps every source line of
+ *  a paragraph a line of its own (the person's own words: a line break
+ *  they typed is theirs). */
+function blockBody(b: MdBlock, W: number, depth: number, base = "", hard = false): string[] {
 	const p = palette();
+	const styled = (t: string): string => (base === "" ? inlineSpans(t, "") : `${base}${inlineSpans(t, base)}${p.reset}`);
 	switch (b.kind) {
 		case "heading": {
 			// DC-4: the LEVEL is information and it used to be discarded —
@@ -428,6 +461,19 @@ function blockBody(b: MdBlock, W: number, depth: number): string[] {
 			// `**bold**` inside a heading is still a no-op, which is the mono
 			// discipline paying for itself.
 			const { level, text } = headingShape(b.lines);
+			if (graphite()) {
+				// Graphite §5 (R2b) — DECLARED REVERSAL of DC-4's "levels are
+				// NOT differentiated by colour": `#` bold gold over a rule that
+				// fades from gold-mark, `##` bold blue (its `§` in the mark
+				// column, outside the block), `###` bold ink, `####` and deeper
+				// bold dim in upper case. No level prints its own `#`s. The
+				// mono forms below stay where there is no colour to carry it.
+				const tone = level === 1 ? p.gold : level === 2 ? p.blue : level >= 4 ? p.dim : "";
+				const style = `${p.bold}${tone}`;
+				const words = level >= 4 ? upperOutsideCode(text) : text;
+				const rows = wrap(`${style}${inlineSpans(words, style)}${p.reset}`, W, "", "");
+				return level === 1 ? [...rows, headingRule(Math.max(1, Math.min(40, W)))] : rows;
+			}
 			const style = level === 1 ? `${p.bold}${p.underline}` : p.bold;
 			const marker = level >= 3 ? `${"#".repeat(level)} ` : "";
 			return wrap(`${style}${marker}${inlineSpans(text, style)}${p.reset}`, W, "", "");
@@ -450,6 +496,11 @@ function blockBody(b: MdBlock, W: number, depth: number): string[] {
 			// cannot pay for it, it yields — the same rule `mdWrap` applies to
 			// an over-wide prefix.
 			const inset = W >= 4 ? "  " : "";
+			// Graphite §5 (R2b) — DECLARED REVERSAL of R3's "the rule is a
+			// solid hairline everywhere" for the MODEL's rule only: three
+			// spaced dots in `rail`, so a divider in an answer can never be
+			// taken for kiso's own chrome (the composer's rules, a panel's).
+			if (graphite()) return [`${inset}${p.rail}${W - inset.length >= 7 ? "\u00b7  \u00b7  \u00b7" : "\u00b7"}${p.fgEnd}`];
 			return [`${inset}${p.dim}${"\u2500".repeat(Math.max(1, W - inset.length))}${p.reset}`];
 		}
 		case "fence-open":
@@ -485,19 +536,42 @@ function blockBody(b: MdBlock, W: number, depth: number): string[] {
 			// is verbatim" (E2 replaced the `│` gutter this comment used to
 			// name with them); saying it twice cost legibility and bought
 			// nothing.
-			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${r}`);
+			// Graphite §5 (R2c, owner 2026-09-29: "no ground — keep it blue,
+			// as the design has it") — DECLARED REVERSAL of DC-3's "a fenced
+			// body carries no colour token": DC-3 removed a 1.54:1 grey, and
+			// `blue` reads at the text floor on both grounds. The rails stay
+			// (E2: a copied block is still fenced); there is no ground.
+			const [on, off] = p.blue !== "" ? [p.blue, p.fgEnd] : ["", ""];
+			return foldLineWidth(src.slice(indent.length), W - visibleWidth(gutter), indent).map((r) => `${gutter}${on}${r}${off}`);
 		}
 		case "quote":
 			return quoteRows(b, W, depth);
 		case "list":
-			return listRows(b, W);
+			return listRows(b, W, base);
 		case "table":
 			return tableRows(b, W);
+		case "refdef":
+			return b.lines.flatMap((l) => refdefRows(l, W));
 		default:
 			// a paragraph's soft line breaks are spaces — the block reflows at
 			// the terminal's width, which is the whole point of rendering it.
-			return wrap(inlineSpans(b.lines.join(" "), ""), W, "", "");
+			// The person's own words keep the breaks they typed (`hard`).
+			if (hard) return b.lines.flatMap((l) => wrap(styled(l), W, "", ""));
+			return wrap(styled(b.lines.join(" ")), W, "", "");
 	}
+}
+
+/** Graphite R2f — one reference definition, as a row of its own:
+ *  `[label] url · title`, dim; the url and the title are data, never
+ *  styled. A streamed definition renders the moment its line completes,
+ *  and a reference to it earlier in the text has already frozen — which
+ *  is why a reference link shows its text and its label, not the url. */
+function refdefRows(line: string, W: number): string[] {
+	const p = palette();
+	const m = REFDEF.exec(line);
+	if (m === null) return wrap(line, W, "", "");
+	const title = m[3] === undefined ? "" : ` \u00b7 ${m[3].slice(1, -1)}`;
+	return wrap(`${p.dim}[${m[1]}] ${m[2]}${title}${p.reset}`, W, "", "  ");
 }
 
 /**
@@ -516,15 +590,24 @@ function blockBody(b: MdBlock, W: number, depth: number): string[] {
  *   out, so a nested span can never strand it. Italic is the one span
  *   that closes surgically (SGR 23), because it can.
  *
+ * Graphite R2f (owner, 2026-09-30) adds `***bold italic***`, code spans
+ * of any backtick run, a link's title (read and dropped), `<autolinks>`,
+ * `![images]` (named: `image` dim, the alt as a link, the url dim),
+ * `[reference][links]` (the text as a link, the label dim) and `<br>` (a
+ * line break).
+ *
  * Documented deviations from CommonMark: `_` never emphasizes (it is a
  * character in identifiers far more often than a marker in prose);
- * emphasis does not nest across a code span; `~~` is not a construct at
- * all — the markers are content (the strict tokenizer both reference
- * implementations converged on, taken to its honest conclusion, since
- * SGR 9's terminal support is too fragmented to promise).
+ * emphasis does not nest across a code span; `~~` makes its text dim
+ * (R2b), never SGR 9, whose terminal support is too fragmented to
+ * promise — Apple Terminal draws none; a shortcut reference `[label]`
+ * stays literal.
  */
 export function inlineSpans(text: string, base: string): string {
 	const p = palette();
+	/** a link's words: `blue` and underlined on a known ground (the base
+	 *  style reopened after them), bold off one */
+	const linkWords = (t: string): string => (p.blue !== "" ? `${p.blue}${p.underline}${t}${p.underlineEnd}${p.fgEnd}${base}` : `${p.bold}${t}${p.reset}${base}`);
 	let out = "";
 	let i = 0;
 	while (i < text.length) {
@@ -535,20 +618,78 @@ export function inlineSpans(text: string, base: string): string {
 			continue;
 		}
 		if (ch === "`") {
-			const end = text.indexOf("`", i + 1);
-			if (end > i) {
-				// a code span's content is LITERAL — no markers inside it mean
-				// anything, which is what makes `x | y` survive a table split
-				// DC-3: inline code is a SURFACE (`wash`), closed with washEnd
-				// rather than a reset so the span composes inside a heading's
-				// or a quote's own style.
-				out += `${p.wash}${text.slice(i + 1, end)}${p.washEnd}${base}`;
-				i = end + 1;
+			// Graphite R2f: a code span opens with a RUN of backticks and
+			// closes at the next run of the SAME length (CommonMark), so
+			// ``` `` `x` `` ``` quotes its backticks; one space inside each end
+			// is padding and comes off. A run with no closer is literal.
+			let n = 1;
+			while (text[i + n] === "`") n += 1;
+			const end = codeCloser(text, i + n, n);
+			if (end < 0) {
+				out += text.slice(i, i + n);
+				i += n;
+				continue;
+			}
+			let body = text.slice(i + n, end);
+			if (body.length >= 2 && body.startsWith(" ") && body.endsWith(" ") && body.trim() !== "") body = body.slice(1, -1);
+			// a code span's content is LITERAL — no markers inside it mean
+			// anything, which is what makes `x | y` survive a table split
+			// DC-3: inline code is a SURFACE (`wash`), closed with washEnd
+			// rather than a reset so the span composes inside a heading's
+			// or a quote's own style.
+			// Graphite §5 (R2b): `blue`, no ground — like a code block (owner,
+			// 2026-09-29, choosing between the prototype's light blue ground
+			// and none, side by side in Apple Terminal)
+			out += p.blue !== "" ? `${p.blue}${body}${p.fgEnd}${base}` : `${p.wash}${body}${p.washEnd}${base}`;
+			i = end + n;
+			continue;
+		}
+		// Graphite R2f (owner, 2026-09-30): `<br>` is a line break wherever it
+		// stands — GitHub's reading; in a table cell the cell grows a row. The
+		// wrapper breaks at the newline (mdWrap's hard token).
+		if (ch === "<") {
+			const br = BR.exec(text.slice(i, i + 8));
+			if (br !== null) {
+				out += "\n";
+				i += br[0].length;
+				continue;
+			}
+			// an autolink — `<https://…>`, `<mailto:…>`, `<a@b.c>` — is the
+			// address itself, as a link, without its brackets
+			const auto = AUTOLINK.exec(text.slice(i));
+			if (auto !== null) {
+				out += linkWords(auto[1]!);
+				i += auto[0].length;
+				continue;
+			}
+		}
+		// Graphite R2f (owner, 2026-09-30): a terminal cannot draw an image, so
+		// it is named — `image` dim, the alt text as a link, the url dim
+		if (ch === "!" && text[i + 1] === "[") {
+			const img = LINK.exec(text.slice(i + 1));
+			const ref = img === null ? REFLINK.exec(text.slice(i + 1)) : null;
+			if (img !== null || ref !== null) {
+				const alt = (img ?? ref)![1]!;
+				const where = img !== null ? ` (${img[2]})` : ref![2] !== "" ? ` [${ref![2]}]` : "";
+				out += `${p.dim}image${p.dim === "" ? "" : `${p.reset}${base}`}${alt === "" ? "" : ` ${linkWords(alt)}`}${where === "" ? "" : `${p.dim}${where}${p.dim === "" ? "" : `${p.reset}${base}`}`}`;
+				i += 1 + (img ?? ref)![0].length;
+				continue;
+			}
+		}
+		if (text.startsWith("***", i)) {
+			// Graphite R2f: `***x***` is bold AND italic
+			const end = closerAt(text, i + 3, "***");
+			if (end >= 0) {
+				out += `${p.bold}${p.italic}${inlineSpans(text.slice(i + 3, end), `${base}${p.bold}${p.italic}`)}${p.italicEnd}${p.reset}${base}`;
+				i = end + 3;
 				continue;
 			}
 		}
 		if (text.startsWith("**", i)) {
-			const end = closerAt(text, i + 2, "**");
+			let end = closerAt(text, i + 2, "**");
+			// Graphite R2f: the bold closes at the END of an asterisk run, so
+			// `**a *b***` closes the italic inside it first (CommonMark's reading)
+			while (end >= 0 && text[end + 2] === "*") end += 1;
 			if (end >= 0) {
 				out += `${p.bold}${inlineSpans(text.slice(i + 2, end), `${base}${p.bold}`)}${p.reset}${base}`;
 				i = end + 2;
@@ -563,14 +704,41 @@ export function inlineSpans(text: string, base: string): string {
 				continue;
 			}
 		}
+		// Graphite §5 (R2b) — DECLARED REVERSAL of "`~~` is not a construct
+		// at all": struck text is `dim`, the prototype's form. Not SGR 9 —
+		// Apple Terminal draws none (checked, 2026-09-29) — and only where
+		// dim exists: without it the markers are the only carrier.
+		if (text.startsWith("~~", i) && p.dim !== "") {
+			const end = closerAt(text, i + 2, "~~");
+			if (end >= 0) {
+				out += `${p.dim}${inlineSpans(text.slice(i + 2, end), `${base}${p.dim}`)}${p.reset}${base}`;
+				i = end + 2;
+				continue;
+			}
+		}
 		if (ch === "[") {
 			const link = LINK.exec(text.slice(i));
 			if (link !== null) {
 				// the text bright, the url dim in parentheses. NO OSC 8 this
 				// round: a hyperlink escape is bytes the human cannot see, and
 				// the byte discipline gets to decide that separately.
-				out += `${p.bold}${link[1]}${p.reset}${p.dim} (${link[2]})${p.reset}${base}`;
+				// Graphite §5 (R2b): the text `blue` and underlined, the url dim
+				// after it. Still no OSC 8: Apple Terminal draws an OSC 8 link as
+				// plain text (checked in the owner's terminal, 2026-09-29).
+				out += p.blue !== ""
+					? `${p.blue}${p.underline}${link[1]}${p.underlineEnd}${p.fgEnd}${p.dim} (${link[2]})${p.reset}${base}`
+					: `${p.bold}${link[1]}${p.reset}${p.dim} (${link[2]})${p.reset}${base}`;
 				i += link[0].length;
+				continue;
+			}
+			// Graphite R2f (owner, 2026-09-30): `[text][label]` — the url is
+			// defined elsewhere, often below, and a row once drawn never
+			// changes; so the text reads as a link and the label says where its
+			// definition is (drawn dim, as its own row, when it arrives)
+			const ref = REFLINK.exec(text.slice(i));
+			if (ref !== null) {
+				out += `${linkWords(ref[1]!)}${ref[2] === "" ? "" : `${p.dim} [${ref[2]}]${p.dim === "" ? "" : `${p.reset}${base}`}`}`;
+				i += ref[0].length;
 				continue;
 			}
 		}
@@ -580,8 +748,29 @@ export function inlineSpans(text: string, base: string): string {
 	return out;
 }
 
-const ESCAPABLE = /[\\`*_~[\]()#|+.!>-]/;
-const LINK = /^\[([^\]\n]*)\]\(([^)\s\n]*)\)/;
+const ESCAPABLE = /[\\`*_~[\]()#|+.!<>-]/;
+/** `[text](url)`, and (R2f) a title after the url — `"…"`, `'…'` or `(…)`
+ *  — which a terminal has no hover to show, so it is read and dropped. */
+const LINK = /^\[([^\]\n]*)\]\(([^)\s\n]*)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*\)/;
+/** R2f: `[text][label]` and `[text][]`. The shortcut `[label]` alone is
+ *  left literal — a bracketed word in prose is far more common. */
+const REFLINK = /^\[([^\]\n]+)\]\[([^\]\n]*)\]/;
+/** R2f: `<scheme:…>` and `<a@b.c>`. */
+const AUTOLINK = /^<((?:https?|ftp):\/\/[^\s<>]+|mailto:[^\s<>]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})>/;
+/** R2f: `<br>`, `<br/>`, `<br />`, any case. */
+const BR = /^<br[ \t]*\/?>/i;
+
+/** The start of the next run of exactly `n` backticks at or after
+ *  `from`, or −1 — a longer or shorter run is content. */
+function codeCloser(text: string, from: number, n: number): number {
+	for (let i = text.indexOf("`", from); i >= 0; ) {
+		let m = 1;
+		while (text[i + m] === "`") m += 1;
+		if (m === n) return i;
+		i = text.indexOf("`", i + m);
+	}
+	return -1;
+}
 
 /** The closing delimiter for an emphasis opener at `from`, or −1.
  *  Strict on both edges: an opener followed by a space, or a closer
@@ -671,8 +860,9 @@ export function tableShape(lines: readonly string[]): MdTable | null {
 /** The list: `•` normalization, numbers kept, 2 spaces per nesting
  *  level, and the HANGING INDENT — a wrapped item's continuation lines
  *  align to the text column, never back to the left margin. */
-function listRows(b: MdBlock, W: number): string[] {
+function listRows(b: MdBlock, W: number, base = ""): string[] {
 	const p = palette();
+	const g = graphite();
 	const out: string[] = [];
 	let lead = "";
 	let text = "";
@@ -681,7 +871,8 @@ function listRows(b: MdBlock, W: number): string[] {
 		// the HANGING INDENT: the continuation prefix is the marker's own
 		// visible width, so a wrapped item's later rows align to the text
 		// column instead of returning to the margin.
-		out.push(...wrap(inlineSpans(text, ""), W, lead, " ".repeat(displayWidth(lead))));
+		const body = base === "" ? inlineSpans(text, "") : `${base}${inlineSpans(text, base)}${p.reset}`;
+		out.push(...wrap(body, W, lead, " ".repeat(visibleWidth(lead))));
 	};
 	for (const line of b.lines) {
 		const m = ITEM.exec(line);
@@ -696,8 +887,26 @@ function listRows(b: MdBlock, W: number): string[] {
 		// screen — but the marker is `- ` rather than `•`, so a copied list
 		// is still a list. A numbered list KEEPS its numbers (they are the
 		// author's meaning, not decoration).
+		const indent = "  ".repeat(depth + 1);
+		if (g) {
+			// Graphite §5 (R2b) — DECLARED REVERSAL of E1's `- ` (kept so a
+			// copied list would still be a list): `–` at the top level and
+			// `·` below it, in `dim`, as the prototype draws them; an ordered
+			// list keeps its numbers, dim; a task is `✓` (ok) or `○` (dim)
+			// in place of the bullet.
+			const task = /^\[([ xX])\] +(.*)$/.exec(m[3]!);
+			if (task !== null && !/^\d/.test(m[2]!)) {
+				const done = task[1] !== " ";
+				lead = `${indent}${done ? p.ok : p.dim}${done ? "\u2713" : "\u25cb"}${done ? p.fgEnd : p.reset} `;
+				text = task[2]!;
+				continue;
+			}
+			lead = `${indent}${p.dim}${/^\d/.test(m[2]!) ? m[2] : depth === 0 ? "\u2013" : "\u00b7"}${p.reset} `;
+			text = m[3]!;
+			continue;
+		}
 		const marker = /^\d/.test(m[2]!) ? `${m[2]} ` : "- ";
-		lead = `${"  ".repeat(depth + 1)}${marker}`;
+		lead = `${indent}${marker}`;
 		text = m[3]!;
 	}
 	flush();
@@ -728,20 +937,48 @@ function listRows(b: MdBlock, W: number): string[] {
  */
 function quoteRows(b: MdBlock, W: number, depth: number): string[] {
 	const p = palette();
-	const gutter = `${p.dim}\u2502${p.reset} `;
-	const bar = `${p.dim}\u2502${p.reset}`;
-	const text = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l).join("\n");
+	const lines = b.lines.map((l) => QUOTE.exec(l)?.[1] ?? l);
+	// Graphite §5 (R2b): a GitHub alert — `> [!NOTE]` on the quote's first
+	// line — is a quote with a coloured bar and its kind as a label
+	const alert = ALERT.exec(lines[0] ?? "");
+	const kind = alert === null ? null : (alert[1]!.toUpperCase() as keyof typeof ALERTS);
+	const text = (kind === null ? lines : lines.slice(1)).join("\n");
+	// Graphite §5 (R2b): the bar is one cell of BACKGROUND down every row
+	// (§1.5 — a glyph bar seams between rows in Apple Terminal), then a
+	// space; where there is no background to paint, the `│` gutter stays
+	const tone = kind === null ? p.quoteBar : ALERTS[kind].bar(p);
+	const painted = tone !== "";
+	const gutter = painted ? `${tone} ${p.washEnd} ` : `${p.dim}\u2502${p.reset} `;
+	const bar = painted ? `${tone} ${p.washEnd}` : `${p.dim}\u2502${p.reset}`;
 	const room = Math.max(1, W - visibleWidth(gutter));
-	if (depth >= QUOTE_DEPTH) return wrap(inlineSpans(text.split("\n").join(" "), ""), room, "", "").map((r) => `${gutter}${r}`);
+	// a plain quote's words are italic `ink2` (the prototype's); an alert's
+	// are the answer's own
+	const base = kind === null && graphite() ? `${p.italic}${p.ink2}` : "";
+	const label = kind === null ? [] : [`${p.bold}${ALERTS[kind].fg(p)}${ALERTS[kind].word}${p.reset}`];
+	if (depth >= QUOTE_DEPTH) return [...label, ...wrap(inlineSpans(text.split("\n").join(" "), ""), room, "", "")].map((r) => `${gutter}${r}`);
 	const inner = new MdStream();
 	inner.push(text);
 	inner.end();
-	const rows = inner.blocks().flatMap((blk) => withGap(blk, blockBody(blk, room, depth + 1)));
+	const rows = [...label, ...inner.blocks().flatMap((blk) => withGap(blk, blockBody(blk, room, depth + 1, base)))];
 	// a blank row inside a quote takes the bar and no trailing space: the
 	// gutter says "still the quote", the space would be whitespace a human
 	// copies for nothing.
 	return rows.map((r) => (r === "" ? bar : `${gutter}${r}`));
 }
+
+/** GitHub's alert marker: the quote's first line, alone. */
+const ALERT = /^\[!(note|tip|important|warning|caution)\]\s*$/i;
+/** Each alert's word, its label colour and its bar (Graphite §5, R2b):
+ *  the three that inform in `blue`, WARNING in gold, CAUTION in the
+ *  failure colour. Off a known ground the label is bold and the bar the
+ *  plain gutter. */
+const ALERTS = {
+	NOTE: { word: "Note", fg: (p: ReturnType<typeof palette>) => p.blue, bar: (p: ReturnType<typeof palette>) => p.noteBar },
+	TIP: { word: "Tip", fg: (p: ReturnType<typeof palette>) => p.blue, bar: (p: ReturnType<typeof palette>) => p.noteBar },
+	IMPORTANT: { word: "Important", fg: (p: ReturnType<typeof palette>) => p.blue, bar: (p: ReturnType<typeof palette>) => p.noteBar },
+	WARNING: { word: "Warning", fg: (p: ReturnType<typeof palette>) => p.goldMark, bar: (p: ReturnType<typeof palette>) => p.warnBar },
+	CAUTION: { word: "Caution", fg: (p: ReturnType<typeof palette>) => p.fail, bar: (p: ReturnType<typeof palette>) => p.cautionBar },
+} as const;
 
 /**
  * The table. Columns are measured at their NATURAL widths, on the
@@ -773,9 +1010,10 @@ function tableRows(b: MdBlock, W: number): string[] {
 	// The rails are hairlines in the R2 hairline colour, and the styling
 	// goes on AFTER the measure, exactly as it does for a cell: a colour
 	// can never move a column.
-	const rule = (l: string, m: string, r: string): string =>
-		`${p.dim}${l}${cols.map((w) => "\u2500".repeat(w + 2)).join(m)}${r}${p.reset}`;
-	const V = `${p.dim}\u2502${p.reset}`;
+	// Graphite §5 (R2b): the rails in `edge`, lighter than the words
+	const [on, off] = p.edge !== "" ? [p.edge, p.fgEnd] : [p.dim, p.reset];
+	const rule = (l: string, m: string, r: string): string => `${on}${l}${cols.map((w) => "\u2500".repeat(w + 2)).join(m)}${r}${off}`;
+	const V = `${on}\u2502${off}`;
 	const row = (cells: readonly string[], bold: boolean): string[] => {
 		const boxes = cells.map((c, i) => cellBox(c, cols[i]!, t.align[i]!, bold));
 		const rows: string[] = [];
@@ -800,7 +1038,8 @@ function tableRows(b: MdBlock, W: number): string[] {
 
 /** A cell's column count: what a human sees, styling removed. */
 function cellWidth(cell: string): number {
-	return visibleWidth(inlineSpans(cell, ""));
+	// R2f: a `<br>` makes a cell several rows — its width is the widest
+	return Math.max(0, ...inlineSpans(cell, "").split("\n").map(visibleWidth));
 }
 
 /** MD-1.1 — the SHRINK FLOOR: eight columns, four CJK characters. A
@@ -925,6 +1164,8 @@ interface Tok {
 	readonly text: string;
 	readonly w: number;
 	readonly space: boolean;
+	/** R2f: a forced break (a `<br>`) — the row ends here */
+	readonly hard?: true;
 }
 
 /** May a row break between `prev` and `ch`? Only where a script allows
@@ -963,6 +1204,12 @@ function tokens(text: string): Tok[] {
 		const cp = text.codePointAt(i)!;
 		const ch = String.fromCodePoint(cp);
 		i += ch.length;
+		if (ch === "\n") {
+			flush();
+			out.push({ text: "", w: 0, space: false, hard: true });
+			prev = "";
+			continue;
+		}
 		if (ch === " " || ch === "\t") {
 			flush();
 			out.push({ text: " ", w: 1, space: true });
@@ -1071,6 +1318,10 @@ export function mdWrap(text: string, W: number, first: string, hang: string): st
 		pendW = 0;
 	};
 	for (const t of tokens(text)) {
+		if (t.hard === true) {
+			close();
+			continue;
+		}
 		if (t.space) {
 			// a space at a break vanishes; inside a row it is held until the
 			// next word earns it

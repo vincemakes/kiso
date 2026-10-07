@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { compactingStatus, retrySegment, runningStatus } from "@vincemakes/kiso-tui";
+import { compactingStatus, retrySegment, workingRow } from "@vincemakes/kiso-tui";
 import { displayWidth } from "@vincemakes/kiso-tui-cells/width";
 import { MAX_RETRIES_CLAMP, maxRetriesFromEnv } from "../src/retries.js";
 
@@ -49,21 +49,24 @@ describe("the retry on the running row", () => {
 		expect(retrySegment({ attempt: 3, maxRetries: 10, code: "api_5xx", remainingMs: -500 })).toBe("retrying 3/10 · api_5xx");
 	});
 
-	it("rides the row right after the head, and a row with no retry is the row it always was", () => {
+	// RE-DERIVED (the legacy rows retired, owner 2026-10-06): the running
+	// row is the live row (§8.7), where a pending retry REPLACES `working`
+	// while it lasts — it is the one thing that explains why nothing is
+	// arriving — and its key is `esc gives up`
+	it("replaces the row while it lasts, and a row with no retry is the row it always was", () => {
 		const since = Date.now() - 5_000;
-		const plain = runningStatus("✦", since, 950, 0.2);
-		expect(runningStatus("✦", since, 950, 0.2, null, undefined, null)).toBe(plain);
-		const withRetry = runningStatus("✦", since, 950, 0.2, null, undefined, { attempt: 2, maxRetries: 10, code: "network", remainingMs: 1_500 });
-		expect(withRetry).toContain("working 5s ↓ 950 tokens · retrying 2/10 · network · 2s · esc stop");
+		expect(workingRow("✦", since, 950, null, 100, null)).toBe(workingRow("✦", since, 950, null, 100));
+		const withRetry = workingRow("✦", since, 950, null, 100, { attempt: 2, maxRetries: 10, code: "network", remainingMs: 1_500 });
+		expect(withRetry).toMatch(/^↻ retrying 2\/10 · network · next try in 2s +esc gives up$/);
+		expect(withRetry).not.toContain("working");
 	});
 
-	it("is a FACT: at a narrow width the hints give way and the retry stays", () => {
-		const since = Date.now() - 5_000;
+	it("is a FACT: at a narrow width the key gives way and the retry stays whole", () => {
 		const r = { attempt: 7, maxRetries: 10, code: "network", remainingMs: 30_000 };
-		const full = runningStatus("✦", since, 20_300, 0.4, null, undefined, r);
-		const narrow = runningStatus("✦", since, 20_300, 0.4, null, displayWidth(full) - 20, r);
-		expect(narrow).toContain("retrying 7/10 · network · 30s");
-		expect(narrow).not.toContain("alt+⏎ redirect"); // a hint went first
+		const fact = "↻ retrying 7/10 · network · next try in 30s";
+		const narrow = workingRow("✦", Date.now(), 20_300, null, displayWidth(fact) + 4, r);
+		expect(narrow).toBe(fact);
+		expect(narrow).not.toContain("esc gives up"); // the key went first
 	});
 });
 

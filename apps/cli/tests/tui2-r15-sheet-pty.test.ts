@@ -57,18 +57,23 @@ describe("TUI2-R1.5 ⑦(a) — the sheet leaves no litter (VD-8)", () => {
 		const { env } = isolatedEnv({ KISO_FAUX_SCRIPT: fauxScript(turns()), KISO_MODE: "bypass" });
 		const raw = ptyRun(["--mode", "bypass", "r15-sheet-litter"], env as NodeJS.ProcessEnv, {
 			feeds: [["▌ ", "go\r"]],
-			// let the turn settle and fill the screen, THEN ? … then any key
+			// let the turn settle and fill the screen, THEN ? … then esc.
+			// Re-derived for the sheets round (owner, 2026-10-06): any key
+			// still closes the sheet, but a typed key is typed now — `x`
+			// then `exit` would send `xexit` — so the close is esc, the key
+			// every sheet eats.
 			delays: [
 				[4, "?"],
-				[6, "x"],
+				[6, "\x1b"],
 				[7, "exit\r"],
 			],
 			timeout: 30,
 			cwd: ws,
 		});
-		// the sheet really opened (its own row) and really closed
-		expect(raw).toContain("expand cells");
-		const openAt = raw.lastIndexOf("expand cells");
+		// the sheet really opened (its own row) and really closed; the row
+		// is one only the sheet draws (the bar can say `expand all` too)
+		expect(raw).toContain("take back a steer");
+		const openAt = raw.lastIndexOf("take back a steer");
 		expect(openAt).toBeGreaterThan(0);
 
 		// the frame BEFORE the open: walk back to the previous boundary
@@ -76,7 +81,7 @@ describe("TUI2-R1.5 ⑦(a) — the sheet leaves no litter (VD-8)", () => {
 		const preEnd = raw.lastIndexOf(CLOSE, openAt) + CLOSE.length;
 		const before = screenAtIndex(raw, preEnd);
 		// the frame AFTER the close: the sheet's rows are gone again
-		const closedAt = raw.indexOf("expand cells", openAt) < 0 ? openAt : openAt;
+		const closedAt = raw.indexOf("take back a steer", openAt) < 0 ? openAt : openAt;
 		const postEnd = frameEnd(raw, frameEnd(raw, closedAt) + 1);
 		const after = screenAtIndex(raw, postEnd);
 

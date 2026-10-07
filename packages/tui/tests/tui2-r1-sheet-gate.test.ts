@@ -52,13 +52,19 @@ describe("TUI2-R1 T-V4 — the ? gate", () => {
 		expect(editor.sheetOpen()).toBe(true);
 	});
 
-	it("ANY key closes it — and the key that closed it never reaches the buffer", () => {
-		for (const key of ["x", "\r", "\x1b", " ", "\x0f", "\x1b[A"]) {
+	// Re-derived for the sheets round (owner, 2026-10-06): DECLARED REVERSAL
+	// of "the key that closed it never reaches the buffer". The keys sheet
+	// closes like `/status` now: what is typed is typed (the chunk is
+	// parsed whole, so an arrow is an arrow, never `[A`); esc, and the `?`
+	// that opened it, are eaten. The close is still ANY key.
+	it("ANY key closes it — what is typed is typed; esc and ? are eaten", () => {
+		for (const [key, line] of [["x", "x"], [" ", " "], ["\x1b", ""], ["?", ""], ["\x0f", ""], ["\x1b[A", ""]] as const) {
 			editor.feed(enc("?"));
 			expect(editor.sheetOpen(), `open before ${JSON.stringify(key)}`).toBe(true);
 			editor.feed(enc(key));
 			expect(editor.sheetOpen(), `closed by ${JSON.stringify(key)}`).toBe(false);
-			expect(editor.line(), `buffer clean after ${JSON.stringify(key)}`).toBe("");
+			expect(editor.line(), `the buffer after ${JSON.stringify(key)}`).toBe(line);
+			editor.feed(enc("\x15"));
 		}
 	});
 

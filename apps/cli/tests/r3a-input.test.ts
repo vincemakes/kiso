@@ -96,7 +96,7 @@ describe("R3a — cross-session history", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-r3a-h-"));
 		// process 1: submit a distinctive line, exit
 		strip(ptyRun(["chat", "hist-one"], env, [
-			["/ commands · \u2191 history", "remember this exact line\r"],
+			["/mode to switch", "remember this exact line\r"],
 			["What would you like me to inspect", "exit\r"],
 		], workdir));
 		const file = readFileSync(join(dirs.home, "history"), "utf8");
@@ -115,11 +115,13 @@ describe("R3a — cross-session history", () => {
 		//
 		// The resume list left the opening this round, so the crutch went
 		// with it. Two ↑ walk past `exit` to the line the recall is actually
-		// being tested on, and the needle is `session ` rather than `› `
-		// because the prompt is on screen from the dock's first frame,
-		// before the history file has been read and bound.
+		// being tested on, and the needle is the session's id rather than
+		// `› ` because the prompt is on screen from the dock's first frame,
+		// before the history file has been read and bound. RE-DERIVED (the
+		// last sweep, owner 2026-10-06): the id is the opening's SESSION row
+		// now — the `session <id>` line above it retired on a dock.
 		const out2 = strip(ptyRun(["chat", "hist-two"], env, [
-			["session ", "\x1b[A\x1b[A"],
+			["hist-two", "\x1b[A\x1b[A"],
 			["remember this exact line", "\rexit\r"],
 		], workdir));
 		expect(out2).toContain("remember this exact line");
@@ -134,10 +136,13 @@ describe("R3a — Shift+Tab cycles the tier", () => {
 		// BOOT frame's prompt would race it; the settled first turn is the
 		// REPL-ready anchor
 		const out = strip(ptyRun(["chat", "st-one"], env, [
-			["/ commands · \u2191 history", "hi\r"],
+			["/mode to switch", "hi\r"],
 			["What would you like me to inspect", "\x1b[Z"],
-			["mode → accept edits", "exit\r"],
+			["MODE\x1b[0m", "exit\r"],
 		], workdir));
-		expect(out).toContain("mode → accept edits (shift+tab cycles)");
+		// Graphite R3e (owner, 2026-09-29): the switch is `MODE` over
+		// `from → to`, nothing else — the tiers by their names since the
+		// modes round (#203)
+		expect(out).toMatch(/MODE\s+default → accept edits/);
 	});
 });
