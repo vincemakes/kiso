@@ -104,7 +104,7 @@ kiso auth                # 查看已存的登录信息（已打码）
 | `plan` | 只能读，其他一律拒绝 |
 | `full-access` | 全部放行，不再询问；你的拒绝规则和底线照样生效 |
 
-模式只是 `deny > allow > ask` 这条链里的一票：保存过的"不再询问"规则在任何模式下都照样放行，切换模式不会撤销它。这些规则存在 `~/.kiso/extensions/dont-ask-again.mjs`，删掉一条就会重新询问。
+模式只是 `deny > allow > ask` 这条链里的一票：保存过的"不再询问"规则在任何模式下都照样放行，切换模式不会撤销它。但它不会替你放过删除类命令、往 `.git/` 或 `.kiso/` 里写、破坏性的 `git push`（强推、镜像、删除、prune）和改动包仓库的命令（发布、撤销发布、标记弃用、改 dist-tag）：这些每次都会问你，full access 模式除外。这些规则存在 `~/.kiso/extensions/dont-ask-again.mjs`，删掉一条就会重新询问。
 
 **不问人（don't ask）** 是模式之外的第二个设置：kiso 能不能停下来问你？打开后（`--dont-ask`、`/dont-ask`、`KISO_DONT_ASK=1` 或配置 `"dontAsk": true`）它就从不停下：本来要问的直接拒绝并告诉模型原因，模型也拿不到提问工具，中途被打断、结果不确定的调用原样留着，不替你猜。它不给任何额外权限：`full-access` 加不问人是放手让它干，`default` 加不问人是给 CI 的稳妥组合。旧名字照样能用：`bypass` 就是 `full-access`，`dontAsk` 就是 `default` 加上这个开关。
 

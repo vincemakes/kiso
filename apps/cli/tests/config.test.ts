@@ -85,9 +85,11 @@ describe("schema v1: parse + loud failure", () => {
 		expect(parseConfig(JSON.stringify({ dontAsk: false }), "test").dontAsk).toBe(false);
 		expect(() => parseConfig(JSON.stringify({ dontAsk: "yes" }), "test")).toThrow(/dontAsk — expected true or false/);
 		expect(() => parseConfig(JSON.stringify({ mode: "yolo" }), "test")).toThrow(/mode — expected one of .*full-access.*bypass, dontAsk/);
-		// either layer may set the switch — it only ever refuses more
-		expect(mergeConfigs({ dontAsk: true }, { dontAsk: false }).dontAsk).toBe(false);
+		// 0.46.2 supersedes "either layer may set the switch": a project may
+		// turn it on, never off (project-config-tighten-only.test.ts)
+		expect(() => mergeConfigs({ dontAsk: true }, { dontAsk: false })).toThrow(/don't-ask on, never off/);
 		expect(mergeConfigs({ dontAsk: true }, {}).dontAsk).toBe(true);
+		expect(mergeConfigs({}, { dontAsk: true }).dontAsk).toBe(true);
 	});
 
 	it("broken JSON fails LOUDLY with the source", () => {
@@ -110,9 +112,13 @@ describe("schema v1: parse + loud failure", () => {
 });
 
 describe("the five-layer precedence chain (flags > env > project > user > default)", () => {
-	const profiles = { deepseek: { kind: "openai-compat" as const, model: "deepseek-v4-flash", apiKeyEnv: "DEEPSEEK_API_KEY" } };
+	const profiles = {
+		deepseek: { kind: "openai-compat" as const, model: "deepseek-v4-flash", apiKeyEnv: "DEEPSEEK_API_KEY" },
+		local: { kind: "anthropic" as const, model: "claude-sonnet-5", apiKeyEnv: "ANTHROPIC_API_KEY" },
+	};
 	const user = { models: profiles, model: "deepseek" };
-	const project = { models: { ...profiles, local: { kind: "anthropic" as const, model: "claude-sonnet-5", apiKeyEnv: "ANTHROPIC_API_KEY" } }, model: "local" };
+	// 0.46.2: a project picks one of the user's profiles, never defines one
+	const project = { model: "local" };
 
 	it("default: no flag, no env, no config → faux (null)", () => {
 		expect(resolveModel(undefined, {})).toBeNull();
@@ -129,9 +135,9 @@ describe("the five-layer precedence chain (flags > env > project > user > defaul
 		// The profiles key off a NON-top-level env var (DEEPSEEK_API_KEY —
 		// the env layer only speaks for OPENAI_*/ANTHROPIC_*), so this test
 		// isolates the config-vs-config layer.
-		const proj = { models: { ...profiles, local: { kind: "openai-compat" as const, model: "local-model", apiKeyEnv: "DEEPSEEK_API_KEY" } }, model: "local" };
+		const u = { models: { ...profiles, local: { kind: "openai-compat" as const, model: "local-model", apiKeyEnv: "DEEPSEEK_API_KEY" } }, model: "deepseek" };
 		process.env.DEEPSEEK_API_KEY = "sk-y";
-		const r = resolveModel(undefined, mergeConfigs(user, proj));
+		const r = resolveModel(undefined, mergeConfigs(u, project));
 		expect(r?.name).toBe("local");
 		expect(r?.profile.model).toBe("local-model");
 	});
@@ -214,13 +220,16 @@ describe("the other config keys ride the same precedence", () => {
 		expect(loadUserConfig()).toBeNull(); // isolated test home has no config
 	});
 
-	it("mergeConfigs: project wins per key, models merge by name", () => {
+	// 0.46.2 supersedes "models merge by name" and a project mode looser
+	// than the user's: a project picks a profile and may only tighten
+	it("mergeConfigs: project wins per key; the profiles are the user's", () => {
 		const m = mergeConfigs(
-			{ models: { a: { kind: "openai-compat" as const, model: "a1", apiKeyEnv: "K_A" } }, mode: "manual" },
-			{ models: { b: { kind: "anthropic" as const, model: "b1", apiKeyEnv: "K_B" } }, mode: "bypass" },
+			{ models: { a: { kind: "openai-compat" as const, model: "a1", apiKeyEnv: "K_A" } }, model: "a", mode: "accept-edits" },
+			{ model: "a", mode: "plan" },
 		);
-		expect(m.mode).toBe("bypass");
-		expect(Object.keys(m.models ?? {}).sort()).toEqual(["a", "b"]);
+		expect(m.mode).toBe("plan");
+		expect(m.model).toBe("a");
+		expect(Object.keys(m.models ?? {})).toEqual(["a"]);
 	});
 });
 

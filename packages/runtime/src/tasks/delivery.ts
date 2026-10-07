@@ -59,6 +59,10 @@ export interface TaskDeliveryOptions {
 	readonly onWake?: (input: { readonly content: string; readonly via: UserInputVia }) => void;
 	/** Transitions within this window merge into one notice. Default 1 s. */
 	readonly windowMs?: number;
+	/** ADR-0058 Amendment 8: a loss the model has not been told of, at
+	 *  startup or as it is heard — the person can be told at once, while
+	 *  the model's notice keeps its own turn. A claimed loss never comes. */
+	readonly onLost?: (taskIds: readonly string[]) => void;
 	/** How much of a failed task's output rides its notice. Default 2 KB. */
 	readonly tailBytes?: number;
 	/** Read a task's output tail (injectable for tests). */
@@ -99,16 +103,19 @@ export class TaskDelivery {
 		// delivered, is delivered now as a notify — never a wake at startup
 		this.#scan();
 		const missed: { item: TaskDeliveryItem; line: string }[] = [];
+		const lost: string[] = [];
 		for (const task of this.#safeList()) {
 			const item = itemOf(task);
 			if (item === null || item.transition === "ready" || this.#receipts.has(key(item))) continue;
 			// a tool result reported it: the claim alone decides (Amendment 7)
 			if (task.claims?.some((c) => c.transition === item.transition) === true) continue;
+			if (item.transition === "unknown") lost.push(task.id);
 			if (task.agent !== undefined) this.#ended.set(task.id, { restart: true });
 			else missed.push({ item, line: this.#line(task, item) });
 		}
 		if (missed.length > 0) this.#pending.push({ notice: { lines: missed.map((m) => m.line), items: missed.map((m) => m.item) }, wake: false });
 		if (this.#ended.size > 0) this.#groups();
+		if (lost.length > 0) options.onLost?.(lost);
 	}
 
 	close(): void {
@@ -170,6 +177,7 @@ export class TaskDelivery {
 	#hear(task: TaskInfo, transition: TaskTransition): void {
 		const item = itemOf(task, transition);
 		if (item === null) return;
+		if (item.transition === "unknown") this.#o.onLost?.([task.id]);
 		if (task.agent !== undefined && item.transition !== "ready") return this.#agentEnded(task, item);
 		const mode = this.#modeOf(task, item);
 		if (mode === "silent") return;
