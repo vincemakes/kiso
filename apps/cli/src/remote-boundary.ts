@@ -7,10 +7,25 @@
  *  A. a destructive git push — history rewritten or refs removed:
  *     --force / -f, --force-with-lease, --force-if-includes, a refspec
  *     with a leading `+`, --mirror, --delete / -d, a deleting refspec
- *     (`:branch`), --prune. A dry run (-n / --dry-run) is exempt.
- *  B. a direct package publish: npm, pnpm or yarn with the word
- *     `publish` — not as the script `npm run publish` names, not with
- *     --dry-run.
+ *     (`:branch`), --prune. A dry run is exempt, read as git reads it: the
+ *     last of -n / --dry-run / --no-dry-run wins, and git takes any
+ *     unambiguous prefix of a long option, so `--mirr` is --mirror and
+ *     `--no-dry` turns the dry run off. A prefix is read generously — a
+ *     prefix git would reject as ambiguous costs a question, not a pass.
+ *  B. a registry write — a package published, unpublished or deprecated,
+ *     or a dist-tag moved: npm or pnpm with `publish`, `unpublish`,
+ *     `deprecate`, or `dist-tag` / `dist-tags` with add (a, set, s) or rm
+ *     (r, del, d, remove) — pnpm hands the last three to npm; yarn with
+ *     `publish`, `npm publish`, or `tag` / `npm tag` with add, rm or
+ *     remove. Not as the script `npm run publish` names. A dry run is
+ *     exempt only where the command honours one, read as its parser reads
+ *     it (`--dry-run false` is a real publish): npm and pnpm publish and
+ *     unpublish take --dry-run, `yarn npm publish` takes -n / --dry-run;
+ *     deprecate, dist-tag and yarn classic's publish have none, so the
+ *     flag exempts nothing there. npm's abbreviations of a command
+ *     (`npm pub`) are read too, in the command's place — not after an
+ *     option that takes a value (`npm --registry x pub`). Listing tags
+ *     and `npm view` stay out.
  *
  * A saved "don't ask again for shell" never carries either
  * (protected-writes.ts neverInheritedCall): permission remembered by TOOL
@@ -64,7 +79,8 @@ function destructivePush(args: readonly LooseWord[]): boolean {
 		if (t.startsWith("--")) {
 			const flag = t.split("=")[0]!;
 			if (flag === "--dry-run") dryRun = true;
-			else if (PUSH_REWRITES.has(flag)) crosses = true;
+			else if (flag.length >= "--no-d".length && "--no-dry-run".startsWith(flag)) dryRun = false;
+			else if (flag.length > 2 && [...PUSH_REWRITES].some((r) => r.startsWith(flag))) crosses = true;
 			continue;
 		}
 		// a short cluster, `-uf`; `-o` takes the rest of the word, or the next
@@ -83,12 +99,67 @@ function destructivePush(args: readonly LooseWord[]): boolean {
 	return crosses && !dryRun;
 }
 
-function directPublish(args: readonly LooseWord[]): boolean {
+/** Whether a dry run is on, read as npm's option parser reads it: the last
+ *  setting wins, `--dry-run false` and `--dry-run=false` turn it off, and
+ *  only an explicit true counts. `-n` is a dry run where yarn says so. */
+function dryRun(words: readonly string[], short: boolean): boolean {
+	let on = false;
+	for (let i = 0; i < words.length; i += 1) {
+		const w = words[i]!;
+		if (w === "--dry-run" || (short && w === "-n")) {
+			const next = words[i + 1];
+			on = next !== "false";
+			if (next === "true" || next === "false") i += 1;
+		} else if (w.startsWith("--dry-run=")) on = w === "--dry-run=true";
+		else if (w === "--no-dry-run") on = false;
+	}
+	return on;
+}
+
+/** dist-tag (npm) and tag (yarn) write with these subcommands, and list
+ *  with the rest — a bare `npm dist-tag <pkg>` lists too. */
+const NPM_TAG_WRITES = new Set(["add", "a", "set", "s", "rm", "r", "del", "d", "remove"]);
+const NPM_TAG_READS = new Set(["ls", "l", "sl", "list"]);
+const YARN_TAG_WRITES = new Set(["add", "rm", "remove"]);
+const YARN_TAG_READS = new Set(["ls", "list"]);
+
+/** A tag command writes when a write subcommand follows it — unless the
+ *  first word after it names a listing (`npm dist-tag ls d` lists "d"). */
+function tagWrite(words: readonly string[], at: number, writes: ReadonlySet<string>, reads: ReadonlySet<string>): boolean {
+	const after = words.slice(at + 1).filter((w) => !w.startsWith("-"));
+	if (after[0] !== undefined && reads.has(after[0])) return false;
+	return after.some((w) => writes.has(w));
+}
+
+/** npm runs a unique prefix of a command name: `npm pub` is publish,
+ *  `npm unp` unpublish, `npm dep` deprecate (npm 10's own resolution).
+ *  Read generously, as git's options are — a prefix npm would reject as
+ *  ambiguous (`npm de`) costs a question. `un` is npm's alias for
+ *  uninstall; dist-tag has no abbreviation, every prefix of it being
+ *  ambiguous with dist-tags. */
+function npmCommand(first: string | undefined): string | undefined {
+	if (first === undefined || first.length < 2 || first === "un") return first;
+	return ["publish", "unpublish", "deprecate"].find((w) => w.startsWith(first)) ?? first;
+}
+
+function registryWrite(pm: "npm" | "pnpm" | "yarn", args: readonly LooseWord[]): boolean {
 	const words = args.map((a) => a.text);
-	if (words.includes("--dry-run")) return false;
 	const first = words.find((w) => !w.startsWith("-"));
 	if (first === "run" || first === "run-script") return false;
-	return words.includes("publish");
+	if (pm === "yarn") {
+		// berry spells the registry commands `yarn npm …`; classic has no
+		// unpublish or deprecate, and its publish takes no dry run
+		const berry = words.includes("npm");
+		if (words.includes("publish") && !(berry && dryRun(words, true))) return true;
+		const tag = words.indexOf("tag");
+		return tag !== -1 && tagWrite(words, tag, YARN_TAG_WRITES, YARN_TAG_READS);
+	}
+	const command = pm === "npm" ? npmCommand(first) : first;
+	const publishes = words.includes("publish") || words.includes("unpublish") || command === "publish" || command === "unpublish";
+	if (publishes && !dryRun(words, false)) return true;
+	if (words.includes("deprecate") || command === "deprecate") return true;
+	const tag = words.findIndex((w) => w === "dist-tag" || w === "dist-tags");
+	return tag !== -1 && tagWrite(words, tag, NPM_TAG_WRITES, NPM_TAG_READS);
 }
 
 function crossing(argv: readonly LooseWord[]): boolean {
@@ -97,7 +168,7 @@ function crossing(argv: readonly LooseWord[]): boolean {
 		const inv = gitInvocation(argv.slice(1));
 		return inv.sub === "push" && destructivePush(inv.rest);
 	}
-	if (name === "npm" || name === "pnpm" || name === "yarn") return directPublish(argv.slice(1));
+	if (name === "npm" || name === "pnpm" || name === "yarn") return registryWrite(name, argv.slice(1));
 	return false;
 }
 
