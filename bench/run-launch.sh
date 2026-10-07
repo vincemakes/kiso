@@ -16,7 +16,7 @@
 # Every leg runs with its legs under LAUNCH_ROOT (outside any checkout —
 # the runners' isolation gates void a leg beneath an instruction file),
 # BENCH_CAPTURE=1 (both arms' request bodies; the effort is read back from
-# the wire) and BENCH_EFFORT=high. After every leg the driver asks the leg
+# the wire) and BENCH_EFFORT (high unless the kit says otherwise). After every leg the driver asks the leg
 # what it ran (check_leg); a leg that cannot say is VOID — reported in the
 # ledger, never rescored.
 #
@@ -41,7 +41,10 @@ B="$(cd "$(dirname "$0")" && pwd)"
 # take its parent as their working directory
 LAUNCH_ROOT=${LAUNCH_ROOT:-/private/tmp/kiso-launch-bench/runs}
 KISO_RUNS_ROOT="$LAUNCH_ROOT"; KISO_ROUND="$LAUNCH_ROUND-$PART"
-BENCH_CAPTURE=1; BENCH_EFFORT=high
+# the effort is the kit's: high by default (the launch); `none` is the
+# provider's default on a route where the switch cannot bind (route.sh),
+# verified on the wire as the absence of any effort field
+BENCH_CAPTURE=1; BENCH_EFFORT=${BENCH_EFFORT:-high}
 export KISO_RUNS_ROOT KISO_ROUND BENCH_CAPTURE BENCH_EFFORT KISO_BIN
 PARTDIR="$LAUNCH_ROOT/$KISO_ROUND"
 mkdir -p "$PARTDIR"

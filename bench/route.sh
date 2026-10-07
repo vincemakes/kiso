@@ -48,3 +48,32 @@ route_profile_json() {
 		printf '{ "models": { "ds": { "kind": "openai-compat", "model": "%s",\n  "baseUrl": "%s", "apiKeyEnv": "OPENAI_API_KEY" } } }\n' "$ROUTE_MODEL" "$ROUTE_BASE_URL"
 	fi
 }
+
+# THE REFERENCE ARM on this route (2026-10-07: every token comparison runs
+# on the owner's route, DeepSeek V4.1 Flash through Command Code). The arm
+# takes a custom provider from its MODEL STORE, one file in its bare home
+# that the runner declares to the bareness gate. Its key is a COMMAND the
+# arm runs per request (cred-print.sh), never a value in its environment
+# and never a value on disk inside the leg: LB-2 (the launch bench) found an
+# inherited key printed into a transcript by the arm's own shell tool.
+# `reasoning: true` lets `--thinking` bind; `--thinking off` sends no
+# effort field at all, which is what kiso sends when no effort is set
+# (both measured against a local sink, 2026-10-07).
+# route_ref_models_json <baseUrl> <cred-print path>
+route_ref_models_json() {
+	printf '{ "providers": { "route": { "baseUrl": "%s", "api": "openai-completions",\n  "apiKey": "!sh %s %s %s",\n  "models": [ { "id": "%s", "reasoning": true, "contextWindow": %s, "maxTokens": 384000 } ] } } }\n' \
+		"$1" "$2" "$ROUTE_CRED_FILE" "$ROUTE_CRED_KEY" "$ROUTE_MODEL" "${ROUTE_WINDOW:-1000000}"
+}
+# The route's upstream host and path, for the capture proxy: the proxy
+# forwards the request path unchanged, so the store names the path.
+ROUTE_HOST=$(printf '%s' "$ROUTE_BASE_URL" | sed -E 's#^https?://([^/]+).*#\1#')
+ROUTE_PATH=$(printf '%s' "$ROUTE_BASE_URL" | sed -E 's#^https?://[^/]+##')
+# The reference arm's thinking level for the round's effort: `none` is the
+# provider default, which the arm expresses as `off` (no field on the wire).
+case "${BENCH_EFFORT:-high}" in
+	none) REF_THINKING=off ;;
+	*) REF_THINKING=${BENCH_EFFORT:-high} ;;
+esac
+# The reference binary: an absolute path pins the version under test (the
+# kit records it); bare `pi` is whatever PATH resolves.
+REF_BIN=${REF_BIN:-pi}

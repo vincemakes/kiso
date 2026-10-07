@@ -21,6 +21,16 @@ note(effortOf({ thinking: { type: "high" } }) === "high", "effort read from a th
 note(effortOf({ reasoning: { effort: "high" } }) === "high", "effort read from a reasoning object");
 note(effortOf({ model: "m" }) === null, "a body with no effort field reads null, not a default");
 
+// `none`: the provider's default, verified as ABSENCE (2026-10-07, the
+// Command Code route, where the effort switch cannot bind)
+const bare = capture([call(1), call(2)]);
+let rn = reconcile(readCapture(bare), { requests: 2, model: "deepseek-flash", effort: "none" });
+note(rn.ok && rn.effortObserved === "none", "effort none: bodies with no effort field reconcile, observed as none");
+const leaked = capture([call(1), call(2, { reasoning_effort: "medium" })]);
+rn = reconcile(readCapture(leaked), { requests: 2, model: "deepseek-flash", effort: "none" });
+note(!rn.ok && rn.problems.some((p) => p.includes("1 of 2 bodies carry an effort field")), "effort none: one body carrying an effort fails, and says how many");
+note(rn.effortObserved !== "none", "effort none: a leaked effort is never reported as none");
+
 const good = capture([call(1, { reasoning_effort: "high" }), call(3, { reasoning_effort: "high" })]);
 let r = reconcile(readCapture(good), { requests: 2, model: "deepseek-flash", effort: "high" });
 note(r.ok, "a capture that agrees reconciles");

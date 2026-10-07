@@ -154,8 +154,10 @@ fi
 # comparator arms only ever ran on DeepSeek's official endpoint, so a co
 # round is the kiso arm's alone.
 . "$B/route.sh"
-if [ "$BENCH_ROUTE" != ds ] && [ "$TOOL" != kiso ]; then
-  echo "BENCH_ROUTE=$BENCH_ROUTE is for the kiso arm only" >&2; exit 1
+# 2026-10-07: the reference arm runs on any route too (route.sh,
+# route_ref_models_json); the third arm stays on the official endpoint.
+if [ "$BENCH_ROUTE" != ds ] && [ "$TOOL" = claude ]; then
+  echo "BENCH_ROUTE=$BENCH_ROUTE is for the kiso and reference arms only" >&2; exit 1
 fi
 CRED_FILE="$ROUTE_CRED_FILE"
 TOT=0
@@ -357,36 +359,61 @@ fs.writeFileSync('$WORK/meta.json', JSON.stringify(meta, null, 1) + '\n');
 "
     ;;
   pi)
-    # CAPTURE: the T6 runner's mechanism, unchanged — this arm has no dump
-    # sink, so a local proxy records for it; its base URL moves through its
-    # MODEL STORE (one file in the bare home, DECLARED to the bareness gate)
+    # THE ROUTE. ds: the arm's built-in provider, its key in its environment
+    # through cred-exec (the launch shape). Any other route: a custom
+    # provider in its MODEL STORE (route.sh), keyed by a command, never by
+    # its environment. Either store is one file in the bare home, DECLARED
+    # to the bareness gate.
+    # CAPTURE: this arm has no dump sink, so a local proxy records for it;
+    # its base URL moves through the store.
     CAPTURE_DECL=""
-    if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
-      mkdir -p "$WORK/capture" "$BARE_HOME/.pi/agent"
-      CAP_UP=${CAP_UPSTREAM:-api.deepseek.com}
-      CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
-      python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$CAP_UP" --scheme https --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
-      CAP_PID=$!
-      sleep 2
-      node -e '
-        const fs = require("fs");
-        const src = process.env.HOME + "/.pi/agent/models-store.json";
-        const d = JSON.parse(fs.readFileSync(src, "utf8"));
-        // metadata only — no credential; the key rides in the environment
-        for (const m of (d.deepseek && d.deepseek.models) || []) m.baseUrl = process.argv[1];
-        fs.writeFileSync(process.argv[2], JSON.stringify(d));
-      ' "http://127.0.0.1:$CAP_PORT" "$BARE_HOME/.pi/agent/models-store.json"
-      CAPTURE_DECL=".pi/agent/models-store.json"
+    if [ "$BENCH_ROUTE" = ds ]; then
+      if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
+        mkdir -p "$WORK/capture" "$BARE_HOME/.pi/agent"
+        CAP_UP=${CAP_UPSTREAM:-api.deepseek.com}
+        CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
+        python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$CAP_UP" --scheme https --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
+        CAP_PID=$!
+        sleep 2
+        node -e '
+          const fs = require("fs");
+          const src = process.env.HOME + "/.pi/agent/models-store.json";
+          const d = JSON.parse(fs.readFileSync(src, "utf8"));
+          // metadata only — no credential; the key rides in the environment
+          for (const m of (d.deepseek && d.deepseek.models) || []) m.baseUrl = process.argv[1];
+          fs.writeFileSync(process.argv[2], JSON.stringify(d));
+        ' "http://127.0.0.1:$CAP_PORT" "$BARE_HOME/.pi/agent/models-store.json"
+        CAPTURE_DECL=".pi/agent/models-store.json"
+      fi
+    else
+      mkdir -p "$BARE_HOME/.pi/agent"
+      REF_BASE="$ROUTE_BASE_URL"
+      if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
+        mkdir -p "$WORK/capture"
+        CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
+        python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$ROUTE_HOST" --scheme https --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
+        CAP_PID=$!
+        sleep 2
+        REF_BASE="http://127.0.0.1:$CAP_PORT$ROUTE_PATH"
+      fi
+      route_ref_models_json "$REF_BASE" "$B/cred-print.sh" > "$BARE_HOME/.pi/agent/models.json"
+      CAPTURE_DECL=".pi/agent/models.json"
     fi
     assert_bare pi "$BARE_HOME" $CAPTURE_DECL || exit 1
     for i in 1 2 3 4 5 6 7 8; do
       over_budget && break
       S=$(date +%s); _left=$(remaining)
       set +e
-      bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$i.log" \
-        "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=DEEPSEEK_API_KEY" -- \
-        sh "$B/cred-exec.sh" pi --provider deepseek --model deepseek-flash --thinking "$BENCH_EFFORT" -p --mode json \
-        --session "$WORK/pi-session" "$(TURN $i)" < /dev/null
+      if [ "$BENCH_ROUTE" = ds ]; then
+        bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$i.log" \
+          "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=DEEPSEEK_API_KEY" -- \
+          sh "$B/cred-exec.sh" "$REF_BIN" --provider deepseek --model deepseek-flash --thinking "$REF_THINKING" -p --mode json \
+          --session "$WORK/pi-session" "$(TURN $i)" < /dev/null
+      else
+        bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$i.log" -- \
+          "$REF_BIN" --provider route --model "$ROUTE_MODEL" --thinking "$REF_THINKING" -p --mode json \
+          --session "$WORK/pi-session" "$(TURN $i)" < /dev/null
+      fi
       _rc=$?
       set -e
       E=$(date +%s); TOT=$((TOT + E - S))
@@ -490,7 +517,12 @@ case "$TOOL" in
   # arm's command as the bare binary name, so the manifest could not show
   # that `--thinking high` was ever sent — the only record of its effort was
   # what the runner INTENDED.
-  pi)     ARM_CMD="pi --provider deepseek --model deepseek-flash --thinking $BENCH_EFFORT"; ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="DEEPSEEK_API_KEY" ;;
+  pi)     if [ "$BENCH_ROUTE" = ds ]; then
+            ARM_CMD="$REF_BIN --provider deepseek --model deepseek-flash --thinking $REF_THINKING"; ARM_ENV="DEEPSEEK_API_KEY"
+          else
+            ARM_CMD="$REF_BIN --provider route --model $ROUTE_MODEL --thinking $REF_THINKING"; ARM_ENV=""
+          fi
+          ARM_MODEL="$ROUTE_MODEL"; ARM_ENDPOINT="$ROUTE_BASE_URL" ;;
   claude) ARM_CMD="claude";    ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com/anthropic"; ARM_ENV="ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL" ;;
 esac
 case "$TOOL" in
@@ -528,6 +560,7 @@ const cfg = captureArm({
   observed,
 });
 cfg.task = 'T5'; cfg.run = '$RUN'; cfg.round = process.env.KISO_ROUND || null;
+cfg.route = '$BENCH_ROUTE';
 cfg.legDeadlineSeconds = $LEG_DEADLINE_S; cfg.legMaxRequests = $LEG_MAX_REQUESTS;
 cfg.t5Compact = ${BENCH_T5_COMPACT:-0} === 1;
 // WHICH ARM'S EFFORT WAS VERIFIED ON THE WIRE, stated per leg rather than
@@ -551,7 +584,7 @@ if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
       requests = cfg.model && typeof cfg.model.requests === 'number' ? cfg.model.requests : null;
     } catch {}
     const recs = readCapture('$WORK/capture');
-    const r = reconcile(recs, { requests, model: 'deepseek-flash', effort: '$BENCH_EFFORT' });
+    const r = reconcile(recs, { requests, model: '$ROUTE_MODEL', effort: '$BENCH_EFFORT' });
     writeFileSync('$WORK/capture.json', JSON.stringify(r, null, 1) + '\n');
     writeFileSync('$WORK/effort_wire', (r.effortObserved && r.effortObserved.length ? String(r.effortObserved) : 'not-observed') + '\n');
   " 2>/dev/null || { echo "reconcile-failed" > "$WORK/effort_wire"; echo '{\"ok\":false,\"problems\":[\"the reconciler did not run\"]}' > "$WORK/capture.json"; }

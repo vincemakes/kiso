@@ -184,8 +184,14 @@ fi
 # the credentials file's PATH; cred-exec.sh reads the key inside the process
 # that becomes the arm. The file must exist and name the key; nothing here
 # reads the value.
-CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-deepseek/credentials.env"
-grep -q 'DEEPSEEK_API_KEY=' "$CRED_FILE" 2>/dev/null || { echo "no DEEPSEEK_API_KEY in $CRED_FILE" >&2; exit 1; }
+# 2026-10-07: the ROUTE decides the file and the variable in it (route.sh),
+# as run-t5.sh has since 3f; the reference arm runs on any route, the third
+# arm on the official endpoint only.
+. "$B/route.sh"
+if [ "$BENCH_ROUTE" != ds ] && [ "$TOOL" = claude ]; then
+  echo "BENCH_ROUTE=$BENCH_ROUTE is for the kiso and reference arms only" >&2; exit 1
+fi
+CRED_FILE="$ROUTE_CRED_FILE"
 TOT=0
 # PER-LEG HARD LIMITS. A leg had none: a hung arm ran until someone noticed,
 # a looping arm spent the programme's budget on one task. Overridable, but
@@ -279,12 +285,9 @@ case "$TOOL" in
     # refused on every leg and the leg is marked effort_not_bound, which is
     # the gate working and the round wasted.
     mkdir -p "$WORK/kiso-home"
-    cat > "$WORK/kiso-home/config.json" <<CFG
-{ "models": { "ds": { "kind": "openai-compat", "model": "deepseek-flash",
-  "baseUrl": "https://api.deepseek.com", "apiKeyEnv": "OPENAI_API_KEY" } } }
-CFG
-    set -- "OPENAI_BASE_URL=https://api.deepseek.com" "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" \
-      "OPENAI_MODEL=deepseek-flash" "KISO_EXTENSIONS_DIR=$EXTDIR" \
+    route_profile_json > "$WORK/kiso-home/config.json"
+    set -- "OPENAI_BASE_URL=$ROUTE_BASE_URL" "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" "BENCH_CRED_KEY=$ROUTE_CRED_KEY" \
+      "OPENAI_MODEL=$ROUTE_MODEL" "KISO_EXTENSIONS_DIR=$EXTDIR" \
       "KISO_HOME=$WORK/kiso-home" "KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1"
     # EDIT-ECHO A/B: the ONLY difference between the two arms of that
     # experiment. Same binary, same model, same effort, same prompts — one
@@ -321,8 +324,9 @@ CFG
       over_budget && break
       S=$(date +%s); _left=$(remaining)
       set +e
-      # bucket 1 opens with the effort switch, the way a human sets it
-      if [ "$P" -eq 1 ]; then
+      # bucket 1 opens with the effort switch, the way a human sets it —
+      # unless the round runs at the provider's default (`none`, run-t5.sh)
+      if [ "$P" -eq 1 ] && [ "$BENCH_EFFORT" != none ]; then
         { printf '%s\n' "/model ds $BENCH_EFFORT"; BUCKET $P; } | bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$P.log" \
           $KISO_ENV_PAIRS -- sh "$B/cred-exec.sh" $KISO_BIN --mode bypass "bench-t6-$TOOL-$RUN"
       else
@@ -337,39 +341,62 @@ CFG
     done
     ;;
   pi)
-    # CAPTURE: this arm has no dump sink, so the proxy records for it. Its
-    # base URL moves via its MODEL STORE (environment variables are not
-    # honoured — the older note stands), which means one file inside the
-    # bare home. That file is DECLARED to the bareness gate rather than
-    # hidden from it, and the gate still fails on anything undeclared.
+    # THE ROUTE, as run-t5.sh: ds uses the arm's built-in provider with its
+    # key in its environment (cred-exec); any other route a custom provider
+    # in its MODEL STORE, keyed by a command (route.sh). CAPTURE: this arm
+    # has no dump sink, so the proxy records for it; its base URL moves via
+    # the store (environment variables are not honoured — the older note
+    # stands). The store is DECLARED to the bareness gate, which still fails
+    # on anything undeclared.
     CAPTURE_DECL=""
-    if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
-      mkdir -p "$WORK/capture" "$BARE_HOME/.pi/agent"
-      CAP_UP=${CAP_UPSTREAM:-api.deepseek.com}
-      CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
-      python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$CAP_UP" --scheme https         --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
-      CAP_PID=$!
-      sleep 2
-      node -e '
-        const fs = require("fs");
-        const src = process.env.HOME + "/.pi/agent/models-store.json";
-        const d = JSON.parse(fs.readFileSync(src, "utf8"));
-        // metadata only — this file carries no credential (checked); the key
-        // rides in the environment, as it does without the proxy
-        for (const m of (d.deepseek && d.deepseek.models) || []) m.baseUrl = process.argv[1];
-        fs.writeFileSync(process.argv[2], JSON.stringify(d));
-      ' "http://127.0.0.1:$CAP_PORT" "$BARE_HOME/.pi/agent/models-store.json"
-      CAPTURE_DECL=".pi/agent/models-store.json"
+    if [ "$BENCH_ROUTE" = ds ]; then
+      if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
+        mkdir -p "$WORK/capture" "$BARE_HOME/.pi/agent"
+        CAP_UP=${CAP_UPSTREAM:-api.deepseek.com}
+        CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
+        python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$CAP_UP" --scheme https --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
+        CAP_PID=$!
+        sleep 2
+        node -e '
+          const fs = require("fs");
+          const src = process.env.HOME + "/.pi/agent/models-store.json";
+          const d = JSON.parse(fs.readFileSync(src, "utf8"));
+          // metadata only — this file carries no credential (checked); the key
+          // rides in the environment, as it does without the proxy
+          for (const m of (d.deepseek && d.deepseek.models) || []) m.baseUrl = process.argv[1];
+          fs.writeFileSync(process.argv[2], JSON.stringify(d));
+        ' "http://127.0.0.1:$CAP_PORT" "$BARE_HOME/.pi/agent/models-store.json"
+        CAPTURE_DECL=".pi/agent/models-store.json"
+      fi
+    else
+      mkdir -p "$BARE_HOME/.pi/agent"
+      REF_BASE="$ROUTE_BASE_URL"
+      if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
+        mkdir -p "$WORK/capture"
+        CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
+        python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$ROUTE_HOST" --scheme https --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
+        CAP_PID=$!
+        sleep 2
+        REF_BASE="http://127.0.0.1:$CAP_PORT$ROUTE_PATH"
+      fi
+      route_ref_models_json "$REF_BASE" "$B/cred-print.sh" > "$BARE_HOME/.pi/agent/models.json"
+      CAPTURE_DECL=".pi/agent/models.json"
     fi
     assert_bare pi "$BARE_HOME" $CAPTURE_DECL || exit 1
     i=1; while [ "$i" -le "$NTURNS" ]; do
       over_budget && break
       S=$(date +%s); _left=$(remaining)
       set +e
-      bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$i.log" \
-        "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=DEEPSEEK_API_KEY" -- \
-        sh "$B/cred-exec.sh" pi --provider deepseek --model deepseek-flash --thinking "$BENCH_EFFORT" -p --mode json \
-        --session "$WORK/pi-session" "$(TURN $i)" < /dev/null
+      if [ "$BENCH_ROUTE" = ds ]; then
+        bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$i.log" \
+          "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=DEEPSEEK_API_KEY" -- \
+          sh "$B/cred-exec.sh" "$REF_BIN" --provider deepseek --model deepseek-flash --thinking "$REF_THINKING" -p --mode json \
+          --session "$WORK/pi-session" "$(TURN $i)" < /dev/null
+      else
+        bare_bounded "$BARE_HOME" "$_left" "$WORK/stdout-$i.log" -- \
+          "$REF_BIN" --provider route --model "$ROUTE_MODEL" --thinking "$REF_THINKING" -p --mode json \
+          --session "$WORK/pi-session" "$(TURN $i)" < /dev/null
+      fi
       _rc=$?; set -e
       E=$(date +%s); echo $((E - S)) > "$WORK/wall_turn_$i"
       printf '%s\n' "$_rc" > "$WORK/exit-$i"
@@ -430,8 +457,13 @@ for line in open('$WORK/stdout-$i.log', errors='ignore'):
 esac
 
 case "$TOOL" in
-  kiso)   ARM_CMD="$KISO_BIN"; ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL KISO_HOME KISO_EXTENSIONS_DIR" ;;
-  pi)     ARM_CMD="pi";        ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com"; ARM_ENV="DEEPSEEK_API_KEY" ;;
+  kiso)   ARM_CMD="$KISO_BIN"; ARM_MODEL="$ROUTE_MODEL"; ARM_ENDPOINT="$ROUTE_BASE_URL"; ARM_ENV="OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL KISO_HOME KISO_EXTENSIONS_DIR" ;;
+  pi)     if [ "$BENCH_ROUTE" = ds ]; then
+            ARM_CMD="$REF_BIN --provider deepseek --model deepseek-flash --thinking $REF_THINKING"; ARM_ENV="DEEPSEEK_API_KEY"
+          else
+            ARM_CMD="$REF_BIN --provider route --model $ROUTE_MODEL --thinking $REF_THINKING"; ARM_ENV=""
+          fi
+          ARM_MODEL="$ROUTE_MODEL"; ARM_ENDPOINT="$ROUTE_BASE_URL" ;;
   claude) ARM_CMD="claude";    ARM_MODEL="deepseek-flash"; ARM_ENDPOINT="https://api.deepseek.com/anthropic"; ARM_ENV="ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL" ;;
 esac
 case "$TOOL" in
@@ -469,6 +501,7 @@ const cfg = captureArm({
   observed,
 });
 cfg.task = '$LABEL'; cfg.run = '$RUN'; cfg.round = process.env.KISO_ROUND || null;
+cfg.route = '$BENCH_ROUTE';
 cfg.legDeadlineSeconds = $LEG_DEADLINE_S; cfg.legMaxRequests = $LEG_MAX_REQUESTS;
 cfg.editEchoRequested = '$TOOL' === 'kiso' ? ${BENCH_EDIT_ECHO:-0} === 1 : null;
 writeFileSync('$WORK/config.json', JSON.stringify(cfg, null, 1) + '\n');
@@ -574,7 +607,7 @@ if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
       requests = cfg.model && typeof cfg.model.requests === 'number' ? cfg.model.requests : null;
     } catch {}
     const recs = readCapture('$WORK/capture');
-    const r = reconcile(recs, { requests, model: 'deepseek-flash', effort: '$BENCH_EFFORT' });
+    const r = reconcile(recs, { requests, model: '$ROUTE_MODEL', effort: '$BENCH_EFFORT' });
     writeFileSync('$WORK/capture.json', JSON.stringify(r, null, 1) + '\n');
     // the wire-verified effort is its own sidecar, beside effort_bound, so a
     // reader never has to infer which arm's claim rests on what
@@ -591,7 +624,7 @@ elif [ "$TOOL" = "claude" ] && grep -qi "Unknown --effort value" "$WORK"/stdout-
   # `high` whose requests were never high — the same silent substitution the
   # kiso check below exists for, except this one announces itself.
   mark_incomplete "$WORK" "effort_not_bound" "the tool rejected --effort $BENCH_EFFORT and used its default"
-elif [ "$TOOL" = "kiso" ] && [ "$EFFORT_BOUND" != "$BENCH_EFFORT" ]; then
+elif [ "$TOOL" = "kiso" ] && [ "$BENCH_EFFORT" != none ] && [ "$EFFORT_BOUND" != "$BENCH_EFFORT" ]; then
   # BEFORE the task verdict, like every other execution-validity question:
   # a leg that ran at the wrong level did not fail the task, it failed to
   # be the arm it claims to be.
