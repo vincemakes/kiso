@@ -17,7 +17,7 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import { contextRows, idleStatus, type ContextLedger } from "../src/index.js";
+import { contextRows, statusBar, type ContextLedger } from "../src/index.js";
 
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
@@ -43,35 +43,16 @@ const LEDGER: ContextLedger = {
 };
 
 describe("TUI2-R1 T-V5 — the status line's $ and CH%", () => {
-	it("both present: the prototype's row, in its order", () => {
-		expect(idleStatus("default", "deepseek-v4-flash", 0.26, { cacheHitPct: 92, costUsd: 0.0042, tokPerSec: null })).toBe(
-			"▸ default · /mode to switch · deepseek-v4-flash · CH 92% · ctx left ~74%",
-		);
-	});
-
-	it("costUsd NULL omits the $ entirely — no rate, no number", () => {
-		expect(idleStatus("default", "some-model", 0.26, { cacheHitPct: 92, costUsd: null, tokPerSec: null })).toBe(
-			"▸ default · /mode to switch · some-model · CH 92% · ctx left ~74%",
-		);
-	});
-
-	it("no cache data omits CH — an unmeasured cache is not a 0% cache", () => {
-		expect(idleStatus("default", "some-model", 0.26, { cacheHitPct: null, costUsd: 0.5, tokPerSec: null })).toBe(
-			"▸ default · /mode to switch · some-model · ctx left ~74%",
-		);
-	});
-
-	it("no meter at all is the pre-round row, byte for byte", () => {
-		const before = "▸ default · /mode to switch · faux · ctx left ~74%";
-		expect(idleStatus("default", "faux", 0.26)).toBe(before);
-		expect(idleStatus("default", "faux", 0.26, { cacheHitPct: null, costUsd: null, tokPerSec: null })).toBe(before);
-	});
-
-	it("the $ is RETIRED from the row (the 2026-08-23 directive) — a known cost renders NOTHING", () => {
-		// The canonical cost stays recorded (trace ledger); the row no
-		// longer claims four-decimal precision over a fluctuating price.
-		expect(idleStatus("t", "m", 0, { cacheHitPct: null, costUsd: 0.000049, tokPerSec: null })).not.toContain("$");
-		expect(idleStatus("t", "m", 0, { cacheHitPct: 12, costUsd: 1.5, tokPerSec: null })).not.toContain("$");
+	// RE-DERIVED (the legacy rows retired, owner 2026-10-06): the idle row
+	// these cases composed is gone. On the bar (§8.9) the cache share is the
+	// seal's (owner, 2026-09-29: every run's closing row already says it)
+	// and the $ stays retired (the 2026-08-23 directive) — the bar's input
+	// carries neither, so neither can render.
+	it("the bar carries no $ and no CH — the seal says the cache, and nothing says a price", () => {
+		const row = statusBar({ mode: "default", floorOff: false, model: "deepseek-v4-flash", ctx: { used: 0.26, soft: 0.5, hard: 0.8 }, tokPerSec: null, branch: null, folder: null }, 120, null);
+		expect(row).toBe("▸ default · /mode to switch · deepseek-v4-flash · ctx 26%");
+		expect(row).not.toContain("$");
+		expect(row).not.toContain("CH");
 	});
 });
 
