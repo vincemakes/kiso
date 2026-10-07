@@ -221,9 +221,14 @@ describe("ADR-0058 Amendment 7 — task_stop waits for the end and says how it e
 		const { manager, shell, stop } = setup({ KISO_TASK_RUNNER_STOP_UNCONFIRMED: "1" });
 		await shell.execute({ command: "sleep 30", background: true }, ctx());
 		await stop.execute({ id: "t1" }, escAfter(100, { executionId: "ex-stop" } as Partial<ToolContext>));
-		const t = await until(() => manager.get("t1")!, settled, 15_000);
+		// wait for the FACT this case is about — the runner's stop_unconfirmed
+		// record — not merely a settled reading: on a loaded machine the
+		// runner's identity check (every 5 s) can read `unknown` a moment
+		// before the runner has written the record
+		const unconfirmed = () => readRecords(join(manager.root, "t1", "journal.jsonl")).some((r) => r.type === "stop_unconfirmed");
+		await until(() => unconfirmed(), (yes) => yes, 15_000);
+		const t = await until(() => manager.get("t1")!, settled, 5_000);
 		expect(t.state.kind).toBe("unknown");
-		expect(readRecords(join(manager.root, "t1", "journal.jsonl")).some((r) => r.type === "stop_unconfirmed")).toBe(true);
 		expect(claimsOf(manager, "t1")).toEqual([]);
 	}, 20_000);
 });
