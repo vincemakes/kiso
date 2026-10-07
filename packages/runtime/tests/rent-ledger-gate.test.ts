@@ -35,6 +35,17 @@ describe("E3 — the rent ledger: buildRentLedger unit semantics", () => {
 		expect(lines).toEqual([{ surface: "envelope", chars: 38, estTokens: 10 }]);
 	});
 
+	it("RG-F2: the generated tool table is its own line, after the base and before the appends", () => {
+		const lines = buildRentLedger({ model: MODEL, base: "hello", table: "Tool use:\n- x", appends: [{ name: "skills", text: "idx" }] });
+		expect(lines.slice(0, 3)).toEqual([
+			{ surface: "system:base", chars: 5, estTokens: 2 },
+			{ surface: "system:tools", chars: 13, estTokens: 4 },
+			{ surface: "system:ext:skills", chars: 3, estTokens: 1 },
+		]);
+		// an empty table is an absent line (R9)
+		expect(buildRentLedger({ model: MODEL, base: "hello", table: "" }).map((l) => l.surface)).toEqual(["system:base", "envelope"]);
+	});
+
 	it("system:base and the extension appends land in order", () => {
 		const lines = buildRentLedger({
 			model: MODEL,
@@ -83,6 +94,7 @@ describe("E3 — R7 star: the script's prediction equals a real session's record
 			store,
 			systemPrompt: parts.base,
 			tools: parts.tools,
+			toolRules: parts.toolRules,
 			extensions: parts.extensions,
 			adapter: createFauxProvider([{ events: [{ type: "text_delta", text: "hi" }, { type: "stop", reason: "end_turn" }] }]),
 		});
@@ -101,6 +113,12 @@ describe("E3 — R7 star: the script's prediction equals a real session's record
 		expect(request!.rent).toEqual(predicted);
 		// sanity: the predicted ledger is not empty and covers every class
 		expect(predicted.some((l) => l.surface === "system:base")).toBe(true);
+		// RG-F2: the generated table is its own line, right after the base
+		expect(predicted[1]!.surface).toBe("system:tools");
+		// RG-F1/F3: the product's composition — the shell with its task
+		// parameters, task_stop and wait — not the task-less one
+		expect(predicted.some((l) => l.surface === "tool:task_stop")).toBe(true);
+		expect(predicted.some((l) => l.surface === "tool:wait")).toBe(true);
 		// E5: the task extension left the default — against a bare home the
 		// composition carries NO extension appends (its only former append
 		// was the task guidance, system:ext:task 394c). The empty class is

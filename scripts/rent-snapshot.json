@@ -1,0 +1,66 @@
+{
+	"model": "deepseek-chat",
+	"composition": "the default composition: built-in prompt, coding tools with tasks, the three default extensions, bare home, no project instructions; POSIX",
+	"lines": [
+		{
+			"surface": "system:base",
+			"chars": 1723
+		},
+		{
+			"surface": "system:tools",
+			"chars": 1686
+		},
+		{
+			"surface": "tool:read_file",
+			"chars": 626
+		},
+		{
+			"surface": "tool:list_dir",
+			"chars": 485
+		},
+		{
+			"surface": "tool:search_text",
+			"chars": 741
+		},
+		{
+			"surface": "tool:write_file",
+			"chars": 533
+		},
+		{
+			"surface": "tool:edit_file",
+			"chars": 995
+		},
+		{
+			"surface": "tool:shell",
+			"chars": 1293
+		},
+		{
+			"surface": "tool:task_stop",
+			"chars": 294
+		},
+		{
+			"surface": "tool:wait",
+			"chars": 945
+		},
+		{
+			"surface": "tool:delegate",
+			"chars": 1896
+		},
+		{
+			"surface": "envelope",
+			"chars": 50
+		}
+	],
+	"total": {
+		"chars": 11267,
+		"estTokens": 2823
+	},
+	"history": [
+		{
+			"date": "2026-10-07",
+			"chars": 11267,
+			"estTokens": 2823,
+			"why": "kiso-doc plan-rent-gate-2026-10-06.md rev 2: the first snapshot (owner, 2026-10-07)"
+		}
+	]
+}

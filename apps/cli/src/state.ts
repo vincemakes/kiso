@@ -289,7 +289,10 @@ export function readContextLedger(sessionId: string, window: number): import("@v
 	const turnSegments = manifest.filter((s) => s.role === "turn" || s.role === "current_turn");
 	return {
 		window,
-		systemPrompt: sum((s) => s === "system:base" || (s.startsWith("system:ext:") && !isSkills(s))),
+		// RG-F2: the generated tool table (system:tools) is system-prompt
+		// text the model reads on every request; it had no ledger line, so
+		// this row was short by it
+		systemPrompt: sum((s) => s === "system:base" || s === "system:tools" || (s.startsWith("system:ext:") && !isSkills(s))),
 		systemBase: sum((s) => s === "system:base"),
 		appends: count((s) => s.startsWith("system:ext:") && !isSkills(s)),
 		toolTable: sum((s) => s.startsWith("tool:")),
