@@ -51,13 +51,13 @@ import { MENU_ITEMS, displayWidth, type MenuItem } from "./editor.js";
 import { leadWidth } from "./width.js"; // W23: the ONE width authority (the editor, #inputRow, and editCol share it)
 // KC3.5: the panel-slot reads come from the DISPATCHERS — one source
 // for four reads, so an ask can never render half as an approval.
-import { panelFrameOf, panelLeadOf, panelStatusOf } from "./ask-panel.js";
+import { panelFrameOf, panelHintOf, panelStatusOf } from "./ask-panel.js";
 import { MOUSE_OFF } from "./editor.js";
 import { pickWindowOf } from "./approval-panel.js";
 import type { PanelState } from "./approval-panel.js";
-import { atPanelRows, bandHeader, type AtMatch } from "./at-picker.js";
+import { atPanelRows, bandHeader, bandKeyRow, bandVisible, bandWindow, moreMark, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker's rows — the band's third occupant.
-import { sessionPickerRows, type SessionPickState } from "./session-picker.js";
+import { RESUME_FILTER_HINT, sessionPickerRows, type SessionPickState } from "./session-picker.js";
 
 /** KC3 §4 — the @ picker's bound state (the editor's atState()). */
 export interface AtPanelState {
@@ -75,22 +75,37 @@ import {
 	boxBottom,
 	boxTop,
 	cellComponent,
-	gutterCut,
 	cutLine,
 	pendingQueueRows,
+	selectionBar,
 	statusLine,
 	visibleWidth,
 	type BodyCell,
 	type FrameCtx,
+	type NoticeMark,
+	type RecallSection,
 	breathFrame,
+	widthCut,
 } from "./components.js";
 import { bannerLines, escapeTerminal, foldResult, foldThinking, palette, renderTerminalGap, renderToolSummary, type BannerMeta, type ResumeMeta } from "./lines.js";
 import { oneRow } from "@vincemakes/kiso-tui-cells/render";
 import { displayVerb, keysSheetRows } from "./strings.js";
+import { noticeMeta } from "./notice-meta.js";
+import { statusBar, type BarInput } from "./status.js";
+/** Graphite §7.8 — the drawn caret: a block in the terminal's own ink,
+ *  reverse video on every ground (owner, 2026-09-29 — the 0.44 caret; R1c
+ *  had painted it gold). */
+const caretOn = (): string => "\x1b[7m";
+const caretOff = (): string => "\x1b[27m";
 /** DC-56: does a rendered row carry any visible text once its SGR is
  *  stripped? A washed pad row is spaces under a background colour — width
  *  without words. */
-const saysSomething = (row: string): boolean => row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() !== "";
+/** A row that says something: not blank, and not a card's half-row pad
+ *  (Graphite §7.4 — a `▄`/`▀` row is the card's edge, not its head). */
+const saysSomething = (row: string): boolean => {
+	const t = row.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim();
+	return t !== "" && !/^[\u2584\u2580]+$/.test(t);
+};
 
 // R5 — the transcript viewer's PURE projection. The compositor supplies
 // the entries (it holds the cells); the arrangement lives there.
@@ -134,7 +149,6 @@ const CHROME_ROWS = 4; // box top + input + box bottom + status — the design �
 const LIVE_ACT_HEADS = 3;
 /** R8 — the command band's window: five rows plus a counter, the same
  *  budget the composer's own ceiling can afford above it. */
-const MENU_WINDOW = 5;
 
 /** KC1 §5 — the input row's bound state. The legacy pair stays
  *  REQUIRED and keeps its exact meaning (the cursor line's visible
@@ -350,6 +364,17 @@ export class Body {
 	// the chrome state (the Dock façade)
 	#status = "";
 	#statusHint: string | null = null;
+	/** Graphite §8.9 — the status bar's facts, handed over by the CLI and
+	 *  composed at paint time (the drop order spans both sides of the row,
+	 *  and only the paint knows the width and the `ctrl+o` state). Null:
+	 *  the CLI's own status text is the row (setStatus). */
+	#bar: BarInput | null = null;
+	/** Graphite §8.7 — the live row above the composer while a turn runs
+	 *  (working, retrying, compacting), or null. */
+	#live: string | null = null;
+	/** A short confirmation (the clipboard's) on the live row while nothing
+	 *  is live; the next keypress clears it. */
+	#flash: string | null = null;
 	#tail = "";
 	// W21: the panel's bound state — the PanelSelect slot occupant (the
 	// old ApprovalPrompt's question slot retires with it): while a
@@ -359,7 +384,7 @@ export class Body {
 	/** TUI2-R1 (D): the keys sheet's slot read — the editor's boolean.
 	 *  Unbound, the sheet cannot render and every frame is byte-identical
 	 *  to before the round. */
-	#sheetState: (() => boolean) | null = null;
+	#sheetState: (() => boolean | ((W: number) => string[])) | null = null;
 	/** R5 — the transcript viewer's state, or null when it is closed. It
 	 *  lives HERE rather than in the editor because its entries are the
 	 *  compositor's cells; the editor only sends it commands. */
@@ -372,7 +397,7 @@ export class Body {
 	#overlayFrame = false;
 	#inputState: () => InputState = () => ({ line: "", cursor: 0 });
 	#inputPrompt = "";
-	#menuState: (() => { items: readonly MenuItem[]; selected: number } | null) | null = null;
+	#menuState: (() => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null) | null = null;
 	// KC3 §4: the @ picker's bound state — the SAME band as the menu
 	// (see #menuRows: the two are mutually exclusive by construction).
 	#atState: (() => AtPanelState | null) | null = null;
@@ -834,7 +859,106 @@ export class Body {
 		}
 		this.#closeOpenThinking();
 		this.#closeOpenText();
-		this.#cells.push({ kind: "notice", text, done: true });
+		// Graphite §7.12: a meta row on the terminal; the pipe above keeps
+		// the text as written.
+		this.#cells.push({ kind: "notice", text, done: true, ...noticeMeta(text) });
+		this.#mark();
+	}
+
+	/** The tasks round (owner, 2026-10-06) — a notice whose terminal form
+	 *  is one meta row per thing it names (a task's end, a project's trust):
+	 *  each row a label (`TASK` once, `""` under it), the sentence cut to one
+	 *  row, its outcome word marked. A pipe keeps `text`, byte for byte. */
+	metaNotice(text: string, rows: readonly { readonly label: string; readonly sentence: string; readonly mark?: NoticeMark }[]): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		const [first, ...also] = rows;
+		if (first === undefined) return;
+		// ONE cell for the notice, so its rows stay together (D1 puts a blank
+		// between two cells)
+		this.#cells.push({ kind: "notice", text, done: true, label: first.label, sentence: first.sentence, ...(first.mark !== undefined ? { mark: first.mark } : {}), oneRow: true, ...(also.length > 0 ? { also } : {}) });
+		this.#mark();
+	}
+
+	/** The last sweep (owner, 2026-10-06) — what `/think` or `/last` brings
+	 *  back: on the terminal ONE cell, a meta row (`label`, `sentence`) and
+	 *  the sections under it; a pipe keeps `text`, byte for byte. */
+	recall(text: string, label: string, sentence: string, sections: readonly RecallSection[]): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "recall", text, label, sentence, sections, done: true });
+		this.#mark();
+	}
+
+	/** Graphite R3e (owner, 2026-09-29) — a mode switch: on the terminal
+	 *  `MODE` on a row of its own and `from → to` under it, the new tier
+	 *  bold (full access — the old bypass — in the failure colour, plan in
+	 *  blue) — no explanation:
+	 *  the picker that switched it says what each tier does. A pipe keeps
+	 *  the confirmation it always printed, byte for byte (`text`). */
+	modeNotice(text: string, from: string, to: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		// the main-sync round: `full access` (the old bypass) keeps the failure colour
+		const tone = to === "full access" || to === "bypass" ? "fail" : to === "plan" ? "blue" : "ink";
+		this.#cells.push({ kind: "notice", text, done: true, label: "MODE", sentence: `${from} \u2192 ${to}`, mark: { text: to, tone }, stacked: true });
+		this.#mark();
+	}
+
+	/** The main-sync round (owner, 2026-09-30) — the don't-ask switch, the
+	 *  MODE row's sibling: `DON'T ASK` gold (the person's choice) and
+	 *  `off → on` with the new state bold. It is a switch on top of the tier,
+	 *  not a tier, so it has a row of its own. A pipe keeps #203's words
+	 *  (`don't ask → on`), byte for byte. */
+	dontAskNotice(text: string, on: boolean): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		const to = on ? "on" : "off";
+		this.#cells.push({ kind: "notice", text, done: true, label: "DON'T ASK", sentence: `${on ? "off" : "on"} \u2192 ${to}`, mark: { text: to, tone: "ink" }, stacked: true });
+		this.#mark();
+	}
+
+	/**
+	 * Graphite §7.11 — the turn's SEAL. On the terminal a cell of its own,
+	 * drawn at the current width (widest tier that fits); a pipe gets
+	 * `pipe` — today's recap line — byte for byte.
+	 */
+	seal(tiers: readonly string[], pipe: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			// byte for byte what `raw(pipe.split("\n"))` wrote before the
+			// seal had a cell of its own — the trailing newline included
+			for (const line of pipe.split("\n")) this.#write(`${line}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "seal", tiers, done: true });
 		this.#mark();
 	}
 
@@ -873,6 +997,35 @@ export class Body {
 		this.#closeOpenText();
 		this.#cells.push({ kind: "raw", lines, done: true, ...(wrap === undefined ? {} : { wrap }) });
 		this.#mark();
+	}
+
+	/** G3 (R2d) — the person's `!!cmd`: run, shown here, never sent. Off a
+	 *  dock the command and its output are written as they always were. */
+	bang(command: string, output: string, isError: boolean): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`$ ${escapeTerminal(command)}\n${escapeTerminal(output)}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "bang", command, output, isError, done: true });
+		this.#mark();
+	}
+
+	/** G3 (R2d) — the input's lead: a gold `$ ` while the line starts with
+	 *  `!` (the person's shell, run by `!` / `!!`); the bound prompt
+	 *  otherwise. One line only — a pasted block that begins with `!` is
+	 *  prose (dispatch's rule). */
+	#composerLead(): string {
+		const st = this.#inputState();
+		const lines = st.lines !== undefined && st.lines.length > 0 ? st.lines : [st.line];
+		if (lines.length === 1 && lines[0]!.startsWith("!")) {
+			const p = palette();
+			return `${p.gold}$${p.gold === "" ? "" : p.fgEnd} ${this.#inputPrompt}`;
+		}
+		return this.#inputPrompt;
 	}
 
 	/** The last COMPLETE thinking block, for /think. */
@@ -1053,7 +1206,7 @@ export class Body {
 			// a light terminal showed "5 folds" over five empty grey rows.
 			const first = rows.findIndex((r) => saysSomething(r));
 			const headAt = first < 0 ? 0 : first;
-			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1) });
+			out.push({ head: rows[headAt] ?? "", body: rows.slice(headAt + 1).filter((r) => saysSomething(r) || r.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim() === "") });
 		}
 		return out;
 	}
@@ -1372,14 +1525,26 @@ export class Body {
 	 * which time the first frame is already painted with the no-ground
 	 * palette. Rather than delay the opening to wait for an answer that
 	 * may never come, the frame is painted at once and repainted when the
-	 * answer lands. Invalidating the held screen is exactly what a resize
-	 * does, for exactly the same reason — every row's bytes are wrong —
-	 * so it rides the settle the resize already owns and costs one
-	 * repaint, once per session.
+	 * answer lands.
+	 *
+	 * It is NOT a resize, and must not ride one: the settle returns early
+	 * when the geometry did not change — which it never does here — so the
+	 * old path cleared the held screen and painted nothing, leaving the
+	 * no-ground palette up until the first keystroke. Nor is it a reprint:
+	 * `3J` would erase the shell's scrollback at every launch, since the
+	 * answer arrives at every launch. So: the committed cells' cached rows
+	 * are dropped (their bytes carry the old palette; their geometry does
+	 * not change, the palette sets no width), the held screen is voided,
+	 * and one frame repaints what is on screen. Rows already in the
+	 * terminal's scrollback keep the palette they were written in.
 	 */
 	onGroundChange(): void {
-		this.#screen = [];
-		this.onResize();
+		if (!this.#isActive()) return;
+		for (let i = 0; i < this.#committed; i += 1) this.#lineCache[i] = null;
+		this.#screen = new Array(Math.max(1, this.#opts.height())).fill(NOT_PAINTED);
+		this.#fullRedraw = true;
+		this.#dirty = true;
+		this.render();
 	}
 
 	/**
@@ -1561,6 +1726,29 @@ export class Body {
 	setStatus(text: string, hint: string | null = null): void {
 		this.#status = text;
 		this.#statusHint = hint;
+		// a caller that paints its own text takes the row
+		this.#bar = null;
+		this.redraw();
+	}
+
+	/** Graphite §8.9 — hand the status bar its facts. */
+	setBar(bar: BarInput | null): void {
+		this.#bar = bar;
+		this.redraw();
+	}
+
+	/** Graphite §8.7 — the live row (already composed for the width the
+	 *  caller measured; cut here if the terminal narrowed since), or null
+	 *  when nothing is live. */
+	setLive(row: string | null): void {
+		this.#live = row;
+		this.redraw();
+	}
+
+	/** A confirmation that is true for a moment — `copied 212 chars` — on the
+	 *  live row, until the next keypress. It never displaces a live row. */
+	flash(text: string): void {
+		this.#flash = text;
 		this.redraw();
 	}
 
@@ -1574,7 +1762,7 @@ export class Body {
 	 *  compositor derives both from the bound panel state; the old
 	 *  question slot's dim-pending shape is the normal branch's shape
 	 *  now). */
-	#statusSource(): { status: string; hint: string | undefined; expand: "expand all" | "collapse all" | null } {
+	#statusSource(): { status: string; hint: string | undefined; expand: "expand all" | "collapse all" | null; bar?: BarInput } {
 		const panel = this.#panelState?.() ?? null;
 		// DC-38: the panel's STATUS replaces the CLI's painting status —
 		// that half of W21 stands. The HINT does not come with it, because
@@ -1593,11 +1781,25 @@ export class Body {
 		// block carries its own row (approval-panel.ts pushes it for the
 		// approval and the pick, ask-panel.ts for the ask), so nothing is
 		// lost anywhere.
-		if (panel !== null) return { status: panelStatusOf(panel), hint: undefined, expand: null };
-		// ADR-0057: while steers wait for the run's next quiescent boundary,
-		// the right hint counts them — the chips carry the lines. Short on
-		// purpose: the running status shares the row, and a hint that does
-		// not fit is dropped whole.
+		// Graphite P3/P4 (owner, 2026-10-04): a panel leaves the bar where it
+		// is — the session's facts do not stop being true while a panel is up,
+		// and what the panel is doing is said in its band. The panel's own
+		// status line is the form before a bar is bound (the trust question
+		// comes before the session exists): its words, and not the key ladder
+		// §7.8 retired — an empty hint, so the row offers none.
+		if (panel !== null && this.#bar === null) return { status: panelStatusOf(panel), hint: "", expand: null };
+		// Graphite §8.9: the bar, when the CLI handed one over — the steers
+		// are on screen in the band above the input (§8.7), so the bar does
+		// not count them (the main-sync round, owner 2026-09-30: no `+N
+		// steer` on a Graphite bar).
+		if (this.#bar !== null) {
+			const expand = this.#collapsed.length > 0 ? (this.#expandedAll ? "collapse all" : "expand all") : null;
+			return { status: "", hint: undefined, expand, bar: this.#bar };
+		}
+		// ADR-0057: without a bar, while steers wait for the run's next
+		// quiescent boundary, the right hint counts them — the rows carry the
+		// lines. Short on purpose: the running status shares the row, and a
+		// hint that does not fit is dropped whole.
 		const queued = this.#queueState?.().length ?? 0;
 		if (queued > 0) return { status: this.#status, hint: `+${queued} steer`, expand: null };
 		// D-S2-1 (owner-ruled 2026-09-06): the idle hint names the ctrl+o
@@ -1627,12 +1829,12 @@ export class Body {
 	/** Bind the editor's slash-command menu state — the MenuSelect slot
 	 *  occupant (the menu replaces the editor's view while open). */
 	/** TUI2-R1 (D): bind the editor's keys-sheet flag. */
-	bindSheet(state: () => boolean): void {
+	bindSheet(state: () => boolean | ((W: number) => string[])): void {
 		this.#sheetState = state;
 		this.#mark();
 	}
 
-	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
+	bindMenu(state: () => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null): void {
 		this.#menuState = state;
 	}
 
@@ -1650,8 +1852,9 @@ export class Body {
 	}
 
 	/** Bind the pending-turn queue — the CLI's live slots (chat.ts):
-	 *  the chips render in the menu-rows family, the live caps shrink
-	 *  by their rows, and the +N queued hint rides the status row. */
+	 *  the queued rows render in the menu-rows family and the live caps
+	 *  shrink by their rows (Graphite §8.7). The status bar does not
+	 *  count them; without a bar the status row's hint still does. */
 	bindQueue(state: () => readonly string[]): void {
 		this.#queueState = state;
 	}
@@ -1669,7 +1872,8 @@ export class Body {
 		// panel rows' edit column; leadWidth is the ONE authority).
 		// R2: wallL is 0 — the box is retired, so the row starts at column
 		// one and the frame's marker and this formula share the constant.
-		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
+		// Graphite P3/P4: a panel leaves the input row to the composer
+		const lead = this.#composerLead();
 		return 1 + leadWidth(lead) + st.cursor;
 	}
 
@@ -1690,6 +1894,7 @@ export class Body {
 		if (!this.#isActive()) return;
 		this.#dirty = true;
 		if (fromKey) {
+			this.#flash = null;
 			this.#scheduleInputFrame();
 			return;
 		}
@@ -2032,7 +2237,7 @@ export class Body {
 	 *  freezes, #emitScroll is skipped, and the close repaints from
 	 *  #lastSkip. */
 	#noteOverlay(): void {
-		const sheetUp = this.#sheetState?.() === true;
+		const sheetUp = (this.#sheetState?.() ?? false) !== false;
 		const viewerUp = this.#viewer !== null;
 		this.#overlayFrame = sheetUp || this.#sheetWasUp || viewerUp || this.#viewerWasUp;
 		this.#sheetWasUp = sheetUp;
@@ -2053,18 +2258,20 @@ export class Body {
 	#liveRows(W: number, ctx: FrameCtx, cap: number): { lines: string[]; panelSpan: { offset: number; count: number; first: number } | null; pickWin?: { first: number; size: number } | null } {
 		const capped = Math.max(1, cap);
 		if (this.#viewer !== null) return { lines: this.#viewerBand(W).slice(0, capped), panelSpan: null };
-		if (this.#sheetState?.() === true) return { lines: keysSheetRows(W).slice(0, capped), panelSpan: null };
+		// Graphite R3e: the keys sheet, or a sheet of the caller's rows (`/status`)
+		const sheet = this.#sheetState?.() ?? false;
+		if (sheet !== false) return { lines: (sheet === true ? keysSheetRows(W) : sheet(W)).slice(0, capped), panelSpan: null };
 		const panel = this.#panelState?.() ?? null;
 		if (panel !== null) {
 			// W21: the panel's cap is exact, so the force-commit loop never
 			// fires on it. W22: the queue band sits below the panel — the
 			// cap shrinks by it.
-			const frame = panelFrameOf(panel, W, capped);
+			const frame = panelFrameOf(panel, W, capped, this.#opts.height());
 			// B (review of this round): the pick window THIS frame draws. The size
 			// depends on the budget, so the renderer is the only producer — the
 			// digit keys are handed this value instead of deriving a second one.
 			const pick = panel.pick ?? null;
-			return { lines: frame.rows, panelSpan: frame.options, pickWin: pick === null ? null : pickWindowOf(panel.view, pick.cursor, pick.phase, capped) };
+			return { lines: frame.rows, panelSpan: frame.options, pickWin: pick === null ? null : pickWindowOf(panel.view, pick, capped, this.#opts.height()) };
 		}
 		return { lines: this.#liveProjection(W, ctx, cap), panelSpan: null };
 	}
@@ -2274,6 +2481,19 @@ export class Body {
 	 *  occupant (the queue is dense, like the menu; each line is its
 	 *  own chip with the □ gutter). */
 	#queueRows(W: number, H: number): string[] {
+		// Graphite §8.7: the live row opens the band above the composer; the
+		// queued messages sit under it, next to the input they wait on.
+		const panelUp = (this.#panelState?.() ?? null) !== null;
+		const p = palette();
+		// a blank row above the live row keeps it off the streaming content
+		// (owner, 2026-09-29: the words ran right up to `working`)
+		const live = panelUp ? [] : this.#live !== null ? ["", cutLine(this.#live, W)] : this.#flash !== null ? ["", cutLine(`  ${p.dim}${this.#flash}${p.reset}`, W)] : [];
+		return [...live, ...this.#queuedRows(W, H - live.length)];
+	}
+
+	/** The queued messages' rows; `H` is the height they may share with
+	 *  the content, the live row's already taken out. */
+	#queuedRows(W: number, H: number): string[] {
 		const queued = this.#queueState?.() ?? [];
 		if (queued.length === 0) return [];
 		// KC1 (adjudication A4): a MULTI-LINE queued message's chip shows
@@ -2294,13 +2514,16 @@ export class Body {
 		// scroll — the scrollback lost the turns entirely (finding #A8b —
 		// the queued-flood content loss). The band keeps the first H−9
 		// chips + one "…N more" row (≤ H−8 rows — the content keeps ≥ 4);
-		// the status hint's "+N queued" already carries the count, so the
-		// cap hides nothing the status doesn't show.
+		// that row carries the count, so the cap hides nothing without
+		// saying so.
+		// the main-sync round (owner, 2026-09-30): a steer waits for an open
+		// approval — it never answers one — and its row says so
+		const waiting = this.#panelState?.()?.view.flavor === "approval" ? "approval" : "step";
 		const keep = Math.max(1, H - 9);
-		if (lines.length <= keep) return pendingQueueRows(lines, W);
+		if (lines.length <= keep) return pendingQueueRows(lines, W, waiting);
 		const p = palette();
 		const hidden = lines.length - keep;
-		return [...pendingQueueRows(lines.slice(0, keep), W), `${p.dim}□ …${hidden} more${p.reset}`];
+		return [...pendingQueueRows(lines.slice(0, keep), W, waiting), `  ${p.dim}\u2026${hidden} more${p.reset}`];
 	}
 
 	/**
@@ -2325,9 +2548,9 @@ export class Body {
 		// occupant already has: counted in chromeRows, clamped with the
 		// composer, redrawn with the frame.
 		const pick = this.#pickState?.() ?? null;
-		if (pick !== null) return sessionPickerRows(pick, W, Date.now());
+		if (pick !== null) return sessionPickerRows(pick, W, Date.now(), this.#opts.height());
 		const at = this.#atState?.() ?? null;
-		if (at !== null) return atPanelRows(at, W);
+		if (at !== null) return atPanelRows(at, W, this.#opts.height());
 		const menu = this.#menuState?.();
 		if (menu === null || menu === undefined || menu.items.length === 0) return [];
 		const p = palette();
@@ -2353,21 +2576,45 @@ export class Body {
 		//  - a description is CUT, never folded — a folded row would
 		//    break the window's height, which is the thing being bought.
 		const items = menu.items;
-		const col = MENU_ITEMS.reduce((n: number, m: MenuItem) => Math.max(n, m.name.length - 1), 0);
-		const windowed = items.length > MENU_WINDOW;
-		// the window's top is derived from the selection alone (this
-		// method is re-entered per frame and keeps no state): centre it,
-		// clamped to the ends.
-		const top = windowed ? Math.max(0, Math.min(menu.selected - ((MENU_WINDOW - 1) >> 1), items.length - MENU_WINDOW)) : 0;
-		const rows: string[] = [bandHeader("commands", W)];
-		for (let i = top; i < Math.min(items.length, top + MENU_WINDOW); i += 1) {
+		// Graphite P2 (owner, 2026-10-03): the list takes /resume's shape —
+		// the count in the band, the window (eight rows from a 30-row
+		// terminal, five below) with its more-marks, the typed prefix gold,
+		// and one key row with the counter. The selected row keeps R3a's gold
+		// `›` in column 1 (owner: kept).
+		const total = menu.total ?? items.length;
+		const query = menu.query ?? "";
+		const col = Math.max(menu.nameCol ?? 0, ...items.map((m) => m.name.length - 1));
+		const rows: string[] = [bandHeader(`commands \u00b7 ${query === "" ? `${total}` : `${items.length} of ${total} match`}`, W)];
+		const { first, count } = bandWindow(items.length, menu.selected, bandVisible(this.#opts.height()));
+		for (let i = first; i < first + count; i += 1) {
 			const item = items[i]!;
-			const label = `${item.name.slice(1).padEnd(col)} ${item.desc}`;
-			rows.push(...(i === menu.selected ? gutterCut(`${p.bold}▸${p.reset} `, `${p.bold}${label}${p.reset}`, W) : gutterCut("  ", `${p.dim}${label}${p.reset}`, W)));
+			const name = item.name.slice(1);
+			const selected = i === menu.selected;
+			// the prefix the person typed, gold — the filter is a prefix match
+			// (off a known ground the warn tint stands in, as in the @ band)
+			const typed = Math.min(query.length, name.length);
+			const gold = p.gold !== "" ? p.gold : p.warn;
+			const shownName = `${typed > 0 ? `${p.reset}${p.bold}${gold}${name.slice(0, typed)}${p.reset}${selected ? p.bold : ""}` : ""}${name.slice(typed)}`;
+			// THE FIX (found capturing the real terminal, 2026-10-03): the
+			// description is cut as TEXT, by cells, before it is styled. It was
+			// cut after — by a cutter that counts escape bytes as cells — so
+			// Graphite's 19-byte dim took 19 cells off every row, and a cut that
+			// landed inside the reset left a bare ESC in the output.
+			const room = Math.max(0, W - 2 - col - 2 - 1);
+			const desc = visibleWidth(item.desc) <= room ? item.desc : room <= 1 ? "" : `${widthCut(item.desc, room - 1)}\u2026`;
+			const label = `${shownName}${" ".repeat(Math.max(0, col - name.length))}  ${p.reset}${p.dim}${desc}${p.reset}`;
+			const width = col + 2 + visibleWidth(desc);
+			if (selected) {
+				// Graphite §8.2 (R3a): the selected command wears the one selected
+				// row every list has — its `→` is the gold `›` in column 1, the
+				// name from the content edge
+				rows.push(selectionBar(`${p.bold}\u2192${label}`, width + 1, W));
+			} else {
+				const mark = moreMark(i, first, count, items.length);
+				rows.push(`${mark === null ? " " : `${p.dim}${mark}${p.reset}`} ${label}`);
+			}
 		}
-		// the counter earns its row only when the list is CUT — over a
-		// list you can see all of, it says nothing the rows do not.
-		if (windowed) rows.push(`  ${p.dim}(${menu.selected + 1}/${items.length})${p.reset}`);
+		rows.push(bandKeyRow(["\u2191\u2193 move", "\u23ce completes", "esc"], menu.selected, items.length, W));
 		return rows;
 	}
 
@@ -2452,7 +2699,7 @@ export class Body {
 				// the cursor rests past the content — an inverse space,
 				// taken OUT of the pad (the walk capped content at W, so
 				// the pad absorbs it and the row still totals W)
-				stripped0 = `${before}\x1b[7m \x1b[27m`;
+				stripped0 = `${before}${caretOn()} ${caretOff()}`;
 				cursorPad = 1;
 			} else if (after[0] === "\x1b" || (after.codePointAt(0)! >= 0xd800 && after.codePointAt(0)! <= 0xdfff)) {
 				// never wrap a sequence, never split a surrogate pair —
@@ -2461,7 +2708,7 @@ export class Body {
 				stripped0 = before + after;
 			} else {
 				const glyph = String.fromCodePoint(after.codePointAt(0)!);
-				stripped0 = `${before}\x1b[7m${glyph}\x1b[27m${after.slice(glyph.length)}`;
+				stripped0 = `${before}${caretOn()}${glyph}${caretOff()}${after.slice(glyph.length)}`;
 			}
 		}
 		// R2 — the box is retired (see boxTop): the composer is two dashed
@@ -2489,11 +2736,22 @@ export class Body {
 		// the lead — the panel's phase lead when the panel owns the row
 		// (1-3> / the rule input's "2 Yes, don't ask again for " / the
 		// amend "feedback (deny): "), the bound prompt otherwise
-		const lead = panel !== null ? panelLeadOf(panel) : this.#inputPrompt;
+		const p = palette();
+		// Graphite §7.8: the prompt `›` is gold (the edge of a turn); the
+		// bound lead is plain text and the colour is the paint's, so a ground
+		// resolved after the first frame reaches it.
+		// Graphite P3/P4: a panel leaves the input row its own lead — a filter,
+		// a note or an answer is typed there, and a list says its keys on its
+		// key row (DECLARED REVERSAL of `1-4>`, `pick>`, `amend›`)
+		const lead = this.#composerLead().replace("\u203a", `${p.gold}\u203a${p.gold === "" ? "" : p.fgEnd}`);
 		const leadW = leadWidth(lead);
 		// a LEGACY one-row provider (the old {line, cursor} shape) keeps
 		// working: its single line is the composer's single row
 		let rows = st.lines !== undefined && st.lines.length > 0 ? [...st.lines] : [st.line];
+		// Graphite §7.8 — DECLARED REMOVAL (owner, 2026-09-29): the empty
+		// input carries no placeholder. R1c put the key ladder there; the
+		// row is kept empty — `?` lists the keys, and the empty input is
+		// where later work (follow-up suggestions) will speak.
 		let cursorRow = Math.min(st.cursorRow ?? 0, rows.length - 1);
 		const cursorCol = st.cursorCol ?? st.cursor;
 		// KC1 §5's N_visible, re-applied against the frame's REAL bands:
@@ -2515,6 +2773,20 @@ export class Body {
 			// W23: the frame-derived column — wallL (2) + the marker's
 			// cell + 1 — the CHA lands the cursor AT the marker from ANY base
 			if (r === cursorRow) markerCol = 1 + bytes.markerCell;
+		}
+		// Graphite P1 (owner, 2026-09-30) — DECLARED EXCEPTION to §7.8's empty
+		// input: while the /resume picker is up and nothing is typed, the
+		// input says what typing there does. The input IS the picker's filter,
+		// so the hint names a key the person is about to press; everywhere
+		// else the empty input stays empty. It sits after the drawn cursor,
+		// in the row's pad, so the cursor and the columns do not move.
+		// Graphite P3: the same exception for a pick that filters (/model) —
+		// its input is the filter too, and its hint is the caller's words.
+		const hint = panel === null ? (this.#pickState?.() != null ? RESUME_FILTER_HINT : null) : panelHintOf(panel);
+		if (hint !== null && rows.length === 1 && rows[0] === "") {
+			const pad = / +$/.exec(out[0]!);
+			const hintW = visibleWidth(hint);
+			if (pad !== null && pad[0].length > hintW) out[0] = `${out[0]!.slice(0, pad.index)}${p.dim}${hint}${p.reset}${" ".repeat(pad[0].length - hintW)}`;
 		}
 		return { rows: out, markerRow: cursorRow, markerCol };
 	}
@@ -2679,7 +2951,16 @@ export class Body {
 		// stood here until R14: a resize now reprints from the model, so
 		// there is no stale fold for a width change to re-index.
 		const march = all.slice(skip);
-		for (const line of march.length > contentRows ? march.slice(march.length - contentRows) : march) {
+		// The sheets round (owner, 2026-10-06): a sheet sits ON the
+		// composer. When the window's top cannot come back down (R13 — a
+		// taller band, the `/` list, pushed rows into the scrollback) the
+		// rows a shorter sheet leaves free go ABOVE it, between the
+		// conversation and the sheet — not between the sheet and the
+		// composer's rail, where they read as the sheet stopping short.
+		const sheetUp = (this.#sheetState?.() ?? false) !== false;
+		const short = contentRows - march.length;
+		const placed = sheetUp && short > 0 && liveLines.length > 0 && liveLines.length <= march.length ? [...march.slice(0, march.length - liveLines.length), ...new Array<string>(short).fill(""), ...march.slice(march.length - liveLines.length)] : march;
+		for (const line of placed.length > contentRows ? placed.slice(placed.length - contentRows) : placed) {
 			desired[r - 1] = this.#checked(line, W);
 			r += 1;
 		}
@@ -2698,7 +2979,7 @@ export class Body {
 		for (let i = 0; i < editor.rows.length; i += 1) desired[H - 2 - inputExtra + i - 1] = this.#checked(editor.rows[i]!, W);
 		desired[H - 1 - 1] = boxBottom(W);
 		const statusRow = this.#statusSource();
-		desired[H - 1] = this.#checked(statusLine(statusRow.status, this.#tail, W, statusRow.hint, statusRow.expand), W);
+		desired[H - 1] = this.#checked(statusRow.bar !== undefined ? statusBar(statusRow.bar, W, statusRow.expand) : statusLine(statusRow.status, this.#tail, W, statusRow.hint, statusRow.expand), W);
 		this.#emitDiff(out, W, H, desired);
 		// REL-0152-R1: park from where the cursor ACTUALLY is — see
 		// #cursorRow. It used to be parked from H, which the bottom-up
@@ -2983,6 +3264,18 @@ export class Dock {
 	setStatus(text: string, hint?: string | null): void {
 		compositorRef?.setStatus(text, hint ?? null);
 	}
+	/** Graphite §8.9 — the status bar's facts. */
+	setBar(bar: BarInput | null): void {
+		compositorRef?.setBar(bar);
+	}
+	/** Graphite §8.7 — the live row, or null. */
+	setLive(row: string | null): void {
+		compositorRef?.setLive(row);
+	}
+	/** A short confirmation on the live row, gone at the next keypress. */
+	flash(text: string): void {
+		compositorRef?.flash(text);
+	}
 	setTail(tail: string): void {
 		compositorRef?.setTail(tail);
 	}
@@ -2998,7 +3291,7 @@ export class Dock {
 	}
 	/** TUI2-R1 (D): bind the editor's keys-sheet flag — the slot read for
 	 *  the ? overlay (the menu/picker binding pattern). */
-	bindSheet(state: () => boolean): void {
+	bindSheet(state: () => boolean | ((W: number) => string[])): void {
 		if (compositorRef === null) {
 			dockBindings.sheet = state;
 			return;
@@ -3026,7 +3319,7 @@ export class Dock {
 		}
 		compositorRef.bindInput(state, prompt);
 	}
-	bindMenu(state: () => { items: readonly MenuItem[]; selected: number } | null): void {
+	bindMenu(state: () => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null): void {
 		if (compositorRef === null) {
 			dockBindings.menu = state;
 			return;
@@ -3053,8 +3346,8 @@ export class Dock {
 		}
 		compositorRef.bindPick(state);
 	}
-	/** W22: bind the pending-turn queue — the chips + the +N queued
-	 *  hint (the CLI binds it from chat(); the editor's pop keys ride
+	/** W22: bind the pending-turn queue — the queued rows (the CLI
+	 *  binds it from chat(); the editor's pop keys ride
 	 *  the LineInput's own bindQueue). */
 	bindQueue(state: () => readonly string[]): void {
 		if (compositorRef === null) {
@@ -3083,10 +3376,10 @@ let compositorRef: Body | null = null;
 const dockBindings: {
 	state: (() => InputState) | null;
 	prompt: string;
-	menu: (() => { items: readonly MenuItem[]; selected: number } | null) | null;
+	menu: (() => { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null) | null;
 	at: (() => AtPanelState | null) | null;
 	pick: (() => SessionPickState | null) | null;
 	panel: (() => PanelState | null) | null;
-	sheet: (() => boolean) | null;
+	sheet: (() => boolean | ((W: number) => string[])) | null;
 	queue: (() => readonly string[]) | null;
 } = { state: null, prompt: "", menu: null, at: null, pick: null, panel: null, sheet: null, queue: null };

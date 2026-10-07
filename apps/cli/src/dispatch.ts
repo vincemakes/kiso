@@ -5,23 +5,23 @@
  */
 
 import type { SessionRoute } from "./projects.js";
-import { STATUS_GLYPHS, contextRows, contextUnavailableRows, displayVerb, escapeTerminal, helpRows, kUnit, modePickView, modelPickView, namedPickView, compactingStatus, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, displayVerb, escapeTerminal, helpRows, toolTarget, infoSheetRows, kUnit, modePickView, modelPickView, namedPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter, lookupModelMetadata, resolveContinuationScope, resolveReasoning } from "@vincemakes/kiso-runtime/internal";
+import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
 import { MODE_LABEL, MODE_NOTE, OFFERED_MODES, applyModeSetting, getDontAsk, getMode, modeDisplay, parseMode, setDontAsk, type ModeSetting } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { protectedBangReason, protectedShellVerdict } from "./protected-shell.js";
-import { agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
+import { activeStoreDir, agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { profileProviderLabel, providerLabel } from "./provider-label.js";
 import { installedVersion, versionStatusLine } from "./stale-version.js";
 import { preferences, rememberEffort, setPreference } from "./preferences.js";
-import { settingsRows } from "./settings.js";
+import { settingRow, settingsFacts, settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
 import { queuedSwitchLines, tasksFor } from "./state.js";
-import { lostReason, taskOutput, taskRow, taskStateLabel } from "./task-notice.js";
+import { lostReason, taskOutput, taskRow, taskStateLabel, taskOutputSheetRows } from "./task-notice.js";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { contextWindowTokens, microcompactThresholdFor, startStatusSpinner, statedContextWindow, windowSourceNote } from "./chat.js";
 import { authForProfile, directWriteProfile, profileAvailable, resolveContextWindow, unavailableReason, type ModelProfile } from "./config.js";
@@ -30,7 +30,8 @@ import { dirname, join } from "node:path";
 import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import type { UserInputVia } from "@vincemakes/kiso-core";
-import { resolveSkillLine, skillsRows } from "./skill-invoke.js";
+import { resolveSkillLine, skillsRows, skillsSheetRows } from "./skill-invoke.js";
+import { setTitleName, setTitleState } from "./window-title.js";
 
 /** Where a skill directory really lives. Project and user skills are
  *  merged into one scan directory by symlink, so the scan root names a
@@ -137,6 +138,18 @@ function signInNote(p: ModelProfile): string {
 		// unavailable — the availability mark says so; the env name still names what would sign it in
 	}
 	return p.apiKeyEnv ?? "no key";
+}
+
+/** Graphite P3: why a profile cannot run, for its opened row — the words a
+ *  pick of it prints (`unavailableReason`), without the `model <name>:
+ *  unavailable —` the row already says and the config aside. */
+function unavailableWhy(name: string, p: ModelProfile): string {
+	const head = `model ${name}: `;
+	const said = unavailableReason(name, p);
+	return (said.startsWith(head) ? said.slice(head.length) : said)
+		.replace(/^unavailable \u2014 /, "")
+		.replace(/ \(configs never store keys, only the env-var name\)$/, "")
+		.replaceAll("`", "");
 }
 
 /** Everything dispatch touches that chat() owns. */
@@ -259,12 +272,30 @@ function runBang(command: string, send: boolean, ctx: DispatchCtx): void {
 				ctx.submitTurn(block);
 				return; // submitTurn owns the prompt from here
 			}
-			bodyLog(block, "words");
+			// G3 (R2d): `!!` is the person's command card, `not sent` — its
+			// output escaped like every tool's (the raw block this replaced
+			// printed the fence's markers and did not escape the output)
+			body.bang(command, result.content, result.isError === true);
 		} finally {
 			activeBang = null;
 		}
 		ctx.input.prompt();
 	});
+}
+
+/** Graphite R3d: a name is cut where a derived title is (`sessionTitle`). */
+const NAME_MAX = 60;
+
+/** Graphite §8.7 (R3b): the next /compact was dispatched by kiso, not
+ *  typed — its row says why: `auto` (the opt-in threshold), or P1b's
+ *  `cold cache` (a resumed session whose cache expired). Typed, it is
+ *  `manual`. Read once by the next /compact. */
+let nextCompactWhy: string | null = null;
+export function markCompactWhy(why: string): void {
+	nextCompactWhy = why;
+}
+export function markAutoCompact(): void {
+	markCompactWhy("auto");
 }
 
 export function dispatch(line: string, ctx: DispatchCtx): void {
@@ -320,6 +351,18 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			// between any two elements, so a row-per-call group comes out
 			// double-spaced — which is what the owner photographed on the
 			// ctrl+o expansion.
+			//
+			// The sheets round (owner, 2026-10-06): on a dock /help opens the
+			// command list — the band a typed `/` opens, every command and
+			// installed skill with its description, filtered as you type —
+			// so the list you read is the list you pick from (§8.16). Its
+			// keys and gestures are the keys sheet's (`?`). Off a dock (a
+			// pipe, -p) the table below is what it always printed.
+			if (dock.active && ctx.input.openCommands !== undefined) {
+				ctx.input.openCommands();
+				ctx.input.prompt();
+				return;
+			}
 			bodyLog(helpRows().join("\n"), "words");
 			ctx.input.prompt();
 		});
@@ -331,9 +374,12 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const t = body.lastThinking();
 			if (t === null) {
-				bodyLog("[no thinking yet]");
+				body.notice("[no thinking yet]");
 			} else {
-				bodyLog(escapeTerminal(t));
+				// the last sweep (owner, 2026-10-06): on the terminal a THINKING
+				// row and the block in thinking's own look; a pipe prints the text
+				const lines = t.trim().split("\n").length;
+				body.recall(escapeTerminal(t), "THINKING", `the last block \u00b7 ${lines} line${lines === 1 ? "" : "s"}`, [{ text: t, style: "thinking" }]);
 			}
 			ctx.input.prompt();
 		});
@@ -346,7 +392,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const tool = body.lastTool();
 			if (tool === null) {
-				bodyLog("[no tool call yet]");
+				body.notice("[no tool call yet]");
 			} else {
 				// TUI2-R2pre ④: the SECTION HEADERS say the act ("--- read
 				// input ---") on the interactive SCREEN; the two payloads
@@ -359,11 +405,21 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// is a machine-readable log whose bytes other things (the
 				// e2e gates, anyone's script) already depend on. Without the
 				// dock, this is that log — so it keeps the call's own name.
-				const verb = dock.active ? displayVerb(tool.name) : tool.name;
-				bodyLog(`--- ${verb} input ---`);
-				bodyLog(escapeTerminal(JSON.stringify(tool.input, null, 2)));
-				bodyLog(`--- ${verb} output${tool.result.isError ? " (error)" : ""} ---`);
-				bodyLog(escapeTerminal(tool.result.content));
+				//
+				// The last sweep (owner, 2026-10-06): the screen's form is no
+				// longer the rules with a display verb — it is a LAST CALL row
+				// (the card's verb and target, how much came back) and the two
+				// payloads under dim titles, one cell. The pipe keeps the log.
+				const input = escapeTerminal(JSON.stringify(tool.input, null, 2));
+				const output = escapeTerminal(tool.result.content);
+				const pipe = [`--- ${tool.name} input ---`, input, `--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`, output].join("\n");
+				const n = tool.result.content.replace(/\n+$/, "").split("\n").length;
+				const head = `${displayVerb(tool.name).toUpperCase()} ${toolTarget(tool.name, tool.input)}`.trim();
+				const said = tool.result.content === "" ? "no output" : `${n} line${n === 1 ? "" : "s"}${tool.result.isError ? " \u00b7 failed" : ""}`;
+				body.recall(pipe, "LAST CALL", `${head} \u00b7 ${said}`, [
+					{ title: "input", text: input, style: "output" },
+					{ title: tool.result.isError ? "output (error)" : "output", text: output, style: "output" },
+				]);
 			}
 			ctx.input.prompt();
 		});
@@ -494,14 +550,14 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const answer = lastAnswer(ctx.session.projected());
 			if (answer === null) {
-				bodyLog("[nothing to copy — no answer yet]");
+				body.notice("[nothing to copy — no answer yet]");
 			} else {
 				const r = clipboardWrite(answer);
 				// The MESSAGE comes from clipboardWrite, never from here —
 				// the claim and the act must not be able to drift apart. On
 				// the dock it rides the W18 hint slot (gone at the next
 				// keypress); in a pipe it is a line like any other.
-				if (dock.active) dock.setStatus(r.message);
+				if (dock.active) dock.flash(r.message);
 				else bodyLog(`[${r.message}]`);
 			}
 			ctx.input.prompt();
@@ -519,11 +575,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const r = body.rewrap();
 			if (r.lines.length === 0) {
-				bodyLog("[/rewrap] no prose to re-wrap yet");
+				body.notice("[/rewrap] no prose to re-wrap yet");
 			} else {
-				bodyLog(`--- re-wrapped ${r.blocks} block${r.blocks === 1 ? "" : "s"} at the current width (appended — the history above is unchanged) ---`);
+				body.notice(`--- re-wrapped ${r.blocks} block${r.blocks === 1 ? "" : "s"} at the current width (appended — the history above is unchanged) ---`);
 				bodyLog(r.lines.join("\n")); // DC-51: one call, one cell
-				if (r.skipped > 0) bodyLog(`--- ${r.skipped} earlier block${r.skipped === 1 ? "" : "s"} not re-wrapped (bounded at two screens) ---`);
+				if (r.skipped > 0) body.notice(`--- ${r.skipped} earlier block${r.skipped === 1 ? "" : "s"} not re-wrapped (bounded at two screens) ---`);
 			}
 			ctx.input.prompt();
 		});
@@ -544,8 +600,20 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// derivation still does zero I/O and still ignores trace-shaped data.
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const ledger = readContextLedger(ctx.session.id, ctx.contextWindow());
+			const reason = "the ledger is written per request \u2014 run a turn, then ask again";
+			// the sheets round (owner, 2026-10-06): on a dock /context is a
+			// sheet over the input, read and then typed past (§8.16); off one
+			// (a pipe, -p) the lines below are what it always printed
+			if (dock.active && ctx.input.openSheet !== undefined) {
+				const win = ctx.contextWindow();
+				const t = win > 0 ? tiersFor(win, 0) : null;
+				const tiers = t === null ? null : { soft: t.soft / win, hard: t.hard / win };
+				ctx.input.openSheet((W) => (ledger === null ? contextUnavailableSheetRows(reason, W) : contextSheetRows(ledger, tiers, W)));
+				ctx.input.prompt();
+				return;
+			}
 			for (const row of ledger === null
-				? contextUnavailableRows("the ledger is written per request — run a turn, then ask again")
+				? contextUnavailableRows(reason)
 				: contextRows(ledger)) {
 				bodyLog(row);
 			}
@@ -559,26 +627,146 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const w = statedContextWindow();
 			const profile = currentProfileName;
+			const input = {
+				user: settingsLayers.user,
+				project: settingsLayers.project,
+				env: process.env,
+				...(settingsLayers.modeFlag !== undefined ? { modeFlag: settingsLayers.modeFlag } : {}),
+				...(settingsLayers.modelFlag !== undefined ? { modelFlag: settingsLayers.modelFlag } : {}),
+				dontAskFlag: settingsLayers.dontAskFlag,
+				mode: getMode(),
+				dontAsk: getDontAsk(),
+				model: { label: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profile === null ? "" : ` · profile ${profile}`}`, profile, switched: settingsLayers.modelSwitched },
+				ground: currentGround(),
+				floorOn,
+				window: windowSourceNote(w).replace(/^window /, ""),
+				thinkingHidden: body.thinkingHidden(),
+				thinkingRemembered: preferences().thinking !== undefined,
+				version: versionStatusLine(installedVersion(), VERSION).replace(/^version /, ""),
+			};
+			// Graphite R3e (owner, 2026-09-29): on a dock /settings is a panel.
+			// The session's own settings change in it — the mode (←→, the same
+			// path as /mode), thinking shown/hidden (←→, ctrl+t's path), the
+			// model (⏎ opens /model). What lives in a config file shows its
+			// value and source, and ⏎ prints how to change it: kiso never
+			// writes the person's config (0.40.6's rule stands for those).
+			if (dock.active && ctx.input.panelAsk !== undefined) {
+				const facts = settingsFacts(input);
+				const mode = getMode();
+				const hidden = body.thinkingHidden();
+				const THINK = ["shown", "hidden"] as const;
+				const DONT_ASK = ["off", "on"] as const;
+				// Graphite P3 (owner, 2026-10-04): the session's own four first —
+				// model, mode, don't ask, thinking — then what lives in a config
+				// file. An order, not groups: no caption between them. The printed
+				// form keeps its own order.
+				const OWN = ["model", "mode", "don't ask", "thinking"];
+				const order = [...OWN.flatMap((n) => facts.filter((f) => f.name === n)), ...facts.filter((f) => !OWN.includes(f.name))];
+				const options = order.map((f): PickOption => {
+					const cols = [f.brief ?? f.value, f.from];
+					if (f.name === "mode") return { label: "mode", cols: [MODE_LABEL[mode] ?? f.value, f.from], levels: OFFERED_MODES.map((m) => MODE_LABEL[m]), axisLabel: "mode", enter: "\u23ce applies", ...(OFFERED_MODES.indexOf(mode) >= 0 ? { level: OFFERED_MODES.indexOf(mode) } : {}) };
+					// the switch is the session's own, as /dont-ask is: walked here, never written to a config
+					if (f.name === "don't ask") return { label: "don't ask", cols, levels: DONT_ASK, level: getDontAsk() ? 1 : 0, axisLabel: "don't ask", enter: "\u23ce applies" };
+					if (f.name === "thinking") return { label: "thinking", cols, levels: THINK, level: hidden ? 1 : 0, axisLabel: "thinking", enter: "\u23ce applies" };
+					if (f.name === "model") {
+						const host = providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl)).replace(/^@/, "");
+						return { label: "model", cols: [agentModel, f.from], opened: [host, profile === null ? "" : `profile ${profile}`].filter((t) => t !== "").join(" \u00b7 "), enter: "\u23ce opens /model" };
+					}
+					// a config file's setting: what its value means, and how it changes
+					return { label: f.name, cols, opened: [f.means ?? "", `change: ${f.change}`].filter((t) => t !== "").join(" \u00b7 "), enter: "\u23ce prints how" };
+				});
+				let level: number | undefined;
+				const picked = await new Promise<PickResult | null>((resolve) => {
+					ctx.input.panelAsk!(
+						settingsPickView(
+							{ header: "settings", noun: "", input: "arrows", columns: ["plain", "dim"], levelColumn: 0, ...(ctx.isRunning() ? { facts: "run paused" } : {}), options },
+							ctx.isRunning() ? "\u276f run paused" : `\u25b8 ${mode}`,
+						),
+						(v) => {
+							if (v.action === "picked") level = v.level;
+							resolve(v.action === "picked" ? v.result : null);
+						},
+					);
+				});
+				ctx.paintIdle();
+				const f = picked !== null && "index" in picked ? order[picked.index] : undefined;
+				if (f === undefined) {
+					ctx.input.prompt();
+					return; // esc — nothing changed, nothing said
+				}
+				if (f.name === "mode") {
+					const chosen = level === undefined ? undefined : OFFERED_MODES[level];
+					if (chosen !== undefined && chosen !== mode) {
+						const wasOn = getDontAsk();
+						applyModeSetting({ mode: chosen });
+						body.modeNotice(`mode \u2192 ${MODE_LABEL[chosen]}`, MODE_LABEL[mode], MODE_LABEL[chosen]);
+						if (getDontAsk() !== wasOn) body.dontAskNotice(`don't ask \u2192 ${getDontAsk() ? "on" : "off"}`, getDontAsk());
+						ctx.paintIdle();
+					}
+					ctx.input.prompt();
+					return;
+				}
+				if (f.name === "don't ask") {
+					// /dont-ask's own path: the switch, its row, and nothing written
+					const want = level === undefined ? undefined : DONT_ASK[level] === "on";
+					if (want !== undefined && want !== getDontAsk()) {
+						setDontAsk(want);
+						body.dontAskNotice(`don't ask \u2192 ${want ? "on" : "off"}`, want);
+						ctx.paintIdle();
+					}
+					ctx.input.prompt();
+					return;
+				}
+				if (f.name === "thinking") {
+					const want = level === undefined ? undefined : THINK[level];
+					if (want !== undefined && (want === "hidden") !== hidden) {
+						dispatch("\x14think", ctx); // ctrl+t's own path: the toggle, remembered
+						return;
+					}
+					ctx.input.prompt();
+					return;
+				}
+				if (f.name === "model") {
+					dispatch("/model", ctx); // the picker's own segment re-arms the prompt
+					return;
+				}
+				bodyLog(settingRow(f), "words");
+				ctx.input.prompt();
+				return;
+			}
 			bodyLog(
-				settingsRows({
-					user: settingsLayers.user,
-					project: settingsLayers.project,
-					env: process.env,
-					...(settingsLayers.modeFlag !== undefined ? { modeFlag: settingsLayers.modeFlag } : {}),
-					...(settingsLayers.modelFlag !== undefined ? { modelFlag: settingsLayers.modelFlag } : {}),
-					dontAskFlag: settingsLayers.dontAskFlag,
-					mode: getMode(),
-					dontAsk: getDontAsk(),
-					model: { label: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profile === null ? "" : ` · profile ${profile}`}`, profile, switched: settingsLayers.modelSwitched },
-					ground: currentGround(),
-					floorOn,
-					window: windowSourceNote(w).replace(/^window /, ""),
-					thinkingHidden: body.thinkingHidden(),
-					thinkingRemembered: preferences().thinking !== undefined,
-					version: versionStatusLine(installedVersion(), VERSION).replace(/^version /, ""),
-				}).join("\n\n"),
+				settingsRows(input).join("\n\n"),
 				"words",
 			);
+			ctx.input.prompt();
+		});
+		return;
+	}
+	if (trimmed === "/name" || trimmed.startsWith("/name ")) {
+		// Graphite R3d: the person names the session. The name lives in the
+		// session's sidecar (the runtime's `name` tenant) — the terminal
+		// title, the /resume row and the session list read it, the title
+		// derived from the first real line is the fallback. Control and
+		// format characters never reach it; it is cut at 60 like a title.
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const words = trimmed.slice("/name".length).replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim();
+			const root = activeStoreDir;
+			if (words === "") {
+				const named = readSessionName(root, ctx.session.id);
+				const derived = sessionTitle(ctx.session.log.all.map((event) => ({ runId: "", ts: 0, event }) as StoreRecord));
+				body.notice(named !== null ? `name: ${escapeTerminal(named)} \u00b7 /name - clears it` : `unnamed \u2014 /resume lists it as "${escapeTerminal(derived)}" \u00b7 /name <words> names it`);
+			} else if (words === "-") {
+				writeSessionName(root, ctx.session.id, null);
+				setTitleName(null);
+				// the tasks round: the tab says kiso since the card round, so what the
+				// first line names again is the session in /resume
+				body.notice("name cleared \u2014 /resume lists it by its first line again");
+			} else {
+				const name = [...words].slice(0, NAME_MAX).join("");
+				writeSessionName(root, ctx.session.id, name);
+				setTitleName(name);
+				body.notice(`named "${escapeTerminal(name)}"`);
+			}
 			ctx.input.prompt();
 		});
 		return;
@@ -590,6 +778,28 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const ctxRatio = ctx.estimateCtx();
 			const ctxPct = Number.isFinite(ctxRatio) ? `~${Math.round(ctxRatio * 100)}%` : "~?";
+			// Graphite R3e: on a dock /status is a sheet over the input — the
+			// same facts, one per row, read and then typed past; off one (a
+			// pipe, -p) the lines below are what it always printed
+			if (dock.active && ctx.input.openSheet !== undefined) {
+				const w = statedContextWindow();
+				const named = readSessionName(activeStoreDir, ctx.session.id);
+				const win = ctx.contextWindow();
+				const tiers = win > 0 ? tiersFor(win, 0) : null;
+				const pal = palette();
+				const profileOf = currentProfileName === null ? "" : ` · profile ${currentProfileName}`;
+				const facts = [
+					{ label: "session", value: `${ctx.session.id}${named === null ? "" : ` · ${named}`} · ${ctx.session.log.all.length} events` },
+					{ label: "model", value: `${agentModel}${providerLabel(agentBaseUrl, upstreamOf(agentBaseUrl))}${profileOf}` },
+					{ label: "context", value: `${ctxPct} used · ${windowSourceNote(w)}` },
+					...(tiers === null ? [] : [{ label: "compaction", value: `past ${Math.round((tiers.soft / win) * 100)}% at a phase end, past ${Math.round((tiers.hard / win) * 100)}% at once · /context for the split` }]),
+					{ label: "colour", value: `${pal.tier === null ? "off" : pal.tier === "24bit" ? "24-bit" : "256"} · ground ${currentGround()}` },
+					{ label: "version", value: versionStatusLine(installedVersion(), VERSION).replace(/^version /, "") },
+				];
+				ctx.input.openSheet((W) => infoSheetRows("status", facts, W));
+				ctx.input.prompt();
+				return;
+			}
 			bodyLog(`session ${ctx.session.id}`);
 			bodyLog(`${ctx.session.log.all.length} events`);
 			// CW-1: the percentage names its denominator and who stated it — a
@@ -627,10 +837,14 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			// a tier switch, old names included — and when the switch came
 			// with the old dontAsk tier and leaves with it, a line says so
 			const switchTier = (s: ModeSetting): void => {
+				const was = getMode();
 				const wasOn = getDontAsk();
 				applyModeSetting(s);
-				body.notice(`mode → ${MODE_LABEL[getMode()]}`);
-				if (getDontAsk() !== wasOn) body.notice(`don't ask → ${getDontAsk() ? "on" : "off"}`);
+				// Graphite R3e / the main-sync round: the MODE row, and the DON'T
+				// ASK row when the switch moved with it, on a terminal; a pipe
+				// prints these words as they are
+				body.modeNotice(`mode → ${MODE_LABEL[getMode()]}`, MODE_LABEL[was], MODE_LABEL[getMode()]);
+				if (getDontAsk() !== wasOn) body.dontAskNotice(`don't ask → ${getDontAsk() ? "on" : "off"}`, getDontAsk());
 				ctx.paintIdle();
 			};
 			if (arg === "") {
@@ -652,8 +866,16 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 									// the header names the switch when it is on; the
 									// rows are the tiers alone — don't ask is not a tier
 									// and is not offered beside them (owner, 2026-09-30)
-									header: `mode — current: ${modeDisplay()}`,
-									options: OFFERED_MODES.map((name) => ({ label: MODE_LABEL[name], note: [MODE_NOTE[name], ...(name === current ? ["current"] : [])].join(" · ") })),
+									// Graphite P3: the current tier rides the band's name, in
+									// the owner's words of 2026-09-30 (`current: full access ·
+									// don't ask`) — the row that said it is gone
+									header: "mode",
+									facts: `current: ${modeDisplay()}${ctx.isRunning() ? " \u00b7 run paused" : ""}`,
+									enter: "\u23ce switches",
+									// the main-sync design: no `· current` suffix — the cursor
+									// opens on the current tier and the band names it; at 80
+									// columns the suffix was cut to `· c`
+									options: OFFERED_MODES.map((name) => ({ label: MODE_LABEL[name], note: MODE_NOTE[name] })),
 									// MP-1 (0.40.7): the cursor opens on the tier in force
 									...(OFFERED_MODES.indexOf(current) >= 0 ? { initial: OFFERED_MODES.indexOf(current) } : {}),
 								},
@@ -670,8 +892,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					}
 					const chosen = "index" in picked ? (OFFERED_MODES[picked.index] === undefined ? undefined : { mode: OFFERED_MODES[picked.index]! }) : parseMode(picked.custom);
 					if (chosen === undefined) {
-						bodyLog(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}`);
-						bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
+						body.notice(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}\ntiers: ${OFFERED_MODES.join(" ")}`);
 					} else {
 						switchTier(chosen);
 					}
@@ -684,8 +905,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			} else {
 				const typed = parseMode(arg);
 				if (typed === undefined) {
-					bodyLog(`no such mode: ${arg}`);
-					bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
+					body.notice(`no such mode: ${arg}\ntiers: ${OFFERED_MODES.join(" ")}`);
 				} else {
 					switchTier(typed);
 				}
@@ -703,8 +923,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			if (want === undefined) {
 				bodyLog("usage: /dont-ask [on|off]");
 			} else {
+				const wasOn = getDontAsk();
 				setDontAsk(want);
-				body.notice(`don't ask → ${want ? "on" : "off"}`);
+				if (want !== wasOn) body.dontAskNotice(`don't ask → ${want ? "on" : "off"}`, want);
+				else body.notice(`don't ask → ${want ? "on" : "off"}`);
 				ctx.paintIdle();
 			}
 			ctx.input.prompt();
@@ -734,36 +956,43 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					ctx.input.panelAsk(
 						modelPickView(
 							{
-								header: `model — current: ${agentModel}`,
-								options: names.map((name) => {
+								// Graphite P3 (owner, 2026-10-04): the band counts the
+								// profiles and the rows are a table — the model, its host,
+								// and a state word only where there is one (`current`, or
+								// why it cannot run). Typing FILTERS, as /resume does: the
+								// model, then the host, then the profile's name; a typed
+								// `provider/model` that no profile is becomes a row of its
+								// own — DECLARED REVERSAL of the `t` row (TUI2-R2 ④) and of
+								// the digits here (a digit is a letter of a model name).
+								header: "model",
+								noun: "profiles",
+								...(ctx.isRunning() ? { facts: "run paused" } : {}),
+								input: "filter",
+								// PH-1a (finding PH-F4): the example is a syntax
+								// directWriteProfile ACCEPTS — the fresh install sees it
+								filterHint: names.length === 0 ? "type provider/model (e.g. openai-compat/deepseek-reasoner)" : "filter, or type provider/model",
+								direct: true,
+								enter: "\u23ce switches",
+								options: names.map((name): PickOption => {
 									const profile = configModels[name]!;
-									// the note keeps what tells two rows apart; the levels
-									// left it for the axis below (they were being cut off
-									// the end of the note column at 100 columns).
-									// The owner, 2026-09-21: two profiles can name ONE model
-									// id and reach two accounts, so the current mark follows
-									// the PROFILE the session is on (`currentModelName`), not
-									// the model id — the id alone marked both such rows, or
-									// neither. The row's own provider rides the label, so two
-									// rows that share an id still read differently.
-									// 0.40.1 (the owner's dogfood, 2026-09-21): the `profile: <key>` prefix
-									// is gone — the row already names the model and its endpoint, and the
-									// profile key is what `/model <name>` takes, not what a chooser
-									// reading a list needs. What remains is what the chooser CANNOT
-									// infer: availability, and which one is live.
-									// 0.40.6 (the owner, 2026-09-23: "who told you to write ctx"):
-									// the window rode here in 0.40.3–0.40.5 and cut `unavailable`
-									// to `unavailabl…` on the owner's rows. It lives on /status and
-									// /settings, where there is room to say it and its source.
-									const marks = [...(profileAvailable(profile) ? [] : ["unavailable"]), ...(name === currentProfileName ? ["current"] : [])];
-									const host = profileProviderLabel(profile.kind, profile.baseUrl, profile.upstream);
-									return { label: `${profile.kind}/${profile.model}${host === "" ? "" : ` ${host}`}`, note: marks.join(" · "), ...effortAxis(profile) };
+									const available = profileAvailable(profile);
+									// 0.40.1 took the `profile: <key>` prefix off every row and
+									// the kind/ prefix rode the label; P3 moves both to the
+									// selected row's opened line (owner: the profile name kept
+									// there), beside what signs it in. The owner, 2026-09-21:
+									// two profiles can name ONE model id, so `current` follows
+									// the PROFILE, not the id.
+									const host = profileProviderLabel(profile.kind, profile.baseUrl, profile.upstream).replace(/^@/, "");
+									const state = name === currentProfileName ? "current" : available ? "" : profile.apiKeyEnv === undefined ? "sign in" : "no key";
+									return {
+										label: profile.model,
+										cols: [host, state],
+										opened: available ? `profile ${name} \u00b7 ${profile.kind} \u00b7 ${signInNote(profile)}` : unavailableWhy(name, profile),
+										...(available ? {} : { off: true }),
+										match: [name],
+										...effortAxis(profile),
+									};
 								}),
-								// PH-1a (finding PH-F4): the example must be a syntax
-								// directWriteProfile actually ACCEPTS — the old
-								// "openai/…" hint failed with "no such model profile"
-								// on exactly the fresh-install path that shows it.
-								typeHint: names.length === 0 ? "type provider/model directly (e.g. openai-compat/deepseek-reasoner)" : "type provider/model directly",
 								// MP-1 (0.40.7): the cursor opens on the session's own
 								// profile — opening on row 0 plus one Enter changed who pays
 								...(currentProfileName !== null && names.indexOf(currentProfileName) >= 0 ? { initial: names.indexOf(currentProfileName) } : {}),
@@ -825,7 +1054,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					const direct = directWriteProfile(profName);
 					const profile = direct ?? configModels[profName];
 					if (profile === undefined) {
-						bodyLog(`no such model profile: ${profName}`);
+						body.notice(`no such model profile: ${profName}`);
 					} else if (!profileAvailable(profile)) {
 						// the PROFILE name, not the whole argument: what is
 						// unavailable is the credential, and an effort token
@@ -954,6 +1183,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		// model summary — an OFF-LOOP call through the session's own
 		// adapter, so it must never race a running turn: refused
 		// mid-run, with a hint to wait for the turn to end.
+		// Graphite §8.7 (R3b): the row says why — the person asked, or the
+		// opt-in threshold did (`markAutoCompact`, read once here)
+		const compactWhy = nextCompactWhy ?? "manual";
+		nextCompactWhy = null;
 		if (ctx.isRunning()) {
 			body.notice("[/compact] a turn is running — wait for it to finish");
 			return;
@@ -994,11 +1227,16 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			const compacting = (info: { rounds: number; tokens: number }): void => {
 				// 0.40.0: composed by the row seam, not a template here — the row
 				// is where the launch build's progress segment plugs in.
-				const text = (elapsed: number): string => compactingStatus(glyph, info.rounds, info.tokens, elapsed, undefined, retryOnRow(), progress);
-				repaintCompacting = () => dock.setStatus(text(Math.round((Date.now() - compactStart) / 1000)), "esc to cancel");
+				// Graphite §8.7: compacting is a LIVE state — its row rides above
+				// the composer, the status bar below keeps the session. Composed
+				// against the width the row has (it used to be composed blind).
+				const W = (): number => (process.stdout.columns > 0 ? process.stdout.columns : 80);
+				const text = (elapsed: number): string => liveRow(compactingStatus(glyph, info.rounds, info.tokens, elapsed, W() - 20, retryOnRow(), progress, compactWhy), ["esc to cancel"], W());
+				repaintCompacting = () => dock.setLive(text(Math.round((Date.now() - compactStart) / 1000)));
 				compactStart = Date.now();
 				ctxBefore = ctxPercent(ctx.estimateCtx());
-				dock.setStatus(text(0), "esc to cancel");
+				dock.setLive(text(0));
+				setTitleState("working"); // §8.10; the idle paint after it says ready again
 				stopSpinner = startStatusSpinner((next) => {
 					glyph = next;
 					repaintCompacting();
@@ -1187,11 +1425,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 					const route = ctx.route?.(arg) ?? null;
 					if (route === null || route.kind === "refused") {
-						bodyLog(route?.line ?? `no such session: ${escapeTerminal(arg)} — /resume lists them`);
+						body.notice(route?.line ?? `no such session: ${escapeTerminal(arg)} — /resume lists them`);
 						ctx.input.prompt();
 						return;
 					}
-					if (route.kind === "elsewhere" && route.line !== null) bodyLog(route.line);
+					if (route.kind === "elsewhere" && route.line !== null) body.notice(route.line);
 					ctx.requestSwitch(arg);
 				});
 				return;
@@ -1202,7 +1440,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		const others = ctx.sessions().filter((id) => id !== ctx.session.id);
 		if (others.length === 0) {
 			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-				bodyLog("no other sessions — /clear starts a fresh one");
+				body.notice("no other sessions — /clear starts a fresh one");
 				ctx.input.prompt();
 			});
 			return;
@@ -1218,11 +1456,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// session is refused with where to go
 				const route = ctx.sessions().includes(picked) ? null : (ctx.route?.(picked) ?? null);
 				if (route?.kind === "refused") {
-					bodyLog(route.line);
+					body.notice(route.line);
 					ctx.input.prompt();
 					return;
 				}
-				if (route?.kind === "elsewhere" && route.line !== null) bodyLog(route.line);
+				if (route?.kind === "elsewhere" && route.line !== null) body.notice(route.line);
 				ctx.requestSwitch(picked);
 			});
 			return;
@@ -1245,8 +1483,14 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			return;
 		}
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-			if (skill?.kind === "list") bodyLog(skillsRows(loadedSkillsCatalog(), skillSource, tildePath(join(kisoHome(), "skills"))).map(escapeTerminal).join("\n"));
-			else if (skill?.kind === "error") bodyLog(escapeTerminal(skill.message));
+			// the sheets round: on a dock /skills is a sheet over the input
+			// (§8.16); off one it prints the lines it always printed
+			if (skill?.kind === "list" && dock.active && ctx.input.openSheet !== undefined) {
+				const catalog = loadedSkillsCatalog();
+				const userDir = tildePath(join(kisoHome(), "skills"));
+				ctx.input.openSheet((W) => skillsSheetRows(catalog, skillSource, userDir, W));
+			} else if (skill?.kind === "list") bodyLog(skillsRows(loadedSkillsCatalog(), skillSource, tildePath(join(kisoHome(), "skills"))).map(escapeTerminal).join("\n"));
+			else if (skill?.kind === "error") body.notice(escapeTerminal(skill.message));
 			ctx.input.prompt();
 		});
 		return;
@@ -1270,7 +1514,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			// reading when they typed it.
 			const word = trimmed.split(/\s+/)[0] ?? trimmed;
 			const known = slashCommandNames().includes(word);
-			bodyLog(
+			body.notice(
 				known
 					? `${escapeTerminal(word)} takes no arguments — /help says what it does`
 					: `unknown command: ${escapeTerminal(word)} — /help lists the commands`,
@@ -1292,17 +1536,25 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	const manager = tasksFor(ctx.session.id);
 	if (manager === undefined) {
-		bodyLog("no tasks here — this session has no task manager");
+		body.notice("no tasks here — this session has no task manager");
 		return;
 	}
 	let list: TaskInfo[];
 	try {
 		list = manager.list();
 	} catch (err) {
-		bodyLog(`tasks: ${(err as Error).message}`);
+		body.notice(`tasks: ${(err as Error).message}`);
 		return;
 	}
 	const show = (t: TaskInfo): void => {
+		// the tasks round (owner, 2026-10-06): on a dock a task's output is a
+		// sheet over the input (§8.16) — the newest lines a screen can hold
+		// beside the composer; off one, the lines it always printed
+		if (dock.active && ctx.input.openSheet !== undefined) {
+			const lines = taskOutput(t, 12);
+			ctx.input.openSheet((W) => taskOutputSheetRows(t, lines, W));
+			return;
+		}
 		const lines = taskOutput(t);
 		// Amendment 8: a lost task says why, before its output
 		const why = lostReason(t);
@@ -1311,22 +1563,22 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 		for (const line of lines) bodyLog(`  ${line}`);
 	};
 	const stop = (t: TaskInfo): void => {
-		bodyLog(manager.stop(t.id, "person") ? `${t.id}: stop requested` : `${t.id}: nothing to stop (${taskStateLabel(t)})`);
+		body.notice(manager.stop(t.id, "person") ? `${t.id}: stop requested` : `${t.id}: nothing to stop (${taskStateLabel(t)})`);
 	};
 	const [verb, id] = arg.split(/\s+/);
 	if (verb === "show" || verb === "stop") {
 		const t = list.find((x) => x.id === id);
-		if (t === undefined) bodyLog(`no task ${id ?? ""} in this session`);
+		if (t === undefined) body.notice(`no task ${id ?? ""} in this session`);
 		else if (verb === "show") show(t);
 		else stop(t);
 		return;
 	}
 	if (arg !== "") {
-		bodyLog("usage: /tasks · /tasks show <id> · /tasks stop <id>");
+		body.notice("usage: /tasks · /tasks show <id> · /tasks stop <id>");
 		return;
 	}
 	if (list.length === 0) {
-		bodyLog("no tasks in this session");
+		body.notice("no tasks in this session");
 		return;
 	}
 	if (!dock.active) {

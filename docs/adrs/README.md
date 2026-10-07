@@ -145,6 +145,10 @@ not another recalibration)
   person moves a running command to the background with ctrl+b, a steer
   no longer waits for one, `/tasks` lists and stops them, and an exit
   with live tasks asks first.
+- 0059 — `wait` — a run may end on a future event and resume on it: a
+  wait is a task whose terminal is the event; the chain budget replaces
+  lineage depth 1; overturns 0057 §8 in part, 0058 §8 guard 3 and §10
+  (one-shot timers) — Accepted
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's

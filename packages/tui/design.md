@@ -14,32 +14,53 @@ known and the reason is written down. The findings under
 `bench/rd1/findings/` carry the arguments; this file carries the
 conclusions.
 
+**Graphite (owner-ruled 2026-09-28).** This revision states the screen as
+the Graphite rounds build it. It lives on the `tui/graphite` branch with the
+rounds and reaches main together with them, so the file and the code agree
+on main. A rule that a later round builds says so in its heading — `(R2)`,
+`(R3)`, `(with Safe Admission)` — and until that round lands the code keeps
+the behaviour the rule replaces.
+
 ---
 
 ## 1. The laws
 
-**1.1 One hairline.** A single solid rule (`─`) is the only divider on
-screen, and it is the same rule everywhere: the composer, every panel's
-open and close, the band headers, the markdown rule. Not boxes, not a
-second weight. A rule is a *delimiter* and a box is a *container*; the
-`│` gutter survives only where it SCOPES, never where it separates.
+**1.1 One hairline.** A single solid rule (`─`) is the only divider the
+chrome draws, and it is the same rule everywhere: the composer's two rules,
+the edge of the live zone and of a band, the rule under a first-level
+heading. Not boxes, not a second weight. A rule is a *delimiter*; a SURFACE
+(§1.6) is what contains. Two rules carry colour, and only as a fade along
+their length: the composer's top rule (gold at its left end, §7.8) and a
+first-level heading's (§7.15). An answer's own section break is content, not
+chrome, and renders as `·  ·  ·` (§7.15). The `│` gutter survives only where
+it SCOPES — a quote, a diff — never where it separates.
 
-**1.2 Grey chrome, coloured content.** Frames, labels, keys and metadata
-are dim ink and never coloured. Colour appears only inside content: diff
-signs, and a failure. **Strip every escape sequence and no fact is
-lost** — which is why an outcome is words, an emphasis is never the only
-carrier of meaning, and output rows are distinguishable from prose in
-plain bytes.
+**1.2 Grey chrome, two accents, and words carry every fact.** Frames,
+labels, keys and metadata are grey. Two accents exist and each means one
+thing:
 
-*One DECLARED EXCEPTION (owner-ruled 2026-09-04, DC-47).* The model's
-THINKING and its answer are the same bytes once the escapes come off.
-§1.8's one left edge put them in the same column, and the owner ruled
-that the edge outranks the distinction. What is given up is exactly
-this: a rendered frame with its colour stripped — a terminal capture, a
-paste out of the scrollback — cannot tell reasoning from answer.
-Everywhere else the fact survives: on screen by italic and dim, and in
-a PIPE because the inactive path writes one folded summary line and
-never a thinking paragraph at all.
+- **Gold is the edge of a turn:** the person's words (the bar of their
+  block), what is live (the twinkle, a running call's
+  breath, a message waiting to land), what needs the person (`❯`), the seal
+  `✦`, and the input line. Gold never colours the machine's content.
+- **Blue is the machine:** a second-level heading, inline code, links, the
+  branch name, a call's card.
+
+Outcomes keep their own colours on the outcome WORD only. **Strip every
+escape sequence and no fact is lost**: every block that could be taken for
+another keeps a mark that is a character, not a colour — the person's words
+their `▌` where there is no ground to paint (§7.9), a card its verb, a meta
+row its label — and the answer is the one block with none. An outcome is a
+word, and an emphasis is never the only carrier of meaning. The one stated
+exception is thinking: its mark is its grey italic, which a stripped frame
+loses (DC-47's exception, back since 2026-09-29); where colour is off, the
+plain word `thinking:` opens it (§7.2).
+
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). This law read "grey
+chrome, coloured content" and admitted no accent. The design round admitted
+gold and blue, one meaning each. R1 retired the DC-47 exception with a
+`THINK` label; the owner removed the label (2026-09-29), and the exception
+is back.
 
 **1.3 No empty marks.** A symbol earns its cell by carrying a fact the
 words do not. A row that already says `exit 0` does not also need a tick
@@ -51,93 +72,148 @@ A warning is the same case as the tick: a row that says *deletes files
 permanently* does not also need a mark saying it is serious, and the
 sentence is what survives `NO_COLOR` (DC-42).
 
-*Known cost, accepted:* a failure has no shape, only a colour and its
-words. `❯` survives this law because it does not describe an outcome —
-it means *you have to do something*.
+*Known cost, accepted:* a failure has no shape, only a colour, a card
+ground and its words. `❯` survives this law because it does not describe an
+outcome — it means *you have to do something*.
 
 **1.4 Two marks, one beat.** A running command breathes; a running
-thought twinkles. Nothing else in the product moves. See §5.
+thought twinkles. Nothing else in the product moves. See §5. The terminal
+title changes with the state and never on a tick (§5.4).
 
-**1.5 Labels are mono, uppercase, dim.** `MODEL`, `WORKSPACE`. They mark
-sections. They are never content.
+**1.5 Labels are words, upper case; surfaces are backgrounds.** A card's
+verb (`READ`, `RUN`, `EDIT`), a meta row's label (`COMPACTED`), a band
+row's key (`MODEL`, `SESSION`). They name what a block is; they are never
+content, and they are grey (§1.2). A block whose look already says what it
+is takes no label: the person's words are their block, thinking is its
+grey italic (§7.2), and the answer is what is left.
 
-**1.6 Two surfaces, and they mean different things.** **Reverse video
-is the HUMAN'S surface** — their own words, at full contrast. It
-inverts whatever the terminal is, so it is the same weight on a light
-ground, a dark one, and one that was never established: one form, no
-ladder, nothing to under-read. **The wash is the MACHINE'S surface** —
-*this is the machine's work: what was run, and what came back*: inline
-code, and every settled call. A lighter ground is right there, because
-those rows are read as content rather than heard as an utterance.
+A surface is drawn with cell BACKGROUNDS — never with block-element glyphs
+that must JOIN from row to row (`▄ ▀ █`, or a bar down several rows). A
+terminal draws a glyph from the font, and where the line is taller than the
+font (Apple Terminal among them) the glyph stops short of the cell's edge:
+rows that should join show a seam, a bar drawn down several rows reads as a
+dashed line. A background fills its whole cell. So a pad is a whole ROW of
+background, a card's edge is one cell of background, and the wordmark's
+letters are background cells. A glyph is fine where it has no neighbour to
+join. (Measured on the owner's Apple Terminal with seam tests, 2026-09-29:
+half-row pads in either orientation, `▌` and `▎` down four rows, a `▐` laid
+over a background, and `█` letters all showed seams or ticks; background
+rows and cells did not.)
 
-*Amended R13 (2026-09-03), reversing the narrowing of 2026-09-02.* The
-wash was the machine's VERBATIM surface, and the reading was exact — a
-row like `read loop.ts · 412 lines` is kiso's summary of a result, not a
-line of it, so it got no surface. What that produced was a page where
-some calls are cards and others are loose rows, which is the instability
-the reversal is about: the reader cannot predict what the machine's work
-will look like. The surface says WORK. One register, one form.
+DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK` label (blue, with
+its seconds) and of R1's half-row pads and side bars: both were seen in
+the owner's terminal and read as strange (the label) and broken (the
+seams).
 
-Neither is an emphasis. Nothing is washed, and nothing is inverted, to
-make it stand out.
+**1.6 Surfaces, and what each one says.** A surface is a ground painted
+behind rows. Each kind says one thing, and nothing is painted to decorate.
 
-**1.7 One rhythm, one surface: nothing folds and nothing is one-lined.**
-Every settled call stands in the transcript as its own CARD (§7.4), at a
-height that depends on what it did and on nothing else. Everything the
-model *says* — its answer and its thinking alike — stays as words.
+- **The person's block — their own words.** A warm ground across the full
+  width, with a gold bar in column 0 (§7.9).
+- **The card — one call of the machine's work** (§7.4). Its ground is the
+  call's STATE: the machine's blue while it runs AND once it has run, red
+  when it failed or was refused, gold while it waits for the person. (A
+  neutral ground once it succeeded read as a flash: a call that takes a
+  tenth of a second went blue, then grey — owner, 2026-09-29. Whether it
+  is still running is the mark's and the outcome word's to say.)
+- **Code** — a fenced block in an answer, and inline code (§7.15).
 
-*Amended R13 (2026-09-03), owner-ruled.* This law used to read "work
-folds, words do not", and four mechanisms implemented it: the segment
-fold (R3b–R3i, W14), the W13 rollup, TUI2-R1 (B)'s exploration row and
-VD-5's one-row settle. Each answered the same pressure — ungrounded
-output rows owned the screen, so work was collapsed into sentences ABOUT
-the work. The card changes that arithmetic: a call's rows sit inside a
-surface that says where it begins and ends, so five of them read as one
-object rather than five loose lines, and the collapse costs more than it
-buys. What keeps a burst from owning the screen now is the preview cap —
-five rows a call, and none at all for a read — which is a constant per
-call rather than a judgement about runs.
+Where the ground is not known no surface is painted (§3.1): the person's block
+falls back to reverse video, and a card to its indented, unpainted form
+(§7.4).
 
-**1.8 One left edge.** Prose, the human's words and a card's rows all
-begin in column 2. The registers are told apart by SURFACE (§1.6), and
-the column is not one of the things doing that work. A block's own
-internal indents — a list's bullet, a fence's rail — are its own.
+Neither is an emphasis. Nothing is painted to make it stand out.
+
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). Reverse video was the
+person's surface on every ground, and one neutral wash was every call's.
+The person's block takes the warm ground — reverse video remains only as the
+unknown-ground fallback — and the card's ground now carries its state, as
+the reference implementation's cards do.
+
+**1.7 One card per call, and nothing folds.** Every call stands in the
+transcript as its own CARD (§7.4), at a height that depends on what it did
+and on nothing else. Everything the model *says* — its answer and its
+thinking alike — stays as words. What keeps a burst of calls from owning
+the screen is the preview cap, a constant per call (§7.4), never a
+judgement about runs.
+
+This is R13's ruling (2026-09-03) and Graphite keeps it. The design round
+considered one card per stretch of work, with one row per call, and did not
+adopt it.
+
+**1.8 One content edge, one mark column.** Every block begins at column 2:
+prose, thinking, the person's words, a card's contents, meta rows, the
+seal's words. Columns 0–1 are the mark column — the seal's `✦`, the
+twinkle on a streaming thought's first row, a hanging `§` beside a
+second-level heading, the live row's mark, the person's `▌`, a card's edge
+and its mark. Surfaces (the person's block, a card) span the full width,
+from column 0. The composer has no prompt glyph: the caret stands in
+column 0 (§7.8). A block's own internal indents — a list's bullet, a
+card's verb column, a diff's sign — are its own.
+
+DECLARED REVERSAL, twice. The Graphite design round (2026-09-28) moved the
+edge from column 2 to column 4 to give hanging marks a column of their own.
+Seen in the owner's terminal (2026-09-29), column 4 read as too much left
+margin, and column 2 came back — the 0.44 geometry — with the marks in
+columns 0–1.
 
 ---
 
 ## 2. The palette
 
-kiso emits 256-colour indices, never truecolor.
+kiso emits 24-bit colour where the terminal says it renders it
+(`COLORTERM` is `truecolor` or `24bit`) and the nearest xterm-256 index
+otherwise; `/status` names the tier (§8.8). The owner's daily terminal
+reports `truecolor` and renders it (Apple Terminal 470.2 on macOS 26,
+measured 2026-09-28). The table is Graphite on a white and on a black
+ground; §3.4 derives the surfaces from the ground actually resolved.
 
-| token | light | dark | contrast |
+| token | white | black | role |
 |---|---|---|---|
-| body | terminal default | terminal default | — |
-| dim | `243` `#767676` | `246` `#949494` | 4.54 / 5.50 |
-| wash (bg) | `255` `#EEEEEE` | `236` `#303030` | 14.55 / 10.20 |
-| washDim | `241` `#626262` | `247` `#9E9E9E` | 5.26 / 4.93 *(on the wash)* |
-| failure | `#A8442B` | `#E08A6B` | 5.95 / 6.36 |
-| added / removed | `32` / `31` | `32` / `31` | — |
+| ink | `#111111` | `#ededed` | answers, targets, the person's words |
+| ink2 | `#444444` | `#b5b5b5` | tool output, secondary facts |
+| dim | `#646464` | `#8e8e8e` | labels, thinking, keys, metadata |
+| rail | `#8c8c8c` | `#6b6b6b` | the mark column's quiet glyphs, cut notes, table lines |
+| line | `#e6e6e6` | `#212121` | hairlines |
+| wash-run | `#edf2fb` | `#141b28` | a running call's card |
+| wash-done | `#f1f1f1` | `#1b1b1b` | a settled call's card; a code block |
+| wash-fail | `#fbecea` | `#2a1716` | a failed or refused call's card |
+| wash-ask | `#f7f1e3` | `#211d13` | a call waiting for the person; a band's selected row |
+| human | `#f7efdc` | `#efe6cf` | the person's block |
+| human-ink | `#171923` | `#141620` | text on the person's block |
+| gold | `#8a5a00` | `#e3b04b` | edge text |
+| gold-mark | `#c9921f` | `#e3b04b` | edge graphics: bars, the caret, `✦`, the fade |
+| blue | `#2456b5` | `#82a8f5` | the machine's accent |
+| code | `#e4ebf8` | `#1a2438` | the inline-code ground |
+| ok / fail | `#2f7a3a` / `#b3261e` | `#8fd19e` / `#f2877a` | outcome words |
+| add / del | `#dff0e2` / `#fadfdc` | `#16301f` / `#3a1b1a` | diff rows |
+| track | `#e2e2e2` | `#2a2a2a` | the ctx meter's empty cells, and the compaction progress's |
 
-Contrast is the WCAG relative-luminance ratio of the token against its
-ground (dark measured against `#1E1E1E`). The floor for anything a human
-reads is **4.5:1**.
+A card's bar takes its state's edge colour: `blue`, `rail`, `fail`, or
+`gold-mark`.
 
-**2.1 Nothing dim ever sits on the wash.** `#767676` on `#EEEEEE` is
-3.91:1 and `#949494` on `#303030` is 4.35:1 — both under the floor.
+Contrast is the WCAG relative-luminance ratio of a token against the
+surface it sits on. The floor for anything a human reads is **4.5:1**.
 
-A washed surface that carries metadata still wants it quieter than the
-content it annotates, and the answer is not to relax the floor: it is
-**`washDim`**, a second grey measured against the WASH rather than
-against the ground. `dim` remains barred from the wash exactly as
-above — this is a different token with a different job, the way `warn`
-was the mono ruling's own set gaining its missing member. With no
-ground it is nothing at all: §3.1 forbids an absolute foreground in a
-palette with no established background, and the last rung's wash is reverse
-video, where a grey inverts into a grey block.
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The palette was
+256-colour indices only, "never truecolor", with one wash and a `washDim`
+grey measured against it. Both retire with this table.
+
+**2.1 Every text token clears the floor on every surface it can reach,
+as shown.** The surfaces include the terminal's own ground. "As shown"
+means in the tier actually written: the 256 tier rounds each colour to its
+nearest index, and the floor is measured on the rounded colour. On the
+reference grounds the weakest pairs are `ok` on `wash-fail` (4.61 on white,
+24-bit) and `dim` on `wash-ask` (5.13 on black, 24-bit); the gate also
+sweeps the common terminal themes of both kinds in both tiers. A new
+surface or a new token is checked against every text token before it
+lands; a token that fails on one surface is barred from that surface, not
+relaxed.
 
 **2.2 The floor is a floor, including mid-animation.** A mark that
-breathes bottoms out at the dim token and never below it. This has
-shipped wrong once — index `252` is 1.54:1 on white, invisible.
+breathes never drops below 3:1 on the surface under it — the floor for a
+graphic rather than for text (WCAG 1.4.11). This has shipped wrong once —
+index `252` is 1.54:1 on white, invisible.
 
 **2.3 A fixed red is not theme-safe.** ANSI `31` (`#CC0000`) is 5.89:1 on
 white but **2.83:1** on a dark ground, so the failure colour is
@@ -146,8 +222,8 @@ theme-resolved like everything else in the table.
 **2.4 Emphasis is never a background.** To make one token the brightest
 thing in a dim run, cancel the dim and add weight — do not paint behind
 it. A background reads as a block on an otherwise plain row, and the
-property wanted was contrast, not a surface. (§1.6's two surfaces are
-the exception, and they mean something else.)
+property wanted was contrast, not a surface. (§1.6's surfaces are the
+exception, and they mean something else.)
 
 ---
 
@@ -183,7 +259,7 @@ implement it; it is recorded as unproven because no terminal available
 here implements it.
 
 **3.1 The LAST rung is the safety property, not a leftover.** When the ground is
-unknown kiso does not guess a wash; it uses the mark that is correct on
+unknown kiso does not guess a surface; it uses the mark that is correct on
 any ground. The design degrades; it never renders light-mode paint on a
 dark screen.
 
@@ -200,10 +276,23 @@ setting away from a resolved ground rather than a dead end.
 the ground stays `unknown` and the design degrades (§3.1) — it does not
 default to dark and hope. The reference implementation makes the other
 choice; the cost of guessing wrong is light-mode paint on a dark screen,
-or a full-width wash that is the wrong colour on every row of a command
-block, and a settled default is indistinguishable from a resolved one to
+or a full-width surface that is the wrong colour on every row of a card,
+and a settled default is indistinguishable from a resolved one to
 everything downstream. The persisted `theme` is the answer for a
 terminal that reports nothing.
+
+**3.4 Surfaces are derived from the resolved ground.** §2's table is
+Graphite evaluated on `#ffffff` and `#0b0b0b`. When OSC 11 reports any other
+ground of the same kind, each surface is computed from it — per channel, an
+affine map fitted so that the two reference grounds give the table exactly —
+so a terminal whose black is `#1e1e1e` still separates its cards from its
+ground. A text token that would then fall under the floor, on the ground or
+on a surface, as shown (§2.1), moves toward the kind's extreme — lighter on
+a dark ground, darker on a light one — just far enough to clear it; on the
+reference grounds nothing moves. If a pair still fails, the table is used.
+When the ground is resolved without a colour (rungs 1, 2 and 4), or the
+reported colour is of the other kind than the resolved ground, the table's
+own column is used.
 
 ---
 
@@ -211,27 +300,38 @@ terminal that reports nothing.
 
 | mark | means |
 |---|---|
-| `●` | work is in flight — see §7.3 for which row wears it |
-| twinkle (§5.2) | the model is thinking (the status row) |
-| `❯` | it needs you: an approval or a question is pending |
-| `◦` | queued, not started |
-| `✦` | the turn's seal (`✦ took …`) |
+| `●` | a call is running — in front of its card's outcome (§7.5); it breathes (§5) |
+| twinkle (§5.2) | the model is working — on the live row for the whole turn, and in the mark column of a streaming thought's first row |
+| `❯` | it needs you: an approval, a question, an unknown outcome to decide |
+| `◇` | a message the person sent that has not landed yet |
+| `◌` | an outcome kiso cannot know: a call started and no result was recorded |
+| `↻` | a retry is counting down |
+| `✦` | finished and on disk: a turn's seal; with tasks, a finished task |
+| `§` | a second-level heading, hanging in the mark column |
+| `▌` `▎` | the person's block's bar; a card's bar |
 | `▾ ▸ │` | the transcript viewer's marks (§9) |
-| (none) | a settled call, and a folded stretch — the outcome is in the words |
+| (none) | a settled call — its outcome is in the words |
 
 **4.1 One mark, one meaning, everywhere.** A mark that means two things
 is worse than two marks.
 
-**4.2 The fold wears no mark.** When the fold, the live line and the
-status row all wore a star, none of them distinguished anything — the
-tick and the cross again (§1.3) at the stretch scale. A folded stretch
-is indented two spaces to join the settled-call family's geometry, and
-its words carry the record.
+*The declared exception is retired (the card round, owner, 2026-10-05).*
+It read: in the terminal title `✦` means the session is working (owner,
+2026-09-28). The title carries no mark in any state now (§8.10), so `✦`
+has one meaning everywhere.
 
-**4.3 `❯ ask pending · answers are durable facts`.** The pending panel
-states its own durability, and it is the only line in the interface that
-can: kill the process, come back, the question is still here and the
-answered ones are not asked again.
+**4.2 A settled call wears no mark.** A card's outcome carries no mark
+once the call settles: the outcome word says what happened and the card's
+ground says the state. A mark left lit after the motion stops is §1.3's empty
+mark.
+
+**4.3 Retired (P4, owner, 2026-10-04).** It read: *the pending panel
+states its own durability* — `❯ ask pending · answers are durable facts`
+on the status row. The status row under a panel is the Graphite bar now
+(§8.15), and the owner dropped the sentence with it. The behaviour it
+described stands (kill the process, come back: the question is still
+there and an answered one is not asked again). Kept as a numbered stub
+because §4's numbers are referenced from the code.
 
 ---
 
@@ -244,21 +344,26 @@ cadence and the byte volume of a waiting screen do not change.
 **5.2 The two cycles.**
 
 ```
-command   ● in 232 → 236 → 240 → 243 → 240 → 236 → 232   (light)
-          ● in 255 → 251 → 248 → 246 → 248 → 251 → 255   (dark)
-thinking  ✧ → ✦ → ✶ → ✸ → ✺ → ✸ → ✦, settling on ✦
+command   ● gold, seven steps of brightness: peak → floor → peak
+thinking  ✧ → ✦ → ✶ → ✸ → ✺ → ✸ → ✦, in gold
 ```
 
-The command breath is **brightness only** — one glyph, seven greys,
-bottoming out at the dim token per §2.2. The thinking twinkle is
-**glyphs only**, so it survives `NO_COLOR` while the breath correctly
-freezes to a static `●`.
+The command breath is **brightness only** — one glyph, seven steps from
+`gold` toward the running card's ground, the floor being the deepest step
+still at 3:1 on it (§2.2). The thinking twinkle is **glyphs only**, so it survives
+`NO_COLOR` while the breath correctly freezes to a static `●`. When the
+thought ends the twinkle leaves; the `✦` that stays on screen is the turn's
+seal (§7.11), not the thought's.
 
 **5.3 A breath says alive; a turn says counting.** A call whose duration
 cannot be predicted gets no mark implying progress it does not have, so
 neither animation rotates — and a mark lit while nothing moves is the
 same error. One that is gone before the eye lands is not a mark at all,
 which is why the breath rides the activity and not each call (§7.3).
+
+**5.4 The title does not move.** The terminal title changes when the state
+changes (§8.10) and never on a tick: a ticking title churns tab bars and
+screen readers, and §1.4 leaves the product two moving marks.
 
 ---
 
@@ -296,7 +401,9 @@ by measured ink. At 60px in Menlo: `·` 72, `✧` 144, `•` 235, `✦` 248,
 checked against Apple Color Emoji's coverage, pinned as data so the gate
 runs off macOS too. Measuring the width table instead answers a
 different question — the table is kiso's own opinion, and this rule is
-about the terminal's.
+about the terminal's. Graphite's glyphs — `◇ ◌ ↻ ▌ ▆ ⋯ § ✓ ○ ›` and
+the wordmark's `█ ╗ ╔ ╝ ╚ ═ ║` — lie outside that table (checked
+2026-09-28) and join the gated set.
 
 ---
 
@@ -329,155 +436,209 @@ not move under the reader.** A reprint is not motion under the reader —
 it is the same record, redrawn whole, at the geometry the reader is
 now looking at.
 
-**7.2 Thinking is words.** The model's thinking renders as its own
-paragraph — dim, italic, indented two spaces, blank line between
-paragraphs — and never folds. It closes the current stretch rather than
+**7.2 Thinking is words.** The model's thinking renders as its own block:
+`dim` italic paragraphs at the content edge, folded by WORD like every
+prose surface, a blank line between paragraphs, shown in full. It carries
+no label — its grey italic is what tells it from the answer (§1.5). While
+the model thinks, the twinkle hangs in the mark column of the block's first
+row; settled, the column is empty. With colour off there is no grey and no
+italic to tell it by, so there — and only there — its first row opens with
+the plain word `thinking:`. It closes the current stretch rather than
 joining one: what the model says is not work.
 
-The indent is the same two columns as everything else (§1.8), and the
-ITALIC is what tells thinking from answer. That is a §1.2 exception and
-§1.2 carries it: strip the escapes and the two are the same row.
+`ctrl+t` hides every thinking block to one dim row
+(`thinking · hidden · ctrl+t`) and shows it again; the choice is
+remembered, and shown is the default for every model. A turn with no
+thinking text has no thinking block at all — kiso does not announce a
+thought it cannot see; whether a provider sends thinking text is the
+provider's side (a GPT model sends summaries only when asked for them).
 
-*Amended twice on 2026-09-03/04.* This paragraph used to say the indent
-was "the price of §1.2 — a piped transcript would lose the line between
-the model's reasoning and its answer". Two things were wrong with it. A
-PIPE never sees a thinking paragraph (`thinkingEnd`'s inactive path
-writes `foldThinking`, one summary line), so the pipe was never the
-surface at risk — the surface is a rendered frame with its escapes
-stripped. And when E3 moved prose to column 2, the thinking was pushed
-to 4 to keep the distinction; the owner ruled against that (DC-47), and
-the edge won.
+DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK <seconds>` label in
+blue, which read as strange; R1 also folded thinking by character, which
+broke words mid-way.
+
+A PIPE never sees a thinking paragraph: the inactive path writes one
+folded summary line (`foldThinking`).
 
 **7.3 A running call is the same card, and it GROWS.** A call with
-nothing back yet is the three-row card a settled call with no output is.
-Each line of output adds a row, to five; past five the cut note appears
-above a scrolling tail and the card grows by that one row, once. Nothing
-pads a window — the height is the content.
+nothing back yet is the card a settled call with no output is: its head
+row. Each line of output adds a row, to five; past five the cut
+note appears above a scrolling tail and the card grows by that one row,
+once. Nothing pads a window — the height is the content.
 
 **The settle never shrinks it.** That is what makes a settle a change of
-content and nothing else: the breathing mark becomes two spaces in the
-same two columns, and the status row that said `3s · esc stops` says
-`exit 0 · 90 lines · 3.2s`. The shell's two gestures ride that status
-row rather than spending a window row on a footer, so the row count is
-the same before and after.
+content and nothing else: the ground stays the machine's blue unless the
+call failed or was refused (§1.6), and the head row's right end that said
+`● running · 3s` says `exit 0 · 90 lines · 3.2s` — the breathing mark and
+the words give way together. The shell's gestures ride that same row
+rather than spending a window row on a footer. A settle adds no row: the
+key joins the cut note's row (§7.4; until the card round the settle added
+a foot row for it). The command's fold is measured against a fixed room
+for the outcome (§7.5), so the head keeps its height through the settle
+too.
 
 The live region as a whole is bounded by the SCREEN, and the window's
 top never falls: within a rendering, rows that have reached the
 terminal's scrollback are immutable (§7.1 — a reprint starts a NEW
 rendering and is not bound by this), so the paint may not go back above
 them, and a live region that grows scrolls committed rows away rather
-than reclaiming any. Where the room is tight a window may not GROW past it, and below
-the seven-row skeleton a call keeps its head row until it commits
-(DC-43). A window that already grew is never pulled back in.
+than reclaiming any. Where the room is tight a window may not GROW past
+it, and below the card's smallest body a call keeps its head row until it
+commits (DC-43). A window that already grew is never pulled back in.
 
 **A turn in flight with an empty live region says so.** One row —
-`thinking…`, dim italic at column 2, no glyph — stands where the model's
-first words will, so whatever arrives replaces it in the same column and
-the same font and the eye sees a word change rather than a jump. It is
-NOT a cell: it never commits, never reaches the scrollback, and neither
-`/last` nor the pipe has heard of it. That is what makes a row which is
-a guess about the future permissible at all — a row that never becomes
-history cannot make history wrong.
+`thinking…`, dim italic at the content edge, no glyph — stands where the
+model's first words will, so whatever arrives replaces it in the same
+column and the same font and the eye sees a word change rather than a
+jump: thinking text turns it into the thinking block, an answer replaces it
+and leaves nothing behind. It is NOT a cell: it never commits, never reaches the scrollback, and
+neither `/last` nor the pipe has heard of it. That is what makes a row
+which is a guess about the future permissible at all — a row that never
+becomes history cannot make history wrong.
 
-*Amended twice on 2026-09-03.* This section first described R4's
-standing activity block — one allocation for a whole stretch, contents
-swapping, height constant — which bought "nothing moves" by never
-shrinking. It was then replaced by a card allocated at its settled
-height that shrank at the settle; measured on the a7 replay, that shrink
-took hole-frames from 8.9 / 13.5 / 3.8 percent to 16.9 / 24.6 / 7.9,
-because the window's top is clamped and cannot follow rows given back.
-A card that only grows measures 8.9 / 13.5 / 3.5 — at or below the
-figure before this round. DC-46 carries all of it.
+A card that only grows is what DC-46 measured on the a7 replay: 8.9 / 13.5
+/ 3.5 percent hole-frames, against 16.9 / 24.6 / 7.9 for a card that
+shrank at its settle.
 
 **7.4 A settled call is a CARD.** One object, one shape, every call:
 
 ```
-  <pad>
-  shell npm test
-  <blank>
-  … 85 earlier lines · ctrl+o expands
-  <the last five output rows>
-  <blank>
-  exit 0 · 90 lines · 0.4s
-  <pad>
+▌                                                              pad: a row of the card's ground
+▌ SHELL npm test -- recovery            exit 0 · 90 lines · 4.1s
+▌ … 85 earlier lines                              ctrl+o expands
+▌ <the last five output rows>
+▌                                                              pad
 ```
 
-Pad, head, blank, preview, blank, outcome, pad — twelve rows at most,
-every row at COLUMN 2 (§1.8), the whole of it washed full width where
-the ground is known. `└` does not open it: the surface is the container,
-and a corner inside one is §1.3's empty mark a scale up.
+(`▌` here stands for the card's EDGE: one cell of its ground deepened toward
+the state's colour, drawn as a background.) The card spans the full width,
+on its state's ground (§1.6), with a whole row of that ground above and
+below it (§1.5). Two cards are one blank row apart, like any two blocks.
 
-**A call with nothing to preview is the same card in three rows**, its
-outcome riding the head row because there is nothing between them to
-close.
+The columns: the edge cell at 0, column 1 blank — a running or waiting
+card's mark stands in front of its outcome (§7.5) — the verb at 2 — the
+content edge — the target one space after it, and the BODY at
+2, UNDER THE VERB: the head and what it printed line up (owner,
+2026-09-29, the 0.44 card's alignment). The HEAD row: the verb, the target, and at the right
+the outcome (§7.5). The BODY, when there is one, is the preview in `ink2`
+— five rows at most. A shell shows its TAIL with the cut
+note above it, because the conclusion of a command is at the bottom of its
+output; everything else shows its HEAD with the note below, because that is
+where its answer is. A tail never opens on a blank row or in the middle of
+a wrapped line: the window starts at an earlier line's first row and blank
+rows inside it give way to make the room, the top-most first, so it keeps
+its height (§5) and the note counts what it hides. It reaches only while a
+row above it stays cut, and only a dozen rows back; past that the window
+is the plain tail. An output line too long for the row continues two cells
+in, so one line reads as one. **A read shows nothing at all**: its result is the
+file, five lines of it tell a reader less than the head row already does,
+and the key opens the whole thing. Its continuation note, when the tool
+itself capped the result, is not a preview and stays. When the preview
+cut rows away, the cut note carries the key at its right margin: what was
+cut at the left, how to see it at the right. The FOOT row carries the way
+back, `ctrl+o collapses`, and exists only on an expanded card when
+collapsing would hide rows again. A call with nothing to preview is its
+head row between its pads — and when its result sits behind the key (a
+read), the key ends the head row's outcome instead: `412 lines · 0.1s ·
+ctrl+o expands`.
 
-**An EXPANDED card is the same card too** — pad, head, blank, the WHOLE
-body, blank, outcome, pad. The head row says only what was run; the
-outcome row says what happened and carries the key back:
+**An EXPANDED card is the same card** — the whole body, uncapped, and
+`ctrl+o collapses` on its foot row when there is anything to collapse.
+One skeleton in both states, so the global switch (§7.7) changes a card's
+content and never its shape.
 
-```
-  <pad>
-  shell npm test
-  <blank>
-  <every output row, uncapped>
-  <blank>
-  exit 0 · 90 lines · 0.4s · ctrl+o collapses
-  <pad>
-```
-
-DECLARED REVERSAL (2026-09-05). An expanded card used to take a
-DIFFERENT skeleton: the outcome inline on the head row, no outcome row,
-and `ctrl+o collapses` as a row of its own at the end of the body. That
-was tolerable while an expanded card was rare — reachable only for a
-live or approval-parked cell — and stopped being tolerable when §7.7
-made `ctrl+o` a switch that expands every settled card at once. One
-call with two skeletons, chosen by a global toggle, is exactly the
-instability §7.4's first sentence forbids. The affordance rides the
-outcome row because it is a fact about the card's state, and the outcome
-row is where this card's facts live.
-
-**The preview caps at five rows.** A shell shows its TAIL with the cut
-note above it — the conclusion of a command is at the bottom of its
-output — and everything else shows its HEAD with the note below, because
-that is where their answer is. **A read shows nothing at all**: its
-result is the file, five lines of it tell a reader less than the head
-row already does, and the key opens the whole thing. Its continuation
-note, when the tool itself capped the result, is not a preview and stays.
+An edit's body is its diff (§7.14), capped at twelve rows — a stated
+exception to the five-row preview, because five rows cut most diffs in
+half.
 
 **Where the ground is NOT known the card does not paint at all.** Rung
-4's wash is reverse video (§3), and one inverted chip row is the ladder
+5's surface is reverse video (§3), and one inverted row is the ladder
 working while eight inverted output rows are a black slab in the middle
-of the transcript. Unpainted, the block is the four-column indent, one
-level deeper than prose and than the head row, with `└` opening it and
-the metadata rows dim. The CONTENT is the same either way — only the
-surface, its pads and its two blank rows are contingent, because an
-unpainted blank row is §1.3 at the scale of a row.
+of the transcript. Unpainted, the head row sits at the content edge, the
+body four columns under it (column 8) with `└` opening it at column 6, and
+the rows dim. The CONTENT is the same either way — only the surface is
+contingent. The indent carries a §1.2 fact — these
+rows are the call's output, not something the model said — which is why it
+is an indent and not a glyph: it survives a pipe.
 
-That four-column indent carries a §1.2 fact — these rows are the call's
-output, not something the model said — which is why it is an indent and
-not a glyph: it survives a pipe. Inside a painted card the head row and
-the outcome row bracket the preview instead, so the indent is no longer
-what says "these rows are output" and every row sits at column 2. The
-diff's `│` is untouched: there it SCOPES rather than separates, which is
-the case §1.1 keeps it for.
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The card was
+`pad · head · blank · preview · blank · outcome · pad` at column 2, one
+neutral wash for every state, the outcome on a row of its own and whole
+blank rows as pads. The outcome now rides the head row, the key rides a
+foot row that exists only when needed, the ground is the state, and the
+card sits at the content edge (§1.8). One card per call (§1.7) is
+unchanged. R1 drew half-row pads and a side bar with block glyphs; they
+retired (owner, 2026-09-29) for the seams they left (§1.5).
 
-**7.5 A card reads verb · target, then outcome.** The head row says what
-was run; the outcome row says what happened, how much of it there was
-and how long it took. On the three-row card the two share a row — that
-is the ONE place they do, and it is because nothing stands between them
-to close. An expanded card does not share them (§7.4): it has a body,
-so it has the two rows the body sits between, and the outcome row also
-carries `ctrl+o collapses`.
+DECLARED REVERSAL (the card round, owner, 2026-10-05). A collapsed card's
+key stood on a foot row of its own, under the preview, while the cut note
+said the count on another row: two rows for one fact. And the head's mark
+stood in column 1, against the verb (`●SHELL`). The key joins the note;
+the mark moves in front of the outcome (§7.5). A command folds rather than
+eliding (§7.5), wrapped output hangs, and a tail never opens on a blank
+row.
 
-The verb column is padded to 5 so targets line up, and the target is
-bold on the head row. A failure takes no tint on the card; only the
-outcome word is coloured, which is §1.2 exactly — the colour rides the
-fact, not the object carrying it.
+A BACKGROUND delegation's card (the tasks round, owner, 2026-10-06) says
+what was sent and where it went. The call returns at once, so the card
+settles with the work only begun: the head names the children's roles
+(`DELEGATE explorer · reviewer`), the outcome says `2 in the background`
+with how long the call took, and the body is one row per child — its task
+id (the one `/tasks`, the bar and the `TASK` row use), its role in `ink2`,
+its task `dim`. DECLARED REVERSAL of the card that read `DELEGATE … 1
+line` with no target: it looked for the foreground summary a background
+run never writes.
 
-Both metadata rows give way in a pinned order when the width squeezes:
-the attribution first, then the count, and the key is RESERVED — a row
-that says how much is hidden without saying how to see it is the silence
-the affordance exists to remove. Neither row ever folds; it is cut.
+**7.5 A card reads verb · target, then outcome.** The verb is the tool's
+display verb in upper case (`SHELL`, `READ`, `EDIT`, `WRITE`, `LIST`,
+`SEARCH`), `dim`, then ONE space and the target in `ink` — `LIST (root)`,
+`SHELL npm test`. (The verb was padded to seven columns so targets lined
+up down a run of cards; with the body under the verb that padding left the
+target stranded between them, and the owner found the card scattered —
+2026-09-29.) The outcome sits at the right end of the head row: what
+happened, how much of it there was, how long it took — `exit 0 · 90 lines ·
+4.1s`. A running call's reads `● running · 12s`, the `●` breathing, with
+the shell's gestures after it while there is room; a call waiting for the
+person reads `❯ needs you`, both in gold. The mark stands where the settled
+outcome will, so the state is read in one place. Only the outcome WORD takes colour — `exit 0`
+in the success colour; `exit 1`, `failed`, `denied` in the failure colour —
+which is §1.2 exactly: the colour rides the fact, not the object carrying
+it. The card's ground says the state as well, and the word still says it
+alone.
+
+A failure's outcome word is short and its text is the body: a shell's
+`exit N`, any other tool's `failed`. A refusal reads `denied by you ·
+<reason>` when the person refused and `denied · <reason>` when a policy
+did (VD-11: the person's answer is worth recording; the ambient default is
+not). A call still open when the person stopped the turn reads
+`interrupted`, on the machine's ground, with its output so far — no one
+denied it (R3b; it read `denied · interrupted` on the failure ground).
+
+The head row gives way in a pinned order when the width squeezes: the
+attribution first, then the count; then the target elides in its middle;
+then, on a very narrow row, the target goes, then the verb, then the
+outcome's segments from the front — so how long it took, and the key where
+there is one, are the last to go.
+
+A shell COMMAND never elides in its middle: it is code the person approves
+and audits, and the part a middle cut removes is often the part that
+matters. When it does not fit beside the outcome it folds at its spaces,
+each further row hanging under its own first character, for at most three
+rows; past that the third ends in `…` and `ctrl+o` shows the whole of it.
+The first row keeps 20 cells for the outcome whatever it says at the
+moment (`● running · 59m 59s` and `exit 127 · 59m 59s` both fit), so a card
+neither re-folds while it runs nor changes height when it settles. A path
+is one row and elides in its middle (it keeps its head and its file name).
+On a very narrow row the command takes the narrow ladder above.
+
+The note row's key is RESERVED — a card that says how much is hidden
+without saying how to see it is the silence the affordance exists to
+remove: the count's words give way first, then the key shortens to
+`ctrl+o`; the count is never cut. Apart from the command and the output
+itself, no row of a card folds; it is cut.
+
+DECLARED REVERSAL (the card round, owner, 2026-10-05): "the target elides
+in its middle" for a command, and "no row of a card ever folds" for its
+head.
 
 Only a call still running carries a mark, because only it is moving.
 
@@ -489,12 +650,12 @@ referenced from the code and from the findings record.
 **7.7 `ctrl+o` is one switch, and every settled card obeys it.**
 Pressing it flips a single state and reprints the session (§7.1): every
 card whose content is SETTLED renders expanded — the whole body, and
-`ctrl+o collapses` in place of the cut note — or collapsed, which is the
-five-row preview and `ctrl+o expands`. A card whose content is still
-ARRIVING is exempt: its height is E2/DC-43's, and a global "show
-everything" has no business reaching into it. A card parked for approval
-is settled, not arriving — its diff is complete and a human is reading
-it — and that is exactly when the key must answer.
+`ctrl+o collapses` on its foot row — or collapsed, which is the preview
+with `ctrl+o expands` on its cut note. A card whose content is still ARRIVING is exempt: its
+height is E2/DC-43's, and a global "show everything" has no business
+reaching into it. A card parked for approval is settled, not arriving — its
+diff is complete and a human is reading it — and that is exactly when the
+key must answer.
 
 DECLARED REVERSAL (DC-50 / R14, 2026-09-05). This section used to read
 "`ctrl+o` has exactly one target and says which. The row it will act on
@@ -502,42 +663,136 @@ renders its own `ctrl+o` token at full strength among dim siblings —
 exactly one bright token per frame." The one-bright-token rule existed
 because the key had ONE target and the reader had to be told which; with
 no target to name, the rule has nothing left to protect and retires with
-it. The per-card `ctrl+o expands` affordance stays — it is now true of
-every card, which is what makes the switch legible without a bright
-token to single one out. D-S2-1 (owner-ruled 2026-09-06): the marker
-itself is gone from the code — it had lingered as "the card the
-affordance is read from" — and the status row's idle hint names the
-switch instead, `ctrl+o expand all` / `ctrl+o collapse all`, shown only
-while some card on screen has something behind the key.
+it. The per-card affordance stays — it is true of every card, which is
+what makes the switch legible without a bright token to single one out.
+D-S2-1 (owner-ruled 2026-09-06): the status bar names the switch,
+`ctrl+o expand all` / `ctrl+o collapse all`, shown only while some card on
+screen has something behind the key.
 
 **7.8 The composer is four rows and stays four rows.** `CHROME_ROWS` is
-4: rule, input, rule, status. Every gate keyed on `H − 4` depends on it.
+4: the top rule, the input, a hairline, the status bar (§8.9). Every gate
+keyed on `H − 4` depends on it. The top rule is `gold-mark` for its first
+eighth and fades to `line` by a third of the width. There is no prompt
+glyph: the caret is a block in the terminal's own ink (reverse video) and
+the text starts at column 0. *(R2)* While the line starts with
+`!`, the prompt is `$` (§7.13). The live zone (§8.7) sits above these four
+rows and is not part of them. The line-mode prompt (no composer: a terminal
+kiso does not dock in) is unchanged.
 
-**7.9 The user's words span the width.** Full width, REVERSE VIDEO, per
-§1.6 — the human's surface, one form on every ground, never the wash.
-Its inner pad is TWO columns, so the human's words begin in the same
-column as the model's and as a card's rows (§1.8). The block is padded
-to `W` by *display* width, so a CJK row pads
-correctly, and it folds by WORD: the character fold was defended as
-lossless, which is not a property CJK has, and every other prose
-surface already folds by word. A word wider than the row still breaks
-mid-word, because an overflowing row breaks invariant ①.
+While the input is empty it shows nothing: `?` lists the keys, and the
+empty row is kept for later work to speak in (follow-up suggestions).
+DECLARED REMOVAL (owner, 2026-09-29) of R1's key ladder placeholder.
 
-**7.10 The opening.** No logo. The name is the mark.
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). R2 (owner,
+2026-08-27) ruled that the docked composer has no prompt glyph: the rules
+already said "input lives here", and a glyph cost the row a column. The
+design round brought back a gold `›` and a gold caret; the owner, seeing
+them (2026-09-29), took both out again — R2's ruling stands, with 0.44's
+caret.
+
+**7.9 The person's words span the width.** The person's block (§1.6): the
+`human` ground across the full width with a whole row of it above and
+below (§1.5), an EDGE cell of gold quieted toward the warm ground in column
+0 down every row, and the text at the content edge, column 2. The edge is a
+background, the same width as a card's edge: a thinner `▌` glyph, or a `▐`
+laid over a gold background, showed a gap or a tick at every row in Apple
+Terminal (checked there, 2026-09-29). No label and no time: the block says whose words these are, and when a turn
+ended and how long it took is the seal's (§7.11). The block is padded to
+`W` by *display* width, so a CJK row pads correctly, and it folds by WORD:
+the character fold was defended as lossless, which is not a property CJK
+has, and every other prose surface already folds by word. A word wider than
+the row still breaks mid-word, because an overflowing row breaks invariant
+①. Where the ground is unknown the `▌` stays in column 0 as a character
+and the block is reverse video from column 1 (§3.1).
+
+*(R2)* On a terminal, each of the person's blocks is wrapped in OSC 133
+prompt marks, so a terminal that supports them can jump between the
+person's messages; the marks are invisible elsewhere and never reach a
+pipe. They are written by the compositor as it emits the block's first row,
+not carried inside the row: a row that carried them would have to teach
+every width measure, cut and screen model to skip an OSC, and the marks
+would follow the row into the ctrl+r viewer.
+
+*(R2)* The text renders as markdown (§7.15) in the block's own colours, so
+pasted code and lists keep their shape.
+
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). The words were
+reverse video on every ground with a two-column inner pad; the design round
+chose the warm ground with a gold bar. R1 drew half-row pads with glyphs
+and put the text at column 4; the owner saw the seams and the indent in
+Apple Terminal (2026-09-29), and the pads became whole rows of background
+and the text moved to column 2.
+
+**7.10 The opening.** The wordmark, then what loaded.
 
 ```
-kiso <version>
-
-  MODEL       <model> · <mode>
-  WORKSPACE   <cwd>
-  EXTENSIONS  <n> loaded · /ext lists them
-
-  esc interrupt · ctrl+c exit · / commands · @ files · ? keys
+██╗  ██╗██╗███████╗ ██████╗
+██║ ██╔╝██║██╔════╝██╔═══██╗
+█████╔╝ ██║███████╗██║   ██║
+██╔═██╗ ██║╚════██║██║   ██║
+██║  ██╗██║███████║╚██████╔╝
+╚═╝  ╚═╝╚═╝╚══════╝ ╚═════╝
+─────────────────────────────
+the coding agent that survives kill -9 · <version>
+intent → effect → durable fact
 ```
 
-Three labelled facts answer the three questions a first screen is asked
-— what model, where am I, what is loaded. A rendered wordmark costs
-seven rows to say what `kiso` says in one.
+The block cells take `mix(ink, dim, row / 4)`, top to bottom; the
+box-drawing shadow takes `mix(rail, ground, 0.35)`; the rule under it fades
+from `dim` to the ground. No gold: gold is the edge (§1.2), and the opening
+has none. `<version>` is the CLI's own package version, never a literal.
+
+Beside the wordmark when `W ≥ 96`, behind one hairline, what loaded, one
+fact per row — the label `dim` in its column, the fact in `ink`, a
+quieter note after it:
+
+- `SESSION` — the session's id, then `new · resumable after kill -9` or
+  `resumed · N events` (beside the wordmark a note that does not fit gives
+  way from its end, one ` · ` part at a time: a timestamp id keeps `new`);
+- `MODEL` — only when no model resolved: `faux`, then how to leave it
+  (`set an API key, or add a model to config.json` — no longer than the
+  `RULES` note, or beside the wordmark it is cut) — the bar names the faux
+  model but cannot say that;
+- `RULES` — the instruction file the prompt reads (the same lookup, so it
+  never names a file the model is not given), or `none`;
+- `SKILLS` — the count, and how many cannot load;
+- `MCP` — servers and tools, `connecting…` while they are;
+- `EXTENSIONS` — how many, then the names (`4 · mcp, skills, subagent,
+  ask`, the user's after `user:`, the project's after `project:`), built
+  from the same three lists as the pipe's `[N extensions: …]` line, so the
+  two never disagree about what loaded (and `ask (off in dontAsk)` stays
+  beside the tier that turns it off);
+- DC-49's home-directory row, when the workspace is the home directory.
+
+The model, the mode and the folder are the status bar's (§8.9) and are
+not repeated — the faux model's `MODEL` row is the one exception.
+
+DECLARED REVERSAL (the last sweep, owner, 2026-10-06). The `EXTENSIONS`
+row carried the pipe's bracketed line verbatim (`[4 extensions: built-in:
+mcp, …]`); the opening is preceded by no `session <id>` line (it stood
+above the wordmark at column 0); and the faux model's `[faux mode — …]`
+line, written into the frame and painted over at once, is the `MODEL` row.
+A pipe, and a terminal with no dock, prints all three as it did — the
+`session <id>` and faux lines still print there, so the opening's rows
+keep their old form too. Under 96 columns the facts move below the wordmark. The
+wordmark shows from 20 rows — in the 80×24 window a Mac opens by default
+(owner, 2026-09-29: a wordmark the default window never shows is not worth
+drawing). Under 20 rows, on a terminal
+too narrow for the wordmark at the content edge, and on a resume (the
+history is above the opening there, and ten rows of wordmark would bury
+its tail) the head is one line —
+`✦ kiso <version> · the coding agent that survives kill -9` — and the
+facts follow it. A fact that does not fit loses its note; one still too
+long hangs under itself, folded by word — an extensions list cut at the
+width would hide which extensions loaded, on the one screen whose job is
+to say so. Beside the wordmark only while the folded facts fit its six
+rows.
+The letters are cells of BACKGROUND, not `█` glyphs (§1.5): in Apple
+Terminal `█` left a white line through every row of the letters. Where the
+ground is unknown there is no background to paint, and the wordmark is `█`
+in the terminal's own foreground.
+
+The R2 keys row retires: `?` lists the keys (§8.5).
 
 The opening scrolls the shell's screen away first: H line feeds from
 the shell's cursor carry its prompt, the launch command and the tail of
@@ -546,25 +801,258 @@ then owns rows 1..H. What was on screen is one scroll up, not gone
 (DC-40). The feeds precede the entry reset, because `ESC[r` homes the
 cursor and feeds after it scroll one row instead of the shell's r.
 
+DECLARED REVERSAL (Graphite, owner-ruled 2026-09-28). This section read
+"No logo. The name is the mark": a rendered wordmark cost rows the first
+screen needed for its three questions — what model, where am I, what is
+loaded. The design round brought a wordmark back and moved the answers: the
+model and the folder to the status bar, what is loaded to the block beside
+the wordmark. The cost is ten rows, once, at the top of a session.
+
+**7.11 The seal.** After every turn, one row — today's turn line,
+restyled: `✦` in `gold-mark` hanging in the mark column (§1.8), the words
+`dim` at the content edge.
+
+```
+✦ took 4.1s · fresh 1.3k out 910 · cache 96%
+```
+
+It is the turn's record in the scrollback: how long it took, what it cost
+in fresh and output tokens, and the cache share, so a turn's cache miss stays
+findable after the status bar has moved on. No turn number, no call count and
+no context share (owner, 2026-09-28): the first two do not help the person
+reading, and the context lives on the status bar's meter (§8.9).
+
+The other forms keep their words: a cache miss adds `miss <n>` after the
+cache share; a cold cache reads `cache cold after <n> min · re-read <n> ·
+out <n>`; plan mode reads `plan ready · /mode default executes · /mode
+accept-edits auto-approves edits`; a turn the person stopped reads
+`stopped by you after 6.2s`, then the same facts. The row is cut, never
+folded (R3g). The pipe keeps today's bytes.
+
+**7.12 kiso's own sentences are meta rows.** The session's events —
+compaction, a pruned result, a learned window, a run that failed after its
+retries, an uncertain outcome, a limit reached, an interrupted stream, the
+verification pass — are sentences about the session, not the model's and
+not a tool's. Each is one row at the content edge: a bold label
+(`COMPACTED`, `PRUNED`, `WINDOW`, `FAILED`, `UNCERTAIN`, `LIMIT`,
+`INTERRUPTED`, `VERIFY`) in a twelve-column label column, and the sentence
+beside it, folded under itself (column 14). `FAILED` and `UNCERTAIN` name
+outcomes and take the failure colour; the rest are `dim`. No card and no
+ground: they are not the machine's work.
+
+A command's own reply — `model → …`, `copied 48 chars`, `no tasks in this
+session`, `unknown command: /x — /help lists the commands` — has no kind
+of its own: its words are read as a whole, and a label would only split
+them. It stays whole at the content edge, with no label. On the terminal
+the `✦` some notices open with comes off: it is the seal's mark (§4). So
+do the brackets a reply wore and the command's name inside them (`[no
+thinking yet]`, `[/compact] nothing to compact — …`, `[reload] 4
+extensions, …` reads `reloaded 4 extensions, …`; a failure keeps what
+failed: `/model failed: …`), and a reply of two lines is one row (`no such
+mode: x · tiers: …`). A pipe prints every notice as written.
+
+DECLARED REVERSAL (the last sweep, owner, 2026-10-06). These replies were
+raw rows at column 0, brackets and all, a blank row between the two lines
+of one reply. A session switch (`/clear`, `/resume <id>`) is a session
+event, `SESSION <id> · /resume <previous> returns` (it was `session <id>
+(switched — previous: …)` at column 0); `/rewrap`'s `--- re-wrapped … ---`
+is `REWRAPPED 3 blocks at the current width · the history above is
+unchanged`; don't ask declining the model's question is `DENIED`.
+
+A summary inside a run (the compaction round, owner, 2026-10-06) is drawn
+while it runs: the runtime tells the CLI when it starts, how far its
+output has come and how it ended (`contextPolicy.tiers.onSummary`), and
+the live row is the `compacting · auto` row of §8.7, `esc stops`, until it
+ends. A kept summary leaves `COMPACTED mid-run · ~180k → ~22k · ctx now
+11%` — the context's size before and after, and the share of the window
+used. DECLARED REVERSAL: the live row said `working` through the summary
+call, its clock running while nothing arrived, and the row after it was
+the sentence `mid-run — the conversation before this point is a summary
+now · ctx now ~11% used`, with the raw `[summarized up to seq N]` under
+it. A pipe prints the sentence and the line as it did.
+
+`/think` and `/last` bring back what they find as ONE cell (the last
+sweep): a meta row — `THINKING the last block · 3 lines`, `LAST CALL LIST
+(root) · 2 lines` (the card's verb and target, how much came back) — and
+under it the parts in their own look: the thinking as §7.2 draws it, a
+call's `input` and `output` under dim titles, in `ink2`, hung by two. They
+printed at column 0 under `--- list input ---` rules with a blank row
+between every part. A pipe prints the log as it did, the call's own name
+in the rules.
+
+A MODE switch is the exception (R3e, owner 2026-09-29): the approval tier
+is the person's own choice, and the person's words are gold — so it is one
+row, `MODE` bold gold, two spaces, then `default → bypass` with the new
+tier bold (bypass in `fail`, plan in `blue`). Nothing else: the picker
+that switched it already says what each tier does. All four ways in
+(/mode's picker, `/mode <name>`, /settings, shift+tab) draw it; a pipe
+prints `mode → bypass` as it always did.
+
+A row that names a thing is ONE row (the tasks round, owner, 2026-10-06):
+what it names is cut with `…`, never folded under itself.
+
+- `TASK` — a background task ended (ADR-0058). One row per task, the label
+  once and the rows under it unlabelled: the task id, how it ended, then
+  what ran, `dim`. A shell reads `exited 0` (the success colour) or
+  `failed 1` (the failure colour); a child reads `answered` or `failed`;
+  `stopped` is `dim`; a task kiso lost track of reads `lost track — may
+  still be running` in gold, then `/tasks shows it` before what ran (so a
+  cut takes the command); a long-running command that said it was ready
+  reads `ready`. The words come from the task's own journal, so a resumed
+  session draws what a live one did. A loss is said once, the moment kiso
+  concludes it (ADR-0058 Amendment 8): the same row, and a delivery that
+  carries it later leaves it out. A pipe prints `✦ task t1 exited · t2
+  exited` and `✦ lost track of t3 (npm run dev) — it may still be running
+  · /tasks shows it` as written. DECLARED REVERSAL of 0.46.0's one row of
+  bare transitions on the terminal; the main sync (0.46.2) of the tasks
+  round's `◌ outcome unknown`.
+- `PROJECT` — the trust gate's answer (§8.12): `trusted · ~/w/.kiso ·
+  config.json (97e337)`, `trusted` in the success colour, or `not
+  trusted`.
+
+**7.13 The person's own shell (R2).** `!command` runs and sends;
+`!!command` runs and only shows. Both render as the person's card on their
+own warm ground (§7.9's `human`, its edge cell): `$ <command>` bold as one
+span, at the right what became of it — `exit N` when the output says so,
+then `sent to the model` or `not sent`, the one fact that differs between
+the two — and what it printed under the command in `ink2`, escaped like
+any tool's output. A `!` is an ordinary user turn (the model's bytes are
+unchanged: a `console` fence holding `$ <command>` and the output), and
+its block draws as this card from its own text, so resume shows it the
+same; its output keeps its last twelve rows, the count of the rest above
+them. `!!` shows all of it (the person asked to see it here). While the
+input's one line starts with `!`, a gold `$ ` leads it.
+
+**7.14 An edit shows its diff (R2).** Every `edit_file` and `write_file`
+card shows what it changed, in every approval mode. The diff is built from
+the call's own hunks — `search` is the old text, `replace` the new — which
+the log holds, so the card renders the same live, after a reprint and after
+resume; nothing is read from the file and no request byte changes. The body
+is the same while the call runs and once it has, so the settle moves
+nothing. The head says the change: `+a -r`, and `N hunks` for a batch. A
+refused or failed edit is a failed card whose body is the refusal (§7.5) —
+no diff, since nothing changed. (DECLARED REVERSAL of v2e's "the diff at
+the approval moment only; the settled call one line": a call no one was
+asked about showed nothing of what it changed.)
+
+- A line-level LCS per hunk; the lines both sides keep are context (`dim`,
+  two around each change); a sign column, then the text. A `-` row sits on
+  `del`, a `+` row on `add` — backgrounds (§1.5), from the content edge to
+  the card's inner margin, on every row a long line folds to.
+- One `-` line followed by one `+` line, with no other change beside them:
+  the changed words take a deeper mix of their row's ground (`addWord` /
+  `delWord`, 0.3 toward `ok` / `fail`) — only where at least a third of the
+  words survive; below that the whole line changed and the row's own
+  colour says so.
+- The hunks of one call are separated by a `···` row (a `⋯` read as a minus
+  in the sign column).
+- Twelve rows, then `… N more lines` with the key at its right (§7.4).
+- The approval preview reads the file, as before, and applies EVERY hunk
+  of a batch (`edits`) in order, each to what the ones before it left —
+  the tool's own rule; a hunk the tool would refuse is named (`hunk 2,
+  after hunk 1 applied`) and nothing is drawn.
+- `write_file`: a new file (`expectedRevision: "absent"`) shows its first
+  five lines as `+` rows and `new file · N lines`; an overwrite shows its
+  first five lines as they now read — no sign, since the old content is
+  not in the log — and `rewrote · N lines`.
+- Off a painted card (the unknown ground) the rows keep the flat form: the
+  sign and the text in the line's colour, the changed words underlined.
+- No line numbers (§10).
+
+**7.15 The answer's markdown (R2).** The answer carries no label (§1.5); it
+is the prose at the content edge, rendered as below on a known ground. Off
+one (the unknown ground, no colour) the mono forms stay — `#` underlined,
+`###` printing its own marker, `- ` bullets, a `│` gutter, a solid rule —
+because there a marker is the only carrier (DC-4).
+
+| element | rendering |
+|---|---|
+| `#` | bold `gold`, then a forty-column rule fading from `gold-mark` to the ground |
+| `##` | bold `blue`, `§` in `rail` hanging in the mark column |
+| `###` | bold `ink` |
+| `####` | bold `dim`, upper case outside code spans |
+| bold / italic / strike | bold / italic / `dim` (never SGR 9: Apple Terminal draws none) |
+| inline code | `blue`, no ground — like a code block (owner, 2026-09-29, choosing between the prototype's `code` ground and none, side by side in Apple Terminal) |
+| bold italic | `***x***` is bold and italic; a bold closes at the END of its asterisk run, so `**a *b***` closes the italic inside it first (R2f) |
+| code span | any run of backticks, closed by a run of the same length; one padding space off each end, so ``` `` `x` `` ``` shows `` `x` `` (R2f) |
+| link | `blue`, underlined, the URL in `dim` after the text (no OSC 8: Apple Terminal draws one as plain text); a title after the URL is read and dropped — there is no hover (R2f) |
+| autolink | `<https://…>`, `<mailto:…>`, `<a@b.c>`: the address as a link, no brackets (R2f) |
+| image | a terminal draws none, so it is named: `image` dim, the alt as a link, the URL dim — `image alt (url)` (R2f, owner 2026-09-30) |
+| reference link | `[text][label]`: the text as a link, ` [label]` dim; the URL is defined elsewhere, often below, and a row once drawn never changes (freeze). `[text][]` is the link alone; a bare `[label]` stays literal (R2f, owner 2026-09-30) |
+| reference definition | `[label]: url "title"` is a block of its own, a `dim` row per definition: `[label] url · title`. DECLARED DEVIATION: a definition line starts its own block even under a paragraph (the decision is line by line) (R2f) |
+| `<br>` | a line break wherever it stands — GitHub's reading; a table cell grows a row, its column as wide as its widest row (R2f, owner 2026-09-30) |
+| bullets / ordered / tasks | `–` then `·` in `dim` / the number in `dim` / `✓` ok, `○` dim in place of the bullet |
+| quote | a bar of `quoteBar` (a background cell, §1.5), a space, italic `ink2` |
+| alerts | `> [!NOTE]` / `TIP` / `IMPORTANT`: a `noteBar` bar and the word bold `blue`; `WARNING`: `warnBar` and `gold-mark`; `CAUTION`: `cautionBar` and `fail` |
+| table | box drawing in `edge` (between `line` and `rail`), the header row bold |
+| code fence | its lines `blue`, no ground (owner, 2026-09-29); the ``` rails stay, `dim`, the language on the opening rail (E2: a copied block is still fenced). DECLARED REVERSAL of DC-3's colourless body — DC-3 removed a 1.54:1 grey; `blue` meets the text floor |
+| rule | `·  ·  ·` in `rail`, inset two columns |
+
+Every `#` takes the gold form: a rule that only an answer's FIRST `#` took
+would make a block's bytes depend on the blocks before it, and the
+freeze discipline forbids that (two documents that produce the same block
+produce the same bytes). DECLARED REVERSALS, named: DC-4's "levels are not
+differentiated by colour" (colour is what Graphite differentiates them
+by; the mono forms keep the markers); E1's `- ` bullet kept for copying
+(the prototype's `–`); md.ts's "`~~` is not a construct" (struck text is
+dim); R3's "the rule is a solid hairline everywhere", for the model's own
+rule only (three dots can never be taken for kiso's chrome).
+
+The person's own words render the same way inside their block (G6), with
+the line breaks they typed kept (a soft break in an answer is a space; in
+the person's message it is theirs), and every reset inside a row re-opens
+the block's ground.
+
+Prose, thinking and the answer wrap from the content edge to two columns
+short of the right edge — the same margin on both sides, and no width cap
+(owner, 2026-09-29: a 92-column cap left the words far short of the cards
+beside them on a wide terminal).
+
 ---
 
-## 8. The bands, and the hint
+## 8. Around the input
 
-A band is a surface that opens directly above the composer: the
-command list, the `@` picker, the session picker. The keys sheet is
-the same vocabulary on the body.
+Everything that sits directly above or below the input. Above it: the
+BANDS — the command list, the `@` picker, the session picker, the pending
+panel, `/status`, `/settings`, the model picker — and the live zone (§8.7).
+Below it: the status bar (§8.9). The terminal title (§8.10) is the input's
+state seen from another tab. The keys sheet is the band vocabulary on the
+body.
 
-**8.1 A band names itself.** `─── commands ───`, `─── files ───`,
-`─── sessions ───`, `─── keys ───`. With scrollback behind it, nothing
-else says where the surface begins.
+**8.1 A band names itself.** Its opening row is the hairline with its name
+in it: `─── commands ───…`, the rule in `line`, the name bold gold —
+`commands`, `files`, `resume`, `keys`, `needs you`, `question`, `model`,
+`mode`, `status`, `settings` — and what follows the name in the label
+(`· this workspace · 2 of 5`) `dim`. One row, not a hairline and
+a title row: every band and panel keeps the height it had (R3a). It closes
+on the hairline. With scrollback behind it, nothing else says where the
+surface begins. Off a known ground the row is one dim span, the same
+words.
 
-**8.2 A band is a WINDOW, not the whole list.** Five rows and a
-counter — and the counter appears only when the list is actually cut,
-because over rows you can all see it says nothing they do not. Rows
-are a table: the name column padded to the longest entry in the WHOLE
-list so the descriptions do not shift as the window scrolls, and a
-long description CUT rather than folded, since a fold would break the
-height the window buys.
+**8.2 A band is a WINDOW, not the whole list.** Eight rows on a terminal
+30 rows or taller, five below — one rule for the command list, the files
+and the sessions (P2, owner, 2026-10-03). The band's name carries the
+count: `commands · 18`, and once something is typed `2 of 18 match`. A
+dim `↑` or `↓` in column 0 of the first or last row says the list goes on,
+and the window keeps the cursor one row inside its edges while more lies
+past them, so a marked row is never the selected one. One key row closes
+the band: the keys, and the selection's place in the list at the right
+margin (`3/18`); narrow, the keys give way from the first, and the
+counter stays. DECLARED REVERSAL of R8's counter that appeared only when
+the list was cut (P2): the key row is always there, so the counter rides
+it. Rows are a table: the name column padded to the longest entry in the
+WHOLE list so nothing shifts as the window scrolls or the person types,
+and a long description CUT by cells with an ellipsis rather than folded,
+since a fold would break the height the window buys. What the person
+typed is bold gold wherever it shows. The selected row — in every list that asks the
+person to pick: the approval, the question, `/model`, `/mode`, the
+commands, the files, the sessions — is a card's head in the colour that
+waits for the person: its `askEdge` cell in column 0 (a background, §1.5),
+the row on `washAsk` to the right edge, and, where the list's rows carry
+a marker column (approval, question, pick, commands), a gold `›` in column
+1; the words do not move when the cursor does. DECLARED REVERSALS: the
+reverse-video bar and its `→`, and the command list's bold `▸` (R3a). Off
+a known ground the reverse-video bar stays — one row, so no seam.
 
 **8.3 A band opens on its sigil.** `/` alone opens the command list;
 the list that names the commands must not require you to name one
@@ -572,15 +1060,34 @@ first. The rows do not repeat the sigil — it is on the input line
 directly below them.
 
 **8.4 Enter completes; the NEXT enter sends.** The same rule for every
-band. Completing and sending on one key would send a fragment.
+band. Completing and sending on one key would send a fragment. `esc`
+closes every band. A line that is exactly a command's name lists that
+command first (the last sweep: `/skill` listed `/skills` first, by the
+table's order, and Enter completed the line to it — the command typed in
+full never ran), so Enter on a whole name sends it. A pick list with
+nothing in it counts nothing (it read `0/0` under `no profiles`); a filter
+that matches nothing still counts `0/0`.
 
-**8.5 The idle hint gives way in order, and it is where a key that
-nothing else advertises has to live.** The hint is dropped WHOLE when
-it does not fit, so the forms are a ladder and every rung is one that
-fitted at some width — a rung skipped is an affordance lost at a width
-that could have shown it. Order by how findable the key is WITHOUT the
-hint: `/ commands` survives longest, and a key like `ctrl+r` that
-nothing stumbles onto outranks one like `↑ history` that everyone does.
+**8.5 What gives way, and where the keys are advertised.** A piece
+skipped is an affordance lost at a width that could have shown it, so
+everything that can drop drops WHOLE, in an order set by how findable the
+key is WITHOUT the hint.
+
+The status bar (§8.9) gives way, in order: the `ctrl+o` hint, the folder
+(the terminal title names it too, §8.10), the branch, the model's middle
+(elided, DF-0330-F1), and last `/mode to switch` — it stays for as long
+as it fits: it is the one place a newcomer meets modes. The facts — the
+mode, `floor off`, the model, ctx, tok/s — never drop; past them
+the row is invariant ①'s to cut.
+
+The key ladder (`/ commands · ↑ history · ctrl+r transcript · @ files ·
+? keys`) that R1 put in the empty input retired with the placeholder
+(§7.8, owner, 2026-09-29): `?` opens the keys sheet, and `/` opens the
+command list. The status bar's `/mode to switch` is the one teaching hint
+left on screen, which is why it is the last thing the bar gives up. The
+frames before the bar is bound offer no hint at all (the tasks round):
+the status row stays empty until the bar arrives — it used to fall back to
+the pre-Graphite row and flash the retired ladder on every start.
 
 **8.6 The editor's keys, and the one gesture with three spellings.**
 `alt+←/→` moves the cursor by word and `alt+⌫` / `alt+d` delete a word
@@ -634,7 +1141,461 @@ where the route was OSC 52 (a request the terminal need not honour and
 most do not answer), and nothing at all — no escape emitted — when
 stdout is not a terminal.
 
+**8.7 The live zone.** Rows directly above the composer that exist only
+while something is live, with no rule of their own (owner, 2026-09-28):
+the composer's top rule is right below them, and one blank row above them
+keeps the streaming words off the live row (owner, 2026-09-29). Otherwise the input sits
+against the transcript. The LIVE ROW: the mark in the mark column, the state
+and its facts, the keys at the right; hints drop from the right when the row
+is short.
+
+`working` stands for the whole turn, from its start to its end, whatever the
+model is doing — thinking, writing, waiting on a call. It never switches to
+"thinking": what the model thinks is in the stream (§7.2), and a row that
+guessed would be wrong for a model that shows no thinking. The other states
+replace it while they last.
+
+| state | row |
+|---|---|
+| working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
+| retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
+| compacting | `✸ compacting · manual · 6 rounds · ~95.1k → ▆▆▆▆▆▆ 4.2k/32k · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b) and for a summary inside a run, `cold cache` when a resumed session compacts before its first request (P1b, §8.12). The summary's progress is the status bar's own `▆` cells (§8.9), filled in `ink2` and the rest in the track colour; off a known ground `▰▱` carries the fill. One round is `1 round` |
+| waiting | `❯ needs you · <what>` — `<what>` the open panel's own words (`run paused`, `a question for you`, `uncertain execution`), the `❯` gold. It rides the STATUS row, where the panel's status always was: while a panel is up it holds the live zone itself (R3b) |
+
+The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued
+message is one row: `◇ queued  <text>  after this turn · ↑ edit`. While a
+running command can be moved to the background (ADR-0058 3e), the row
+teaches it right after esc — `esc stop · ctrl+b background · ⏎ steer ·
+alt+⏎ redirect` — and the steer and the redirect give way before it does.
+
+*(with Safe Admission, owner-ruled 2026-09-28)* `⏎` during a run is STEER,
+and there is no queue. A steer waits as
+`◇ steer  <text>  lands after this step · ↑ edit` until the runtime admits
+it — after the current tool batch settles, in the same run — and then
+stands in the transcript where it landed: the gold bar without the warm
+ground, and `steer · landed after <step>` in `dim` at the right end of its
+first row. Several steers sent before
+one admission point land together as one message. A turn stopped with a
+steer still waiting puts its text back in the input. The queued row and
+`alt+⏎` retire with the queue.
+
+**8.8 The panels (R3e).** `/status`, `/settings` and the model picker are
+bands (§8.1–8.4). Off a dock (a pipe, `-p`) `/status` and `/settings`
+print the lines they always printed. `/status`'s shape is every read-only
+sheet's (§8.16).
+
+- `/status` is a read-only SHEET over the input: the named hairline, a
+  fact per row, its label `dim` in a column and its value folded under
+  itself — session (the id, its `/name`, its events), model (the full id,
+  its host, its profile), context (used, and where the window figure comes
+  from), compaction (its two thresholds; `/context` has the split),
+  colour (24-bit, 256 or off, and the ground), version — and
+  `esc closes · typing goes to the input`. What is typed after it is
+  typed (the chunk is parsed whole, so an arrow is an arrow); only `esc`
+  is eaten — and since the sheets round every sheet closes this way
+  (§8.16). CACHE rides the seal (§7.11), not here.
+- `/settings` is a pick panel, a row per setting (owner, 2026-09-29). The
+  SESSION's own settings change in it: the mode, don't ask and thinking
+  walk their own axis with `←→` (the key row names it: `←→ mode`) and
+  apply on `⏎` through `/mode`'s, `/dont-ask`'s and `ctrl+t`'s own paths;
+  `⏎` on the model opens `/model`. A setting that lives in a config file
+  (floor, auto-compact, project trust, the window, the theme) shows its
+  value and source, and `⏎` prints how to change it: kiso never writes
+  the person's config (0.40.6's rule stands for those — the same split as
+  two of the reference agents; see the R3 plan). Its shape is §8.14's.
+- The model picker: `/model`'s list as a band; `⏎` switches. Its shape is
+  §8.14's.
+
+**8.9 The status bar.** One row under the input: the session and its
+health.
+
+```
+default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆▆▆ 9%  48 tok/s     main  ~/code/kiso
+```
+
+- The mode as a chip — `plan · read-only` for plan, bypass in `fail`; then
+  `floor off` in `fail`, only when the floor is off.
+- `/mode to switch` (§8.5).
+- The model and its effort, elided in the middle when short (DF-0330-F1).
+- The ctx meter: ten `▆` cells, the used share filled and the rest in
+  `track`, then the percentage used. Filled cells are `ink2` below the soft
+  compaction tier, `gold` from the soft tier to the hard one, `fail` past
+  the hard tier, read from the runtime's tiers (`tiersFor`) and never from
+  a fixed fraction. There is no marker inside the bar: the tier shows as
+  colour only (owner, 2026-09-28). The cells follow the percentage SHOWN:
+  `ctx 0%` is an empty meter, and from 1% at least one cell is filled;
+  otherwise cells round to the nearest (owner, 2026-09-29 — a lit cell
+  beside `0%` read as a contradiction). `ctx ?` when the window is
+  unknown, with no meter.
+- The last settled call's `NN tok/s`, once measured. The cache share is
+  not on the bar: every run's seal says it (§7.11), and the bar said it a
+  second time (owner, 2026-09-29).
+- At the right: the branch in `blue` (read from `.git/HEAD`, a detached
+  HEAD as its short sha, nothing outside a repository), the folder, and
+  `ctrl+o expand all` / `ctrl+o collapse all` while a card has rows behind
+  the key (§7.7).
+- The words are quiet (`dim`): only the chip, the meter's cells, the
+  branch and `floor off` carry colour. Off a known ground the chip is
+  `▸ <mode>`, the segments join with ` · `, and each side is one dim span.
+
+The session's tasks (ADR-0058 3e; the second main-sync round, owner,
+2026-10-06) sit right after the mode, where 0.46.0's status row has them:
+`● 2 tasks running` with the `●` in the machine's blue, the words quiet
+like the rest of the bar. A fact: it never gives way. DECLARED REVERSAL
+(the main sync, 0.46.2, Amendment 8): the gold `◌ 1 unknown` beside it
+retired — "running" beside "may be running" read as a contradiction (the
+owner); a lost task is a TASK row in the transcript (§7.12), not a count. With no task it is absent and the bar
+is the bar it was. `/tasks` lists them (a pick band, §8.14).
+
+Nothing reserves a place for what has not shipped: an extension's status
+joins the bar's right side once extensions can set one (§10).
+
+**8.10 The terminal title.** OSC 0, written only when stdout is a TTY:
+
+```
+kiso — <folder>                        ready or working: no mark
+kiso · needs you — <folder>            an approval, a question, an unknown outcome to decide
+kiso · <name> — <folder>               a session named with `/name`
+```
+
+The title says kiso, then — only when the person gave the session one —
+its name: the one `/name` set (R3d: `/name <words>`, `/name` shows it,
+`/name -` clears it), durable in the session's SIDECAR (`<id>.meta.json`,
+the runtime's `name` tenant beside `profile` and `summary`; session
+metadata, not an event, so the log and the derivation never carry it;
+owner, 2026-09-29). Waiting reads `kiso · needs you · <name> — <folder>`
+when a name is set. Needs you is any panel that waits on the person's
+answer (an approval, an ask, the trust gate, an uncertain execution), and
+the answer puts back what the title said before. Working writes nothing:
+a tab that changes on every turn is noise. No model writes the title. It
+changes when the state changes and never on a tick (§5.4). No bell and no
+notification: nothing interrupts the person (owner, 2026-09-28). The text
+is escaped and stripped of bidi and invisible formatting code points, and
+the name is cut at 40 cells. On exit kiso writes the ready form, so a
+closed session never leaves a waiting mark behind.
+
+DECLARED REVERSAL (the card round, owner, 2026-10-05) of two rulings. The
+working tab's `✦` (owner, 2026-09-28; §4.1's declared exception, now
+retired), and 0.39.1's name from the first substantive prompt
+(`sessionTitle`): the tab read `✦ <the first prompt> — <folder>`. The
+resume picker, the session list and `SessionStore.list()` keep showing the
+prompt-derived name; only the tab changed.
+
+**8.11 The resume picker** (P1, owner, 2026-09-30: option B revision 2,
+chosen from three designs after a comparison with the reference picker).
+`/resume` and `kiso resume` open one band:
+
+```
+─── resume · this workspace · 8 of 12 ─────────────────────────────────────
+  fix the flaky resize test in the PTY pool   interrupted  12m  14 turns
+▌ add /name so a session can be called…                     2h   9 turns    selected, on washAsk
+▌ completed clean · started Sep 30 15:51 · profile ds                       the opened row
+  why does the cache hit rate drop after…     1 ask         5h   3 turns
+↓ refactor the approval panel into one…                     1d  22 turns
+  ↑↓ move · ⏎ resumes · tab 4 more elsewhere · esc                   2/8
+─────────────────────────────────────────────────────────────────────────
+❯ █filter by title or id
+```
+
+- A TABLE: the title, a state word, the age, the turns — columns measured
+  over every session in the scope, never the filtered subset, so nothing
+  moves while the person types. Titles are cut by cells (a CJK character
+  is two) with an ellipsis. The table is as wide as its longest title
+  needs, so on a wide terminal the facts stay beside the titles. As the
+  width shrinks the turns give way, then the workspace, then the state,
+  then the age.
+- The state is a word only when it asks for attention: `interrupted`
+  blue (unfinished work, the running card's colour), an ask or an
+  uncertain side effect gold (it waits for the person), a failed ending
+  red, an unknown one dim. A finished session's cell is empty.
+- The selected row is §8.2's selection, its title bold, and it OPENS into
+  a second row on the same bar: the whole note (`sessionNote`, the words
+  `kiso sessions` prints — one definition), then while they fit when it
+  started (read from the id, which is its UTC stamp, said in local time),
+  its profile, a foreign session's workspace, and its id.
+- Eight sessions on a terminal 30 rows or taller, five below. A dim `↑` or
+  `↓` in column 0 of the first or last row says the list goes on (column 1
+  empty, so it never reads as the title's first letter). The window keeps
+  the cursor one row inside its edges while more lies past them, so a
+  marked row is never the selected one.
+- The key row closes the band: the keys, and the selection's place in the
+  filtered list aligned to the table's edge. Narrow, the scope's key gives
+  way, then the arrows'; enter and esc stay. `tab N more elsewhere` counts
+  what the other view adds — DECLARED CHANGE of 0.40.1's row that counted
+  the sessions with no workspace above the list: they are counted there
+  with the rest, and tab lists them as `unknown`. The default view still
+  never falls back to every workspace.
+- Under tab a column says where each session is from: blank for this
+  workspace, the last directory (the path, home as `~`, from 110 columns),
+  `unknown`.
+- Typing filters (the subsequence rank, title before id); the matched
+  letters of a title are bold gold, and the band says `N of M match`. With
+  nothing typed the input carries a dim `filter by title or id` after the
+  drawn cursor — DECLARED EXCEPTION to §7.8's empty input (owner,
+  2026-09-29): the input is the picker's filter, so the hint names the key
+  about to be pressed; everywhere else the empty input stays empty.
+- Empty: `nothing matches "…"` with what was typed, or `no session from
+  this workspace yet`; the key row stays.
+- Left out, and why: a row per session of two lines and a blank (three
+  sessions to a screen), a bordered search box (box glyphs seam, §1.5, and
+  the input is the search field), a git branch column (kiso records no
+  branch — a runtime change). Not now: `space` to preview a session.
+
+**8.12 kiso's own questions** (P1b, owner, 2026-09-30). Four panels ask
+the person something kiso itself needs answered, not a tool's approval:
+a cold cache on resume, a call that may have run before kiso stopped, a
+question nobody answered, and the project trust gate. They used the
+approval layout, which said each sentence two or three times (the rule
+line, the title, and again in the gutter) under the generic `needs you`.
+They open on the QUESTION:
+
+```
+─── compact first? · 727k tokens · idle 27 min ────────────────────────
+  The cache expired while the session was idle, so the next request
+  sends all 727k tokens again. Compacting first is one summary call; the
+  turns after it are small.
+› 1 compact first
+  2 keep the full history
+  ↑↓ move · ⏎ or click confirms · 1-2 instant · esc
+───────────────────────────────────────────────────────────────────────
+```
+
+- The band's name is the question (bold gold, §8.1) and its facts follow
+  dim. At most two sentences at the content edge, each said once.
+- The gutter `│` holds only what is quoted verbatim, as in an approval:
+  the shell command that may have run (every line; another call's target
+  as its tool card names it; read from the execution record, no runtime
+  change), the unanswered question(s), the trust gate's files. The
+  execution id is no longer shown.
+- `rerun it? · <tool>`, `ask it again? · never answered` (`ask them
+  again?` for several), `trust this project? · <root, home as ~>` with the
+  answers `trust it` / `not now`.
+- The trust gate prints nothing above its question on a dock (the tasks
+  round, owner, 2026-10-06): the question lists the files itself. What
+  was trusted stays in the scrollback as ONE `PROJECT` meta row (§7.12),
+  written once the person has answered. DECLARED REVERSAL of the
+  `[project .kiso] <root>` line and the file list printed above the
+  question, the same listing twice on one screen. Off a dock the listing
+  is printed as before.
+- The options, the key row and the closing rule are the approval's own;
+  tool approvals keep the approval layout. The dock-less questions (a pipe,
+  a TTY with no room for a panel) are unchanged, word for word.
+- dontAsk asks nothing: on a dock the cold cache has no line of its own —
+  the compaction row's reason says `cold cache` (§8.7), as it does after
+  `compact first` — and an undecided call is the `UNCERTAIN` meta row
+  (`1 interrupted command left undecided — a mode that asks will ask about
+  it`). A pipe prints both lines as it always did.
+
 ---
+
+**8.13 The command list and the file picker** (P2, owner, 2026-10-03,
+approved with two changes: the selected command keeps its gold `›`, and
+the list is not grouped). Both take the resume picker's shape (§8.2):
+
+```
+─── commands · 18 ──────────────────────────────────────────────────────
+  mode      switch the approval tier (default/accept-edits/plan/full-a…
+  dont-ask  never stop for you: what would ask is refused (on/off)
+▌›model     list model profiles; switch with /model <name|provider/mod…    selected
+  compact   summarize the older conversation to free context
+↓ think     show the last full thinking block
+  ↑↓ move · ⏎ completes · esc                                      3/18
+─── files · 3 of 11 match ──────────────────────────────────────────────
+▌ compositor.ts              packages/tui/src/                             selected
+  components.ts              packages/tui-cells/src/
+  compositor-kc3-at.test.ts  packages/tui/tests/
+  ↑↓ move · tab inserts · esc                                       1/3
+```
+
+- The commands: one list in the order the editor keeps (the built-ins,
+  then the skills that do not shadow one) — no groups. The filter is a
+  prefix, so the gold is the name's first letters. The selected row keeps
+  §8.2's gold `›` in column 1.
+- The files: the NAME, then the FOLDER as a dim column one gap after the
+  widest name in the whole list (measured in cells, so a wide name does
+  not break it), so a long list reads as a table and the folders line
+  up. DECLARED REVERSAL of R1.5 ⑧ (VD-9) in two parts: the em dash
+  between name and folder is gone, and a typed letter that lands in the
+  folder is drawn gold, because the person typed it — the folder's other
+  letters stay dim. Never at the far edge, which was VD-9's complaint.
+  The selected row carries no `›`: the files have no marker column.
+- A list cut at the 2,000-file horizon says so in the band's name: `files
+  · 3 of 2000 match · first 2000 only`.
+- Off a known ground the gold falls back to the warn tint, as the resume
+  picker's does, so a bold selected row still shows which letters matched.
+- Left out, and why: groups in the command list (owner), and a preview of
+  the file (the band is a picker, not a viewer).
+
+**8.14 The pick panels: `/model`, `/mode`, `/settings`** (P3, owner,
+2026-10-04, all four recommendations taken). The three lists the person
+opens to change how the session runs take §8.2's shape:
+
+```
+─── model · 9 profiles ─────────────────────────────────────────────────
+▌›deepseek-v4-flash       api.deepseek.com     current                    selected
+▌ effort none · low · high · max  ·  profile ds · openai-compat · DS_KEY  the opened row
+  gpt-5.6-sol             chatgpt.com          sign in
+  claude-opus-5           anthropic
+↓ z-ai/glm-5.3-flash      api.gateway-aaaa.ai
+  ↑↓ move · ←→ effort · ⏎ switches · esc                            1/9
+──────────────────────────────────────────────────────────────────────── the composer's rail
+█filter, or type provider/model
+```
+
+- The band names its count or its current value: `model · 9 profiles`
+  (`2 of 9 match` under a filter), `mode · current: default` (with don't
+  ask on, `current: full access · don't ask` — the owner's words of
+  2026-09-30), `settings · 11`; a run paused behind the panel adds
+  `· run paused`. DECLARED REVERSAL: the `current:` row under the name.
+- The rows are a table, every column measured over the whole list.
+  `/model`: the model, its host, and a state word only where there is one
+  — `current`, or why it cannot run (`no key`, `sign in`, its row dim).
+  `/mode`: the tier and what it does. `/settings`: the name, a short value
+  (`on`, `1M`) and where it came from; the session's own four first
+  (model, mode, don't ask, thinking), with no caption between them and the
+  rest.
+- The selected row keeps §8.2's gold `›` right before its label, as the
+  command list's does, and OPENS into a second row on the same wash (the
+  resume picker's shape): the level strip, the level in force bold gold
+  (no brackets — DECLARED REVERSAL), then what the columns cannot hold.
+  The strip stays whole and the words give way first. `/model`: the
+  profile's name, its protocol and what signs it in — the profile name
+  returns here only, not on every row (owner; 0.40.1 took it off the
+  rows) — or the whole reason it cannot run. `/settings`: what a value
+  means and how it changes; a setting's own axis needs no label.
+- `/model` FILTERS: typing narrows the list as in the resume picker (the
+  model, then the host, then the profile's name), the matched letters
+  gold. A typed `provider/model` that nothing matches becomes a row of its
+  own, `use … directly`. DECLARED REVERSALS: the `t` row and its typing
+  phase (TUI2-R2 ④), and the digits here — a digit is a letter of a model
+  name. `/mode` keeps its digits (`1–4 picks`); `/settings` is ↑↓ alone.
+- One key row with the counter closes the band and names what `⏎` does
+  on that row (`⏎ switches`, `⏎ applies`, `⏎ opens /model`, `⏎ prints
+  how`). No closing rule: the composer's rail closes the band.
+- The window is §8.2's. DECLARED REVERSALS: PICK_MAX's nine rows (at 24
+  rows `/model` shows five, and typing reaches the rest) and the
+  `↕ 1-9 / 11 — ↑↓ scrolls` row (the more-marks and the counter say it).
+- Around the panel: the Graphite bar stays under it (DECLARED REVERSAL of
+  the panel's own `▸ default` status row and its old key ladder, for these
+  three), and the input row is the composer's — no `1-9>` lead; while a
+  filter is empty it carries a dim `filter, or type provider/model`, the
+  resume picker's exception for the same reason.
+- The approval and question panels keep their own status row; they are
+  the next round.
+
+**8.15 The approval and question panels** (P4, owner, 2026-10-04, all
+four recommendations taken). The panels that stop a run until the person
+answers — an approval for a tool call, a question from the model, a
+question kiso asks itself (§8.12) — take §8.2's shape:
+
+```
+─── needs you · asked by mode:default ──────────────────────────────────
+  SHELL rm -rf build && npm run build                       the call, once
+  deletes files permanently (build)                         the risk line, warn
+▌› 1 Yes, run it
+   2 Yes, and don't ask again for shell
+   3 Show me safer ways to do this
+   4 No — let me tell it what to do instead
+  ↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies          1/4
+──────────────────────────────────────────────────────────────────────── the composer's rail
+```
+
+- The band's name carries the facts: `needs you · asked by <speaker>`
+  (`· amended` when the model answered a note with a new call);
+  `question · <header> · 1 of 2` (`· pick any` for a multi-select);
+  kiso's own question keeps §8.12's band, a path that does not fit cut
+  from the LEFT so the folder's name and the rule's end stay on screen.
+- An approval says the call ONCE, as its transcript card's head
+  (`SHELL rm -rf build`, `WRITE src/clamp.ts`): the body follows only when
+  it adds something — a diff, JSON, or a command the head row cannot show
+  whole; a one-line command too long for the head row folds under it
+  instead, its continuation rows under the command's first cell, breaking
+  at a space where it can (owner's capture, 2026-10-05: cut and then
+  repeated whole). The speaker's fix hint (`/mode accept-edits auto-approves edits`)
+  has a row of its own under the body. DECLARED REVERSAL of the
+  `<tool> needs approval — asked by <speaker>` row, the bold title under
+  it and the blank row after them.
+- A question puts the model's question first, bold. DECLARED REVERSAL of
+  the `‹ 1/2 ›` after it, the header's own row and the blank row. A
+  single-select is `1 vite` (the mark column appears once an option is
+  picked); a description too long for its column is cut with `…`, and the
+  SELECTED option opens when its description does not fit: its row keeps
+  the label and up to three rows under it, on the same wash, say the
+  description whole (owner, 2026-10-05).
+- The options, their digits, the gold `›`, the risk line, the safer list
+  and the amend path work as they did. In the amend phase the options give
+  way to `your note goes to the model — it will propose a new call`; in
+  the safer phase the block says `asked the model for safer options` above
+  the alternatives — both were status-row words.
+- One key row with the counter closes the band; an approval's says
+  `esc denies` (the CLI records esc as a denial). No closing rule —
+  DECLARED REVERSAL of the panel's own bottom rule (TUI2-R1.5 ⑪, R2).
+- Around the panel: the Graphite bar stays under it — DECLARED REVERSAL
+  of the panel's status row (`❯ needs you · run paused`, `❯ question 1 of
+  2 · answers are durable facts`), which goes, `run paused` and the
+  durable-facts sentence with it (owner). Before a bar exists (the trust
+  question comes before the session) the row keeps the panel's words and
+  drops the retired key ladder. The input row is the composer's — DECLARED
+  REVERSAL of `pick>` and `amend›`; an empty note or answer row carries a
+  dim `tell kiso what to do instead` or `your answer`.
+
+**8.16 The read-only sheets** (the sheets round, owner, 2026-10-06, all
+four recommendations). The places a person reads and does not answer —
+`/status`, the keys sheet (`?`), `/context`, `/skills` — take `/status`'s
+shape (§8.8), and `/help` opens the command list. Off a dock (a pipe,
+`-p`) each command prints what it always printed, byte for byte.
+
+- A SHEET is over the input: the band names it and carries its facts
+  (§8.1), the rows start at the content edge in columns measured over the
+  whole sheet — names in ink, descriptions `dim`, the command list's
+  tones — and one closing row, `esc closes · typing goes to the input`.
+  Any key closes it and what is typed is typed (the chunk is parsed whole,
+  so an arrow is an arrow); only `esc` is eaten, and on the keys sheet the
+  `?` that opened it. Nothing stays in the conversation. DECLARED REVERSAL
+  of the keys sheet eating the key that closed it (TUI2-R1 D).
+- The keys sheet: the bindings two to a row, left then right, in the key
+  table's order (`KEY_BINDINGS`, the one source); narrower than two
+  columns need, one column. A key with two spellings is named by one
+  (`alt+⏎`, `alt+←→`); `ctrl+w` stays named beside `alt+⌫` (§8.6).
+  `ctrl+t`, `ctrl+g`, `!cmd` and `!!cmd` joined from `/help`'s table;
+  `? this sheet` left. DECLARED REVERSAL of the prototype's grid (column
+  0, hand-set stops, bold keys — DC-1/DC-3) and of the panels row
+  (`panels: … t types`, R1.5 pin 6, R6/D2): every panel's own key row
+  says its keys, and the row had gone stale.
+- `/context`: the band names the total (`context · 2.7k of 200k · 1%`);
+  then the status bar's own meter (§8.9 — one function draws both, so
+  they cannot disagree) with when compaction happens beside it; the
+  surfaces as a table, the label, the count right-aligned, the detail
+  `dim`; the free remainder `dim`. Before any request the band says
+  `context · no ledger yet` and the row says what produces one. DECLARED
+  REVERSAL of the printed rows (column 0, a blank between each, the `▰▱`
+  meter).
+- `/skills`: the band says how many, how many cannot load, and where they
+  live when that is one place — cut from the LEFT when the band cannot
+  hold it (§8.15's rule for a path). One row per skill: `/name` in a
+  measured column and its description `dim`, cut by cells; with more than
+  one place, the place ends the row. A skill that cannot load says why in
+  the failure colour. The closing row says how to run one:
+  `/<name> runs one · a built-in wins its name · esc closes`.
+- A task's output (`/tasks` → a task → show its output; the tasks round,
+  owner, 2026-10-06): the band names the task, which output it is and how
+  it ended (`t1 · its last output · exited 0`, `t2 · its answer ·
+  answered`); a task kiso lost track of says why first, in gold (`lost
+  track: its runner is gone without recording its end; it may still be
+  running` — the printed form's `t1 — lost track: …` line, the main sync);
+  its newest twelve lines at the content edge in `ink2`, each cut to one
+  row; the closing row. DECLARED REVERSAL of the lines printed into the
+  conversation at column 0, a blank between each.
+- `/help` opens the command list (§8.13) — the band a typed `/` opens,
+  every command and installed skill with its description, filtered as
+  the person types — on an empty composer. The list you read is the list
+  you pick from. DECLARED REVERSAL of `/help`'s own 25-row table on a
+  dock; its keys sentence is the keys sheet's now.
+- A sheet sits ON the composer. When the window's top cannot come back
+  down (§5, R13 — a taller band such as the `/` list pushed rows into the
+  scrollback) the rows a shorter sheet leaves free go ABOVE it, between
+  the conversation and the sheet, never between the sheet and the
+  composer's rail.
 
 ## 9. The transcript viewer
 
@@ -655,9 +1616,10 @@ expands the tool output in front of you, which is §7.7's job, not this
 one — reported from real use (DC-41). So `ctrl+o` is the expand key and
 the viewer takes `ctrl+r`. No control key was free of a collision
 somewhere; `ctrl+r` is the cheapest, because what it displaces
-elsewhere is renaming a session and kiso has nothing to rename. The
-viewer fires only on an idle, empty composer, so the collision can only
-ever land where the other product's binding is itself a no-op.
+elsewhere is renaming a session, which kiso does with a command (`/name`,
+§8.10) and not a key. The viewer fires only on an idle, empty composer, so
+the collision can only ever land where the other product's binding is
+itself a no-op.
 
 **9.0b The `ctrl+o` expansion is the CARD ITSELF, re-rendered.**
 DECLARED REVERSAL (DC-50 / R14, 2026-09-05). This section described an
@@ -717,6 +1679,18 @@ paste everywhere.
   different release tier, not a visual round. §7.2's visible thinking
   already carries the narration at no schema cost, which is the reason
   this stays open rather than planned.
+- **Rows per turn.** Labels, the seal and the half-row pads add rows to
+  every turn. R1 measures a fixed scenario before and after and sets a
+  ceiling here; no compact density is planned.
+- **Narrow widths.** The grid is stated for 64 columns and up. R1 walks
+  W 20..200 and writes the narrow forms of the card, the live row and the
+  status bar here.
+- **Extension messages and status.** Extensions have no message surface
+  and cannot set a status; §7.12's row and §8.9's right-side slot are the
+  intended forms, and the surface needs an ADR.
+- **Line numbers in diffs.** They need the tool's result or a display-only
+  field in the log; neither is decided, and diffs carry none.
+- **Images.** No inline images.
 
 ---
 
@@ -729,3 +1703,6 @@ live in `bench/rd1/findings/` and the commits.
 A change must say what became true, so a reader can tell a decision from
 a drift, and must leave the file consistent: a rule the code contradicts
 is a bug in one of them, and this file does not get to be the stale one.
+
+A change that overturns a standing ruling names it — `DECLARED REVERSAL`,
+the ruling, and why — in the section it changes.

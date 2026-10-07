@@ -40,7 +40,7 @@ describe("DC-60 — the user chip of a turn that carries an image", () => {
 		const raw = ptyRun(["--mode", "bypass", "dc60"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "look at shot.png please\r"],
+				["/mode to switch", "look at shot.png please\r"],
 				["A red square.", "exit\r"],
 			],
 			timeout: 60,

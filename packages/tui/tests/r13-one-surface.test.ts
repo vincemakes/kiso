@@ -75,8 +75,8 @@ describe("R13 — the transcript only grows, and nothing collapses into it", () 
 		tick();
 		const after = plain(writes.join(""));
 		expect(after).not.toContain("✦ thought");
-		expect(after).toContain("read  a.ts");
-		expect(after).toContain("read  b.ts");
+		expect(after).toMatch(/READ +a\.ts/); // Graphite §7.5: the verb upper case, padded to seven
+		expect(after).toMatch(/READ +b\.ts/);
 	});
 
 	it("EVERY settled call stands as its own card — three reads are three cards", () => {
@@ -112,7 +112,7 @@ describe("R13 — the transcript only grows, and nothing collapses into it", () 
 		body.userLine("look");
 		call(body, "read_file", "r1", { path: "a.ts" }, "x");
 		tick();
-		expect(screen().map(plain).join("\n"), "the finished call is not on the screen mid-turn").toContain("read  a.ts");
+		expect(screen().map(plain).join("\n"), "the finished call is not on the screen mid-turn").toMatch(/READ +a\.ts/);
 	});
 
 	it("/last still reaches the full outputs — nothing on screen hides content", () => {

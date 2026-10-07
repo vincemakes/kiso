@@ -40,6 +40,13 @@ def driver(cli, args, env, feeds, timeout, cwd, rows, cols, delays):
             os.environ.pop("NO_COLOR", None)
         if "TERM_PROGRAM" not in env:
             os.environ.pop("TERM_PROGRAM", None)
+        # Graphite: the tier and the ground ladder's env rungs are pinned,
+        # never the host's (tests/setup-env.ts says why).
+        if "COLORTERM" not in env:
+            os.environ["COLORTERM"] = "truecolor"
+        for k in ("KISO_THEME", "COLORFGBG"):
+            if k not in env:
+                os.environ.pop(k, None)
         os.environ.update(env)
         if cwd:
             os.chdir(cwd)

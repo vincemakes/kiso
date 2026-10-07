@@ -38,7 +38,8 @@ function band(typed: string, downs = 0, W = 92, H = 20): string[] {
 	const s = new Screen(W, H);
 	s.feed(writes.join(""));
 	const rows = s.rows.map((r) => r.join("").replace(/\s+$/, ""));
-	const head = rows.findIndex((r) => r.includes("commands ─"));
+	// Graphite P2: the band names itself with its count (`commands · 18`)
+	const head = rows.findIndex((r) => r.startsWith("─── commands"));
 	if (head < 0) return [];
 	const end = rows.findIndex((r, i) => i > head && r.startsWith("──"));
 	return rows.slice(head, end < 0 ? rows.length : end);
@@ -66,21 +67,33 @@ describe("R8 — a bare / opens the list", () => {
 });
 
 describe("R8 — the band is a window", () => {
-	it("five rows and a counter, never eleven", () => {
+	// Graphite P2 (owner, 2026-10-03) — RE-DERIVED: the counter rides the key
+	// row; a terminal under 30 rows shows five commands (30+ shows eight)
+	it("five rows and the key row with the counter, never eleven", () => {
 		const rows = band("/");
-		expect(rows.length, "the band is not 1 header + 5 rows + 1 counter").toBe(7);
-		expect(plain(rows[6]!).trim()).toBe(`(1/${MENU_ITEMS.length})`);
+		expect(rows.length, "the band is not 1 header + 5 rows + 1 key row").toBe(7);
+		expect(plain(rows[6]!)).toMatch(new RegExp(`^ {2}\u2191\u2193 move \u00b7 \u23ce completes \u00b7 esc +1/${MENU_ITEMS.length}$`));
+		expect(plain(rows[0]!)).toMatch(new RegExp(`^\u2500{3} commands \u00b7 ${MENU_ITEMS.length} \u2500`));
+	});
+
+	it("a 30-row terminal shows eight", () => {
+		expect(band("/", 0, 92, 30).length).toBe(1 + 8 + 1);
 	});
 
 	it("the window follows the selection, and the counter follows with it", () => {
 		const rows = band("/", 6);
-		expect(plain(rows[6]!).trim()).toBe(`(7/${MENU_ITEMS.length})`);
-		const marked = rows.findIndex((r) => plain(r).startsWith("▸"));
+		expect(plain(rows[6]!)).toMatch(new RegExp(` 7/${MENU_ITEMS.length}$`));
+		// Graphite §8.2 (R3a): the selected row carries the list's `→` in
+		// column 1 (the gold `›` on a known ground), not a bold `▸`
+		const marked = rows.findIndex((r) => /^ \u2192/.test(plain(r)));
 		expect(marked, "the selected row scrolled out of its own window").toBeGreaterThan(0);
 		expect(marked).toBeLessThan(6);
 	});
 
-	it("a list that FITS carries no counter — over rows you can all see, it says nothing", () => {
+	// Graphite P2 — DECLARED REVERSAL of R8's "the counter earns its row only
+	// when the list is cut": the counter no longer spends a row — it rides
+	// the key row, which every band ends with (owner, 2026-10-03)
+	it("a list that FITS is drawn whole, its key row counting it", () => {
 		// DERIVED from the menu, not counted by hand: this was a literal 3
 		// ("resume, rewrap") and went red when 0.39.2 gave `/reload` its
 		// missing menu row, which also starts with `/re`. The claim here was
@@ -92,8 +105,9 @@ describe("R8 — the band is a window", () => {
 		expect(matches, "the fixture's premise: the filtered list must fit the window").toBeLessThanOrEqual(5);
 		expect(matches, "the premise needs more than one row to be about a list").toBeGreaterThan(1);
 		const rows = band("/re");
-		expect(rows.length).toBe(1 + matches); // the header, then every match
-		expect(rows.join("\n")).not.toMatch(/\(\d+\/\d+\)/);
+		expect(rows.length).toBe(1 + matches + 1); // the header, every match, the key row
+		expect(plain(rows.at(-1)!)).toMatch(new RegExp(` 1/${matches}$`));
+		expect(plain(rows[0]!)).toContain(`${matches} of ${MENU_ITEMS.length} match`);
 	});
 
 	it("the height is the window's, at every width", () => {
@@ -130,9 +144,10 @@ describe("R8 — the rows are a table, and the sigil is not on them", () => {
 		expect(top.length + scrolled.length, "there were no rows to check").toBe(10);
 		const columns = new Set([...top, ...scrolled].map(descColumn));
 		expect([...columns], "the description column moves").toHaveLength(1);
-		// and the column really is the widest command, not an accident
+		// and the column really is the widest command, not an accident —
+		// two cells after it (Graphite P2: the gap /resume's table keeps)
 		const widest = MENU_ITEMS.reduce((n, m) => Math.max(n, m.name.length - 1), 0);
-		expect([...columns][0]).toBe(2 + widest + 1);
+		expect([...columns][0]).toBe(2 + widest + 2);
 	});
 
 	it("a long description is CUT, never folded — a fold would break the window", () => {

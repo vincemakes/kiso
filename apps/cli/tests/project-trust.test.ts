@@ -126,7 +126,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		const out = ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\r"],
+			["trust this project", "y\r"],
 			["▌ ", "\r"],
 		]);
 		expect(out).toContain("[project .kiso]");
@@ -146,10 +146,10 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		const out = ptyRun(env, cwd, [
-			["trust this project's .kiso?", "n\r"],
+			["trust this project", "n\r"],
 			["▌ ", "\r"],
 		]);
-		expect(out).toContain("trust this project's .kiso?");
+		expect(out).toContain("trust this project");
 		// R-D 0.1.45: ONLY the built-in column (the exact 4-only form proves
 		// the refused project added nothing).
 		expect(out).toContain("[4 extensions: built-in: mcp, skills, subagent, ask]");
@@ -162,11 +162,11 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\r"],
+			["trust this project", "y\r"],
 			["▌ ", "\r"],
 		]);
 		const out = ptyRun(env, cwd, [["▌ ", "\r"]]); // no trust answer available
-		expect(out).not.toContain("trust this project's .kiso?");
+		expect(out).not.toContain("trust this project");
 		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, ask · project:");
 		expect(trustLines(dirs.home)).toHaveLength(1); // no new record
 	});
@@ -175,15 +175,15 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\r"],
+			["trust this project", "y\r"],
 			["▌ ", "\r"],
 		]);
 		writeFileSync(join(cwd, ".kiso", "extensions", "lint-rules.mjs"), `// v2 — the rules changed\n${lintExt()}`, "utf8");
 		const out = ptyRun(env, cwd, [
-			["trust this project's .kiso?", "y\r"],
+			["trust this project", "y\r"],
 			["▌ ", "\r"],
 		]);
-		expect(out).toContain("trust this project's .kiso?"); // re-asked — the old grant died with the files
+		expect(out).toContain("trust this project"); // re-asked — the old grant died with the files
 		expect(out).toContain("[5 extensions: built-in: mcp, skills, subagent, ask · project:");
 		const lines = trustLines(dirs.home);
 		expect(lines).toHaveLength(2); // the old grant + the new one
@@ -197,7 +197,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		expect(res.status).toBe(0);
 		expect(res.stderr).toContain("[project .kiso] found 1 artifact(s)");
 		expect(res.stderr).toContain("not trusted, not loaded");
-		expect(res.stdout).not.toContain("trust this project's");
+		expect(res.stdout).not.toContain("trust this project");
 		// R-D 0.1.45: the exact 4-only form — the untrusted project added
 		// nothing to the banner.
 		expect(res.stdout).toContain("[3 extensions: built-in: mcp, skills, subagent]");
@@ -222,11 +222,11 @@ describe("E3: the project trust gate (project-trust)", () => {
 		const { env, dirs } = isolatedEnv();
 		const cwd = projectWorkdir({ "extensions/lint-rules.mjs": lintExt() });
 		ptyRun(env, cwd, [
-			["trust this project's .kiso?", "n\r"],
+			["trust this project", "n\r"],
 			["▌ ", "\r"],
 		]);
 		const out = ptyRun(env, cwd, [["▌ ", "\r"]]);
-		expect(out).not.toContain("trust this project's .kiso?"); // refused is a record — never re-asked
+		expect(out).not.toContain("trust this project"); // refused is a record — never re-asked
 		expect(out).not.toContain("[1 extension");
 		expect(trustLines(dirs.home)).toHaveLength(1);
 	});
@@ -242,7 +242,7 @@ describe("E3: the project trust gate (project-trust)", () => {
 		env.KISO_MCP_CONFIG = join(kiso, "mcp.json"); // user config = the same file — the self-mirror the real user hit
 		const cwd = dirs.home; // the KISO_HOME parent — the user's home-directory scenario
 		const out = ptyRun(env, cwd, [["▌ ", "\r"]]);
-		expect(out).not.toContain("trust this project's"); // never asks to trust its own configuration
+		expect(out).not.toContain("trust this project"); // never asks to trust its own configuration
 		expect(out).not.toContain("exists in both"); // no self-mirror mcp collision
 		expect(out).toContain("▌ "); // normal REPL entry (TUI v4 #16d: the brick alone)
 	});

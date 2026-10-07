@@ -11,14 +11,16 @@ import {
 	escapeTerminal,
 	cacheHitPct,
 	decodeRate,
-	idleStatus,
 	palette,
 	renderEvent,
-	renderRecap,
-	runningStatus,
+	renderRecap, sealTiers,
 	toolTarget,
 	STATUS_GLYPHS,
 	kUnit,
+	workingRow,
+	compactingStatus,
+	liveRow,
+	type BarInput,
 	namedPickView,
 	type PanelArgs,
 	type PanelView,
@@ -28,17 +30,20 @@ import {
 	type RunUsage,
 	type TaskCountsOnRow,
 } from "@vincemakes/kiso-tui";
-import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileDiff, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
+import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { deliveryLines, liveTasks, lostToldOf, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
-import { taskCounts, taskNoticeLines } from "./task-notice.js";
+import { taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
+import { current as inRunCompaction, takeKept as takeKeptCompaction } from "./in-run-compaction.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
-import { canonicalizeUsageForModel, requestBudget } from "@vincemakes/kiso-runtime/internal";
+import { canonicalizeUsageForModel, requestBudget, tiersFor } from "@vincemakes/kiso-runtime/internal";
+import { homedir } from "node:os";
+import { currentBranch } from "./git-branch.js";
 import type { AgentSession, Run } from "@vincemakes/kiso-runtime";
 import type { UserInputVia } from "@vincemakes/kiso-core";
-import { dispatch, type DispatchCtx, abortBangCommand } from "./dispatch.js";
-import { paintWindowTitle } from "./window-title.js";
+import { dispatch, markAutoCompact, markCompactWhy, type DispatchCtx, abortBangCommand } from "./dispatch.js";
+import { setTitleState } from "./window-title.js";
 import { agentBaseUrl, agentModel, body, bodyLog, configuredWindow, dock, retryOnRow, retryShown, setRetryShown, floorOn, protectedFiles, upstreamOf, VERSION, type LineInput } from "./state.js";
 import { attachImages } from "./attachments.js";
 import { installedVersion, staleVersionNotice } from "./stale-version.js";
@@ -317,6 +322,37 @@ export function displayCtxRatio(session: AgentSession): number {
 	return requestBudget(session.requestParts(), window).ratio;
 }
 
+/**
+ * Graphite §8.9 — the status bar's facts, one builder for every caller
+ * (the boot row, the idle row, the running turn's row), so they cannot
+ * drift apart. The context share is USED, with the runtime's own
+ * compaction tiers as shares of the same window (`tiersFor`, never a
+ * fixed fraction); an unknown window is `ctx ?`.
+ */
+export function barFor(session: AgentSession, measured: { readonly tokPerSec: number | null; readonly tasks?: TaskCountsOnRow | undefined } = { tokPerSec: null }): BarInput {
+	const window = knownContextWindow();
+	const used = displayCtxRatio(session);
+	const tiers = window === null ? null : tiersFor(window, 0);
+	const home = homedir();
+	const cwd = process.cwd();
+	return {
+		// the main-sync round: the tier by its name (#203's MODE_LABEL), full
+		// access in the failure colour, and the don't-ask switch as its own chip
+		mode: getMode() === "plan" ? "plan \u00b7 read-only" : MODE_LABEL[getMode()],
+		modeAlert: getMode() === "full-access",
+		dontAsk: getDontAsk(),
+		floorOff: !floorOn,
+		model: statusModelLabel(session),
+		ctx: tiers === null || window === null || !Number.isFinite(used) ? null : { used, soft: tiers.soft / window, hard: tiers.hard / window },
+		tokPerSec: measured.tokPerSec,
+		// ADR-0058 (3e): the session's tasks — the bar is where they are
+		// counted in Graphite (§8.9); absent, the bar is unchanged
+		...(measured.tasks !== undefined ? { tasks: measured.tasks } : {}),
+		branch: currentBranch(cwd),
+		folder: cwd === home ? "~" : cwd.startsWith(`${home}/`) ? `~${cwd.slice(home.length)}` : cwd,
+	};
+}
+
 /** 0.40.0 item 9: how long a prompt cache is assumed to live. PROVISIONAL:
  *  DeepSeek does not publish its TTL (the owner's cache was gone after 27
  *  minutes); Anthropic's default is 5 minutes. */
@@ -593,8 +629,8 @@ export function startStatusSpinner(onTick: (glyph: string) => void): () => void 
 	// the idle row or the next turn.
 	setRetryShown(null);
 	if (!dock.active) return () => {};
-	// v3 §03/§05: the working glyph family ▖▘▝▗, 200ms rotation — the
-	// callback repaints the running status line with the new glyph.
+	// v3 §03/§05: the working glyph family (STATUS_GLYPHS), 200ms
+	// rotation — the callback repaints the live row with the new glyph.
 	// KC2 §5: the family itself moved to the tui's status formatters.
 	let i = 0;
 	const timer = setInterval(() => onTick(STATUS_GLYPHS[i++ % STATUS_GLYPHS.length]!), 200);
@@ -663,12 +699,14 @@ function approvalDiff(name: string, input: Record<string, unknown>): DiffResult 
 	}
 	try {
 		if (name === "edit_file") {
-			const search = typeof input.search === "string" ? input.search : "";
-			const replace = typeof input.replace === "string" ? input.replace : "";
-			if (search === "") return null;
+			// R2a: the single pair or the batch — a batch's hunks applied in
+			// order, as the tool applies them (it reached the panel with no
+			// diff while only search/replace was read)
+			const hunks = hunksOf(input);
+			if (hunks === null || hunks.some((h) => h.search === "")) return null;
 			// TUI2-R1.5 ② (VD-2): the path rides along so a miss can name the
 			// file in its honest note instead of fabricating a diff.
-			return editFileDiff(oldContent ?? "", search, replace, path);
+			return editFileHunksDiff(oldContent ?? "", hunks, path);
 		}
 		const content = typeof input.content === "string" ? input.content : "";
 		return writeFileDiff(oldContent, content);
@@ -1004,7 +1042,14 @@ export async function consumeRun(
 		if (ev.type === "summarized" || ev.type === "microcompacted") {
 			const r = displayCtxRatio(session);
 			const ctx = Number.isFinite(r) ? ` · ctx now ~${Math.round(r * 100)}% used` : "";
-			body.notice(ev.type === "summarized" ? `✦ compacted mid-run — the conversation before this point is a summary now${ctx}` : `✦ pruned old tool output mid-run${ctx}`);
+			const pipe = ev.type === "summarized" ? `✦ compacted mid-run — the conversation before this point is a summary now${ctx}` : `✦ pruned old tool output mid-run${ctx}`;
+			// the compaction round (owner, 2026-10-06): the COMPACTED row says
+			// the numbers — how big the context was, how big it is now, the
+			// share of the window used — where it said a sentence. A pipe keeps
+			// the sentence.
+			const kept = ev.type === "summarized" ? takeKeptCompaction() : null;
+			if (kept !== null) body.metaNotice(pipe, [{ label: "COMPACTED", sentence: `mid-run \u00b7 ~${kUnit(kept.pre)} \u2192 ~${kUnit(kept.post)}${Number.isFinite(r) ? ` \u00b7 ctx now ${Math.round(r * 100)}%` : ""}` }]);
+			else body.notice(pipe);
 		}
 		if (ev.type !== "thinking") {
 			if (thinkingSince !== null) {
@@ -1021,13 +1066,6 @@ export async function consumeRun(
 			case "user_input":
 				inputsSeen += 1;
 				if (inputsSeen > 1) onInputLanded?.();
-				// The window title is re-derived here because THIS is when a
-				// session stops being nameless: the tab opened as `kiso —
-				// <workspace>` and the first substantive prompt is what gives
-				// it a name. Re-derived rather than set, so the opener rule is
-				// `sessionTitle`'s and a greeting-first session upgrades when
-				// the real prompt lands instead of keeping "hi" forever.
-				paintWindowTitle(session.log.all);
 				// TV-1B: a system-sourced input is PRODUCT MACHINERY — visible
 				// (every durable input renders) but never painted as the
 				// user's words. Provenance is honest on screen, not only in
@@ -1036,7 +1074,12 @@ export async function consumeRun(
 				// any run that carries one, as replay.ts does for old logs.
 				// ADR-0058: a task notice is a row, never the person's chip
 				if (ev.via?.kind === "tasks") {
-					for (const row of deliveryLines(session.id, ev.via.items)) body.notice(row);
+					// the tasks round: one row per task, how it ended and what ran —
+					// a loss already said (Amendment 8) is left out, as the pipe's
+					// lines (deliveryLines) leave it out
+					const told = lostToldOf(session.id);
+					const shown = ev.via.items.filter((i) => !(i.transition === "unknown" && told.has(i.taskId)));
+					if (shown.length > 0) body.metaNotice(deliveryLines(session.id, ev.via.items).join("\n"), taskNoticeRows(shown, tasksForDisplay(tasksFor(session.id))));
 					break;
 				}
 				if (ev.source === "system") {
@@ -1277,37 +1320,43 @@ export async function consumeRun(
 					const e = ev.outcome.error as { code: string; message: string; retryable: boolean; status?: number };
 					body.notice(`run failed — ${e.code}${e.status !== undefined ? ` ${e.status}` : ""}${e.retryable ? " (retryable)" : ""}: ${escapeTerminal(e.message)}`);
 				}
-				bodyLog(
-					renderRecap({
-						seconds: Math.round((Date.now() - turnStart) / 1000),
-						// R3g: the work terms are NOT passed — the fold line
-						// says what the turn did, once, where it happened and
-						// with the key that reopens it. This row is the turn's
-						// cost: how long it took and what it spent.
-						// R3g: `?? 80` is NOT enough — a PTY opened without a
-						// winsize reports 0 columns, and 0 is not nullish, so
-						// the recap cut itself down to one character. A width
-						// that is not a positive number is not a width.
-						width: process.stdout.columns > 0 ? process.stdout.columns : 80,
-						usage: turnUsage() ?? UNKNOWN_USAGE,
-						// R-C item 4: only an above-floor miss is surfaced —
-						// the recap gains "· miss N" on the cache segment.
-						...(missed !== null ? { missed } : {}),
-						// Cold: idle past the cache's assumed life (the #77
-						// constant, provisional) AND the turn did re-send a
-						// prefix uncached — the time alone is not evidence.
-						...(coldAfter(idleMs, missed, turnUsage() ?? UNKNOWN_USAGE)),
-						ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
-						// W19: under plan the recap becomes the way-forward row
-						// (the /mode hints are the mode's exits).
-						mode: getMode(),
-					}),
-				);
+				// Graphite §7.11: the seal is a cell on the terminal (drawn at
+				// the current width, no context share); the pipe keeps the recap.
+				const recapStats = {
+					seconds: Math.round((Date.now() - turnStart) / 1000),
+					stopped: ev.outcome.kind === "aborted",
+					// R3g: the work terms are NOT passed — the fold line
+					// says what the turn did, once, where it happened and
+					// with the key that reopens it. This row is the turn's
+					// cost: how long it took and what it spent.
+					// R3g: `?? 80` is NOT enough — a PTY opened without a
+					// winsize reports 0 columns, and 0 is not nullish, so
+					// the recap cut itself down to one character. A width
+					// that is not a positive number is not a width.
+					width: process.stdout.columns > 0 ? process.stdout.columns : 80,
+					usage: turnUsage() ?? UNKNOWN_USAGE,
+					// R-C item 4: only an above-floor miss is surfaced —
+					// the recap gains "· miss N" on the cache segment.
+					...(missed !== null ? { missed } : {}),
+					// Cold: idle past the cache's assumed life (the #77
+					// constant, provisional) AND the turn did re-send a
+					// prefix uncached — the time alone is not evidence.
+					...(coldAfter(idleMs, missed, turnUsage() ?? UNKNOWN_USAGE)),
+					ctxLeftPct: Number.isFinite(ratio) ? (1 - ratio) * 100 : null,
+					// W19: under plan the recap becomes the way-forward row
+					// (the /mode hints are the mode's exits).
+					mode: getMode(),
+				};
+				body.seal(sealTiers(recapStats), renderRecap(recapStats));
 				break;
 			}
 			default: {
 				// Events without a cell (stop, …) — the generic render, byte-
 				// preserved for the pipe path (C5: Event → RenderInput first).
+				// the compaction round (owner, 2026-10-06): on a dock the
+				// COMPACTED row above already says it — `[summarized up to seq
+				// N]` was a raw row under it. A pipe keeps the line.
+				if (ev.type === "summarized" && dock.active) break;
 				const input = toRenderInput(ev);
 				if (input === null) break;
 				const rendered = renderEvent(input, false, canonicalTargetPath);
@@ -1436,6 +1485,11 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 				runGlyph = g;
 				paintRunning();
 			});
+			// Graphite §8.7: the live row stands from the run's FIRST frame —
+			// the spinner's first tick is 200ms away, and a row that arrived
+			// then would move the content above it once the turn had begun.
+			paintRunning();
+			setTitleState("working"); // §8.10: the title says so, once, not per tick
 			(async () => {
 				let last: import("@vincemakes/kiso-core").Event | undefined;
 				try {
@@ -1604,7 +1658,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// no rate in the pricing table contributes nothing and the row shows no
 	// $ at all, because a partial total presented as a total is a lie.
 	let spentUsd: number | null = null;
-	let runGlyph = "▖";
+	let runGlyph: string = STATUS_GLYPHS[0];
 	let runStart = Date.now();
 	// TPS-1: the decode rate of the last SETTLED call. One variable serves
 	// both rows because they want the same number at different moments;
@@ -1648,34 +1702,37 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// (DF-0330-F1). A pending retry makes it thirty columns longer, and
 		// composed blind it would be cut from the END — the context figure,
 		// a fact, going before the gesture hints.
-		if (dock.active) dock.setStatus(runningStatus(runGlyph, runStart, runUsage.out, displayCtxRatio(session), lastTokPerSec, rowWidth(), retryOnRow(), taskCountsNow(), detachableNow()));
+		// Graphite §8.7 / §8.9: the turn's own facts ride the LIVE row above
+		// the composer; the status bar keeps the session's (its ctx moves as
+		// the turn reads).
+		if (!dock.active) return;
+		// the main-sync round (ADR-0058 3e): the live row teaches ctrl+b exactly
+		// while a command can be moved to the background; the bar counts the
+		// session's tasks (§8.9)
+		// the compaction round (owner, 2026-10-06): a summary inside the run is
+		// the row /compact draws — `compacting · auto`, its progress in the
+		// bar's cells — not `working` with a clock and nothing arriving
+		const summary = inRunCompaction();
+		if (summary !== null) {
+			const W = rowWidth();
+			dock.setLive(liveRow(compactingStatus(runGlyph, summary.rounds, summary.tokens, Math.round((Date.now() - summary.since) / 1000), W - 20, retryOnRow(), summary.progress, "auto"), ["esc stops"], W));
+			return;
+		}
+		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow(), detachableNow()));
+		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec, tasks: taskCountsNow() }));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4
 	// parentheses idiom names the read-only constraint. The tier is the
 	// CALLER's word (the recovery flow passes the bare mode).
 	const paintIdle = (): void => {
+		setTitleState("ready"); // §8.10 — a dock-less TTY has a title too
 		if (!dock.active) return;
-		// TUI2-R1 (E): the meter rides the idle row — both fields omitted
-		// when unknown, so a session that has not called the model paints
-		// exactly the pre-round row.
-		dock.setStatus(
-			idleStatus(
-				modeDisplay(),
-				statusModelLabel(session),
-				displayCtxRatio(session),
-				{
-					cacheHitPct: cacheHitPct(runUsage),
-					costUsd: spentUsd,
-					tokPerSec: lastTokPerSec,
-				},
-				// DF-0330-F1: the row's budget. Without it the row is composed
-				// blind and invariant ① cuts whatever sits last — which is how
-				// a measured rate went missing at 100 columns.
-				rowWidth(),
-				!floorOn,
-				taskCountsNow(true),
-			),
-		);
+		// Graphite §8.9: nothing is live; the bar carries the session and
+		// its health. TUI2-R1 (E): the meter's fields are omitted while
+		// unmeasured, so a session that has not called the model paints no
+		// rate.
+		dock.setLive(null);
+		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec, tasks: taskCountsNow(true) }));
 	};
 	// TUI2-R2 ⑥ — the BOOT status line. The row is the product's one
 	// persistent claim about itself (the tier, how to change it, the model,
@@ -1795,6 +1852,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			? () => {}
 			: session.useTasks(taskManager, {
 					wake: mergedConfig.taskWake !== false,
+					...(mergedConfig.maxWakes !== undefined ? { maxWakes: mergedConfig.maxWakes } : {}),
 					onWake: (w) => queueTurn(w.content, w.via),
 					// Amendment 8: a loss is said when kiso concludes it — the
 					// model's notice still rides the next run, and is not said again
@@ -1901,6 +1959,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		if (currentRun !== null) return; // dispatch would refuse — skip the noise
 		const ratio = autoCompactRatio(session); // A1a: the policy keeps the pre-A1a number — A1b decides if it moves
 		if (!Number.isFinite(ratio) || ratio < autoCompact.thresholdRatio) return;
+		markAutoCompact();
 		dispatch("/compact", dispatchCtx);
 	};
 	// CX-1 F5: a literal input (task-file mode) submits the turn directly —
@@ -1932,13 +1991,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// The switch is the SAME live-extension flip /mode performs; the status
 	// row repaints at once with a one-line notice.
 	input.onModeCycle?.(() => {
-		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(getMode()) + 1) % OFFERED_MODES.length]!;
+		const was = getMode();
+		const next = OFFERED_MODES[(OFFERED_MODES.indexOf(was) + 1) % OFFERED_MODES.length]!;
 		const wasOn = getDontAsk();
 		setMode(next);
 		paintIdle();
-		body.notice(`mode → ${MODE_LABEL[next]} (shift+tab cycles)`);
+		// Graphite R3e: the MODE row on a terminal (the pipe keeps these words)
+		body.modeNotice(`mode → ${MODE_LABEL[next]} (shift+tab cycles)`, MODE_LABEL[was], MODE_LABEL[next]);
 		// the switch came with the old dontAsk tier, and left with it
-		if (getDontAsk() !== wasOn) body.notice("don't ask → off");
+		if (getDontAsk() !== wasOn) body.dontAskNotice("don't ask → off", false);
 	});
 
 	// Recovery first: a session with a dangling pause or uncertain
@@ -1961,10 +2022,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// before the run resumes: the run continues on the compacted projection.
 	const cold = !cancelled && process.stdin.isTTY ? coldResumeOffer(session) : null;
 	if (cold !== null) {
+		// Graphite P1b (owner, 2026-09-30): either way the compaction row
+		// says why it runs — `cold cache` — so on a dock dontAsk needs no line
+		// of its own; off a dock the line is printed as it always was
 		if (getDontAsk()) {
-			body.notice(`[dontAsk] ${coldResumeLine(cold.tokens, cold.minutes)} — compacting first`);
+			if (!dock.active) body.notice(`[dontAsk] ${coldResumeLine(cold.tokens, cold.minutes)} — compacting first`);
+			markCompactWhy("cold cache");
 			dispatch("/compact", dispatchCtx);
 		} else if ((await askPanel(input, coldResumeView(cold.tokens, cold.minutes))).action === "allow") {
+			markCompactWhy("cold cache");
 			dispatch("/compact", dispatchCtx);
 		}
 		await chainRef.current;

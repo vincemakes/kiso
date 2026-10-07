@@ -1,7 +1,7 @@
 /**
  * ADR-0058 §7–§8, step 3c — a task's transitions reach the model: batched,
  * exactly once from the log's receipts, into a live run at its next safe
- * point, or — idle — one wake run (depth 1, switchable), and never through
+ * point, or — idle — one wake run (the chain budget, switchable), and never through
  * a summary before they were delivered. The TaskManager runs over a fake
  * backend (the real processes are tools-node's tests).
  */
@@ -112,7 +112,7 @@ describe("ADR-0058 §8 — an idle session: wake, notify, the switch, lineage", 
 		manager.close();
 	});
 
-	it("lineage depth 1: a task started inside a wake run only notifies when it ends", async () => {
+	it("the chain (ADR-0059 §3.3, overturning guard 3): a task started inside a wake run wakes again — until the budget is spent", async () => {
 		let started = "";
 		const { session, manager } = await setup([TOOL, END], async (ctx, m) => {
 			started = (await m.start({ command: "b", cwd: "/", ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}) })).id;
@@ -124,7 +124,22 @@ describe("ADR-0058 §8 — an idle session: wake, notify, the switch, lineage", 
 		await drain(session.run('<kiso-task id="t0" status="exited"/>\nRuntime notice — not the user.', { source: "system", via }));
 		end(manager, started);
 		await sleep(120);
-		expect(wakes).toEqual([]); // depth 1: no second autonomous wake
+		expect(wakes).toHaveLength(1); // one wake run so far, budget 20: the chain continues
+		manager.close();
+	});
+
+	it("the budget: with maxWakes 1 and one wake run already in the log, the next end only notifies", async () => {
+		let started = "";
+		const { session, manager } = await setup([TOOL, END], async (ctx, m) => {
+			started = (await m.start({ command: "b", cwd: "/", ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}) })).id;
+		});
+		const wakes: unknown[] = [];
+		session.useTasks(manager, { windowMs: 20, maxWakes: 1, onWake: (w) => void wakes.push(w) });
+		const via: UserInputVia = { kind: "tasks", items: [{ taskId: "t0", transition: "exited" }] };
+		await drain(session.run('<kiso-task id="t0" status="exited"/>\nRuntime notice — not the user.', { source: "system", via }));
+		end(manager, started);
+		await sleep(120);
+		expect(wakes).toEqual([]); // the one allowed wake is the run above
 		manager.close();
 	});
 });

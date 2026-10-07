@@ -32,7 +32,7 @@ describe("DC-57 — a bare Enter on the empty composer", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-dc57-"));
 		const raw = ptyRun(["--mode", "bypass", "dc57"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
-			feeds: [["/ commands · ↑ history", "\r\r"]],
+			feeds: [["/mode to switch", "\r\r"]],
 			delays: [
 				[3, "go\r"], // after the two bare Enters: the session must still be here to take it
 				[7, "exit\r"],

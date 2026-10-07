@@ -27,7 +27,7 @@ export {
 	type Component,
 	type BodyCell,
 } from "./components.js";
-export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
+export { editFileDiff, editFileHunksDiff, hunksDiff, hunksOf, truncateDiff, writeFileDiff, type DiffLine, type DiffResult, type Hunk } from "./diff.js";
 // W22 (the v8 input round): the pending-queue chips — the SAME
 // UserMessage chip with the □ gutter, pre-rendered above the input
 // row while turns wait in the queue.
@@ -80,7 +80,7 @@ export {
 	type TrustArtifact,
 } from "./strings.js";
 // KC3.5: the interrupted-ask copy and the extracted /help table.
-export { coldResumeLine, coldResumeView, extensionsBannerText, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
+export { coldResumeLine, coldResumeView, extensionsBannerText, extensionsFact, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
 // TUI2-R2pre ④: the ONE display-verb table — the screen names the act,
 // the tool table names the call.
 export { displayVerb } from "./strings.js";
@@ -92,12 +92,14 @@ export {
 	COLOR_NEUTRAL,
 	COLOR_ON,
 	currentGround,
+	currentGroundRgb,
 	setGround,
 	escapeTerminal,
 	foldResult,
 	foldThinking,
 	kUnit,
 	palette,
+	paletteFor,
 	relativeTime,
 	renderResumeList,
 	MOTION_FRAMES,
@@ -107,6 +109,10 @@ export {
 	renderTerminalGap,
 	renderToolSummary,
 	TAGLINE,
+	MOTTO,
+	WORDMARK_W,
+	type BannerFact,
+	type BannerMeta,
 	toolTarget,
 	truncateRow,
 	type Palette,
@@ -115,3 +121,6 @@ export {
 /** DC-3 — the ground: is the terminal light or dark. Pure; see the
  *  module comment for why `unknown` is a result and not a failure. */
 export { groundFrom, parseOscColor, relativeLuminance, resolveGround, type Ground, type GroundInputs, type Rgb } from "./ground.js";
+/** Graphite (design.md §2, §3.4) — the tokens, the tier and the derived
+ *  surfaces, as colours. Pure; `render.ts` writes them as SGR. */
+export { GRAPHITE, breathRamp, colourTier, contrast, deriveSurface, graphiteColours, hexRgb, nearest256, rgbHex, weakestPair, type Colours, type Kind, type Tier, type Token } from "./graphite.js";

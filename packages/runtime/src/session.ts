@@ -375,7 +375,7 @@ export class AgentSession {
 		manager: TaskManager,
 		// autoDetachMinAgeMs (3e D1): how old a foreground command must be
 		// before a steer detaches it — default AUTO_DETACH_MIN_AGE_MS
-		options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs" | "onLost"> & { readonly autoDetachMinAgeMs?: number } = {},
+		options: Pick<TaskDeliveryOptions, "wake" | "onWake" | "windowMs" | "maxWakes" | "onLost"> & { readonly autoDetachMinAgeMs?: number } = {},
 	): () => void {
 		this.#delivery?.close();
 		const { autoDetachMinAgeMs, ...deliveryOptions } = options;
@@ -483,7 +483,7 @@ export class AgentSession {
 			// session whose checkpoints cannot shrink it stops paying for them.
 			const breakerOpen = reason !== "overflow" && this.#summaryFailures >= (tiersPolicy.maxFailures ?? MAX_SUMMARY_FAILURES);
 			if (breakerOpen && !urgent) return [];
-			const summarized = breakerOpen ? null : await this.#summarizeInRun(events, messages, t.tail, reason, run, tiersPolicy.onDiscard);
+			const summarized = breakerOpen ? null : await this.#summarizeInRun(events, messages, t.tail, reason, run, tiersPolicy.onDiscard, tiersPolicy.onSummary);
 			if (summarized !== null) return [summarized];
 			if (!urgent) return [];
 			const pricing = lookupModelMetadata(this.#model, this.#baseUrl)?.pricing ?? null;
@@ -553,9 +553,31 @@ export class AgentSession {
 		reason: string,
 		run: Parameters<AgentSession["compactionPoint"]>[0],
 		onDiscard?: (info: { readonly reason: string; readonly pre: number; readonly post: number; readonly summary: number }) => void,
+		onSummary?: NonNullable<NonNullable<SessionConfig["contextPolicy"]>["tiers"]>["onSummary"],
 	): Promise<EventInput | null> {
 		const boundary = checkpointBoundarySeq(events, { keepTokens: tail });
 		if (boundary === undefined) return null;
+		// the compaction round (owner, 2026-10-06): what /compact's onStart
+		// and onProgress tell its caller, told here too — display only, and
+		// a callback that throws changes nothing
+		const tell = (event: Parameters<NonNullable<typeof onSummary>>[0]): void => {
+			try {
+				onSummary?.(event);
+			} catch {
+				// observation only
+			}
+		};
+		const prevPoint = lastSummaryPoint(events);
+		const pre = estimateTokens(projectMessages(events));
+		tell({
+			phase: "start",
+			reason,
+			info: {
+				coversToSeq: boundary,
+				rounds: events.filter((e) => e.type === "user_input" && e.seq > prevPoint && e.seq <= boundary).length,
+				tokens: estimateTokens(projectMessages(events.filter((e) => e.seq > prevPoint && e.seq <= boundary && e.type !== "summarized"))),
+			},
+		});
 		const summaryPrompt = typeof run.systemPrompt === "function" ? run.systemPrompt() : run.systemPrompt;
 		let path: "in-band" | "serialized";
 		let result: Awaited<ReturnType<typeof summarizeConversation>>;
@@ -564,13 +586,15 @@ export class AgentSession {
 				messages,
 				inBand: { ...(summaryPrompt !== undefined ? { systemPrompt: summaryPrompt } : {}), tools: run.tools() },
 				...(run.reasoning !== undefined ? { reasoning: run.reasoning } : {}),
-				serialized: () => serializeCovered({ events, prevPoint: lastSummaryPoint(events), boundary }),
+				serialized: () => serializeCovered({ events, prevPoint, boundary }),
 				serializedReasoning: true,
 				budget: MANUAL_SUMMARY_BUDGET,
 				...(run.signal !== undefined ? { signal: run.signal } : {}),
+				...(onSummary !== undefined ? { onProgress: (progress: import("./summarize.js").SummaryProgress) => tell({ phase: "progress", progress }) } : {}),
 			}));
 		} catch {
 			if (run.signal?.aborted !== true) this.#summaryFailures += 1;
+			tell({ phase: "end", outcome: "failed", pre, post: pre });
 			return null;
 		}
 		// ADR-0055 Amendment 2 (the shrink invariant): a fire is kept only if
@@ -581,7 +605,6 @@ export class AgentSession {
 		// counts toward the breaker.
 		const text = this.#withTasks(result.text);
 		const fire: EventInput = { type: "summarized", coversToSeq: boundary, summary: text };
-		const pre = estimateTokens(projectMessages(events));
 		const post = estimateTokens(projectMessages([...events, { ...fire, seq: (events.at(-1)?.seq ?? -1) + 1 } as Event]));
 		const written = estimateTokens([{ role: "user", content: `${SUMMARY_FRAMING}\n\n${text}` }]);
 		const shrinks = pre - post >= written;
@@ -605,9 +628,11 @@ export class AgentSession {
 			} catch {
 				// observation only — a notice that cannot be shown changes nothing
 			}
+			tell({ phase: "end", outcome: "discarded", pre, post });
 			return null;
 		}
 		this.#summaryFailures = 0;
+		tell({ phase: "end", outcome: "kept", pre, post });
 		return fire;
 	}
 
@@ -1471,6 +1496,24 @@ export interface ContextPolicy {
 		 *  binding it was learned for rides along. The tiers have already
 		 *  taken it (only ever down); the caller keeps it for later sessions. */
 		readonly onWindowLearned?: (learned: { readonly tokens: number; readonly model: string; readonly baseUrl?: string }) => void;
+
+		/** The compaction round (owner, 2026-10-06): an in-run summary call,
+		 *  told as `/compact`'s caller is told one — when it starts (the tier
+		 *  that fired it, and `onStart`'s pre-call data: the covered rounds
+		 *  and their estimated tokens), its progress against the output
+		 *  budget (`onProgress`'s reports), and how it ended: `kept` (a
+		 *  `summarized` event follows), `discarded` (it did not shrink the
+		 *  context; `onDiscard` is told too) or `failed` (both paths refused,
+		 *  or the run was aborted). `pre` and `post` are the context's
+		 *  chars/4 estimates before and after (equal when nothing was kept).
+		 *  Display only: nothing here reaches a request, and a callback that
+		 *  throws changes nothing. */
+		readonly onSummary?: (
+			event:
+				| { readonly phase: "start"; readonly reason: string; readonly info: CompactInfo }
+				| { readonly phase: "progress"; readonly progress: import("./summarize.js").SummaryProgress }
+				| { readonly phase: "end"; readonly outcome: "kept" | "discarded" | "failed"; readonly pre: number; readonly post: number },
+		) => void;
 	};
 }
 

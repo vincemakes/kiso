@@ -45,7 +45,7 @@ describe("MP-1: the picker opens on the session's own row", () => {
 		const t = plain(
 			ptyRun(["chat", "mp1-a", "--model", "c"], setup(), {
 				feeds: [
-					["/ commands · ↑ history", "/model\r"],
+					["/mode to switch", "/model\r"],
 					["takes effect on the next turn", "exit\r"],
 				],
 				delays: [[2.6, "\r"]],
@@ -60,7 +60,7 @@ describe("MP-1: the picker opens on the session's own row", () => {
 		const t = plain(
 			ptyRun(["chat", "mp1-b", "--model", "c"], setup(), {
 				feeds: [
-					["/ commands · ↑ history", "/model\r"],
+					["/mode to switch", "/model\r"],
 					["from the next turn", "exit\r"],
 				],
 				delays: [
@@ -79,13 +79,13 @@ describe("MP-1: the picker opens on the session's own row", () => {
 		const t = plain(
 			ptyRun(["chat", "mp1-c", "--model", "c", "--mode", "plan"], setup(), {
 				feeds: [
-					["/ commands · ↑ history", "/mode\r"],
-					["mode → ", "exit\r"],
+					["/mode to switch", "/mode\r"],
+					["MODE\x1b[0m", "exit\r"], // Graphite R3e: the MODE row
 				],
 				delays: [[2.6, "\r"]],
 			}),
 		);
-		expect(t).toContain("mode → plan");
-		expect(t).not.toContain("mode → default");
+		expect(t).toMatch(/MODE\s+plan → plan/);
+		expect(t).not.toMatch(/MODE\s+\S+ → default/);
 	}, 240_000);
 });

@@ -38,7 +38,7 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 		skill(dirs.skills, "inner", "description: only for the model\nuser-invocable: false\n", "Model-only instructions.");
 		const raw = ptyRun(["--mode", "bypass", "skill-pty"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "/skills\r"],
+				["/mode to switch", "/skills\r"],
 				["say hello properly", "/skill inner\r"],
 				["user-invocable: false", "/skill helo\r"],
 				["nearest: hello", "/skill hello world\r"],
@@ -46,9 +46,12 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 			],
 		});
 		const out = strip(raw);
-		// the list: name — description, the model-only tag
-		expect(out).toContain("/hello — say hello properly");
-		expect(out).toContain("/inner — only for the model (model only)");
+		// the list: name — description, the model-only tag. Re-derived for
+		// the sheets round (owner, 2026-10-06): on a dock /skills is a sheet,
+		// the name in a measured column and the description beside it (the
+		// pipe keeps `name — description`, pinned in graphite-skills-sheet)
+		expect(out).toMatch(/\/hello +say hello properly/);
+		expect(out).toMatch(/\/inner +only for the model \(model only\)/);
 		// the refusals, one line each
 		expect(out).toContain('skill "inner" is for the model only (user-invocable: false)');
 		expect(out).toContain('no skill named "helo" — nearest: hello (/skills lists them)');
@@ -87,10 +90,10 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 		const out = strip(
 			ptyRun(["--mode", "bypass", "skill-menu"], env as NodeJS.ProcessEnv, {
 				feeds: [
-					// "ctx left" is the BOOT status row, painted after the agent
-					// (and its extensions) exist — "/ commands" is painted
-					// earlier, and a key typed then reads an empty catalog
-					["ctx left", "/b"],
+					// the ctx segment is the BOOT status bar, painted after the
+					// agent (and its extensions) exist — a key typed before it
+					// reads an empty catalog
+					[" · ctx ", "/b"], // Graphite §8.9: the bar's ctx segment (used share) — one plain span, so it matches the raw stream
 					// the menu styles the typed prefix, so the raw bytes split
 					// "/b" from the rest — the needle is the unsplit part
 					["oss-call", "\x15exit\r"],
@@ -98,6 +101,8 @@ describe("0.40.0 — user-invoked skills (PTY)", () => {
 			}),
 		);
 		// the menu draws its entries without the leading slash
-		expect(out).toMatch(/▸ boss-call\s+mailbox between sessions · skill/);
+		// Graphite §8.2 (R3a): the selected row carries the list's `→` (a gold
+	// `›` on a known ground) right before the name, not a bold `▸`
+	expect(out).toMatch(/[\u2192\u203a]boss-call\s+mailbox between sessions · skill/);
 	}, 300_000);
 });

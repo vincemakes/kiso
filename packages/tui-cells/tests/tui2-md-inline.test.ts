@@ -63,8 +63,11 @@ describe("TUI2-MD ② — the inline pass", () => {
 		expect(inlineSpans("see [the docs](https://example.com) now", "")).toBe(
 			`see ${p.bold}the docs${p.reset}${p.dim} (https://example.com)${p.reset} now`,
 		);
-		// ~~strike~~ -> the literal markers KEPT (honest degradation)
-		expect(inlineSpans("was ~~wrong~~ before", "")).toBe("was ~~wrong~~ before");
+		// Graphite §5 (R2b) — DECLARED REVERSAL: ~~strike~~ is dim, its markers
+		// gone (the prototype's form; never SGR 9, which Apple Terminal does
+		// not draw). Without dim the markers stay: see T-MD-12.
+		const pd = palette();
+		expect(inlineSpans("was ~~wrong~~ before", "")).toBe(`was ${pd.dim}wrong${pd.reset} before`);
 	});
 
 	it("T-MD-10: a span closes back to the BLOCK's own style, never to nothing", () => {
@@ -84,14 +87,16 @@ describe("TUI2-MD ② — the inline pass", () => {
 		expect(plain(inlineSpans("2 \\* 3 \\* 4", ""))).toBe("2 * 3 * 4");
 	});
 
-	it("T-MD-12: the convergent patch (a) — STRICT ~~ never consumes anything", () => {
-		// the strict tokenizer's point is not that ~~ styles differently; it
-		// is that a loose one eats delimiters it has no business eating.
+	it("T-MD-12: the convergent patch (a) — STRICT ~~ consumes only a span it closes", () => {
+		// the strict tokenizer's point is that a loose one eats delimiters it
+		// has no business eating: an opener followed by a space, or a closer
+		// preceded by one, is not a span (R2b made the span dim; the rule on
+		// what counts as one is unchanged).
 		expect(plain(inlineSpans("a ~~ b ~~ c", ""))).toBe("a ~~ b ~~ c");
 		expect(plain(inlineSpans("~~ text~~", ""))).toBe("~~ text~~");
-		// tildes never swallow a neighbouring construct
+		// a struck span keeps the construct inside it
 		const p = palette();
-		expect(inlineSpans("~~**b**~~", "")).toBe(`~~${p.bold}b${p.reset}~~`);
+		expect(inlineSpans("~~**b**~~", "")).toBe(`${p.dim}${p.bold}b${p.reset}${p.dim}${p.reset}`);
 		// and a code span keeps its tildes verbatim
 		expect(plain(inlineSpans("`a ~~ b`", ""))).toBe("a ~~ b");
 	});

@@ -103,17 +103,26 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		// picking option 2 resolves to exactly the argument `/model claude`
 		// would have passed, and lands in exactly the same refusal.
 		const raw = ptyRun(env, [
-			["/ commands · \u2191 history", "/model\r"],
-			["digits pick", "2\r"],
+			["/mode to switch", "/model\r"],
+			// Graphite P3: the panel FILTERS (a digit is a letter there) — the
+			// person types what they want and ⏎ takes the match
+			["filter, or type provider/model", "claude\r"],
 			["no credential", "/model ds max\r"], // the unavailable line's words changed with the credential store (sign-in step 1); OR-8: with a level
 			["model → ds", "exit\r"],
 		], workdir);
 		const out = stripANSI(raw);
-		expect(out).toContain("model — current: faux"); // the panel's header, where "model: faux" used to print
-		expect(out).toContain("openai-compat/deepseek-v4-flash");
-		expect(out, "the row is its LABEL — the profile key is not repeated per row any more (the owner's dogfood)").not.toContain("profile: ds");
-		expect(out).toContain("anthropic/claude-sonnet-5");
-		expect(out).toContain("unavailable"); // the qualifier rides the row, as (unavailable) rode the line
+		// Graphite §8.1 (R3a): the panel names itself on its opening row.
+		// MOVED (P3 — DECLARED): the band counts the profiles; the
+		// `current: faux` row is gone (the bar names the model, and a profile
+		// in use says `current` on its own row — a faux session has none)
+		expect(out).toMatch(/\u2500{3} model \u00b7 2 profiles \u2500/);
+		// P3: the row is a table — the model, then its host and its state; the
+		// protocol and the profile ride the selected row's opened line
+		expect(out).toContain("deepseek-v4-flash");
+		expect(out).toContain("profile ds · openai-compat · MY_TEST_KEY");
+		expect(out, "the profile key is not repeated per row (the owner's dogfood)").not.toContain("profile: ds");
+		expect(out).toContain("claude-sonnet-5");
+		expect(out).toMatch(/claude-sonnet-5 +anthropic +no key/); // why it cannot run, in two words
 		// the picker's CLI half: each row shows the model's LEGAL effort levels with the default bracketed
 		// The picker names the model's NATIVE levels with the default
 		// bracketed. `none` joined them on 2026-09-14: it is the one way to
@@ -121,7 +130,10 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		// the way minimal/medium/xhigh are — those the endpoint accepts and
 		// silently maps onto low/high, so this row still refuses them rather
 		// than promise a level the model does not have.
-		expect(out).toContain("effort: none · low · [high] · max");
+		// MOVED (P3): the strip rides the opened row, the level in force in
+		// colour (the warn tint off a known ground) instead of brackets
+		expect(out).toContain("effort none · low · high · max");
+		expect(raw).toContain("\x1b[1m\x1b[33mhigh\x1b[0m");
 		expect(out).toContain("model claude: unavailable — no credential: run `kiso login anthropic` or set the env var ANTHROPIC_API_KEY");
 		expect(out).toContain("model → ds (deepseek-v4-flash · max) — takes effect on the next turn");
 		// OR-7 / OR-8 (owner, 2026-09-09): the status row is repainted BY the
@@ -141,7 +153,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-w2-"));
 		const out = stripANSI(
 			ptyRun(env, [
-				["/ commands · \u2191 history", "/model openai-compat/gpt-4o\r"],
+				["/mode to switch", "/model openai-compat/gpt-4o\r"],
 				["model → openai-compat/gpt-4o", "exit\r"],
 			], workdir),
 		);
@@ -166,19 +178,21 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		const out = stripANSI(
 			ptyRun(env, [
 				["trust this project", "y\r"],
-				["/ commands · \u2191 history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				// esc leaves the panel and the exit rides the SAME chunk: a
 				// panel owns every printable key while it is up, so a bare
 				// "exit" typed into one is swallowed by design
-				["digits pick", "\x1bexit\r"],
+				["filter, or type provider/model", "\x1bexit\r"], // Graphite P3: the filter's hint
 			], workdir),
 		);
-		expect(out).toContain("trust this project's .kiso?"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
+		expect(out).toContain("trust this project"); // the trust panel's rule line (the "(y/n)" suffix is gone — the panel superseded the boxed question)
 		// MOVED (the picker-surface class, TUI2-R2 ④): the same two facts,
 		// on the panel's header and option row instead of two printed lines
-		expect(out).toContain("model — current: proj-model-x"); // the project's model drives the session
-		expect(out).toContain("openai-compat/proj-model-x");
-		expect(out, "nor here: a row's note is `current`/`unavailable` only").not.toContain("profile: proj-model");
+		// MOVED (Graphite P3): the project's profile is the session's, so its
+		// own row says `current`; its protocol and name ride the opened line
+		expect(out).toMatch(/proj-model-x +\S+ +current/);
+		expect(out).toContain("profile proj-model · openai-compat · MY_TEST_KEY");
+		expect(out, "nor here: the profile key is not a per-row note").not.toContain("profile: proj-model");
 	});
 
 	it("projectTrust \"never\" (user config) → no ask, nothing loads", () => {
@@ -190,7 +204,7 @@ describe("merge round B — the project config rides the E3 trust gate", () => {
 		writeFileSync(join(workdir, ".kiso", "config.json"), JSON.stringify({ model: "proj-model" }), "utf8");
 		const out = stripANSI(
 			ptyRun(env, [
-				["/ commands · \u2191 history", "/model\r"],
+				["/mode to switch", "/model\r"],
 				["define models", "\x1bexit\r"], // esc first — the panel owns printable keys
 			], workdir),
 		);

@@ -53,7 +53,7 @@ def driver(cli, home, cwd, rows, cols):
                 full += data
             except OSError:
                 break
-        if not sent and "/ commands".encode() in full:
+        if not sent and "/mode to switch".encode() in full:
             os.write(fd, b"exit\\r")
             sent = True
     sys.stdout.write(full.decode(errors="replace"))

@@ -33,7 +33,10 @@ const match = (path: string, hit: number[] = []): Parameters<typeof atRow>[0] =>
 describe("TUI2-R1.5 ⑧ — the picker is legible (VD-9)", () => {
 	it("the directory rides NEXT TO the name, dim — never at the far edge", () => {
 		const row = atRow(match("src/parser.ts"), false, 100);
-		expect(row).toContain("parser.ts  — src/");
+		// DECLARED REVERSAL (Graphite P2, owner-approved 2026-10-03) of the
+		// em dash: the folder is a column one gap after the widest name in
+		// the list. Still next to the name, still dim.
+		expect(row).toContain("parser.ts  src/");
 		// nothing is pushed to column 100 any more
 		expect(row.length).toBeLessThan(40);
 	});
@@ -75,9 +78,10 @@ describe("TUI2-R1.5 ⑦(b) — the band names itself (VD-8)", () => {
 		const rows = atPanelRows({ matches: [match("src/parser.ts"), match("README.md")], selected: 0, capped: false }, 60);
 		// R2: the band's label rides the RULE — a band opens the way the
 		// composer and every panel now open, and the label says which band.
-		expect(rows[0]!.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/^\u2500{3} files \u2500+$/);
-		// the counter still closes the band
-		expect(rows[rows.length - 1]).toContain("(1/2)");
+		// Graphite P2: the name carries the count, the /resume shape
+		expect(rows[0]!.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/^\u2500{3} files \u00b7 2 \u2500+$/);
+		// the counter still closes the band — at the key row's right edge
+		expect(rows[rows.length - 1]!.replace(/\x1b\[[0-9;]*m/g, "")).toMatch(/^ {2}\u2191\u2193 move .* 1\/2$/);
 	});
 
 	it("the / menu band opens with a one-row dim `commands` header", () => {
