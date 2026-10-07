@@ -31,9 +31,9 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
-import { Body, Editor, PROMPT, bannerLines, currentGround, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, idleStatus, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type ResumeMeta, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
-import { listSessionSidecars, migrateSummaries, readProfile, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
+import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
@@ -44,15 +44,18 @@ import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemak
 import { OFFERED_MODES, applyModeState, envModeLayer, getDontAsk, modeDisplay, parseMode, resolveModeLayers, type ModeLayer } from "./mode.js";
 import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
+import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers, setChildTurnBudget, stopAllTasks } from "./state.js";
+import { settingsLayers, setChildTurnBudget, stopAllTasks, tasksFor } from "./state.js";
+import { tasksForDisplay } from "./task-notice.js";
 import { finishChild, type ChildEnd } from "./child-result.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
 import { checkForUpdate, knownUpdate, updateCardLines } from "./update-check.js";
 import { tmuxMouseHint } from "./tmux-hint.js";
 import { resume } from "./resume.js";
-import { paintWindowTitle } from "./window-title.js";
+import { paintWindowTitle, setTitleName, setTitleState } from "./window-title.js";
+import { projectInstructions } from "./coding-prompt.js";
+import { openingFacts } from "./opening.js";
 import { resumeTail } from "./resume-tail.js";
 import { replayInto } from "./replay.js";
 import { armByteTrace } from "./byte-trace.js";
@@ -322,6 +325,15 @@ function editorInput(editor: Editor): LineInput {
 		panelCancel() {
 			editor.cancelPanel();
 		},
+		// Graphite R3e: a read-only sheet over the input (`/status`,
+		// `/context`, `/skills`)
+		openSheet(rows) {
+			editor.openSheet(rows);
+		},
+		// the sheets round: `/help` opens the command list
+		openCommands() {
+			editor.openCommands();
+		},
 		// TUI2-R2 ②: the session picker — the editor owns the keys (the
 		// selection walk, the filter, enter/esc), the compositor draws the
 		// band, and the id comes back here.
@@ -417,19 +429,28 @@ function makeLineInput(): LineInput {
 		let osc: string | undefined;
 		let colorScheme: "dark" | "light" | undefined;
 		const theme = (): string | undefined => process.env.KISO_THEME ?? userTheme;
+		const sameRgb = (a: Rgb | null, b: Rgb | null): boolean => a === b || (a !== null && b !== null && a.r === b.r && a.g === b.g && a.b === b.b);
 		const rewalk = (): void => {
 			const next = resolveGround({ theme: theme(), colorScheme, osc, colorfgbg: process.env.COLORFGBG });
+			// Graphite §3.4: the colour the terminal reported rides along,
+			// whichever rung decided the ground — the surfaces are derived
+			// from it when it is of the same kind (graphite.ts decides).
+			const rgb = osc === undefined ? null : parseOscColor(osc);
 			// DC-3/DC-14's model: the first frame never waits for a reply.
 			// A reply that changes nothing repaints nothing — which is also
 			// why two answers that AGREE cost one repaint and not two.
-			if (next === currentGround()) return;
-			setGround(next);
+			if (next === currentGround() && sameRgb(rgb, currentGroundRgb())) return;
+			setGround(next, rgb);
 			body.onGroundChange();
 		};
 		setGround(resolveGround({ theme: theme(), colorfgbg: process.env.COLORFGBG }));
 		// the reply, when there is one, re-walks the ladder WITH it — and
 		// `theme` goes in first again, so an explicit answer still wins.
 		editor.onOsc((reply) => {
+			// Only the answer to the question asked (OSC 11, the background
+			// colour) is the ground: any other OSC a terminal sends would
+			// otherwise overwrite it.
+			if (!reply.startsWith("11;")) return;
 			osc = reply;
 			rewalk();
 		});
@@ -460,6 +481,9 @@ function makeLineInput(): LineInput {
 		// OR-11 (a): ONE literal. The compositor draws this lead and the
 		// editor measures its rows against it; two copies is how they came
 		// to disagree by two columns in the first place.
+		// Graphite §7.8 (owner, 2026-09-29): no prompt glyph — R2's ruling
+		// stands again after R1c's `›`; the caret is the terminal's own
+		// ink, at column 0, as in 0.44.
 		const COMPOSER_LEAD = "";
 		dock.bindInput(() => editor.dockState(), COMPOSER_LEAD);
 		// …and BOTH renderers are live: the dock draws this row while it is
@@ -475,7 +499,7 @@ function makeLineInput(): LineInput {
 		editor.bindAtItems(atFiles); // KC3 §5: the file source — listed per OPEN
 		dock.bindAt(() => editor.atState()); // KC3 §4: the picker's band
 		dock.bindApproval(() => editor.panelState()); // W21: the panel's bound state
-		dock.bindSheet(() => editor.sheetOpen()); // TUI2-R1 (D): the ? keys sheet
+		dock.bindSheet(() => editor.sheetContent()); // TUI2-R1 (D): the ? keys sheet; R3e: /status
 		dock.bindPick(() => editor.pickState()); // TUI2-R2 ②: the resume picker's band
 		// R5: the transcript viewer. The editor reports whether it is up and
 		// forwards the commands; the STATE lives in the compositor, because
@@ -503,11 +527,16 @@ function bannerExtensionText(): string {
 	// terminal layer (extensionsBannerText — a pure function of the three
 	// name lists, including the "(connecting…)" in-flight label). Which
 	// lists exist is the CLI's fact and stays here.
-	// 0.40.0: with the don't-ask switch on the ask extension is loaded but
-	// offers no tool (builtin.ts offInDontAsk) — the banner says so, rather
-	// than listing it as if it could ask.
+	return extensionsBannerText(...extensionLists());
+}
+
+/** The three lists both forms are built from — the pipe's line and the
+ *  opening's EXTENSIONS row. 0.40.0: with the don't-ask switch on the ask
+ *  extension is loaded but offers no tool (builtin.ts offInDontAsk) — the
+ *  banner says so, rather than listing it as if it could ask. */
+function extensionLists(): [readonly BannerExtension[], readonly BannerExtension[], readonly BannerExtension[]] {
 	const builtIn = builtInExtensions.map((e) => (e.name === "ask" && getDontAsk() ? { name: e.name, note: "off in dontAsk" } : e));
-	return extensionsBannerText(builtIn, userExtensions, projectExtensions);
+	return [builtIn, userExtensions, projectExtensions];
 }
 
 /** E1: the startup banner line(s) — TTY: logo + merged extensions + the
@@ -558,18 +587,14 @@ async function announceUpdate(): Promise<void> {
 	}
 }
 
-function extensionsBanner(resume: ResumeMeta[] = []): void {
+function extensionsBanner(sessionId: string, resumedEvents = 0): void {
 	const text = bannerExtensionText();
 	if (!process.stdout.isTTY) {
 		if (text !== "") bodyLog(`${text}\n`);
 		return;
 	}
-	// R2: the opening answers the three questions a first screen is asked.
-	// The model and the tier come from the same state the status line reads
-	// (one source, so the two can never disagree); the workspace is the
-	// home-relative cwd, because `~/Desktop/devv/kiso` is what a human
-	// calls the place and `/Users/vinve/Desktop/devv/kiso` is what a
-	// filesystem calls it.
+	// Graphite §7.10: the opening states what loaded. The model, the mode
+	// and the folder are the status bar's now (§8.9) and are not repeated.
 	const home = homedir();
 	const cwd = process.cwd();
 	/** DC-49: realpath, falling back to the raw path when it cannot be
@@ -582,15 +607,26 @@ function extensionsBanner(resume: ResumeMeta[] = []): void {
 			return dir;
 		}
 	};
-	body.banner(VERSION, text.replace(/^ · /, ""), resume, {
-		model: agentModel,
-		mode: modeDisplay(),
-		cwd: cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd,
-		// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
-		// cwd) compares unequal as raw strings while being the same
-		// directory, and the row would then be absent exactly where it is
-		// most needed.
-		homeWorkspace: realOf(cwd) === realOf(home),
+	const skills = loadedSkillsCatalog();
+	const mcp = loadedExtensions.find((e) => e.name === "mcp") as { tools?: readonly { name: string }[]; connecting?: boolean } | undefined;
+	body.banner(VERSION, text.replace(/^ · /, ""), [], {
+		resumed: resumedEvents > 0,
+		facts: openingFacts({
+			// the last sweep: the new rows are the dock's; off one the
+			// `session <id>` and `[faux mode — …]` lines still print
+			sessionId: dock.active ? sessionId : null,
+			resumedEvents,
+			faux: dock.active && currentFaux,
+			rules: projectInstructions(cwd, protectedFiles())?.name ?? null,
+			skills: skills === null ? null : { count: skills.entries.length, broken: skills.broken.length },
+			mcp: mcp === undefined ? null : { tools: (mcp.tools ?? []).map((t) => t.name), connecting: mcp.connecting === true },
+			extensions: dock.active ? extensionsFact(...extensionLists()) : text === "" ? null : { value: text.replace(/^ · /, "") },
+			// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
+			// cwd) compares unequal as raw strings while being the same
+			// directory, and the row would then be absent exactly where it is
+			// most needed.
+			homeWorkspace: realOf(cwd) === realOf(home),
+		}),
 	});
 }
 
@@ -838,17 +874,10 @@ function bindRestoredSession(session: {
 
 function paintBootStatus(session: { log: { all: readonly unknown[] }; reasoning?: { readonly effort: string } }): void {
 	if (!dock.active) return;
-	// DF-0330-F1: the BOOT row gets the budget too — it is the same row, and
-	// the opening screen is where a long model id is first seen.
-	dock.setStatus(
-		idleStatus(
-			modeDisplay(),
-			statusModelLabel(session),
-			displayCtxRatio(session as never),
-			undefined,
-			process.stdout.columns > 0 ? process.stdout.columns : 80,
-		),
-	);
+	// Graphite §8.9: the boot row is the status bar — the same builder the
+	// idle and running rows use (it used to drop `floor off`, the one fact
+	// the boot row most needs when it is true).
+	dock.setBar(barFor(session as never));
 }
 
 /** PH-1a (finding PH-F12): a usage error raised from inside the TUI —
@@ -970,7 +999,7 @@ async function reloadAgent(
 		setAgentModel(oldCfg.agent, oldCfg.endpoint);
 		if (oldCfg.delegation === undefined) delete process.env.KISO_DELEGATION_CONFIG_JSON;
 		else process.env.KISO_DELEGATION_CONFIG_JSON = oldCfg.delegation;
-		bodyLog(`[reload] ${err instanceof Error ? err.message : String(err)} — nothing changed, the previous set is still in force`);
+		body.notice(`[reload] ${err instanceof Error ? err.message : String(err)} — nothing changed, the previous set is still in force`);
 		return old;
 	}
 	// The new set is built and sound; only now does the old one go.
@@ -983,7 +1012,7 @@ async function reloadAgent(
 			// best-effort — a survivor is removed by a later startup's sweep (temp-sweep.ts) once this process is gone
 		}
 	}
-	if (announce) bodyLog(`[reload] ${loadedExtensions.length} extensions, ${skillCount()} skills — the conversation is unchanged`);
+	if (announce) body.notice(`[reload] ${loadedExtensions.length} extensions, ${skillCount()} skills — the conversation is unchanged`);
 	return next;
 }
 
@@ -1072,13 +1101,16 @@ async function chatLoop(
 		} else if (refused) {
 			refused = false; // back in the session that was already on screen
 		} else if (prev === null) {
-			bodyLog(`session ${id}\n`);
+			// the last sweep (owner, 2026-10-06): on the terminal the opening's
+			// SESSION row names the id — this line stood above the opening at
+			// column 0. A pipe keeps it.
+			if (!dock.active) bodyLog(`session ${id}\n`);
 			// REL-0152-D5: a session with history says what that history WAS.
 			// Resuming used to print this one line and drop you at an empty
 			// prompt inside a conversation with thousands of events — the
 			// durable log was right there and none of it was shown. Empty for
 			// a fresh session, so `kiso chat` is byte-identical.
-			showResumeTail(session.log.all);
+			showResumeTail(session.log.all, session.id);
 			// R2 (owner, 2026-08-27): the resume list is NOT on the opening
 			// screen. `/resume` is where you go looking for a session; the
 			// opening's job is to say what THIS one is.
@@ -1087,7 +1119,7 @@ async function chatLoop(
 			// recent sessions just to draw a badge, and `agent.session()`
 			// throws on profile drift — so one drifted session anywhere in the
 			// history stopped kiso from starting at all.
-			extensionsBanner();
+			extensionsBanner(id, session.log.all.length);
 			// OR-9 (owner, 2026-09-09): the update card under the banner, at
 			// EVERY start while a newer version is known — §7.10's once-only
 			// line is superseded. What the cache knows is painted NOW, with
@@ -1106,8 +1138,8 @@ async function chatLoop(
 			if (tmuxHint !== null) body.notice(tmuxHint);
 			void announceUpdate();
 		} else {
-			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
-			showResumeTail(session.log.all);
+			body.notice(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
+			showResumeTail(session.log.all, session.id);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}
 		// XP-1 §3.3.6: a /clear-fresh session INHERITS the live selection,
@@ -1134,7 +1166,9 @@ async function chatLoop(
 		// lines above are here: this is the one step all three entry points
 		// share (first start, `/resume <id>`, a switch), so a tab can never
 		// be left naming the session the user just left.
-		paintWindowTitle(session.log.all);
+		// Graphite R3d: the session's own name, when the person gave it one
+		setTitleName(readSessionName(activeStoreDir, session.id));
+		paintWindowTitle();
 		const nav = {
 			// 0.40.0 dogfood: the ids only — agent.sessions() read every log whole
 			// (seconds on the owner's 118 sessions) before /resume could open
@@ -1216,9 +1250,11 @@ async function readSecret(prompt: string): Promise<string> {
  * there is no viewer and no cell renderer, so the plain text tail stays
  * (DC-51: one call, one cell).
  */
-function showResumeTail(events: Parameters<typeof resumeTail>[0]): void {
+function showResumeTail(events: Parameters<typeof resumeTail>[0], sessionId?: string): void {
 	const W = process.stdout.columns ?? 80;
-	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W);
+	// the tasks round: a task notice in the history reads its task's journal
+	// (Amendment 8: a lost task's row names what it ran — from the same list)
+	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W, tasksForDisplay(tasksFor(sessionId)));
 	else bodyLog(resumeTail(events, W).join("\n"));
 }
 
@@ -1524,6 +1560,10 @@ async function main(): Promise<void> {
 				const id = arg ?? newSessionId(sessionsDir());
 				// v2b: the dock (TTY only) wraps the whole session — the
 				// trust question, the banner, the body, and the input line.
+				// the tasks round (owner, 2026-10-06): the first frames, before the
+				// bar is bound, offer no key ladder (§7.8 retired it) — set while
+				// the dock is not yet up, so nothing is drawn until enter() paints
+				dock.setStatus("", "");
 				dock.enter();
 				// E area: a resumed session continues the script at its durable
 				// position — never restarts it (fauxSkip).
@@ -1548,6 +1588,10 @@ async function main(): Promise<void> {
 				// argv[4] is the optional prompt; argv[3] is the session id
 				// (argv = [node, script, resume, id, prompt?]).
 				const prompt = process.argv[4];
+				// the tasks round (owner, 2026-10-06): the first frames, before the
+				// bar is bound, offer no key ladder (§7.8 retired it) — set while
+				// the dock is not yet up, so nothing is drawn until enter() paints
+				dock.setStatus("", "");
 				dock.enter();
 				const routeLine = arg !== undefined ? enterRouted(arg) : null;
 				agent = await createCodingAgent(arg, input, modelFlag);
@@ -1588,7 +1632,7 @@ async function main(): Promise<void> {
 				if (faux && arg === undefined) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 				// REL-0152-D5 — the same tail on the explicit-id form. NOT on
 				// the -p path above: that one's stdout is a machine's input.
-				showResumeTail(session.log.all);
+				showResumeTail(session.log.all, session.id);
 				await resume(session, prompt, faux, input);
 				break;
 			}
@@ -1787,8 +1831,8 @@ async function main(): Promise<void> {
 				// itself how to hand it a key.
 				const p = palette();
 				console.log(
+					// Graphite §7.10: the opening's head says the tagline already
 					`${p.dim}${bannerLines(80, process.stdout.rows ?? 0, VERSION, "").join("\n")}${p.reset}\n\n` +
-						"kiso — the coding agent that survives kill -9\n\n" +
 						"  kiso [sessionId]         interactive session (default command)\n" +
 						"  kiso chat [sessionId]    same as above\n" +
 						"  kiso resume              pick a session to continue (TTY picker)\n" +
@@ -1820,6 +1864,10 @@ async function main(): Promise<void> {
 				// A area: no subcommand (or any non-command first argument) IS
 				// chat — the first argument is the session id.
 				const id = command ?? newSessionId(sessionsDir());
+				// the tasks round (owner, 2026-10-06): the first frames, before the
+				// bar is bound, offer no key ladder (§7.8 retired it) — set while
+				// the dock is not yet up, so nothing is drawn until enter() paints
+				dock.setStatus("", "");
 				dock.enter();
 				// R-I-p2 (finding R-I-p-2): the bare command passes the SAME
 				// input source and model flag as chat/resume — the pre-patch
@@ -1857,7 +1905,10 @@ async function main(): Promise<void> {
 		// scroll region, the cursor lands at the input line, no broken
 		// terminal (kill -9 excepted; `reset` saves it).
 		dock.exit();
-		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — outcome unknown`);
+		// Graphite §8.10: a closed session never leaves a working or
+		// waiting mark in the tab
+		setTitleState("ready");
+		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — it may still be running`);
 		if (tasksAtExit.left.length > 0) console.error(`left running: ${tasksAtExit.left.join(", ")} — reopen this session to hear how ${tasksAtExit.left.length === 1 ? "it ends" : "they end"}`);
 		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.

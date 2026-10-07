@@ -117,7 +117,7 @@ function judge(label: string, ms: number[]): void {
 	expect(fast / ms.length, `${label}: ${fast}/${ms.length} keys under 15 ms (all: ${ms.join(",")})`).toBeGreaterThanOrEqual(0.8);
 }
 
-const READY = "ctx left";
+const READY = " · ctx "; // Graphite §8.9: the bar's ctx segment (used share) — one plain span, so it matches the raw stream
 
 describe("item 6 — a typed key paints at once (TERM_PROGRAM=Apple_Terminal)", () => {
 	it("the composer: ASCII and CJK", () => {

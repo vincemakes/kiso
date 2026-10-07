@@ -111,7 +111,8 @@ describe("F4 T7 — the stream-cut transcript rule", () => {
 		// The three beats, in stream order (first occurrences over the raw
 		// byte history — the belt).
 		const draft = screen.indexOf("the first half of the answer");
-		const closed = screen.indexOf("stream interrupted — the draft above is abandoned");
+		// Graphite §7.12: the terminator is an INTERRUPTED meta row
+		const closed = screen.search(/INTERRUPTED +the draft above is abandoned/);
 		const fresh = screen.indexOf("the recovered answer, whole");
 		expect(draft, "the draft streamed").toBeGreaterThanOrEqual(0);
 		expect(closed, "the interrupted terminator rendered").toBeGreaterThanOrEqual(0);
@@ -129,7 +130,7 @@ describe("F4 T7 — the stream-cut transcript rule", () => {
 		const grid = emu.visible();
 		const rowOf = (needle: string): number => grid.findIndex((r) => r.includes(needle));
 		const rDraft = rowOf("the first half of the answer");
-		const rClosed = rowOf("stream interrupted");
+		const rClosed = rowOf("INTERRUPTED"); // Graphite §7.12: the INTERRUPTED meta row
 		const rFresh = rowOf("the recovered answer, whole");
 		expect(rDraft, `draft row on the final screen\n${grid.join("\n")}`).toBeGreaterThanOrEqual(0);
 		expect(rClosed, "terminator row on the final screen").toBeGreaterThanOrEqual(0);

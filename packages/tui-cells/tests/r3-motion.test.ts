@@ -11,7 +11,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { MOTION_FRAMES, TWINKLE, breathFrame, twinkleFrame, setGround } from "../src/render.js";
-import { relativeLuminance } from "../src/ground.js";
+import { contrast, graphiteColours, rgbHex } from "../src/graphite.js";
 import { charWidth } from "../src/width.js";
 
 afterEach(() => setGround("unknown"));
@@ -19,18 +19,12 @@ afterEach(() => setGround("unknown"));
 const tty = (on: boolean): void => {
 	Object.defineProperty(process.stdout, "isTTY", { value: on, configurable: true });
 };
-const grey = (n: number): { r: number; g: number; b: number } => {
-	const v = n >= 232 ? 8 + (n - 232) * 10 : 0;
-	return { r: v, g: v, b: v };
-};
-const contrast = (a: { r: number; g: number; b: number }, b: { r: number; g: number; b: number }): number => {
-	const [x, y] = [relativeLuminance(a), relativeLuminance(b)];
-	return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
-};
-const GROUND = { light: { r: 255, g: 255, b: 255 }, dark: { r: 30, g: 30, b: 30 } };
-const indexOf = (frame: string): number | null => {
-	const m = /\x1b\[38;5;(\d+)m/.exec(frame);
-	return m === null ? null : Number(m[1]);
+/** The colour a frame's `●` is written in (the suite runs in the 24-bit
+ *  tier, tests/setup-env.ts). */
+const rgbOf = (frame: string): { r: number; g: number; b: number } => {
+	const m = /\x1b\[38;2;(\d+);(\d+);(\d+)m/.exec(frame);
+	if (m === null) throw new Error(`no 24-bit colour in ${JSON.stringify(frame)}`);
+	return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) };
 };
 
 describe("R3 §5.2 — the thinking TWINKLE", () => {
@@ -65,18 +59,22 @@ describe("R3 §5.2 — the command BREATH", () => {
 		expect([...glyphs]).toEqual(["●"]);
 	});
 
-	it("bottoms out EXACTLY on the ground's dim token — §2.2 holds mid-animation", () => {
-		tty(true);
-		setGround("light");
-		const light = Array.from({ length: MOTION_FRAMES }, (_, i) => indexOf(breathFrame(i))!);
-		expect(light).toEqual([232, 236, 240, 243, 240, 236, 232]);
-		expect(Math.min(...light.map((n) => contrast(grey(n), GROUND.light)))).toBeGreaterThanOrEqual(4.5);
-
-		setGround("dark");
-		const dark = Array.from({ length: MOTION_FRAMES }, (_, i) => indexOf(breathFrame(i))!);
-		expect(dark).toEqual([255, 251, 248, 246, 248, 251, 255]);
-		expect(Math.min(...dark.map((n) => contrast(grey(n), GROUND.dark)))).toBeGreaterThanOrEqual(4.5);
-	});
+	// Graphite (design.md §5.2, §2.2): seven steps from gold toward the
+	// running card's ground, peak → floor → peak, and never under the
+	// graphic floor (3:1) on that ground — the mark dims, it never goes.
+	for (const kind of ["light", "dark"] as const) {
+		it(`${kind}: peaks at gold, dims toward the card, and never drops under 3:1 on it — §2.2 holds mid-animation`, () => {
+			tty(true);
+			setGround(kind);
+			const c = graphiteColours(kind, null);
+			const steps = Array.from({ length: MOTION_FRAMES }, (_, i) => rgbOf(breathFrame(i)));
+			expect(rgbHex(steps[0]!), "the peak is gold").toBe(rgbHex(c.gold));
+			expect(steps.map(rgbHex), "symmetric: out and back").toEqual([...steps].reverse().map(rgbHex));
+			const ratios = steps.map((s) => contrast(s, c.washRun));
+			expect(Math.min(...ratios)).toBeGreaterThanOrEqual(3);
+			expect(ratios[3]!, "the middle step is the floor, and it is dimmer than the peak").toBeLessThan(ratios[0]!);
+		});
+	}
 
 	it("FREEZES to a static ● with no ground — §3.1 forbids guessing a background", () => {
 		tty(true);

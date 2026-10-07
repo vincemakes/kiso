@@ -1,6 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso"></picture></p>
 
-<p align="center"><b>v0.46.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
+<p align="center"><b>v0.47.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
 
 **kiso 是一个在终端里用的 AI 编程助手。** 它建在自己的 agent 运行时之上，这套运行时也可以用 [SDK](#作为-sdk-使用) 嵌进你自己的程序。
 
@@ -9,7 +9,7 @@
 - **你说了算，底线也兜得住。** 四种审批模式加一个"不问人"开关；"不再询问"存成一个可以删掉的规则文件；就算在全部放行的模式下，删了就回不来的命令也会被拒绝。
 - **哪家的模型都能接。** DeepSeek、Claude、GPT、ChatGPT 订阅，以及任何 OpenAI 兼容的端点和网关。密钥从不写进配置文件。
 - **花在哪里一目了然。** 每轮结束显示这一轮的新输入、输出和缓存命中；`/context` 看上下文被什么占着；`/status` 说清窗口大小是从哪来的。
-- **小而透明。** 内核上限 2,200 行（现在 2,192 行），超了就不合并；会话就是一份可以直接读的 JSONL 日志；每个设计决定都记在 45 份 ADR 里，写明为什么这样做、什么情况下该推翻它。
+- **小而透明。** 内核上限 2,200 行（现在 2,194 行），超了就不合并；会话就是一份可以直接读的 JSONL 日志；每个设计决定都记在 45 份 ADR 里，写明为什么这样做、什么情况下该推翻它。
 
 ## 安装
 
@@ -104,7 +104,7 @@ kiso auth                # 查看已存的登录信息（已打码）
 | `plan` | 只能读，其他一律拒绝 |
 | `full-access` | 全部放行，不再询问；你的拒绝规则和底线照样生效 |
 
-模式只是 `deny > allow > ask` 这条链里的一票：保存过的"不再询问"规则在任何模式下都照样放行，切换模式不会撤销它。这些规则存在 `~/.kiso/extensions/dont-ask-again.mjs`，删掉一条就会重新询问。
+模式只是 `deny > allow > ask` 这条链里的一票：保存过的"不再询问"规则在任何模式下都照样放行，切换模式不会撤销它。但它不会替你放过删除类命令、往 `.git/` 或 `.kiso/` 里写、破坏性的 `git push`（强推、镜像、删除、prune）和改动包仓库的命令（发布、撤销发布、标记弃用、改 dist-tag）：这些每次都会问你，full access 模式除外。这些规则存在 `~/.kiso/extensions/dont-ask-again.mjs`，删掉一条就会重新询问。
 
 **不问人（don't ask）** 是模式之外的第二个设置：kiso 能不能停下来问你？打开后（`--dont-ask`、`/dont-ask`、`KISO_DONT_ASK=1` 或配置 `"dontAsk": true`）它就从不停下：本来要问的直接拒绝并告诉模型原因，模型也拿不到提问工具，中途被打断、结果不确定的调用原样留着，不替你猜。它不给任何额外权限：`full-access` 加不问人是放手让它干，`default` 加不问人是给 CI 的稳妥组合。旧名字照样能用：`bypass` 就是 `full-access`，`dontAsk` 就是 `default` 加上这个开关。
 

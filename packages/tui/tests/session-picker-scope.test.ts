@@ -66,19 +66,23 @@ describe("0.40.0 — the scope rule", () => {
 		const { cards, scope } = scopeSessions(CARDS, "/somewhere/new", false);
 		expect(cards).toHaveLength(0);
 		expect(scope.all).toBe(false);
-		expect(scopeTitle(scope)).toBe("sessions · this workspace 0 of 4 · tab all");
+		expect(scopeTitle(scope)).toBe("resume · this workspace · 0 of 4");
 	});
 
-	it("0.40.1: sessions with no recorded workspace are hidden behind ONE header row, with their count", () => {
+	// Graphite P1 (owner, 2026-09-30) — RE-DERIVED: 0.40.1's row counting
+	// the sessions with no workspace above the list is folded into the key
+	// row's count of what tab adds; they are still never listed under CURRENT
+	it("0.40.1: sessions with no recorded workspace are never listed under CURRENT; the key row counts them with the rest", () => {
 		const { cards, scope } = scopeSessions(CARDS, HERE, false);
 		const rows = sessionPickerRows({ cards, matches: cards, selected: 0, scope }, 100, NOW).map(strip);
-		expect(rows.filter((r) => r.includes("older session"))).toEqual(["  1 older session without a workspace · tab all"]);
 		expect(rows.join("\n")).not.toContain("an old session");
-		// under ALL they are listed, labelled, and the header row is gone
+		expect(rows.join("\n")).not.toContain("older session");
+		expect(rows.at(-1)).toContain("tab 2 more elsewhere"); // b (another workspace) and d (none)
+		// under ALL they are listed, and say where they are from: unknown
 		const all = scopeSessions(CARDS, HERE, true);
 		const allRows = sessionPickerRows({ cards: all.cards, matches: all.cards, selected: 0, scope: all.scope }, 100, NOW).map(strip);
-		expect(allRows.join("\n")).toContain("an old session");
-		expect(allRows.join("\n")).not.toContain("older session");
+		expect(allRows.find((r) => r.includes("an old session"))).toMatch(/an old session\s+unknown\s+1h/);
+		expect(allRows.at(-1)).toContain("tab this workspace");
 	});
 
 	it("0.40.1: an empty CURRENT view says so in a row, rather than an empty band", () => {
@@ -87,28 +91,36 @@ describe("0.40.0 — the scope rule", () => {
 		expect(rows.some((r) => r.includes("no session from this workspace yet"))).toBe(true);
 	});
 
-	it("the title names the scope and both counts, and the key that flips it", () => {
-		expect(scopeTitle(scopeSessions(CARDS, HERE, false).scope)).toBe("sessions · this workspace 2 of 4 · tab all");
-		expect(scopeTitle(scopeSessions(CARDS, HERE, true).scope)).toBe("sessions · all 4 · tab this workspace (2)");
-		expect(scopeTitle(null)).toBe("sessions");
+	it("the title names the command, the scope and its counts; a filter says how many match (the key moved to the key row)", () => {
+		expect(scopeTitle(scopeSessions(CARDS, HERE, false).scope)).toBe("resume · this workspace · 2 of 4");
+		expect(scopeTitle(scopeSessions(CARDS, HERE, true).scope)).toBe("resume · every workspace · 4");
+		expect(scopeTitle(null)).toBe("resume");
+		expect(scopeTitle(scopeSessions(CARDS, HERE, false).scope, { matches: 1, of: 2 })).toBe("resume · this workspace · 1 of 2 match");
+		expect(scopeTitle(scopeSessions(CARDS, HERE, true).scope, { matches: 3, of: 4 })).toBe("resume · every workspace · 3 of 4 match");
+		expect(scopeTitle(null, { matches: 0, of: 4 })).toBe("resume · 0 of 4 match");
 	});
 });
 
 describe("0.40.0 — the rows under each scope", () => {
-	it("CURRENT: rows carry the profile tag, and no workspace tag (every row is from here)", () => {
+	it("CURRENT: the opened row carries the profile, and nothing names a workspace (every row is from here)", () => {
 		const { cards, scope } = scopeSessions(CARDS, HERE, false);
 		const rows = sessionPickerRows({ cards, matches: cards, selected: 0, scope }, 100, NOW).map(strip);
-		expect(rows[0]).toContain("this workspace 2 of 4");
-		expect(rows.find((r) => r.includes("fix the parser"))).toContain("· deep");
+		expect(rows[0]).toContain("this workspace · 2 of 4");
+		expect(rows[1]).toContain("fix the parser");
+		expect(rows[2]).toContain("· profile deep");
 		expect(rows.join("\n")).not.toContain("~/proj");
+		expect(rows.join("\n")).not.toContain("\u2026/proj");
 	});
 
-	it("ALL: a foreign row names where it came from (home as ~), an unknown one says so", () => {
+	it("ALL: a foreign row names where it came from, an unknown one says so, a row from here is blank there", () => {
 		const { cards, scope } = scopeSessions(CARDS, HERE, true);
 		const rows = sessionPickerRows({ cards, matches: cards, selected: 0, scope }, 100, NOW).map(strip);
-		expect(rows.find((r) => r.includes("draft the post"))).toContain("· ~/blog");
-		expect(rows.find((r) => r.includes("an old session"))).toContain("· workspace unknown");
-		expect(rows.find((r) => r.includes("tune the retry"))).not.toContain("~/");
+		expect(rows.find((r) => r.includes("draft the post"))).toContain("\u2026/blog");
+		expect(rows.find((r) => r.includes("an old session"))).toContain("unknown");
+		expect(rows.find((r) => r.includes("tune the retry"))).not.toMatch(/~\/|\u2026\//);
+		// a wide terminal writes the path out, home as ~
+		const wide = sessionPickerRows({ cards, matches: cards, selected: 0, scope }, 120, NOW).map(strip);
+		expect(wide.find((r) => r.includes("draft the post"))).toContain("~/blog");
 	});
 
 	it("a long foreign path gives way first: the age and turns stay, the path shortens to its last directory", () => {
@@ -119,25 +131,30 @@ describe("0.40.0 — the rows under each scope", () => {
 		const row = sessionPickerRows({ cards, matches: cards, selected: 0, scope }, 80, NOW)
 			.map(strip)
 			.find((r) => r.includes("a far away task"))!;
-		expect(row).toContain("1h · 2 turns");
+		expect(row).toMatch(/1h {2}2 turns$/);
 		expect(row).toContain("\u2026/beta");
 		expect(row).not.toContain("/private/var");
 	});
 
-	it("a tag never cuts the note — the note is the row's action", () => {
+	it("the workspace never costs the state — the state is the row's action", () => {
 		// found by the TTY listing gate: "workspace unknown" took the room of
-		// "1 uncertain — needs your verdict" at 80 columns
+		// "1 uncertain — needs your verdict" at 80 columns. Graphite P1: the
+		// workspace column gives way before the state column, and the whole
+		// note is on the opened row
 		const urgent: SessionCardView = { ...card("u", "refactor the bench", null, "deep"), badge: "uncertain", uncertain: 1, outcome: null };
 		const { cards, scope } = scopeSessions([urgent, ...CARDS], HERE, true);
-		const row = sessionPickerRows({ cards, matches: cards, selected: 1, scope }, 80, NOW)
-			.map(strip)
-			.find((r) => r.includes("refactor the bench"))!;
-		expect(row).toContain("needs your verdict");
+		for (const W of [40, 56, 80]) {
+			const rows = sessionPickerRows({ cards, matches: cards, selected: 0, scope }, W, NOW).map(strip);
+			expect(rows[1], `W=${W}`).toContain("1 uncertain");
+			expect(rows[2], `W=${W}`).toContain("1 uncertain");
+		}
+		expect(strip(sessionPickerRows({ cards, matches: cards, selected: 0, scope }, 80, NOW)[2]!)).toContain("1 uncertain \u2014 needs your verdict");
 	});
 
-	it("an unscoped picker (no workspace passed) keeps today's header", () => {
+	it("an unscoped picker (no workspace passed) is named and offers no tab", () => {
 		const rows = sessionPickerRows({ cards: CARDS, matches: CARDS, selected: 0 }, 80, NOW).map(strip);
-		expect(rows[0]).toMatch(/^─{3} sessions ─+$/);
+		expect(rows[0]).toMatch(/^─{3} resume ─+$/);
+		expect(rows.at(-1)).not.toContain("tab");
 	});
 });
 

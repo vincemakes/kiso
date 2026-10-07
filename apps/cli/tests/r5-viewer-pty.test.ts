@@ -72,9 +72,9 @@ describe("R5 — the transcript viewer leaves the scrollback alone (the blocker)
 		});
 
 		// it really opened: the band names itself and carries its keys
-		expect(raw).toContain("transcript ·");
+		expect(raw).toContain("── transcript ·");
 		expect(raw).toContain("esc closes");
-		const openAt = raw.lastIndexOf("transcript ·");
+		const openAt = raw.lastIndexOf("── transcript ·");
 		expect(openAt).toBeGreaterThan(0);
 
 		const CLOSE = "\x1b[?2026l";
@@ -89,13 +89,13 @@ describe("R5 — the transcript viewer leaves the scrollback alone (the blocker)
 		let postEnd = frameEnd(raw, openAt);
 		for (let i = 0; i < 40; i += 1) {
 			const g = screenAtIndex(raw, postEnd);
-			if (!g.some((l) => l.includes("transcript ·"))) break;
+			if (!g.some((l) => l.includes("── transcript ·"))) break;
 			const next = frameEnd(raw, postEnd + 1);
 			if (next === postEnd) break;
 			postEnd = next;
 		}
 		const after = screenAtIndex(raw, postEnd);
-		expect(after.some((l) => l.includes("transcript ·")), "the viewer never closed").toBe(false);
+		expect(after.some((l) => l.includes("── transcript ·")), "the viewer never closed").toBe(false);
 
 		const between = raw.slice(preEnd, postEnd);
 		const lfs = (between.match(/\n/g) ?? []).length;
@@ -153,16 +153,16 @@ describe("DC-56 — the viewer's heads say what they are on a real-background pa
 			timeout: 40,
 			cwd: ws,
 		});
-		const openAt = raw.lastIndexOf("transcript ·");
+		const openAt = raw.lastIndexOf("── transcript ·");
 		expect(openAt).toBeGreaterThan(0);
 		const screen = screenAtIndex(raw, frameEnd(raw, openAt));
-		const top = screen.findIndex((l) => l.includes("transcript ·"));
+		const top = screen.findIndex((l) => l.includes("── transcript ·"));
 		const bottom = screen.findIndex((l) => l.includes("esc closes"));
-		expect(top).toBeGreaterThanOrEqual(0);
-		expect(bottom).toBeGreaterThan(top);
+		expect(top, screen.join("\n")).toBeGreaterThanOrEqual(0);
+		expect(bottom, screen.join("\n")).toBeGreaterThan(top);
 		const band = screen.slice(top + 1, bottom).map((l) => l.trim());
 		// every fold row carries a head — the tool's verb and its target
 		expect(band.length).toBeGreaterThan(0);
-		for (const row of band) expect(row, `a blank fold row in the viewer band:\n${screen.join("\n")}`).toMatch(/read\s+f\d\.txt/);
+		for (const row of band) expect(row, `a blank fold row in the viewer band:\n${screen.join("\n")}`).toMatch(/READ\s+f\d\.txt/); // Graphite §7.5
 	}, 40_000);
 });

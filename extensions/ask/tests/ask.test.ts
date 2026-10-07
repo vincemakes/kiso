@@ -14,20 +14,17 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Ajv } from "ajv";
+import { validateArgs } from "@vincemakes/kiso-core";
 import createAskExtension, { ASK_PARAMETERS } from "../dist/kiso-ask.mjs";
 
-/** The kernel's L3 validation is ajv (core's one runtime dependency), and
- *  its failure reads `<instancePath> <ajv message>`. `validateArgs` is
- *  not public API, so this mirrors it exactly — and the kernel's OWN path
- *  is proven end to end by the cli gate, where an invalid ask_user call
- *  meets the honest refusal in a real session (T-Q3). */
-const ajv = new Ajv({ strict: false });
-const compiled = ajv.compile(ASK_PARAMETERS as object);
+/** The kernel's L3 validation — core's exported `validateArgs`, the very
+ *  function the kernel calls, so the refusal read here cannot drift from
+ *  the kernel's (K15a changed its words once; a copy would not have
+ *  followed). The kernel's own path is proven end to end by the cli gate,
+ *  where an invalid ask_user call meets the honest refusal in a real
+ *  session (T-Q3). */
 function why(input: unknown): string | null {
-	if (compiled(input)) return null;
-	const first = compiled.errors?.[0];
-	return first ? `${first.instancePath || "/"} ${first.message ?? "is invalid"}` : "arguments failed schema validation";
+	return validateArgs(ASK_PARAMETERS, input);
 }
 
 const ctx = { signal: new AbortController().signal };

@@ -22,6 +22,7 @@ export {
 	PICK_MAX,
 	modePickView,
 	modelPickView,
+	settingsPickView,
 	namedPickView,
 	pickAffordance,
 	pickBlockRows,
@@ -49,7 +50,7 @@ export {
 	type PanelVerdict,
 	type PanelView,
 } from "./approval-panel.js";
-export { Container, foldLine, foldWords, visibleWidth, SPINNER, type Component, type FrameCtx } from "./components.js";
+export { Container, foldLine, foldWords, infoSheetRows, visibleWidth, SPINNER, type Component, type FrameCtx, type NoticeMark, type RecallSection } from "./components.js";
 export {
 	Editor,
 	MENU_ITEMS,
@@ -73,6 +74,7 @@ export {
 	palette,
 	renderEvent,
 	renderRecap,
+	sealTiers,
 	renderResumeList,
 	renderSessionLine,
 	renderStatusLine,
@@ -80,6 +82,10 @@ export {
 	renderTerminalGap,
 	renderToolSummary,
 	TAGLINE,
+	MOTTO,
+	WORDMARK_W,
+	type BannerFact,
+	type BannerMeta,
 	toolTarget,
 	truncateRow,
 	type Palette,
@@ -90,27 +96,26 @@ export {
 	type RenderResult,
 	type RunUsage,
 } from "./lines.js";
-export { editFileDiff, truncateDiff, writeFileDiff, type DiffLine, type DiffResult } from "./diff.js";
+export { editFileDiff, editFileHunksDiff, hunksDiff, hunksOf, truncateDiff, writeFileDiff, type DiffLine, type DiffResult, type Hunk } from "./diff.js";
 // KC2 §5: the status rows' formatters — the CLI keeps the state and the
 // repaint, the terminal layer owns what the row says.
-export { STATUS_GLYPHS, cacheHitPct, compactingStatus, composeRow, decodeRate, idleStatus, retrySegment, runningStatus, tasksSegment, type CompactingProgress, type RetryOnRow, type RowSegment, type StatusMeter, type TaskCountsOnRow } from "./status.js";
+export { STATUS_GLYPHS, cacheHitPct, compactingStatus, composeRow, ctxMeter, decodeRate, liveRow, retrySegment, statusBar, tasksSegment, workingRow, type BarInput, type CompactingProgress, type RetryOnRow, type RowSegment, type TaskCountsOnRow } from "./status.js";
 // TUI2-R1 (E): /context's attribution rows — a pure function of the
 // counts the trace sidecar already records (the CLI reads, this renders).
-export { contextRows, contextUnavailableRows, type ContextLedger } from "./context-ledger.js";
+export { contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, meterCells, type ContextLedger } from "./context-ledger.js";
 // KC3 §1 (the extraction): the human-facing strings — the prompt, the
 // project-trust listing/view/note, the uncertain execution's view. The
 // FLOW (who is asked, what a verdict means) stays in the cli.
 export { interactivePrompt, projectTrustRows, projectTrustView, projectUntrustedNote, uncertainView, type TrustArtifact } from "./strings.js";
 // KC3 §3/§5: the @ file picker's pure half — the subsequence filter, the
 // deterministic rank, and the ONE cap the CLI's file source shares.
-export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, atWindow, bandHeader, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
+export { AT_CAP, AT_SKIP, AT_VISIBLE, atEmbed, atFilter, atPanelRows, bandHeader, longestRun, type AtItem, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ①–③: the session picker's pure half — the durability badge,
 // the row (picked or printed), the band, and the filter. The CARDS are
 // the cli's projection (session-cards.ts); this turns them into bytes.
 export {
 	idColumn,
 	sessionAge,
-	sessionCounterRow,
 	sessionFilter,
 	sessionListFooter,
 	sessionListHeader,
@@ -118,7 +123,6 @@ export {
 	sessionListRow,
 	sessionNote,
 	sessionPickerRows,
-	sessionRow,
 	// 0.40.0: the workspace scope — pure, so `kiso sessions` and the picker
 	// scope by one rule
 	scopeSessions,
@@ -158,8 +162,8 @@ export {
 // honestly for a question nobody answered (the ① probe's surface).
 // TUI2-R1 (D): the keys sheet + THE key table — one source for the ?
 // overlay and /help's keys row.
-export { resolveGround, type Ground } from "@vincemakes/kiso-tui-cells";
+export { currentGroundRgb, parseOscColor, resolveGround, type Ground, type Rgb } from "@vincemakes/kiso-tui-cells";
 // one duration form: the CLI's own surfaces label a settled duration the
 // way a settled card does, rather than writing a second one.
 export { settledLabel } from "@vincemakes/kiso-tui-cells";
-export { KEY_BINDINGS, PANEL_KEYS_ROW, coldResumeLine, coldResumeView, displayVerb, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, slashCommandNames, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";
+export { KEY_BINDINGS, SHEET_CLOSE, coldResumeLine, coldResumeView, displayVerb, extensionsBannerText, extensionsFact, helpRows, keysHelpRow, keysSheetRows, slashCommandNames, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";

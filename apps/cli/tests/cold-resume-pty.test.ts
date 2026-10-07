@@ -126,13 +126,19 @@ function seedInterrupted(home: string, id: string, minutesAgo: number): void {
 const VALID_SUMMARY = ["## Goal", "g", "## Constraints", "c", "## User requests", "u", "## Files and changes", "f", "## Errors and fixes", "none", "## Current work", "w", "## Next steps", "n"].join("\n");
 
 /** The faux script resumes at its durable position (six finished rounds):
- *  six spent entries, then the summary call's answer. */
-function script(dir: string): string {
+ *  six spent entries, then the summary call's answer. `holdMs` keeps the
+ *  summary call open that long first (the harness's `delay`), so the live
+ *  compaction row is on screen long enough to be painted and read. */
+function script(dir: string, holdMs = 0): string {
 	const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
+	const summary = holdMs > 0 ? { events: [{ type: "delay", ms: holdMs }, ...say(VALID_SUMMARY).events] } : say(VALID_SUMMARY);
 	const p = join(dir, "faux.json");
-	writeFileSync(p, JSON.stringify([...Array.from({ length: 6 }, () => say("spent")), say(VALID_SUMMARY)]), "utf8");
+	writeFileSync(p, JSON.stringify([...Array.from({ length: 6 }, () => say("spent")), summary]), "utf8");
 	return p;
 }
+
+/** The screen's words — the compaction row's facts sit in their own SGR spans. */
+const words = (raw: string): string => raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 
 const kinds = (home: string, id: string): string[] =>
 	readFileSync(join(home, "sessions", `${id}.jsonl`), "utf8")
@@ -140,12 +146,23 @@ const kinds = (home: string, id: string): string[] =>
 		.filter((l) => l.trim() !== "")
 		.map((l) => String((JSON.parse(l) as { event: { type: string } }).event.type));
 
+/** Graphite §7.12: on a terminal the compaction is a meta row — its label,
+ *  not the pipe's `✦ compacted` sentence, is what reaches the screen. A
+ *  settle string that never appears costs the driver its whole 25s wall and
+ *  still passes, so this one is named once. */
+const COMPACTED = "COMPACTED";
+
 describe("0.40.0 — a resumed session whose cache has gone cold is offered a compaction first", () => {
 	it("⏎ compacts before any request; the panel names the size and the age", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "cold", 30);
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "cold"], [["cache is cold", "\r"]], ["✦ compacted"]);
-		expect(screen.replace(/\s+/g, " ")).toContain("this session is 151k tokens, last used 30 min ago, and its cache is cold");
+		// Graphite P1b (owner, 2026-09-30) — RE-DERIVED: the panel is kiso's own
+		// question — the band names it with the size and the age, one sentence
+		// says what happens — and the compaction row says why it runs
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home, 1500) }, ["chat", "cold"], [["compact first?", "\r"]], [COMPACTED]);
+		expect(screen.replace(/\s+/g, " ")).toContain("compact first? · 151k tokens · idle 30 min");
+		expect(screen.replace(/\s+/g, " ")).toContain("The cache expired while the session was idle, so the next request sends all 151k tokens again.");
+		expect(words(screen)).toContain("compacting · cold cache");
 		const k = kinds(dirs.home, "cold");
 		expect(k).toContain("summarized");
 		expect(k.filter((t) => t === "user_input")).toHaveLength(6); // no new turn was sent
@@ -160,8 +177,8 @@ describe("0.40.0 — a resumed session whose cache has gone cold is offered a co
 		const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 		const p = join(dirs.home, "faux.json");
 		writeFileSync(p, JSON.stringify([...Array.from({ length: 6 }, () => say("spent")), say(VALID_SUMMARY), say("resumed after compact")]), "utf8");
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: p }, ["chat", "cut"], [["cache is cold", "\r"]], ["resumed after compact"]);
-		expect(screen.replace(/\s+/g, " ")).toMatch(/this session is 15\dk tokens, last used 30 min ago, and its cache is cold/);
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: p }, ["chat", "cut"], [["compact first?", "\r"]], ["resumed after compact"]);
+		expect(screen.replace(/\s+/g, " ")).toMatch(/compact first\? · 15\dk tokens · idle 30 min/);
 		const events = readFileSync(join(dirs.home, "sessions", "cut.jsonl"), "utf8")
 			.split("\n")
 			.filter((l) => l.trim() !== "")
@@ -178,24 +195,28 @@ describe("0.40.0 — a resumed session whose cache has gone cold is offered a co
 	it("n keeps the full history — nothing is summarized", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "keep", 30);
-		pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "keep"], [["cache is cold", "n"]], ["cache is cold"], 3);
+		pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "keep"], [["compact first?", "n"]], ["compact first?"], 3);
 		expect(kinds(dirs.home, "keep")).not.toContain("summarized");
 	}, 60_000);
 
 	it("dontAsk compacts without a panel — it is not an approval", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "unattended", 30);
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home), KISO_MODE: "dontAsk" }, ["chat", "unattended"], [], ["✦ compacted"]);
-		expect(screen.replace(/\s+/g, " ")).toContain("[dontAsk] this session is 151k tokens");
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home, 1500), KISO_MODE: "dontAsk" }, ["chat", "unattended"], [], [COMPACTED]);
+		// Graphite P1b — RE-DERIVED: on a terminal no line of its own; the
+		// compaction row says why it runs (off a terminal the line stands)
+		expect(words(screen)).toContain("compacting · cold cache");
+		expect(screen).not.toContain("[dontAsk] this session is");
 		expect(screen).not.toContain("keep the full history");
+		expect(screen).not.toContain("compact first?");
 		expect(kinds(dirs.home, "unattended")).toContain("summarized");
 	}, 60_000);
 
 	it("a session billed a minute ago is warm — no offer", () => {
 		const { env, dirs } = isolatedEnv();
 		seed(dirs.home, "warm", 1);
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "warm"], [], ["/ commands"], 3);
-		expect(screen).not.toContain("cache is cold");
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: script(dirs.home) }, ["chat", "warm"], [], ["/mode to switch"], 3);
+		expect(screen).not.toContain("compact first?"); // P1b: the panel's band — the old sentence is drawn nowhere now
 		expect(kinds(dirs.home, "warm")).not.toContain("summarized");
 	}, 60_000);
 });

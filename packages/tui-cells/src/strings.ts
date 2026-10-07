@@ -59,7 +59,7 @@ export function projectTrustRows(files: readonly TrustArtifact[], indent = ""): 
  *  the artifact listing as the always-verbose args, and the question as
  *  the rule override. The same rows the scrollback records — the panel
  *  is a bounded block, the record is not. */
-export function projectTrustView(root: string, files: readonly TrustArtifact[]): PanelView {
+export function projectTrustView(root: string, files: readonly TrustArtifact[], shownRoot: string = root): PanelView {
 	return {
 		flavor: "simple",
 		name: "project trust",
@@ -68,6 +68,10 @@ export function projectTrustView(root: string, files: readonly TrustArtifact[]):
 		statusText: "❯ project trust",
 		args: { kind: "text", lines: projectTrustRows(files) },
 		ruleOverride: "trust this project's .kiso?",
+		// Graphite P1b (owner, 2026-09-30): kiso's own question, and the
+		// answers say what they do, like the other gates'
+		asked: { question: "trust this project?", facts: [shownRoot], prose: "Its .kiso folder holds these files. kiso loads none of them until you trust the project." },
+		simpleOptions: ["trust it", "not now"],
 		fallbackQuestion: `trust this project's .kiso? (y/n) `,
 	};
 }
@@ -99,15 +103,20 @@ export function projectUntrustedNote(count: number, root: string): string {
  *  applied"); what follows it is the action the answer performs. The
  *  invariant a test now holds for every simple view: the dock-less
  *  question names `simpleOptions[0]`, the action `y` performs. */
-export function uncertainView(name: string, executionId: string): PanelView {
+export function uncertainView(name: string, executionId: string, target: readonly string[] = []): PanelView {
+	// Graphite P1b: the panel quotes WHAT may have run — the command, or the
+	// call's target as its tool card names it (the CLI reads it from the
+	// execution record) — where it used to quote the execution id twice
+	const what = name === "shell" ? "command" : "call";
 	return {
 		flavor: "simple",
 		name: "uncertain execution",
 		title: `${name} (${executionId})`,
 		speaker: "kiso",
 		statusText: "❯ uncertain execution",
-		args: { kind: "text", lines: [executionId] },
+		args: { kind: "text", lines: target.length > 0 ? [...target] : [executionId] },
 		ruleOverride: "an interrupted execution may have applied — rerun it?",
+		asked: { question: "rerun it?", facts: [name], prose: `kiso stopped before this ${what}'s result was saved, so it may already have run. Check the workspace, then choose.` },
 		simpleOptions: ["rerun it", "abandon it"],
 		fallbackQuestion: `interrupted execution: ${escapeTerminal(name)} (${executionId}) — rerun it? (y)es / (n)o `,
 	};
@@ -127,15 +136,18 @@ export function uncertainView(name: string, executionId: string): PanelView {
  * of idempotency, so an interrupted ask meets this gate on the way
  * back. Re-asking is safe — that is what the first option says out loud.)
  */
-export function unansweredAskView(executionId: string): PanelView {
+export function unansweredAskView(executionId: string, questions: readonly string[] = []): PanelView {
+	const many = questions.length > 1;
 	return {
 		flavor: "simple",
 		name: "unanswered question",
 		title: `ask_user (${executionId})`,
 		speaker: "kiso",
 		statusText: "❯ unanswered question",
-		args: { kind: "text", lines: [executionId] },
+		// Graphite P1b: the question itself, quoted — not its execution id
+		args: { kind: "text", lines: questions.length > 0 ? [...questions] : [executionId] },
 		ruleOverride: "an unanswered question was interrupted — ask it again?",
+		asked: { question: many ? "ask them again?" : "ask it again?", facts: ["never answered"], prose: `The session stopped while ${many ? "these questions" : "this question"} waited for you.` },
 		simpleOptions: ["ask it again", "drop it"],
 		fallbackQuestion: `an unanswered question was interrupted (${executionId}) — ask it again? (y)es / (n)o `,
 	};
@@ -155,13 +167,18 @@ export function coldResumeLine(tokens: number, minutesAgo: number): string {
 
 export function coldResumeView(tokens: number, minutesAgo: number): PanelView {
 	const line = coldResumeLine(tokens, minutesAgo);
+	const k = `${Math.round(tokens / 1000)}k`;
 	return {
 		flavor: "simple",
 		name: "cold cache",
-		title: `compact first? (${Math.round(tokens / 1000)}k tokens, ${minutesAgo} min idle)`,
+		title: `compact first? (${k} tokens, ${minutesAgo} min idle)`,
 		speaker: "kiso",
 		statusText: "❯ resumed session",
-		args: { kind: "text", lines: [line, "compacting first is one summary call, then every turn is cheap"] },
+		// Graphite P1b: the size and the idle time ride the band; one
+		// sentence says what happens and what compacting costs — nothing is
+		// quoted, so the gutter is empty
+		args: { kind: "text", lines: [] },
+		asked: { question: "compact first?", facts: [`${k} tokens`, `idle ${minutesAgo} min`], prose: `The cache expired while the session was idle, so the next request sends all ${k} tokens again. Compacting first is one summary call; the turns after it are small.` },
 		ruleOverride: `${line} — compact first? (one summary call, then every turn is cheap)`,
 		simpleOptions: ["compact first", "keep the full history"],
 		fallbackQuestion: `${line} — compact first? (y)es / (n)o `,
@@ -208,6 +225,27 @@ export function extensionsBannerText(
 	return ` · [${total} extension${total === 1 ? "" : "s"}: ${parts.join(" · ")}]`;
 }
 
+/** The last sweep (owner, 2026-10-06) — the same three lists as the
+ *  opening's EXTENSIONS row: how many, then the names — the built-in ones
+ *  bare, the user's after `user:`, the project's after `project:`. The
+ *  pipe's `[N extensions: …]` line stays `extensionsBannerText`'s. Null
+ *  when nothing loaded. */
+export function extensionsFact(
+	builtIn: readonly BannerExtension[],
+	user: readonly BannerExtension[],
+	project: readonly BannerExtension[],
+): { readonly value: string; readonly note: string } | null {
+	const total = builtIn.length + user.length + project.length;
+	if (total === 0) return null;
+	const label = (e: BannerExtension): string =>
+		e.connecting === true ? `${e.name} (connecting…)` : e.note !== undefined ? `${e.name} (${e.note})` : e.name;
+	const parts: string[] = [];
+	if (builtIn.length > 0) parts.push(builtIn.map(label).join(", "));
+	if (user.length > 0) parts.push(`user: ${user.map(label).join(", ")}`);
+	if (project.length > 0) parts.push(`project: ${project.map(label).join(", ")}`);
+	return { value: String(total), note: parts.join(" \u00b7 ") };
+}
+
 // ---- TUI2-R1 (D): the keys, in ONE place ----
 
 /** One gesture: what you press, and what it does. */
@@ -218,47 +256,55 @@ export interface KeyBinding {
 
 /**
  * TUI2-R1 (D) — THE key table. Every reader derives from it: the `?`
- * sheet and /help's keys row. A sheet that has drifted from the keys is
+ * sheet and `keysHelpRow`. A sheet that has drifted from the keys is
  * worse than no sheet, and the only way to make drift impossible is to
  * have one table and no second copy of it.
  *
- * The order is the sheet's reading order, which is why it is grouped by
- * WHAT A HUMAN IS DOING rather than alphabetically: the three ways to
- * put something in (send, newline, files), the three ways to change
- * course (stop, redirect, commands), then the walks (history, expand),
- * then the completions.
+ * The order is the sheet's reading order, two bindings to a row — the
+ * sheets round (owner, 2026-10-06): the sheet is two columns, left then
+ * right, so the table is read in pairs. Grouped by WHAT A HUMAN IS DOING:
+ * putting something in and changing course, then finding things, then
+ * seeing more, then editing, then the clipboard, then the shell. A key
+ * with two spellings is named by one (alt+⏎ also answers to ctrl+⏎,
+ * alt+←→ to ctrl+←→); ctrl+w stays named because it is the word deletion
+ * that works on every terminal (§8.6). `ctrl+t`, `ctrl+g` and the `!`
+ * gestures joined from /help's table, which named them and the sheet did
+ * not; `? this sheet` left, because `?` is how you got here.
  */
 export const KEY_BINDINGS: readonly KeyBinding[] = [
 	{ keys: "enter", what: "send" },
-	{ keys: "ctrl+j / shift+⏎", what: "newline" },
+	{ keys: "esc", what: "stop the run" },
+	{ keys: "ctrl+j", what: "newline (shift+\u23ce too)" },
+	{ keys: "alt+\u23ce", what: "stop it, send this" },
 	{ keys: "@", what: "files" },
-	{ keys: "esc", what: "stop" },
-	{ keys: "alt+⏎ / ctrl+⏎", what: "redirect" },
 	{ keys: "/", what: "commands" },
-	{ keys: "↑↓", what: "history / take back a steer" },
-	{ keys: "ctrl+o", what: "expand cells" },
+	{ keys: "\u2191\u2193", what: "history \u00b7 take back a steer" },
+	{ keys: "tab", what: "complete" },
+	{ keys: "ctrl+o", what: "expand all" },
 	// R5 — the transcript viewer. It has to be HERE or it does not exist:
 	// R4a retired the printed key from the fold row on the ground that a
 	// row cannot say which fold a key opens, and the sheet is where the
 	// discoverability moved. A surface nobody can find is not a feature.
 	{ keys: "ctrl+r", what: "transcript" },
-	{ keys: "tab", what: "complete (menu / @)" },
-	{ keys: "?", what: "this sheet" },
-	// E1 §1/§3 — the editor's daily three. Three spellings of the word
-	// gestures reach the same code (alt, ctrl+arrow, and alt+b/f where
-	// the terminal sends meta); the sheet names the two a reader is most
-	// likely to have. ctrl+w is listed beside them because it works on
-	// every terminal, including the ones that send none of the three.
-	{ keys: "alt+←→ / ctrl+←→", what: "word motion" },
-	{ keys: "alt+⌫ / alt+d", what: "delete word (ctrl+w too)" },
-	{ keys: "ctrl+x", what: "copy the last answer" },
-	{ keys: "ctrl+z / ctrl+y", what: "undo / redo" },
+	{ keys: "ctrl+t", what: "hide thinking" },
+	{ keys: "ctrl+g", what: "edit in $EDITOR" },
+	// E1 §1/§3 — the editor's daily three (word motion, word deletion,
+	// copy); three encodings of the word gestures reach the same code.
+	{ keys: "alt+\u2190\u2192", what: "word motion" },
+	{ keys: "alt+\u232b", what: "delete a word (ctrl+w too)" },
+	{ keys: "ctrl+z", what: "undo" },
+	{ keys: "ctrl+y", what: "redo" },
+	{ keys: "ctrl+x", what: "copy the answer" },
 	// REL-0152-D15/D16 — the image paste. It is on the sheet because a
 	// terminal's own Cmd+V only ever pastes TEXT: a human with an image on
 	// the clipboard has no way to discover this key by trying the obvious
-	// one, which is exactly the case the sheet exists for. It pairs with
-	// the undo row above and keeps the table's count even.
-	{ keys: "ctrl+v", what: "attach a clipboard image" },
+	// one, which is exactly the case the sheet exists for.
+	{ keys: "ctrl+v", what: "attach an image" },
+	{ keys: "!cmd", what: "run it and send it" },
+	{ keys: "!!cmd", what: "run it, show it here only" },
+	// the main-sync round (ADR-0058 3e): the background key, beside the
+	// shell gestures it serves; the live row teaches it while it applies
+	{ keys: "ctrl+b", what: "background a command" },
 ];
 
 /**
@@ -297,95 +343,20 @@ export function displayVerb(name: string): string {
 	return DISPLAY_VERB[name] ?? name;
 }
 
-/** The panel keys, which belong to a panel rather than the composer —
- *  one dim line rather than four table rows, because they apply only
- *  while a panel is up. */
-/**
- * TUI2-R1.5 pin 6 — this row has to be true of BOTH panel flavors.
+/** Graphite R3e — how every read-only sheet closes, on its last row: esc
+ *  closes it, and what is typed goes to the input. The sheets round
+ *  (owner, 2026-10-06) gave the keys sheet the same row and the same
+ *  behaviour as `/status`.
  *
- * The R1.5 wording ("digits pick · ⏎ confirms") was the sentence that
- * covered an approval where a digit only SELECTED and an ask where a
- * digit ANSWERED. TUI2-R3v2 ① removed the disagreement it was papering
- * over: every panel is a list with a bar on it, ↑↓ move the bar, ⏎ (or a
- * click) takes the row under it, and a digit takes its row outright.
- * One sentence, now true of every flavor for the same reason rather than
- * by careful omission.
- *
- * The two ask-only gestures keep their clauses because the ask is the
- * only flavor with a set to build and an answer to write.
- */
-/**
- * R6/D2 — the row claims only what is TRUE OF EVERY panel.
- *
- * Its old sentence ("⏎ or click confirms · 1-4 instant · space toggles")
- * was documented as true of every flavor, and had silently stopped
- * being: `1-4 instant` is false on the ask's multi-select and on the
- * pick panel (where a digit only moves the cursor and never commits),
- * `or click` is false on both (their frames deliberately report no
- * clickable span), and "1-4" is wrong whenever a panel has a different
- * option count. Layered honesty: this row states the invariant, and each
- * panel's own affordance row states that panel's whole truth.
- */
-export const PANEL_KEYS_ROW = "panels: ↑↓ move \u00b7 ⏎ confirms \u00b7 digits act on their row \u00b7 t types";
+ *  DECLARED REVERSAL (the sheets round): the keys sheet's last row was
+ *  `PANEL_KEYS_ROW` (`panels: ↑↓ move · ⏎ confirms · digits act on their
+ *  row · t types`), with its own grid (`SHEET_GRID`, `SHEET_STOPS`) and
+ *  a clause-dropping ladder (DC-2). Every panel's own key row now says
+ *  that panel's keys (§8.2, P3, P4), the row had gone stale (`t types`
+ *  left `/model` in P3), and the grid was a second and third table that
+ *  had to agree with KEY_BINDINGS by hand. */
+export const SHEET_CLOSE = "esc closes \u00b7 typing goes to the input";
 
-/** The sheet's grid: the first six bindings in two 3-column rows, the
- *  last four in two 2-column rows (the wide entries get the room). The
- *  COLUMN STOPS are the prototype's absolute positions, floored by the
- *  content (a future binding widens its column rather than overrunning
- *  it — the grid degrades to one space, never to a collision). */
-const SHEET_GRID: readonly (readonly number[])[] = [
-	[0, 1, 2],
-	[3, 4, 5],
-	[6, 7],
-	// R5: ctrl+r joins at index 8, so the tail shifts by one. The grid is
-	// a SECOND table that must agree with KEY_BINDINGS and nothing makes
-	// it — adding a binding without touching this silently drops the LAST
-	// one off the sheet, which is exactly what happened on the first
-	// attempt and exactly what the "ONE SOURCE" gate exists to catch.
-	[8, 9],
-	// UD-1's undo row shares this one now — the table has an even count
-	// again, so no binding needs a row to itself.
-	//
-	// E1 §1/§3 — three more, and the warning above earned itself a second
-	// time: adding them to KEY_BINDINGS without touching this grid pushed
-	// the last three off the sheet, and the "ONE SOURCE" gate caught it
-	// exactly as its comment predicted it would.
-	[10, 11],
-	[12, 13],
-	// ctrl+v joins the undo row's neighbour: the count is even again, so
-	// the last row pairs instead of standing alone. The warning three
-	// comments up applies unchanged — this grid does not update itself.
-	[14, 15],
-];
-const SHEET_STOPS: readonly (readonly number[])[] = [
-	[16, 43],
-	[16, 43],
-	[36],
-	[36],
-	[36],
-	// E1 §1/§3 — the two-column rows the three new bindings land on.
-	// A THIRD table that must agree with the other two and nothing makes
-	// it: `SHEET_GRID` says which bindings share a row, this says where
-	// their second column starts, and `KEY_BINDINGS` says what they are.
-	// The grid's own comment warned about the pair; the trio is worse.
-	// The stop is 39 here because `alt+⌫ / alt+d delete word (ctrl+w too)`
-	// is the widest first cell on the sheet — a narrower stop packs the
-	// two cells together with a single space and the column disappears.
-	// The last row PAIRS now that ctrl+v joined (it had one binding and an
-	// empty stop list); it takes a stop like its neighbours so the second
-	// column lines up rather than following a single space.
-	[39],
-	[39],
-];
-
-/**
- * TUI2-R1 (D) — the sheet, one screen, static.
- *
- * Rows CUT at the width rather than folding: the sheet's contract with
- * the reader is "one screen", and a folded grid at 40 columns is two
- * screens pretending to be one. A narrow terminal shows fewer columns
- * of the same truth, which is the honest degradation.
- */
 /** R8b — the band's own opening row: a labelled rule at full width.
  *
  *  Moved here from the @ picker, unchanged in every byte, because the
@@ -404,66 +375,52 @@ export function bandHeader(label: string, W: number): string {
 		out += ch;
 		w += cw;
 	}
-	return `${p.dim}${out}${p.reset}`;
-}
-
-export function keysSheetRows(W: number): string[] {
-	const p = palette();
-	const cell = (i: number): string => {
-		const b = KEY_BINDINGS[i];
-		// DC-3: the key NAMES are the sheet's content, not a code span —
-		// they borrowed the inline-code tint and became the least readable
-		// thing on the one screen whose whole job is being read.
-		return b === undefined ? "" : `${p.bold}${b.keys}${p.reset} ${b.what}`;
-	};
-	const plainCell = (i: number): string => {
-		const b = KEY_BINDINGS[i];
-		return b === undefined ? "" : `${b.keys} ${b.what}`;
-	};
-	// R8b — THE SHEET NAMES ITSELF, in the band vocabulary.
-	//
-	// Every other overlay does: `─── commands ───`, `─── files ───`,
-	// `─── sessions ───`, `── transcript · N folds ──`. This one opened
-	// with a bare bold word at column 0, which is the exact condition
-	// TUI2-R1.5 ⑦(b) named when it made the rule — with scrollback
-	// behind an overlay, nothing said where the surface began.
-	const rows = [bandHeader("keys", W)];
-	for (let r = 0; r < SHEET_GRID.length; r += 1) {
-		const indexes = SHEET_GRID[r]!;
-		let row = "";
-		let width = 0;
-		for (let c = 0; c < indexes.length; c += 1) {
-			row += cell(indexes[c]!);
-			width += displayWidth(plainCell(indexes[c]!));
-			const stop = SHEET_STOPS[r]![c];
-			if (stop === undefined) continue; // the last column pads nothing
-			const pad = Math.max(1, stop - width);
-			row += " ".repeat(pad);
-			width += pad;
-		}
-		rows.push(row);
-	}
-	rows.push(`${p.dim}${panelKeysRow(W)}${p.reset}`);
-	return rows.map((row) => cutLine(row, W));
+	// Graphite §8.1 (R3a): the hairline in `line`, the band's name bold
+	// gold — the band names itself; off a known ground, one dim span
+	if (p.line === "" || p.gold === "") return `${p.dim}${out}${p.reset}`;
+	const at = out.indexOf("\u2500 ") + 2;
+	// the NAME is the label up to its first ` · `; what follows (a scope,
+	// a count, a key) is the band's facts, dim
+	const sep = label.indexOf(" \u00b7 ");
+	const nameEnd = Math.min(out.length, at + (sep < 0 ? label.length : sep));
+	const labelEnd = Math.min(out.length, at + label.length);
+	return `${p.line}${out.slice(0, at)}${p.fgEnd}${p.bold}${p.gold}${out.slice(at, nameEnd)}${p.reset}${p.dim}${out.slice(nameEnd, labelEnd)}${p.reset}${p.line}${out.slice(labelEnd)}${p.fgEnd}`;
 }
 
 /**
- * DC-2 — the panel row degrades by CLAUSE.
+ * TUI2-R1 (D), the sheets round (owner, 2026-10-06) — the keys sheet: the
+ * band's named hairline, the bindings two to a row at the content edge,
+ * the key in ink and what it does dim, each column measured over the
+ * whole table so they line up, and the closing row. Narrower than two
+ * columns need, it is one column in the table's order. Rows CUT at the
+ * width rather than folding: the sheet's contract is "one screen".
  *
- * The row is 76 columns of independent clauses joined by ` · `. At 72 it
- * used to lose the tail of the last one, so `t types` became `t`: the
- * reader was told a key existed and not told what it did, on a row that
- * still looked complete. Dropping a whole clause says less; it never
- * says something false. `cutLine`'s ellipsis is the floor below this, for
- * a width that cannot hold even the first clause.
+ * DECLARED REVERSAL: the sheet began at column 0 with the keys bold and
+ * hand-set column stops (DC-1/DC-3); §1.8's one content edge and the
+ * command list's name/description tones replace them.
  */
-function panelKeysRow(W: number): string {
-	const clauses = PANEL_KEYS_ROW.split(" \u00b7 ");
-	for (let n = clauses.length; n > 1; n -= 1) {
-		const row = clauses.slice(0, n).join(" \u00b7 ");
-		if (displayWidth(row) <= W) return row;
+export function keysSheetRows(W: number): string[] {
+	const p = palette();
+	const width = (col: readonly KeyBinding[], f: (b: KeyBinding) => string): number => Math.max(0, ...col.map((b) => displayWidth(f(b))));
+	const cell = (b: KeyBinding, kw: number, dw: number): string => `${b.keys}${" ".repeat(kw - displayWidth(b.keys) + 2)}${p.dim}${b.what}${p.reset}${dw === 0 ? "" : " ".repeat(dw - displayWidth(b.what))}`;
+	const left = KEY_BINDINGS.filter((_, i) => i % 2 === 0);
+	const right = KEY_BINDINGS.filter((_, i) => i % 2 === 1);
+	const kl = width(left, (b) => b.keys);
+	const dl = width(left, (b) => b.what);
+	const kr = width(right, (b) => b.keys);
+	const dr = width(right, (b) => b.what);
+	const rows = [bandHeader("keys", W)];
+	if (2 + kl + 2 + dl + 3 + kr + 2 + dr <= W) {
+		for (let i = 0; i < left.length; i += 1) {
+			const r = right[i];
+			rows.push(`  ${cell(left[i]!, kl, r === undefined ? 0 : dl)}${r === undefined ? "" : `   ${cell(r, kr, 0)}`}`);
+		}
+	} else {
+		const k = width(KEY_BINDINGS, (b) => b.keys);
+		for (const b of KEY_BINDINGS) rows.push(`  ${cell(b, k, 0)}`);
 	}
-	return clauses[0]!;
+	rows.push(`  ${p.dim}${SHEET_CLOSE}${p.reset}`);
+	return rows.map((row) => cutLine(row, W));
 }
 
 /** TUI2-R1 (D) — the keys as ONE line, for /help. The same table the
@@ -499,6 +456,7 @@ const HELP_TABLE: readonly (readonly [string, string])[] = [
 	// ADR-0058 (3e): the session's tasks, and the key that makes one
 	["/tasks", "list this session's background tasks; stop one or show its output"],
 	["/status", "show session id, event count, and context estimate"],
+	["/name", "name this session · /name shows it · /name - clears it"],
 	// 0.40.6: what kiso runs with, and where each value came from
 	["/settings", "show the settings in force, each value's source, and how to change it"],
 	// A command with no row is a command nobody can find. `/context` has

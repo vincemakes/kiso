@@ -62,7 +62,8 @@ function recapSeconds(grid: string[]): number | null {
 	for (const line of grid) {
 		// R3d: the recap opens `✦ thought Ns` — it says what the turn DID,
 		// and the seconds are the same seconds this case is about.
-		const m = /✦ took (\d+)s · /.exec(line);
+		// Graphite §7.11: a turn with no usage seals as `took Ns` alone
+		const m = /✦ took (\d+)s\b/.exec(line);
 		if (m !== null) return Number(m[1]);
 	}
 	return null;

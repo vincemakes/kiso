@@ -26,10 +26,10 @@
  */
 
 import { displayWidth } from "./width.js";
-import { cutLine, diffBody, gutterFold, selectionBar, visibleWidth, widthCut } from "./components.js";
+import { atEmbed, bandKeyRow, bandVisible, bandWindow, boxBottom, cutLine, diffBody, foldAtSpaces, foldWords, goldHits, gutterFold, moreMark, selectionBar, visibleWidth, widthCut } from "./components.js";
 // TUI2-R2pre ④: strings.js takes only a TYPE from this module, so the
 // import is erased at compile time and no runtime cycle exists.
-import { displayVerb } from "./strings.js";
+import { bandHeader, displayVerb } from "./strings.js";
 import { escapeTerminal, palette } from "./render.js";
 
 export type PanelFlavor = "approval" | "simple";
@@ -318,6 +318,30 @@ export interface PickOption {
 	 *  previous selection asked ("effort xhigh \u2192 high: the nearest this
 	 *  model supports"). The caller's sentence, reproduced verbatim. */
 	readonly levelNote?: string;
+	/** Graphite R3e: what the second axis IS, named on its key hint
+	 *  (`←→ mode`); absent, it is the model's `effort`. P3: a named axis is
+	 *  the row's own value, so its strip carries no label of its own. */
+	readonly axisLabel?: string;
+	/** Graphite P3: the columns after the label (a profile's host and state,
+	 *  a setting's value and source), measured over EVERY option so nothing
+	 *  moves as the cursor or the filter does. Absent, the `note` is the one
+	 *  column. */
+	readonly cols?: readonly string[];
+	/** Graphite P3: what the selected row OPENS into, on the same wash (the
+	 *  /resume shape) — what the columns cannot hold: why a profile cannot
+	 *  run, how a config setting changes. After the level strip when there
+	 *  is one, and it gives way first. */
+	readonly opened?: string;
+	/** Graphite P3: the option cannot run as it stands (a profile with no
+	 *  credential): its row is dim. It can still be picked; the caller says
+	 *  why, as it always has. */
+	readonly off?: boolean;
+	/** Graphite P3: further texts the filter reaches (a profile's name),
+	 *  after the label and the first column. Never drawn. */
+	readonly match?: readonly string[];
+	/** Graphite P3: what ⏎ does on THIS row, for the key row
+	 *  (`⏎ opens /model`); absent, the spec's word. */
+	readonly enter?: string;
 }
 
 /** The level cursor, CORRECTED at read time: never off the end, never on
@@ -367,18 +391,38 @@ export function stepLevel(o: PickOption, from: number | null, dir: -1 | 1): numb
 	return from;
 }
 
-/** The whole pick: the header sentence, the options, the free-text
- *  escape hatch, and the honest empty state. */
+/** The whole pick: the band's name, the options, how the keys reach
+ *  them, and the honest empty state. */
 export interface PickSpec {
+	/** the band's NAME (`model`). A legacy `name — words` header still
+	 *  splits: the words join the facts. */
 	readonly header: string;
 	readonly options: readonly PickOption[];
-	/** the `t` row — typing directly. OPTIONAL, and its absence means the
-	 *  option list is the WHOLE world: `/model`'s profiles never are (a
-	 *  model that exists but is not configured has to be typeable), and
-	 *  `/mode`'s five tiers always are. Offering a `t` row over a closed
-	 *  set is a row that carries no fact — §1.3 — and it is what made
-	 *  the owner read the mode panel as "type the answer". */
-	readonly typeHint?: string;
+	/** Graphite P3: what the band's name says after the count
+	 *  (`current: default · don't ask`, `run paused`). */
+	readonly facts?: string;
+	/** Graphite P3: the band counts its options with this noun
+	 *  (`profiles` → `9 profiles`, `""` → `11`), and says `2 of 9 match`
+	 *  under a filter. Absent, no count. */
+	readonly noun?: string;
+	/** Graphite P3: how keys reach the rows. `digits` (the default): a digit
+	 *  moves to that row on screen. `filter`: the input row filters, as in
+	 *  /resume — a digit is a letter there. `arrows`: ↑↓ alone. */
+	readonly input?: "digits" | "filter" | "arrows";
+	/** filter only: the input row's words while it is empty */
+	readonly filterHint?: string;
+	/** filter only: a typed `provider/model` that nothing on the list
+	 *  matches becomes a row of its own, and ⏎ on it hands the text back. It
+	 *  replaced the `t` row (P3, owner, 2026-10-04). Only when NOTHING
+	 *  matches: a slash typed into a profile's name (`op/`) is filtering. */
+	readonly direct?: boolean;
+	/** how the columns are styled, by index: `dim` unless `plain` */
+	readonly columns?: readonly ("plain" | "dim")[];
+	/** the column that shows the walked level on the selected row (a
+	 *  setting's value follows ←→) */
+	readonly levelColumn?: number;
+	/** what ⏎ does, for the key row (`⏎ switches`); a row may say its own */
+	readonly enter?: string;
 	/** shown INSTEAD of the options when there are none. The copy is the
 	 *  caller's and is reproduced verbatim. */
 	readonly emptyNote?: string;
@@ -389,14 +433,72 @@ export interface PickSpec {
 	readonly initial?: number;
 }
 
-/** The pick panel's runtime state \u2014 the editor owns it, the compositor
- *  reads it (the AskRuntime precedent, two fields instead of five). */
+/** The pick panel's runtime state — the editor owns it, the compositor
+ *  reads it (the AskRuntime precedent). */
 export interface PickRuntime {
+	/** an OPTION index (never a position on screen); `options.length` is
+	 *  the direct row. Corrected at read time by `pickList`. */
 	readonly cursor: number;
-	readonly phase: "options" | "custom";
 	/** OR-7: the level cursor within the highlighted option. null = the
 	 *  option has no levels, or has no default to mark. */
 	readonly level: number | null;
+	/** filter: the input's text, read from the composer on every frame —
+	 *  the panel never stores a copy that could disagree with it */
+	readonly query?: string;
+}
+
+/** Graphite P3 — what the pick shows right now, derived from the spec and
+ *  the runtime: the ONE derivation the renderer, the keys and the digit
+ *  window all read, so the row the eye is on is the row a key acts on. */
+export interface PickList {
+	/** the option indexes on the list, in the caller's order; the direct
+	 *  row (`options.length`) last when it is offered */
+	readonly shown: readonly number[];
+	/** the cursor, corrected: an entry of `shown`, or -1 when nothing shows */
+	readonly cursor: number;
+	/** the level in force for the cursor's option */
+	readonly level: number | null;
+	/** the typed letters, per option: which text they landed in (0 the
+	 *  label, 1 the first column) and where */
+	readonly hits: ReadonlyMap<number, { readonly col: number; readonly at: readonly number[] }>;
+	/** what the direct row would hand back, when it is offered */
+	readonly direct: string | null;
+	/** the query the list was filtered by ("" when none) */
+	readonly query: string;
+}
+
+export function pickList(spec: PickSpec, state: PickRuntime): PickList {
+	const query = spec.input === "filter" ? (state.query ?? "") : "";
+	const lq = query.toLowerCase();
+	const shown: number[] = [];
+	const hits = new Map<number, { col: number; at: readonly number[] }>();
+	spec.options.forEach((o, i) => {
+		if (lq === "") {
+			shown.push(i);
+			return;
+		}
+		// the label, then the first column (a profile's host), then the
+		// texts the row does not draw (its name) — the first that holds
+		// the query is where the gold goes
+		const drawn = [o.label, ...(o.cols ?? []).slice(0, 1)];
+		for (let c = 0; c < drawn.length; c += 1) {
+			const at = atEmbed(drawn[c]!.toLowerCase(), lq);
+			if (at !== null) {
+				shown.push(i);
+				hits.set(i, { col: c, at });
+				return;
+			}
+		}
+		if ((o.match ?? []).some((m) => atEmbed(m.toLowerCase(), lq) !== null)) shown.push(i);
+	});
+	const typed = query.trim();
+	const direct = spec.direct === true && shown.length === 0 && /^[^/\s]+\/\S+$/.test(typed) ? typed : null;
+	if (direct !== null) shown.push(spec.options.length);
+	// a cursor the filter took away lands on the first row left, and the
+	// level comes with the row it lands on
+	const cursor = shown.includes(state.cursor) ? state.cursor : (shown[0] ?? -1);
+	const level = cursor === state.cursor ? state.level : startLevel(spec.options[cursor]);
+	return { shown, cursor, level, hits, direct, query };
 }
 
 /** What was picked: a listed option by INDEX (never a label the caller
@@ -461,6 +563,13 @@ export interface PanelView {
 	/** TUI2-R2 \u2463: the options, when this view is a PICK. Same contract
 	 *  as `ask`, one payload over. */
 	readonly pick?: PickSpec;
+	/** Graphite P1b (owner, 2026-09-30) — kiso's OWN question (a cold
+	 *  cache, a call that may have run, an unanswered question, the trust
+	 *  gate). Present = the panel opens on the question as its band name
+	 *  with the facts dim after it, then at most two sentences at the
+	 *  content edge; the gutter keeps only what is quoted verbatim (`args`).
+	 *  Absent = the approval layout, unchanged. */
+	readonly asked?: { readonly question: string; readonly facts: readonly string[]; readonly prose: string };
 }
 
 export type PanelVerdict =
@@ -636,40 +745,83 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// block, and none of them the composer's. A rule SEPARATES, a gutter
 	// SCOPES — the args keep their gutter because they are a verbatim
 	// block; everything that was drawing a boundary is one rule now.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
-	rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
-	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
-	// TUI2-R1.5 ⑤ (VD-11): the divider is a LABEL, not a design note. "the
-	// full args — never truncated" is a sentence about the implementation,
-	// addressed to whoever was building the panel; the human reading it
-	// during an approval wants to know what the block below is.
-	rows.push("");
+	// Graphite P1b: kiso's own question names the band itself — the
+	// question, its facts dim — and says its sentence once, at the content
+	// edge. The approval's three rows (the rule, the title, the divider)
+	// would say it three times: the rule line WAS the question, the title
+	// its facts, and the args its sentence again in a gutter that means
+	// "quoted verbatim".
+	const asked = view.asked;
+	const prose = asked === undefined ? [] : foldWords(escapeTerminal(asked.prose), Math.max(1, W - 4)).map((r) => `${gutter}${r}`);
+	// Graphite P4 (owner, 2026-10-04): an approval says the call ONCE, as its
+	// card will read in the transcript (`SHELL rm -rf build`), and the band's
+	// name carries who asked. DECLARED REVERSAL of the `<tool> needs approval
+	// — asked by <speaker>` row, of the bold title under it and of the blank
+	// row after them (R3a, TUI2-R1.5 ⑤). The body follows only when it adds
+	// something: a diff, JSON, or a command the head row cannot show whole.
+	const verb = escapeTerminal(displayVerb(view.name)).toUpperCase();
+	const verbHead = `${p.bold}${verb}${p.reset}${view.title === "" ? "" : ` ${escapeTerminal(view.title)}`}`;
+	const sayOnce = view.flavor === "approval" && asked === undefined;
+	// a call that is ONE line of text (a shell command) and is its own title:
+	// said once even when the row cannot hold it — the head row folds, its
+	// continuation rows under the command's first cell, breaking at a space
+	// where it can (the owner's capture, 2026-10-05: cut in the head and then
+	// repeated whole in a body, the first half read twice, `sessi|ons` split)
+	const oneLine = sayOnce && view.args.kind === "text" && view.args.lines.length === 1 && view.args.lines[0] === view.title;
+	const headRoom = Math.max(1, W - 2);
+	// (one cell of margin at the right, as the other rows keep)
+	const folds = oneLine && visibleWidth(verbHead) > headRoom && headRoom - verb.length - 2 >= 12 ? foldAtSpaces(escapeTerminal(view.title), headRoom - verb.length - 2) : null;
+	if (asked !== undefined) {
+		rows.push(bandHeader(askedLabel(asked.question, asked.facts, W), W));
+		rows.push(...prose);
+	} else if (sayOnce) {
+		const facts = [...(view.amended === true ? ["amended"] : []), `asked by ${escapeTerminal(view.speaker)}`];
+		rows.push(bandHeader(`needs you \u00b7 ${facts.join(" \u00b7 ")}`, W));
+		rows.push(folds === null ? `  ${cutLine(verbHead, headRoom)}` : `  ${p.bold}${verb}${p.reset} ${folds[0]}`);
+	} else {
+		// a question with no layout of its own (no caller in the product
+		// draws one since P1b): the old head, kept for that case
+		rows.push(bandHeader("needs you", W));
+		rows.push(`  ${cutLine(panelRuleText(view), Math.max(1, W - 2))}`);
+		rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(view.title)}${p.reset}`, Math.max(1, W - 2))}`);
+		rows.push("");
+	}
 	// the args — the bounded block's body: fold, then cap. The └ cut is
 	// ONE row (the W20 discipline): when the args exceed the budget, one
 	// notice row carries the count and where the rest is (the event log).
-	const args: string[] =
-		view.args.kind === "diff"
+	const repeats = oneLine && (visibleWidth(verbHead) <= headRoom || folds !== null);
+	// the folded command's continuation rows ride the args' budget, so a
+	// command taller than the screen still ends in the honest cut notice
+	const args: string[] = repeats
+		? (folds ?? []).slice(1).map((r) => `  ${" ".repeat(verb.length + 1)}${r}`)
+		: view.args.kind === "diff"
 			? diffBody(view.args.diff, W, true) // the expanded path — never the tool cell's capped copy
 			: view.args.lines.flatMap((line) => gutterFold(`${p.dim}│${p.reset} `, escapeTerminal(line), W));
-	// TUI2-R3v2 ①: the block now spends N rows on options instead of one,
-	// so the args and the list SHARE what is left after the chrome (the
-	// rule, the title, the divider, the affordance, the corner — five
-	// rows, plus the note when there is one). The list wins the tie: a
-	// human at an approval is choosing, and one more line of a command
-	// they can also read in the event log is worth less than the row that
-	// carries the choice. The args keep a floor of one row so the block
-	// never claims to show what it is asking about and then shows nothing.
+	// the speaker's fix hint (`/mode accept-edits approves edits`) rode the
+	// end of the retired rule row and was cut there; it has a row of its own
+	const hintRow = sayOnce && view.hint !== undefined && view.hint !== "" ? [`${gutter}${cutLine(`${p.dim}${escapeTerminal(view.hint)}${p.reset}`, Math.max(1, W - 2))}`] : [];
+	// the amend phase says where the note goes, where the person is looking —
+	// it was the status row's, and the bar stays under the panel now
+	const amendRow = phase === "amend" ? [`${gutter}${cutLine(`${p.dim}your note goes to the model \u2014 it will propose a new call${p.reset}`, Math.max(1, W - 2))}`] : [];
+	// TUI2-R3v2 ①: the block spends N rows on options instead of one, so
+	// the args and the list SHARE what is left after the chrome. The list
+	// wins the tie: a human at an approval is choosing, and one more line
+	// of a command they can also read in the event log is worth less than
+	// the row that carries the choice. The args keep a floor of one row so
+	// the block never claims to show what it is asking about and then
+	// shows nothing.
 	const chrome =
-		// R2: SIX rows of frame, not five — the block opens with a rule now
-		// as well as closing with one, and the divider row became a blank.
-		// The count is the same shape it always was: every row the block
-		// spends on itself before the args and the list share what is left.
-		6 +
+		// P4: the band row, the call's head and the key row (no blank, no
+		// rule under it); kiso's own question: the band row, its sentences,
+		// the key row; the old head: four rows and the key row
+		(asked === undefined ? (sayOnce ? 3 : 5) : 2 + prose.length) +
+		hintRow.length +
+		amendRow.length +
 		(phase === "options" && note !== undefined ? 1 : 0) +
 		(view.riskHint !== undefined && view.riskHint !== "" ? 1 : 0) +
 		(phase === "asking" ? 1 : 0) +
-		// the safer list's rows + its way-back row
-		(phase === "safer" && safer !== undefined ? safer.options.length + 1 : 0);
+		// the safer list's rows + its way-back row + the row that says so
+		(phase === "safer" && safer !== undefined ? safer.options.length + 2 : 0);
 	const optionCount = phase === "options" ? panelOptions(view).length : 0;
 	const optionsShown = Math.min(optionCount, Math.max(1, maxRows - chrome - 1));
 	const argsBudget = Math.max(1, maxRows - chrome - optionsShown);
@@ -695,6 +847,7 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// gutter and this row wears the plain two-space indent.
 	const risk = view.riskHint;
 	if (risk !== undefined && risk !== "") rows.push(`${gutter}${cutLine(`${p.warn}${escapeTerminal(risk)}${p.reset}`, Math.max(1, W - 2))}`);
+	rows.push(...hintRow, ...amendRow);
 	// TUI2-R3v2 ①: the option LIST. While the typed phase is open the list
 	// stands down — the human is writing prose to the model, and a bar
 	// hovering over "Yes, run it" while they do it claims a choice is still
@@ -713,6 +866,9 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 	// last row and is always present: an alternatives list you cannot back
 	// out of would be a trap.
 	if (phase === "safer" && safer !== undefined) {
+		// Graphite P4: what happened, said in the block — it was the status
+		// row's, and the bar stays under the panel now
+		rows.push(`${gutter}${cutLine(`${p.dim}asked the model for safer options${p.reset}`, Math.max(1, W - 2))}`);
 		offset = rows.length;
 		// R2: the `why` takes a COLUMN rather than running on after an em
 		// dash — the commands are what is being chosen between, and they
@@ -746,17 +902,45 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
 		count: phase === "options" ? optionsShown : phase === "safer" && safer !== undefined ? safer.options.length + 1 : 0,
 		first,
 	};
-	rows.push(`${gutter}${p.dim}${cutLine(panelAffordance(view, phase, cursor, safer), Math.max(1, W - 2))}${p.reset}`);
-	// TUI2-R1.5 11 (VD-13): a real bottom RULE, in the block's own edge
-	// vocabulary — the same box-drawing run its divider already uses —
-	// anchored at the gutter column. It used to be `\u2514 `: a two-cell stub
-	// floating at column 1, with no rule running from it and no corner
-	// above it to answer. Worse, `\u2514 ` is the cut-notice prefix everywhere
-	// else in the product, so a CAPPED panel emitted two elbow rows in a
-	// row meaning entirely different things. The rule reads as an edge,
-	// and the cut notice above it reads as a notice.
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	// Graphite P4 (owner, 2026-10-04): one key row closes the band, with the
+	// selection's place at the right margin on a list (§8.2); the composer's
+	// rail sits under it. DECLARED REVERSAL of the panel's own bottom rule
+	// (TUI2-R1.5 ⑪, R2), which doubled the composer's.
+	const list = phase === "options" ? { at: cursor, of: panelOptions(view).length } : phase === "safer" && safer !== undefined ? { at: safer.cursor, of: safer.options.length + 1 } : null;
+	rows.push(panelKeyRow(panelAffordance(view, phase, cursor, safer), list, W));
 	return { rows, ...layout };
+}
+
+/** Graphite P4's fold for a one-line command; it lives with the card's
+ *  head now, which folds a command the same way (the card round). */
+export { foldAtSpaces };
+
+/** The key row: the keys, cut by cells, and the counter at the right margin. */
+export function panelKeyRow(keys: string, list: { readonly at: number; readonly of: number } | null, W: number): string {
+	const p = palette();
+	const count = list === null ? "" : `${list.at + 1}/${list.of}`;
+	const room = Math.max(1, W - 1 - 2 - (count === "" ? 0 : count.length + 2));
+	const text = cutLine(keys, room);
+	const gap = count === "" ? "" : " ".repeat(Math.max(2, W - 1 - 2 - visibleWidth(text) - count.length));
+	return `  ${p.dim}${text}${gap}${count}${p.reset}`;
+}
+
+/** Graphite P4: kiso's own question names the band with its facts; when the
+ *  label does not fit, the LAST fact (a path) is cut from the left, so its
+ *  end — the folder's own name — and the rule after it stay on screen. */
+function askedLabel(question: string, facts: readonly string[], W: number): string {
+	const room = Math.max(1, W - 8); // `─── ` before the label, ` ───` after it
+	const whole = [question, ...facts].join(" \u00b7 ");
+	if (visibleWidth(whole) <= room || facts.length === 0) return whole;
+	const head = [question, ...facts.slice(0, -1)].join(" \u00b7 ");
+	const left = room - visibleWidth(head) - 3 - 1; // ` · ` and the ellipsis
+	if (left < 4) return whole; // too narrow to say anything useful of it — the band cuts as it always did
+	let tail = "";
+	for (const ch of [...facts[facts.length - 1]!].reverse()) {
+		if (visibleWidth(ch + tail) > left) break;
+		tail = ch + tail;
+	}
+	return `${head} \u00b7 \u2026${tail}`;
 }
 
 /**
@@ -770,13 +954,11 @@ export function panelBlockLayout(view: PanelView, phase: PanelPhase, cursor: num
  * a human really is writing — leads with the word for what they are
  * writing.
  */
-export function panelLead(view: PanelView, phase: PanelPhase, cursor: number): string {
-	const p = palette();
-	if (phase === "amend") return `${p.dim}amend› ${p.reset}`;
-	// R2: an EMPTY lead emits no bytes at all — `dim + reset` around
-	// nothing is eight bytes on the composer row of every frame a panel
-	// is up, and the row it wraps has no content to style.
-	return PANEL_IDLE_LEAD === "" ? "" : `${p.dim}${PANEL_IDLE_LEAD}${p.reset}`;
+export function panelLead(_view: PanelView, _phase: PanelPhase, _cursor: number): string {
+	// Graphite P4 (owner, 2026-10-04): a panel leaves the input row to the
+	// composer in every phase — DECLARED REVERSAL of the named `amend›` lead;
+	// the empty note row carries a dim hint instead (the tui's panelHintOf)
+	return PANEL_IDLE_LEAD;
 }
 
 /** The composer's lead while a selection list owns the keys.
@@ -793,8 +975,8 @@ const PANEL_IDLE_LEAD = "";
 /** The lead's plain text — the editor's reflow width (the line must
  *  fit the lead + the drawn cursor's own cell — R2 retired the box and
  *  its walls with it). */
-export function panelLeadPlain(view: PanelView, phase: PanelPhase, cursor: number): string {
-	return phase === "amend" ? "amend› " : PANEL_IDLE_LEAD;
+export function panelLeadPlain(_view: PanelView, _phase: PanelPhase, _cursor: number): string {
+	return PANEL_IDLE_LEAD;
 }
 
 export function panelLeadWidth(view: PanelView, phase: PanelPhase, cursor: number): number {
@@ -831,218 +1013,211 @@ export function panelStatus(view: PanelView, phase: PanelPhase, cursor: number):
  * arrows are — an affordance nobody is told about is one nobody uses.
  */
 export function panelAffordance(view: PanelView, phase: PanelPhase, cursor: number, safer?: SaferRuntime): string {
-	if (phase === "amend") return "⏎ send · esc back";
+	// Graphite P4: the amend keys say where esc goes back to
+	if (phase === "amend") return "⏎ sends · esc back to the choices";
 	// TUI2-R3v2 ③: the ask is in flight — the ONE key that still means
 	// something is the one that gets you out of it.
 	if (phase === "asking") return "esc cancels";
 	// the same sentence the approval list carries, counting the rows THIS
 	// list has (the alternatives plus the way back)
 	if (phase === "safer" && safer !== undefined) {
-		return `↑↓ move · ⏎ or click confirms · 1-${safer.options.length + 1} instant · esc`;
+		return `↑↓ move · ⏎ or click confirms · 1–${safer.options.length + 1} instant · esc`;
 	}
-	return `↑↓ move · ⏎ or click confirms · 1-${panelOptions(view).length} instant · esc`;
+	// Graphite P4 (owner, 2026-10-04): on an approval esc is a denial (the CLI
+	// records it as one), so the key row says so; kiso's own questions keep
+	// the bare `esc`, which declines them
+	return `↑↓ move · ⏎ or click confirms · 1–${panelOptions(view).length} instant · ${view.flavor === "approval" ? "esc denies" : "esc"}`;
 }
 
 
-// ── TUI2-R2 ④: the pick block, its lead, its status, its affordance ──
+// ── TUI2-R2 ④, Graphite P3: the pick block, its lead, its status ────
 
 /**
- * The pick block's rows — the prototype's C frame.
+ * Graphite P3 (owner, 2026-10-04) — the pick block takes the shape of every
+ * list band (§8.2, §8.13). The band names itself with its count or its
+ * current value; a window of eight rows from a 30-row terminal, five below,
+ * with dim more-marks in column 0; the rows a TABLE, each column measured
+ * over the whole list; the selected row the card head every list shares,
+ * OPENED into a second row on the same wash (the /resume shape) for the
+ * level strip and what the columns cannot hold; one key row with the
+ * counter. No closing rule: the composer's rail closes the band, as it does
+ * the command list.
  *
- * The header says what is in effect right now, because the first
- * question anyone opening this panel has is "what am I on?". The
- * options are numbered from 1 and the number IS the key. The `t` row is
- * last and always present: a profile list is a convenience, never the
- * set of models that exist, and a picker that can only offer what
- * someone remembered to configure is a smaller product than the one it
- * replaced.
+ * DECLARED REVERSALS (P3, owner, 2026-10-04): the `current:` row (its words
+ * ride the band's name), the bracketed level (the level in force is gold),
+ * the `↕ 1-9 / 11` row (the more-marks say it), PICK_MAX's nine-row window
+ * (§8.2's eight and five), and the `t` row with its typing phase (a typed
+ * `provider/model` is a row of the filter — PickSpec.direct).
  *
- * Single-row discipline: every row CUTS, never folds — the block's
- * height is its row count (the W20 rule the #checked throw demands).
+ * Single-row discipline: every row CUTS, never folds — the block's height
+ * is its row count (the W20 rule the #checked throw demands).
  */
-export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, maxRows: number): string[] {
+export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, maxRows: number, height = 24): string[] {
 	const p = palette();
 	const spec = view.pick!;
-	const rows: string[] = [`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`]; // R2: the same rule the composer and the other panels use
-	const room = Math.max(1, W - 2);
-	rows.push(`  ${cutLine(`${p.bold}${escapeTerminal(spec.header.split(" \u2014 ")[0] ?? spec.header)}${p.reset}${p.dim}${escapeTerminal(spec.header.slice((spec.header.split(" \u2014 ")[0] ?? "").length))}${p.reset}`, room)}`);
-	if (spec.options.length === 0) {
-		// the honest empty state \u2014 the caller's own copy, verbatim
-		rows.push(`  ${cutLine(`${p.dim} ${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
-	} else {
-		// the budget: the OPENING rule, the header, the t row, the
-		// affordance and the CLOSING rule — five, not four. R2 added the
-		// opening rule to this block and bumped the ask panel (5→6) and the
-		// approval panel (5→6) to pay for it, and missed this one: the
-		// block ran two rows over its budget, and two rows of committed
-		// content were scrolled irreversibly into the scrollback every time
-		// `/model` opened on a tight screen. The `+N more` row is a sixth
-		// when it appears, so it is paid for too.
-		// OR-7: the level strip is a row of its own under the highlighted
-		// option, so it is chrome and it is paid for here. Inline after the
-		// note was the coordination note's shape and it does not fit: five
-		// levels need 42 columns and the note column has 48 at width 100,
-		// which it already spends on `profile: <name>`. A second axis that
-		// truncates on a normal terminal is not a second axis.
-		const strip = spec.options[state.cursor]?.levels !== undefined && state.phase === "options" ? 1 : 0;
-		// 2026-09-21 (finding DC-58, the owner's report): the window FOLLOWS the
-		// cursor instead of being pinned to the top. It used to be
-		// `slice(0, min(budget, PICK_MAX))`, so with a 60-profile config the
-		// keyboard reached the first nine and the rest were reachable only by
-		// typing the name.
-		//
-		// REVIEW of this round: the SIZE depends on the frame's budget, so the
-		// renderer and the digit keys used to disagree on a short terminal
-		// (drawn rows 1-2, keys computing against nine). `pickWindowOf` is the
-		// one derivation both sides use — the renderer draws it, the input layer
-		// is HANDED it (`visiblePickWindow`).
-		const win = pickWindowOf(view, state.cursor, state.phase, maxRows);
-		const shown = spec.options.slice(win.first, win.first + win.size);
-		// R2: the note takes a COLUMN, not three spaces after a label of
-		// whatever length this row happened to have, and the cursor row
-		// wears the bar and the arrow like every other list in the
-		// product. This panel was the last one still saying "selected"
-		// with bold alone.
-		// 0.40.1 (the owner's dogfood, 2026-09-21): the row NUMBER is gone. The
-		// digits still pick by visible position (the keys sheet documents them),
-		// but a number the person reads as decoration is noise the label pays
-		// for at every width — and the owner picks with ↑↓ and the mouse.
-		const lead = (o: PickOption, _i: number, cursor: boolean): string => `${cursor ? "\u2192" : " "} ${escapeTerminal(o.label)}`;
-		const widest = Math.max(...shown.map((o, i) => visibleWidth(lead(o, i, false))));
-		const stop = shown.some((o) => o.note !== undefined) && widest + 2 <= Math.floor(room / 2) && room - widest - 2 >= 18 ? widest + 2 : 0;
-		for (let i = 0; i < shown.length; i += 1) {
-			const o = shown[i]!;
-			// DC-58: `i` is the row's position in the WINDOW, the cursor is an
-			// option index — the mark lands on the cursor's own row after any
-			// scroll only when the window's origin is added back.
-			const mark = win.first + i === state.cursor && state.phase === "options";
-			const plain = lead(o, i, mark);
-			const head = `${mark ? p.bold : ""}${plain}${mark ? p.reset : ""}`;
-			const note =
-				o.note === undefined
-					? ""
-					: stop > 0
-						? `${" ".repeat(Math.max(1, stop - visibleWidth(plain)))}${p.dim}${widthCut(escapeTerminal(o.note), Math.max(0, room - stop))}${p.reset}`
-						: `${p.dim}   ${escapeTerminal(o.note)}${p.reset}`;
-			const text = cutLine(`${head}${note}`, room);
-			// ONE space, like the approval and ask panels: the bar spends a
-			// leading cell of its own, so a two-space unselected prefix
-			// moves the digit column by one as the cursor walks — the exact
-			// "a column that moves per row reads as damage" this file
-			// quotes twice as its standard.
-			rows.push(mark ? selectionBar(text, visibleWidth(text), W) : ` ${text}`);
-		}
-		if (spec.options.length > shown.length) {
-			const to = win.first + shown.length;
-			rows.push(`  ${cutLine(`${p.dim} \u2195 ${win.first + 1}-${to} / ${spec.options.length} \u2014 \u2191\u2193 scrolls${p.reset}`, room)}`);
-		}
-		const axis = shown[state.cursor - win.first];
-		if (strip === 1 && axis?.levels !== undefined) {
-			const off = new Set(axis.disabled ?? []);
-			// the RUNTIME cursor, not the option's starting index: the option
-			// says where the cursor opens, the state says where it is now.
-			// Reading the option here rendered a bracket that never moved
-			// while the state underneath it did — the silent movement this
-			// whole axis exists to replace.
-			const cur = enabledLevel(axis, state.level);
-			// the bracket means THE CURSOR IS HERE. It used to mean "the
-			// registry default" in the note's text form; a row whose
-			// default is null now marks nothing at all rather than
-			// promoting the first level into one.
-			const cells = axis.levels.map((l, i) => {
-				const text = escapeTerminal(l);
-				if (off.has(i)) return `${p.dim}${text}${p.reset}`;
-				return i === cur ? `${p.bold}[${text}]${p.reset}` : text;
-			});
-			const note = axis.levelNote === undefined ? "" : ` ${p.dim}\u2014 ${escapeTerminal(axis.levelNote)}${p.reset}`;
-			rows.push(`  ${cutLine(`${p.dim}effort: ${p.reset}${cells.join(`${p.dim} \u00b7 ${p.reset}`)}${note}`, room)}`);
-		}
+	const list = pickList(spec, state);
+	const total = spec.options.length;
+	// a legacy `name — words` header: the name opens the band, the words join its facts
+	const name = spec.header.split(" — ")[0] ?? spec.header;
+	const said = spec.header.slice(name.length).replace(/^ — /, "");
+	const matched = list.shown.filter((i) => i < total).length;
+	const count = spec.noun === undefined ? "" : list.query !== "" ? `${matched} of ${total} match` : spec.noun === "" ? `${total}` : `${total} ${spec.noun}`;
+	const facts = [count, said, spec.facts ?? ""].filter((f) => f !== "").join(" · ");
+	const rows: string[] = [bandHeader(escapeTerminal(facts === "" ? name : `${name} · ${facts}`), W)];
+	const room = Math.max(1, W - 3); // the two-cell lead and one cell of margin
+	// the honest empty state — the caller's own copy, verbatim; a typed
+	// `provider/model` is still a row under it
+	if (total === 0) rows.push(`  ${cutLine(`${p.dim}${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
+	else if (list.shown.length === 0) rows.push(`  ${cutLine(`${p.dim}nothing matches "${escapeTerminal(list.query)}"${p.reset}`, room)}`);
+	if (list.shown.length === 0) {
+		// the last sweep (owner, 2026-10-06): a list with nothing in it has no
+		// place to count (it read `0/0` under "no profiles"); a filter that
+		// matches nothing still counts 0/0, as /resume's does
+		rows.push(total === 0 ? cutLine(`${p.dim}  esc${p.reset}`, W) : bandKeyRow(["esc"], 0, 0, W));
+		return rows;
 	}
-	const typing = state.phase === "custom";
-	if (spec.typeHint !== undefined) {
-		const tText = cutLine(`${typing ? p.bold : ""}${typing ? "\u2192" : " "} t ${p.reset}${p.dim}${escapeTerminal(spec.typeHint)}${p.reset}`, room);
-		rows.push(typing ? selectionBar(tText, visibleWidth(tText), W) : ` ${tText}`);
+	const win = pickWindowOf(view, state, maxRows, height);
+	const colsOf = (o: PickOption): readonly string[] => (o.cols ?? (o.note === undefined ? [] : [o.note])).map(escapeTerminal);
+	// the columns measure over EVERY option, so a filter or a walked level
+	// never moves them
+	const labelW = Math.max(0, ...spec.options.map((o) => visibleWidth(escapeTerminal(o.label))));
+	const colW: number[] = [];
+	for (const o of spec.options) {
+		colsOf(o).forEach((c, j) => {
+			const levels = j === spec.levelColumn ? (o.levels ?? []).map((l) => visibleWidth(escapeTerminal(l))) : [];
+			colW[j] = Math.max(colW[j] ?? 0, visibleWidth(c), ...levels);
+		});
 	}
-	rows.push(`  ${p.dim}${cutLine(pickAffordance(state, spec.options[state.cursor]?.levels !== undefined), room)}${p.reset}`);
-	rows.push(`${p.dim}${"\u2500".repeat(Math.max(0, W))}${p.reset}`);
+	const lead = (mark: string | null): string => (mark === null ? " " : `${p.dim}${mark}${p.reset}`);
+	for (let k = win.first; k < win.first + win.size; k += 1) {
+		const i = list.shown[k]!;
+		const on = i === list.cursor;
+		const mark = moreMark(k, win.first, win.size, list.shown.length);
+		if (i === total) {
+			// the direct row: what was typed, offered as a pick of its own
+			const text = cutLine(`use ${escapeTerminal(list.direct ?? "")} directly`, room);
+			rows.push(on ? selectionBar(`${p.bold}→${text}${p.reset}`, visibleWidth(text) + 1, W) : `${lead(mark)} ${p.dim}${text}${p.reset}`);
+			continue;
+		}
+		const o = spec.options[i]!;
+		const hit = list.hits.get(i);
+		const label = escapeTerminal(o.label);
+		let text = `${goldHits(label, new Set(hit?.col === 0 ? hit.at : []), on ? p.bold : o.off === true ? p.dim : "")}${" ".repeat(Math.max(0, labelW - visibleWidth(label)))}`;
+		let width = labelW;
+		const cols = colsOf(o);
+		cols.forEach((c, j) => {
+			// a setting's value follows ←→ on the selected row
+			const shown = on && j === spec.levelColumn && o.levels !== undefined && list.level !== null ? escapeTerminal(o.levels[list.level] ?? c) : c;
+			const plain = spec.columns?.[j] === "plain";
+			const style = plain ? (on ? p.bold : o.off === true ? p.dim : "") : p.dim;
+			const last = j === cols.length - 1;
+			text += `  ${goldHits(shown, new Set(hit?.col === j + 1 ? hit.at : []), style)}${last ? "" : " ".repeat(Math.max(0, (colW[j] ?? 0) - visibleWidth(shown)))}`;
+			width += 2 + (last ? visibleWidth(shown) : (colW[j] ?? 0));
+		});
+		const cut = width > room ? cutLine(text, room) : text;
+		if (!on) {
+			rows.push(`${lead(mark)} ${cut}`);
+			continue;
+		}
+		rows.push(selectionBar(`${p.bold}→${cut}`, Math.min(width, room) + 1, W));
+		const open = openedRow(o, list.level, room);
+		if (open !== null) rows.push(selectionBar(` ${open.text}`, open.width + 1, W));
+	}
+	const here = list.cursor >= 0 && list.cursor < total ? spec.options[list.cursor] : undefined;
+	const keys = ["↑↓ move"];
+	if (here?.levels !== undefined && here.levels.length > 0) keys.push(`←→ ${here.axisLabel ?? "effort"}`);
+	if ((spec.input ?? "digits") === "digits" && win.size > 1) keys.push(`1–${Math.min(win.size, PICK_MAX)} picks`);
+	keys.push(here?.enter ?? spec.enter ?? "⏎ confirms", "esc");
+	rows.push(bandKeyRow(keys, Math.max(0, list.shown.indexOf(list.cursor)), list.shown.length, W));
 	return rows;
 }
 
-/** The digits are the keys, so what one SCREEN offers is still bounded by
- *  the digits there are — but the list itself is no longer bounded by it.
- *
- *  Finding DC-58 (the owner, 2026-09-21): this constant used to cap what the
- *  KEYBOARD could reach (`/model` on a 60-profile config offered nine and
- *  said `/model <name>` for the rest). The window now follows the cursor —
- *  `pickWindow` — so PICK_MAX is only how many rows one screen shows, and
- *  ↑↓ walks every option.
- */
+/** Text cut to `room` cells by cells, with an ellipsis — plain text only. */
+const fitCells = (t: string, room: number): string => (visibleWidth(t) <= room ? t : room <= 1 ? "" : `${widthCut(t, room - 1)}…`);
+
+/** The selected row's second row: the level strip (the level in force
+ *  bold gold, a level the thinking mode forbids dim), then what the caller
+ *  has to say — the strip stays whole and the words give way. Null when
+ *  there is nothing to open into. */
+function openedRow(o: PickOption, level: number | null, room: number): { text: string; width: number } | null {
+	const p = palette();
+	// off a known ground the warn tint carries the gold, as the typed letters do
+	const gold = p.gold !== "" ? p.gold : p.warn;
+	const tail = o.levelNote ?? o.opened ?? "";
+	if (o.levels === undefined || o.levels.length === 0) {
+		if (tail === "") return null;
+		const t = fitCells(escapeTerminal(tail), room);
+		return { text: `${p.dim}${t}${p.reset}`, width: visibleWidth(t) };
+	}
+	const off = new Set(o.disabled ?? []);
+	// a named axis is the row's own value (a setting), so its strip needs no
+	// label; the model's effort is not the row's label, so it says `effort`
+	const label = o.axisLabel === undefined ? "effort " : "";
+	const levels = o.levels.map((l) => escapeTerminal(l));
+	const cells = levels.map((t, i) => (i === level ? `${p.bold}${gold}${t}${p.reset}` : off.has(i) ? `${p.dim}${t}${p.reset}` : t));
+	let text = `${label === "" ? "" : `${p.dim}${label}${p.reset}`}${cells.join(`${p.dim} · ${p.reset}`)}`;
+	let width = visibleWidth(`${label}${levels.join(" · ")}`);
+	const t = tail === "" ? "" : fitCells(escapeTerminal(tail), room - width - 5);
+	if (t !== "") {
+		text += `${p.dim}  ·  ${t}${p.reset}`;
+		width += 5 + visibleWidth(t);
+	}
+	return width > room ? { text: cutLine(text, room), width: room } : { text, width };
+}
+
+/** The digits are the keys, so what one SCREEN offers is bounded by the
+ *  digits there are. Finding DC-58 (the owner, 2026-09-21) made the window
+ *  follow the cursor, so this is how many rows a digit can name, not how
+ *  many rows the keyboard reaches. */
 export const PICK_MAX = 9;
 
-/** The option window the pick panel draws and the digits name: `size` rows
- *  starting at `first`, with `first` derived from the cursor so it cannot
- *  drift from it. Edge-following (the window starts moving only when the
- *  cursor leaves it) and clamped at both ends, so the last page is full
- *  rather than short.
+/**
+ * The pick's window for THIS frame — the one derivation the renderer and
+ * the digit keys share (DC-58's review: a size derived twice is a size that
+ * can disagree). Positions are into `pickList(...).shown`.
  *
- *  Pure, and the ONE copy: the renderer, the digit keys and the click
- *  hit-test all ask this function rather than each deriving an offset.
+ * Graphite P3: §8.2's window (eight rows from a 30-row terminal, five
+ * below, the cursor kept a row inside an edge while more lies past it),
+ * within the frame's budget: the band's name, the key row, the opened row
+ * and a `nothing matches` row are the chrome.
  */
-/** The pick panel's window for THIS frame's budget — the one derivation the
- *  renderer and the input layer share (review of this round).
- *
- *  The renderer draws it; `Dock.visiblePickWindow` hands the SAME value to the
- *  digit keys, because a size derived twice is a size that can disagree — and
- *  on a short terminal it did (two rows drawn, nine assumed, so `1` could mean
- *  a row nobody could see). `phase` is compared as a string so this module
- *  keeps its zero-dependency contract.
- */
-export function pickWindowOf(view: PanelView, cursor: number, phase: string, maxRows: number): { first: number; size: number } {
-	const count = view.pick?.options.length ?? 0;
-	const strip = view.pick?.options[cursor]?.levels !== undefined && phase === "options" ? 1 : 0;
-	const chrome = 5 + strip + (count > Math.min(Math.max(1, maxRows - 5 - strip), PICK_MAX) ? 1 : 0);
-	const budget = Math.max(1, maxRows - chrome);
-	return pickWindow(cursor, count, Math.min(budget, PICK_MAX));
+export function pickWindowOf(view: PanelView, state: PickRuntime, maxRows: number, height = 24): { first: number; size: number } {
+	const spec = view.pick;
+	if (spec === undefined) return { first: 0, size: 0 };
+	const list = pickList(spec, state);
+	const here = list.cursor >= 0 && list.cursor < spec.options.length ? spec.options[list.cursor] : undefined;
+	const opens = here !== undefined && ((here.levels?.length ?? 0) > 0 || (here.levelNote ?? here.opened ?? "") !== "") ? 1 : 0;
+	const notice = spec.options.length === 0 || list.shown.length === 0 ? 1 : 0;
+	const chrome = 2 + opens + notice;
+	const size = Math.max(1, Math.min(bandVisible(height), maxRows - chrome));
+	const { first, count } = bandWindow(list.shown.length, Math.max(0, list.shown.indexOf(list.cursor)), size);
+	return { first, size: count };
 }
 
-export function pickWindow(cursor: number, count: number, size: number): { first: number; size: number } {
-	const win = Math.max(1, Math.min(size, count));
-	if (count <= win) return { first: 0, size: win };
-	const first = Math.max(0, Math.min(cursor - win + 1, count - win));
-	return { first, size: win };
+/** The input row's lead. Graphite P3: a pick leaves the input row to the
+ *  composer — the filter is typed there, and a digit list needs no lead
+ *  to say so (its key row does). */
+export function pickLeadPlain(_view: PanelView, _state: PickRuntime): string {
+	return "";
 }
 
-/** The input row's lead: the digit range while picking, the named
- *  prompt while typing one out. */
-export function pickLeadPlain(view: PanelView, state: PickRuntime): string {
-	if (state.phase === "custom") return "provider/model: ";
-	const n = Math.min(view.pick!.options.length, PICK_MAX);
-	return n === 0 ? "t> " : `1-${n}> `;
+export function pickLead(_view: PanelView, _state: PickRuntime): string {
+	return "";
 }
 
-export function pickLead(view: PanelView, state: PickRuntime): string {
-	const p = palette();
-	return `${p.bold}${pickLeadPlain(view, state)}${p.reset}`;
-}
-
-/** The status row's left text \u2014 the CALLER's, because only the caller
- *  knows whether a run is paused behind this panel. */
+/** The status row's left text — the CALLER's, because only the caller
+ *  knows whether a run is paused behind this panel. (Graphite P3: on a
+ *  dock the bar stays under a pick; this is the dock-less text.) */
 export function pickStatus(view: PanelView): string {
 	return view.statusText;
 }
 
-export function pickAffordance(state: PickRuntime, axis = false): string {
-	// DC-36 — the row NAMES the arrows. TUI2-R2 ④ bound ↑↓ to the pick's
-	// cursor and the keys sheet has said `panels: ↑↓ move` ever since,
-	// but this row — the one a human is actually looking at while the
-	// panel is up — advertised only the digits. The owner read it as
-	// "type the answer", which is the same lesson DC-30 filed: a hint
-	// that omits the gesture is why the gesture goes unused.
-	// OR-7 names \u2190\u2192 here for the same reason DC-36 named \u2191\u2193: a gesture
-	// this row omits is a gesture that goes unused. It appears only when
-	// there is a second axis to walk.
-	if (state.phase === "custom") return "enter commits \u00b7 esc backs out";
-	return axis ? "\u2191\u2193 move \u00b7 \u2190\u2192 effort \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc" : "\u2191\u2193 move \u00b7 digits pick \u00b7 \u23ce confirms \u00b7 esc";
+/** The key words, for a caller that draws them outside the block. The
+ *  block's own key row is the one on screen (P3). */
+export function pickAffordance(_state: PickRuntime, axis: boolean | string = false): string {
+	// DC-36 — the row NAMES the arrows; OR-7 names ←→ for the same reason,
+	// and only when there is a second axis to walk
+	return axis !== false ? `↑↓ move · ←→ ${axis === true ? "effort" : axis} · ⏎ confirms · esc` : "↑↓ move · ⏎ confirms · esc";
 }
 
 /** Compose a pick view. The flavor/name/title/args fields exist for the
@@ -1064,6 +1239,21 @@ export function modePickView(spec: PickSpec, statusText: string): PanelView {
 		statusText,
 		args: { kind: "text", lines: [] },
 		fallbackQuestion: "switch mode? (name) ",
+		pick: spec,
+	};
+}
+
+/** Graphite R3e — `/settings` as a pick panel: a row per setting, the
+ *  session's own ones with a second axis to walk. */
+export function settingsPickView(spec: PickSpec, statusText: string): PanelView {
+	return {
+		flavor: "simple",
+		name: "settings",
+		title: "settings",
+		speaker: "you",
+		statusText,
+		args: { kind: "text", lines: [] },
+		fallbackQuestion: "settings: (name) ",
 		pick: spec,
 	};
 }

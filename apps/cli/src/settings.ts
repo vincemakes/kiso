@@ -36,11 +36,17 @@ export interface SettingsInput {
 	readonly version: string;
 }
 
-interface Row {
+export interface Row {
 	readonly name: string;
 	readonly value: string;
 	readonly from: string;
 	readonly change: string;
+	/** Graphite P3: the value as a table cell (`on`, `1M`) where `value` is
+	 *  a sentence; absent, the value is already short */
+	readonly brief?: string;
+	/** Graphite P3: what the sentence said that the cell does not — the
+	 *  panel's opened row carries it */
+	readonly means?: string;
 }
 
 const MODE_LAYER: Readonly<Record<ModeSource, string>> = { flag: "--mode", env: "env KISO_MODE", project: "project config", user: "user config", default: "default" };
@@ -88,7 +94,7 @@ function dontAskRow(i: SettingsInput): Row {
 	const on = i.dontAsk === true;
 	const resolved = resolveModeLayers(modeLayers(i));
 	const from = (resolved.dontAsk !== "off") === on ? dontAskFrom(i, resolved.from.dontAsk) : "set in this session";
-	return { name: "don't ask", value: on ? "on — what would ask is refused" : "off", from, change };
+	return { name: "don't ask", value: on ? "on — what would ask is refused" : "off", from, change, brief: on ? "on" : "off", ...(on ? { means: "what would ask is refused" } : {}) };
 }
 
 function modelRow(i: SettingsInput): Row {
@@ -121,7 +127,16 @@ function layered<K extends keyof KisoConfig>(i: SettingsInput, key: K): { value:
 	return { value: undefined, from: "default" };
 }
 
-export function settingsRows(i: SettingsInput): string[] {
+/** The window's sentence as a cell and the rest (`1M` / `the registry's
+ *  for this endpoint`) — the window chain words it `<size>, <source>`. */
+function windowCells(window: string): Pick<Row, "brief" | "means"> {
+	const cut = window.indexOf(", ");
+	return cut < 0 ? {} : { brief: window.slice(0, cut), means: window.slice(cut + 2) };
+}
+
+/** Graphite R3e: the settings as data — the /settings panel's rows and
+ *  the printed form below read the same list. */
+export function settingsFacts(i: SettingsInput): Row[] {
 	const trust = layered(i, "projectTrust");
 	const auto = i.env.KISO_AUTO_COMPACT !== undefined ? { value: i.env.KISO_AUTO_COMPACT, from: "env KISO_AUTO_COMPACT" } : layered(i, "autoCompact");
 	const rows: Row[] = [
@@ -134,9 +149,18 @@ export function settingsRows(i: SettingsInput): string[] {
 			value: i.floorOn ? "on — irrecoverable deletes are refused in every mode" : "off",
 			from: i.user?.floor !== undefined ? "user config" : "default",
 			change: "\"floor\": \"off\" in ~/.kiso/config.json (user config only)",
+			brief: i.floorOn ? "on" : "off",
+			...(i.floorOn ? { means: "irrecoverable deletes are refused in every mode" } : {}),
 		},
-		{ name: "window", value: i.window, from: "the window chain (see /status)", change: "\"contextWindow\" on the profile; KISO_CONTEXT_WINDOW for one run" },
-		{ name: "compaction", value: "in-run: past half the window at a phase end, past 80% at once", from: "built in", change: "/compact on demand" },
+		{ name: "window", value: i.window, from: "the window chain (see /status)", change: "\"contextWindow\" on the profile; KISO_CONTEXT_WINDOW for one run", ...windowCells(i.window) },
+		{
+			name: "compaction",
+			value: "in-run: past half the window at a phase end, past 80% at once",
+			from: "built in",
+			change: "/compact on demand",
+			brief: "50% · 80%",
+			means: "past half the window at a phase end, past 80% at once",
+		},
 		{
 			name: "auto-compact",
 			value: auto.value === undefined ? "off" : typeof auto.value === "object" ? `at ${(auto.value as { thresholdRatio: number }).thresholdRatio} of the window, at a run's start` : String(auto.value),
@@ -149,9 +173,23 @@ export function settingsRows(i: SettingsInput): string[] {
 			value: i.thinkingHidden ? "hidden — one line per block" : "shown",
 			from: i.thinkingRemembered ? "ctrl+t (remembered)" : "default",
 			change: "ctrl+t",
+			brief: i.thinkingHidden ? "hidden" : "shown",
+			...(i.thinkingHidden ? { means: "one line per block" } : {}),
 		},
 		{ name: "version", value: i.version, from: "running", change: "kiso update" },
 	];
+	return rows;
+}
+
+/** The printed form: one block per setting — what it is, where it came
+ *  from and how to change it (a pipe, a dock-less TTY, and a panel row's
+ *  enter). */
+export function settingRow(r: Row, width = r.name.length + 2): string {
+	return `${r.name.padEnd(width)}${r.value}\n${" ".repeat(width)}from ${r.from} · change: ${r.change}`;
+}
+
+export function settingsRows(i: SettingsInput): string[] {
+	const rows = settingsFacts(i);
 	const width = Math.max(...rows.map((r) => r.name.length)) + 2;
-	return rows.map((r) => `${r.name.padEnd(width)}${r.value}\n${" ".repeat(width)}from ${r.from} · change: ${r.change}`);
+	return rows.map((r) => settingRow(r, width));
 }

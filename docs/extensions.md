@@ -385,9 +385,10 @@ or multi select.
   `tool_result` of an ordinary tool call, so **an answered question is
   never asked again — including across `kill -9`**. A question that was
   interrupted before you answered it is surfaced on the next `kiso
-  resume` for an explicit re-ask (`an unanswered question was
-  interrupted — ask it again? — 1 re-ask · 3 drop`), because an
-  unanswered question is not a side effect that may have applied.
+  resume` for an explicit re-ask — on a terminal a panel that quotes the
+  question and asks `ask it again?` (`1 ask it again` · `2 drop it`) —
+  because an unanswered question is not a side effect that may have
+  applied.
 - **No new durable machinery.** No new event kinds, no per-keystroke
   persistence: a crash re-presents the whole call rather than a
   half-filled form.
@@ -425,7 +426,9 @@ artifact kinds are recognized there — `extensions/*.mjs`, `mcp.json`, and
 `skills/<name>/SKILL.md` — and they share ONE trust gate (ADR-0037):
 
 - **First discovery.** The CLI lists every artifact (file name + digest
-  short prefix) and asks once: `trust this project's .kiso? (y/n)`. The
+  short prefix) and asks once — on a terminal a panel, `trust this
+  project?` with the files quoted (`1 trust it` · `2 not now`); without
+  one, `trust this project's .kiso? (y/n)`. The
   verdict is recorded in `~/.kiso/trust.jsonl` (append-only,
   `KISO_HOME`-aware).
 - **Granted** — the project's extensions load (marked `project:` in the

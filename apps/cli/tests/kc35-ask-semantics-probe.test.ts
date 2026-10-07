@@ -309,8 +309,14 @@ describe("KC3.5 ① — what the HUMAN meets on `kiso resume` after an idempoten
 		// the STATE and now asks the ACTION — the dock-less twin of this
 		// copy inverted RD-1B's C3 into a double-deploy. The meta-hop this
 		// case pins is unchanged; only the question's grammar moved.
-		expect(screen).toContain("an interrupted execution may have applied — rerun it?");
-		expect(screen).toContain("read_file (ex-3)");
+		// Graphite P1b (owner, 2026-09-30) — RE-DERIVED: kiso's own question —
+		// the band asks the action and names the tool, one sentence says why it
+		// is asked, and the gutter quotes WHAT may have run (the call's target,
+		// read from the execution record), not the execution id
+		expect(screen).toContain("rerun it? · read_file");
+		expect(screen.replace(/\s+/g, " ")).toContain("so it may already have run");
+		expect(screen).toMatch(/│ kiso\.json/);
+		expect(screen).not.toContain("ex-3");
 
 		// ...and nothing re-executed while the question stood: the durable
 		// log still holds exactly one started event, no second attempt.
