@@ -530,7 +530,15 @@ rows inside it give way to make the room, the top-most first, so it keeps
 its height (§5) and the note counts what it hides. It reaches only while a
 row above it stays cut, and only a dozen rows back; past that the window
 is the plain tail. An output line too long for the row continues two cells
-in, so one line reads as one. **A read shows nothing at all**: its result is the
+in, so one line reads as one. The note counts output LINES, the unit it
+names (0.47.1, finding 0470-F1): a line hidden whole is one however many
+rows it wrapped to, and a line the cut passes through is not counted but
+said — `… the start of this line` above a tail that opens inside one, `…
+3 earlier lines and the start of this one`, and `the rest of this one`
+under a head. Narrower, that clause gives way before the count's word
+does. DECLARED REVERSAL: the note counted rows — a one-line result that
+wrapped to six rows at 80 columns read `… 1 earlier line` over the end of
+that same line. **A read shows nothing at all**: its result is the
 file, five lines of it tell a reader less than the head row already does,
 and the key opens the whole thing. Its continuation note, when the tool
 itself capped the result, is not a preview and stays. When the preview
@@ -609,7 +617,15 @@ A failure's outcome word is short and its text is the body: a shell's
 `exit N`, any other tool's `failed`. A refusal reads `denied by you ·
 <reason>` when the person refused and `denied · <reason>` when a policy
 did (VD-11: the person's answer is worth recording; the ambient default is
-not). A call still open when the person stopped the turn reads
+not). A person's refusal with no words of their own (esc at the panel, which
+the runtime records as "denied by user") reads `denied by you` alone, and
+its body — `[Permission denied] denied by user`, what the model was
+handed — is not drawn (0.47.1, finding 0470-F4). A refusal with a reason
+keeps its body: the head gives the reason way on a narrow row, and the
+body still says it. DECLARED REVERSAL: that refusal said itself three
+times — `denied by you · denied by user` on the head, the body, and a row
+`approval cancelled — treated as a denial` under the card, which a dock no
+longer prints (a pipe does). A call still open when the person stopped the turn reads
 `interrupted`, on the machine's ground, with its output so far — no one
 denied it (R3b; it read `denied · interrupted` on the failure ground).
 
@@ -870,6 +886,13 @@ call, its clock running while nothing arrived, and the row after it was
 the sentence `mid-run — the conversation before this point is a summary
 now · ctx now ~11% used`, with the raw `[summarized up to seq N]` under
 it. A pipe prints the sentence and the line as it did.
+
+`/compact` (the manual path) does the same (0.47.1, findings 0470-F2 and
+F3): its `COMPACTED` row is the last word, and `1 round` is singular.
+DECLARED REVERSAL of 0.39.1's boundary row on a dock: the raw `[summarized
+up to seq N]` stood under the row, a fact the durable record keeps and the
+row already says; and the row read `1 rounds`. A pipe prints both as it
+did.
 
 `/think` and `/last` bring back what they find as ONE cell (the last
 sweep): a meta row — `THINKING the last block · 3 lines`, `LAST CALL LIST

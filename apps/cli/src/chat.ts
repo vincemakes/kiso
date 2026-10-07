@@ -1234,7 +1234,11 @@ export async function consumeRun(
 					case "cancel": {
 						// round 10: a cancellation is a CONSERVATIVE denial,
 						// explicitly distinguished from the user typing "n".
-						body.notice("[approval cancelled — treated as a denial]");
+						// 0.47.1 (finding 0470-F4, owner 2026-10-07): on a dock
+						// esc IS the panel's deny key (`esc denies`), and the
+						// card says `denied by you` — this row said it a third
+						// time. A pipe keeps it.
+						if (!dock.active) body.notice("[approval cancelled — treated as a denial]");
 						await session.approve(decisionId, false);
 						break;
 					}
