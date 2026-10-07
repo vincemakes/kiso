@@ -1,5 +1,5 @@
 #!/bin/sh
-# run-paired.sh <task: T3|T5|L1|L2|F1> <pairs> — one paired set of the
+# run-paired.sh <task: T3|T5|T6|L1|L2|F1> <pairs> — one paired set of the
 # 0.46.0 evaluation (kiso-doc plan-0460-3f-evaluation; BM-1).
 #
 # run-ceremony.sh's discipline, for any task: the rc against the PUBLISHED
@@ -38,6 +38,9 @@ run_leg() {
 	echo "--- $TASK $RUN ($ARM)"
 	if [ "$TASK" = T5 ]; then
 		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-t5.sh" kiso "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
+	elif [ "$TASK" = T6 ]; then
+		# 2026-10-08: the 24-turn long curve, paired (the edit-discipline round)
+		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-t6.sh" kiso "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	else
 		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-task.sh" "$TASK" "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	fi
