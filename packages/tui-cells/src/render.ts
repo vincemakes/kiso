@@ -374,8 +374,10 @@ export function currentGroundRgb(): Rgb | null {
 }
 /** One palette per (ground, reported colour, tier): `palette()` runs on
  *  every render and the derivation is not free, so the last answer is
- *  kept and reused while none of its inputs changed. */
-let memo: { key: string; p: Palette } | null = null;
+ *  kept and reused while none of its inputs changed. The inputs are
+ *  compared field by field (the render-perf pass, 2026-10-07): a key
+ *  string built on every call was the hottest line of a Graphite frame. */
+let memo: { ground: Ground; r: number; g: number; b: number; tier: Tier; p: Palette } | null = null;
 export function palette(): Palette {
 	// PH-1a (finding PH-F5): the no-color.org contract is "present AND
 	// non-empty" — the old `=== undefined` check let an EMPTY `NO_COLOR=`
@@ -387,8 +389,10 @@ export function palette(): Palette {
 	if (!((noColor === undefined || noColor === "") && process.stdout.isTTY)) return COLOR_OFF;
 	if (ground === "unknown") return COLOR_NEUTRAL;
 	const tier = colourTier(process.env.COLORTERM);
-	const key = `${ground}|${groundRgb === null ? "-" : `${groundRgb.r},${groundRgb.g},${groundRgb.b}`}|${tier}`;
-	if (memo === null || memo.key !== key) memo = { key, p: paletteFor(ground, groundRgb, tier) };
+	const r = groundRgb === null ? -1 : groundRgb.r;
+	const g = groundRgb === null ? -1 : groundRgb.g;
+	const b = groundRgb === null ? -1 : groundRgb.b;
+	if (memo === null || memo.ground !== ground || memo.tier !== tier || memo.r !== r || memo.g !== g || memo.b !== b) memo = { ground, r, g, b, tier, p: paletteFor(ground, groundRgb, tier) };
 	return memo.p;
 }
 
