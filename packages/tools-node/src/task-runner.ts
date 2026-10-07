@@ -80,11 +80,13 @@ function main(dir: string): void {
 	// that is never removed. The task reads running the moment
 	// command_started is written, so a stop may arrive before the command and
 	// its stop exist; without a handler, TERM's default disposition killed
-	// the runner with no record, and the task was lost. A TERM before the
-	// stop exists is held, and performed as soon as it does (below). The
-	// handler is never swapped: a signal is dispatched from the event loop,
-	// after this synchronous main returns, and dropping the last listener in
-	// between would drop the signal with it.
+	// the runner with no record, and the task was lost. The handler is
+	// dispatched from the event loop, after this synchronous main returns,
+	// by which time `stopNow` is set. `heldTerm` is a guard, only reachable
+	// if main() ever awaits before the stop exists: such a TERM is held and
+	// performed as soon as the stop exists (below). The handler is never
+	// swapped: dropping the last listener between two moments would drop a
+	// pending signal with it.
 	let stopNow: (() => void) | null = null;
 	let heldTerm = false;
 	process.on("SIGTERM", () => {
