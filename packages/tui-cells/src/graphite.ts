@@ -193,7 +193,24 @@ function lifted(c: Colours, token: Token, kind: Kind, tier: Tier): Rgb {
  * own values pass on their reference grounds in both tiers, so there
  * nothing moves. If a pair is still under the floor, the table is used.
  */
+/** The last derivation, kept: the opening's rules and wordmark ask for
+ *  the colours on every frame (the banner is a live cell), and the answer
+ *  only moves with its three inputs (the render-perf pass, 2026-10-07).
+ *  Callers read the table; none writes to it. */
+let lastColours: { kind: Kind; r: number; g: number; b: number; tier: Tier; out: Colours } | null = null;
+
 export function graphiteColours(kind: Kind, ground: Rgb | null, tier: Tier = "24bit"): Colours {
+	const r = ground === null ? -1 : ground.r;
+	const g = ground === null ? -1 : ground.g;
+	const b = ground === null ? -1 : ground.b;
+	const k = lastColours;
+	if (k !== null && k.kind === kind && k.tier === tier && k.r === r && k.g === g && k.b === b) return k.out;
+	const out = deriveColours(kind, ground, tier);
+	lastColours = { kind, r, g, b, tier, out };
+	return out;
+}
+
+function deriveColours(kind: Kind, ground: Rgb | null, tier: Tier): Colours {
 	const base = table(kind);
 	if (ground === null || groundFrom(ground) !== kind) return base;
 	const derived: Record<string, Rgb> = { ...base, ground };
