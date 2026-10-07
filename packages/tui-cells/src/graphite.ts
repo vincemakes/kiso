@@ -39,28 +39,34 @@ export const GRAPHITE = {
 		del: "#fadfdc",
 		track: "#e2e2e2",
 	},
+	// 0.47.1 — the dark table re-adapted (owner, 2026-10-07: preset D on
+	// the dark palette page): the surfaces were a few levels above the
+	// ground and read as heavy on a black terminal; they rise a step, and
+	// dim and ink2 rise with them to keep the floor. washAsk and code sit
+	// just under D's values (#524222, #30406a) so every pair of
+	// TEXT_PAIRS still clears 4.5, in the 256 tier too.
 	dark: {
 		ground: "#0b0b0b",
 		ink: "#ededed",
-		ink2: "#b5b5b5",
-		dim: "#8e8e8e",
+		ink2: "#c2c2c2",
+		dim: "#a4a4a4",
 		rail: "#6b6b6b",
-		line: "#212121",
-		washRun: "#141b28",
-		washDone: "#1b1b1b",
-		washFail: "#2a1716",
-		washAsk: "#211d13",
-		human: "#efe6cf",
+		line: "#3a3a3a",
+		washRun: "#2b3854",
+		washDone: "#333333",
+		washFail: "#4d2b28",
+		washAsk: "#483818",
+		human: "#e8dfc6",
 		humanInk: "#141620",
 		gold: "#e3b04b",
 		goldMark: "#e3b04b",
 		blue: "#82a8f5",
-		code: "#1a2438",
+		code: "#283658",
 		ok: "#8fd19e",
 		fail: "#f2877a",
-		add: "#16301f",
-		del: "#3a1b1a",
-		track: "#2a2a2a",
+		add: "#2a5034",
+		del: "#5e302d",
+		track: "#474747",
 	},
 } as const;
 
@@ -113,13 +119,28 @@ const REF_LIGHT = hexRgb(GRAPHITE.light.ground);
 const REF_DARK = hexRgb(GRAPHITE.dark.ground);
 
 /**
- * §3.4 — one surface for any ground. Per channel an affine map
- * `s = a + k·g`, fitted so that the white reference ground gives the
- * table's white value and the black one its black value: the two
- * grounds reproduce the table exactly, and a terminal whose black is
- * `#1e1e1e` gets a card that sits the same distance off ITS ground.
+ * §3.4 — one surface for any ground. A DARK ground: per channel an affine
+ * map `s = a + k·g`, fitted so that the white reference ground gives the
+ * table's white value and the black one its black value — a terminal
+ * whose black is `#1e1e1e` gets a card that sits the same distance off
+ * ITS ground, and the distance narrows as a dark ground lightens, which
+ * keeps the text above the floor on the lighter dark themes. A LIGHT
+ * ground: the light table, moved by how far the ground sits from white.
+ * The two reference grounds reproduce the table exactly.
+ *
+ * 0.47.1 (the dark table's re-adaptation): DECLARED REVERSAL for the
+ * light grounds only. The one map through both tables tied them to the
+ * dark table — lifting the dark cards pulled a card on `#eeeeee` to within
+ * 1.09:1 of its ground. A light ground now answers to the light table
+ * alone; on the light grounds measured the cards move by a channel step
+ * or two at most.
  */
 export function deriveSurface(token: Token, ground: Rgb): Rgb {
+	if (groundFrom(ground) === "light") {
+		const s = hexRgb(GRAPHITE.light[token]);
+		const shift = (sc: number, rc: number, g: number): number => Math.max(0, Math.min(255, Math.round(sc + (g - rc))));
+		return { r: shift(s.r, REF_LIGHT.r, ground.r), g: shift(s.g, REF_LIGHT.g, ground.g), b: shift(s.b, REF_LIGHT.b, ground.b) };
+	}
 	const w = hexRgb(GRAPHITE.light[token]);
 	const d = hexRgb(GRAPHITE.dark[token]);
 	const chan = (wc: number, dc: number, lw: number, ld: number, g: number): number => {

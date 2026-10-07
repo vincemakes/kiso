@@ -171,23 +171,32 @@ ground; §3.4 derives the surfaces from the ground actually resolved.
 | token | white | black | role |
 |---|---|---|---|
 | ink | `#111111` | `#ededed` | answers, targets, the person's words |
-| ink2 | `#444444` | `#b5b5b5` | tool output, secondary facts |
-| dim | `#646464` | `#8e8e8e` | labels, thinking, keys, metadata |
+| ink2 | `#444444` | `#c2c2c2` | tool output, secondary facts |
+| dim | `#646464` | `#a4a4a4` | labels, thinking, keys, metadata |
 | rail | `#8c8c8c` | `#6b6b6b` | the mark column's quiet glyphs, cut notes, table lines |
-| line | `#e6e6e6` | `#212121` | hairlines |
-| wash-run | `#edf2fb` | `#141b28` | a running call's card |
-| wash-done | `#f1f1f1` | `#1b1b1b` | a settled call's card; a code block |
-| wash-fail | `#fbecea` | `#2a1716` | a failed or refused call's card |
-| wash-ask | `#f7f1e3` | `#211d13` | a call waiting for the person; a band's selected row |
-| human | `#f7efdc` | `#efe6cf` | the person's block |
+| line | `#e6e6e6` | `#3a3a3a` | hairlines |
+| wash-run | `#edf2fb` | `#2b3854` | a running call's card |
+| wash-done | `#f1f1f1` | `#333333` | a settled call's card; a code block |
+| wash-fail | `#fbecea` | `#4d2b28` | a failed or refused call's card |
+| wash-ask | `#f7f1e3` | `#483818` | a call waiting for the person; a band's selected row |
+| human | `#f7efdc` | `#e8dfc6` | the person's block |
 | human-ink | `#171923` | `#141620` | text on the person's block |
 | gold | `#8a5a00` | `#e3b04b` | edge text |
 | gold-mark | `#c9921f` | `#e3b04b` | edge graphics: bars, the caret, `✦`, the fade |
 | blue | `#2456b5` | `#82a8f5` | the machine's accent |
-| code | `#e4ebf8` | `#1a2438` | the inline-code ground |
+| code | `#e4ebf8` | `#283658` | the inline-code ground |
 | ok / fail | `#2f7a3a` / `#b3261e` | `#8fd19e` / `#f2877a` | outcome words |
-| add / del | `#dff0e2` / `#fadfdc` | `#16301f` / `#3a1b1a` | diff rows |
-| track | `#e2e2e2` | `#2a2a2a` | the ctx meter's empty cells, and the compaction progress's |
+| add / del | `#dff0e2` / `#fadfdc` | `#2a5034` / `#5e302d` | diff rows |
+| track | `#e2e2e2` | `#474747` | the ctx meter's empty cells, and the compaction progress's |
+
+The black column was re-adapted in 0.47.1 (owner, 2026-10-07: preset D
+of the dark palette page). DECLARED REVERSAL: the surfaces sat a few
+levels above `#0b0b0b` (`wash-run #141b28`, `wash-ask #211d13`, `line
+#212121`) and read as heavy on a black terminal, with a band's selected row
+nearly black. They rise a step; `dim` and `ink2` rise with them to keep the
+floor, and `wash-ask` and `code` sit just under the page's values
+(`#524222`, `#30406a`) so every pair clears 4.5 in both tiers. The white
+column is unchanged.
 
 A card's bar takes its state's edge colour: `blue`, `rail`, `fail`, or
 `gold-mark`.
@@ -283,10 +292,13 @@ terminal that reports nothing.
 
 **3.4 Surfaces are derived from the resolved ground.** §2's table is
 Graphite evaluated on `#ffffff` and `#0b0b0b`. When OSC 11 reports any other
-ground of the same kind, each surface is computed from it — per channel, an
-affine map fitted so that the two reference grounds give the table exactly —
-so a terminal whose black is `#1e1e1e` still separates its cards from its
-ground. A text token that would then fall under the floor, on the ground or
+ground of the same kind, each surface is computed from it — on a dark
+ground, per channel, an affine map fitted so that the two reference grounds
+give the table exactly; on a light ground, the white column moved by the
+ground's distance from white — so a terminal whose black is `#1e1e1e` still
+separates its cards from its ground. DECLARED REVERSAL (0.47.1): the one
+affine map served the light grounds too, and tied them to the black column —
+when that column rose, a card on `#eeeeee` came within 1.09:1 of its ground. A text token that would then fall under the floor, on the ground or
 on a surface, as shown (§2.1), moves toward the kind's extreme — lighter on
 a dark ground, darker on a light one — just far enough to clear it; on the
 reference grounds nothing moves. If a pair still fails, the table is used.

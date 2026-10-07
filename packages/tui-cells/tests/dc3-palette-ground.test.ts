@@ -107,8 +107,11 @@ describe("§3.4 — the surfaces are derived from the reported ground", () => {
 	});
 
 	it("a lighter dark theme LIFTS dim rather than dropping under the floor on the bare ground", () => {
-		const nord = hexRgb("#2e3440");
-		expect(contrast(hexRgb(GRAPHITE.dark.dim), nord), "the table's dim fails on nord").toBeLessThan(4.5);
+		// RE-DERIVED (0.47.1, the dark table's re-adaptation): the lifted
+		// table's dim clears nord's #2e3440 (5.0:1), so the case moves to
+		// nord's lighter #3b4252, where the table's dim does not (4.0:1)
+		const nord = hexRgb("#3b4252");
+		expect(contrast(hexRgb(GRAPHITE.dark.dim), nord), "the table's dim fails on nord's #3b4252").toBeLessThan(4.5);
 		expect(contrast(graphiteColours("dark", nord).dim, nord)).toBeGreaterThanOrEqual(4.5);
 	});
 });
