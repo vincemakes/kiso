@@ -71,8 +71,10 @@ function oldRunning(glyph: string, since: number, outTokens: number | null, ctxR
 	return `${glyph} working ${elapsedLabel(seconds)}${out}${rate} · esc stop · alt+⏎ redirect · ${ctxSegment(ctxRatio)}`;
 }
 
+// RE-DERIVED (the compaction round, owner 2026-10-06): one round is
+// `1 round` — the template said `1 rounds`; every other byte is unchanged
 const oldCompacting = (glyph: string, rounds: number, tokens: number, elapsed: number): string =>
-	`${glyph} compacting · ${rounds} rounds · ~${kUnit(tokens)} tokens · ${Math.max(0, elapsed)}s`;
+	`${glyph} compacting · ${rounds} round${rounds === 1 ? "" : "s"} · ~${kUnit(tokens)} tokens · ${Math.max(0, elapsed)}s`;
 
 // ── The grid ────────────────────────────────────────────────────────────
 

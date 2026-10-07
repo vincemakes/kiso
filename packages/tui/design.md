@@ -187,7 +187,7 @@ ground; §3.4 derives the surfaces from the ground actually resolved.
 | code | `#e4ebf8` | `#1a2438` | the inline-code ground |
 | ok / fail | `#2f7a3a` / `#b3261e` | `#8fd19e` / `#f2877a` | outcome words |
 | add / del | `#dff0e2` / `#fadfdc` | `#16301f` / `#3a1b1a` | diff rows |
-| track | `#e2e2e2` | `#2a2a2a` | the ctx meter's empty cells |
+| track | `#e2e2e2` | `#2a2a2a` | the ctx meter's empty cells, and the compaction progress's |
 
 A card's bar takes its state's edge colour: `blue`, `rail`, `fail`, or
 `gold-mark`.
@@ -859,6 +859,18 @@ event, `SESSION <id> · /resume <previous> returns` (it was `session <id>
 is `REWRAPPED 3 blocks at the current width · the history above is
 unchanged`; don't ask declining the model's question is `DENIED`.
 
+A summary inside a run (the compaction round, owner, 2026-10-06) is drawn
+while it runs: the runtime tells the CLI when it starts, how far its
+output has come and how it ended (`contextPolicy.tiers.onSummary`), and
+the live row is the `compacting · auto` row of §8.7, `esc stops`, until it
+ends. A kept summary leaves `COMPACTED mid-run · ~180k → ~22k · ctx now
+11%` — the context's size before and after, and the share of the window
+used. DECLARED REVERSAL: the live row said `working` through the summary
+call, its clock running while nothing arrived, and the row after it was
+the sentence `mid-run — the conversation before this point is a summary
+now · ctx now ~11% used`, with the raw `[summarized up to seq N]` under
+it. A pipe prints the sentence and the line as it did.
+
 `/think` and `/last` bring back what they find as ONE cell (the last
 sweep): a meta row — `THINKING the last block · 3 lines`, `LAST CALL LIST
 (root) · 2 lines` (the card's verb and target, how much came back) — and
@@ -1147,7 +1159,7 @@ replace it while they last.
 |---|---|
 | working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
-| compacting | `✸ compacting · manual · 6 rounds · … · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b), `cold cache` when a resumed session compacts before its first request (P1b, §8.12). A compaction inside a run is the runtime's and says so after the fact, as a meta row |
+| compacting | `✸ compacting · manual · 6 rounds · ~95.1k → ▆▆▆▆▆▆ 4.2k/32k · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b) and for a summary inside a run, `cold cache` when a resumed session compacts before its first request (P1b, §8.12). The summary's progress is the status bar's own `▆` cells (§8.9), filled in `ink2` and the rest in the track colour; off a known ground `▰▱` carries the fill. One round is `1 round` |
 | waiting | `❯ needs you · <what>` — `<what>` the open panel's own words (`run paused`, `a question for you`, `uncertain execution`), the `❯` gold. It rides the STATUS row, where the panel's status always was: while a panel is up it holds the live zone itself (R3b) |
 
 The keys while a turn runs: `esc stop · ⏎ queue · alt+⏎ redirect`. A queued

@@ -18,6 +18,8 @@ import {
 	STATUS_GLYPHS,
 	kUnit,
 	workingRow,
+	compactingStatus,
+	liveRow,
 	type BarInput,
 	namedPickView,
 	type PanelArgs,
@@ -32,6 +34,7 @@ import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunk
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { deliveryLines, liveTasks, lostToldOf, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
 import { taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
+import { current as inRunCompaction, takeKept as takeKeptCompaction } from "./in-run-compaction.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget, tiersFor } from "@vincemakes/kiso-runtime/internal";
@@ -1039,7 +1042,14 @@ export async function consumeRun(
 		if (ev.type === "summarized" || ev.type === "microcompacted") {
 			const r = displayCtxRatio(session);
 			const ctx = Number.isFinite(r) ? ` · ctx now ~${Math.round(r * 100)}% used` : "";
-			body.notice(ev.type === "summarized" ? `✦ compacted mid-run — the conversation before this point is a summary now${ctx}` : `✦ pruned old tool output mid-run${ctx}`);
+			const pipe = ev.type === "summarized" ? `✦ compacted mid-run — the conversation before this point is a summary now${ctx}` : `✦ pruned old tool output mid-run${ctx}`;
+			// the compaction round (owner, 2026-10-06): the COMPACTED row says
+			// the numbers — how big the context was, how big it is now, the
+			// share of the window used — where it said a sentence. A pipe keeps
+			// the sentence.
+			const kept = ev.type === "summarized" ? takeKeptCompaction() : null;
+			if (kept !== null) body.metaNotice(pipe, [{ label: "COMPACTED", sentence: `mid-run \u00b7 ~${kUnit(kept.pre)} \u2192 ~${kUnit(kept.post)}${Number.isFinite(r) ? ` \u00b7 ctx now ${Math.round(r * 100)}%` : ""}` }]);
+			else body.notice(pipe);
 		}
 		if (ev.type !== "thinking") {
 			if (thinkingSince !== null) {
@@ -1343,6 +1353,10 @@ export async function consumeRun(
 			default: {
 				// Events without a cell (stop, …) — the generic render, byte-
 				// preserved for the pipe path (C5: Event → RenderInput first).
+				// the compaction round (owner, 2026-10-06): on a dock the
+				// COMPACTED row above already says it — `[summarized up to seq
+				// N]` was a raw row under it. A pipe keeps the line.
+				if (ev.type === "summarized" && dock.active) break;
 				const input = toRenderInput(ev);
 				if (input === null) break;
 				const rendered = renderEvent(input, false, canonicalTargetPath);
@@ -1695,6 +1709,15 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		// the main-sync round (ADR-0058 3e): the live row teaches ctrl+b exactly
 		// while a command can be moved to the background; the bar counts the
 		// session's tasks (§8.9)
+		// the compaction round (owner, 2026-10-06): a summary inside the run is
+		// the row /compact draws — `compacting · auto`, its progress in the
+		// bar's cells — not `working` with a clock and nothing arriving
+		const summary = inRunCompaction();
+		if (summary !== null) {
+			const W = rowWidth();
+			dock.setLive(liveRow(compactingStatus(runGlyph, summary.rounds, summary.tokens, Math.round((Date.now() - summary.since) / 1000), W - 20, retryOnRow(), summary.progress, "auto"), ["esc stops"], W));
+			return;
+		}
 		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow(), detachableNow()));
 		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec, tasks: taskCountsNow() }));
 	};
