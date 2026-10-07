@@ -415,14 +415,21 @@ those reach you every time.
 
 **The remote boundary.** Two kinds of command change state that other people
 share, so a rule remembered by tool name does not carry them: a destructive
-`git push` (`--force` / `-f`, `--force-with-lease`, `--force-if-includes`, a
-`+` refspec, `--mirror`, `--delete` / `-d` or a `:branch` refspec, `--prune`;
-a `-n` / `--dry-run` is exempt), and a direct `npm` / `pnpm` / `yarn` publish
-(not `npm run publish`, not `--dry-run`). Authority you give now still runs
-them: full access does, and so does an extension of yours that allows them.
+`git push` (`--force` / `-f`, `--force-with-lease`, `--force-if-includes`, a `+`
+refspec, `--mirror`, `--delete` / `-d` or a `:branch` refspec, `--prune`, or an
+abbreviation git accepts for one, such as `--mirr`; a dry run is exempt, and the
+last of `-n`, `--dry-run` and `--no-dry-run` decides), and a write to the
+package registry with `npm` / `pnpm` / `yarn`: a publish, an unpublish, a
+deprecation, or a dist-tag added or removed (`npm dist-tag add`, `yarn tag rm`,
+`yarn npm tag add`; npm's abbreviations such as `npm pub` too; not
+`npm run publish`). A dry run is exempt only where the command honours one —
+publish and unpublish, read as npm reads the flag, so `--dry-run false` is a
+real publish; `deprecate`, `dist-tag` and yarn classic's `publish` have no dry
+run. Listing tags and `npm view` are not writes. Authority you give now still
+runs them: full access does, and so does an extension of yours that allows them.
 With don't ask on, they are refused with the reason, and the run goes on. Only
-direct invocations are read — `npm run release`, a script, a git alias are
-not seen; it is a guardrail, not a sandbox.
+direct invocations are read — `npm run release`, a script, a git alias are not
+seen; it is a guardrail, not a sandbox.
 
 **The catastrophe floor.** In every mode, full access included, kiso refuses a
 destructive command (`rm`, `git clean -f`, `git reset --hard`,

@@ -103,7 +103,7 @@ Say what you want done. The model has six tools — read, list, search, write, e
 | `plan` | reads only; everything else is refused |
 | `full-access` | everything runs without asking — a user deny and the floor still hold |
 
-A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. It never carries a destructive command, a write into `.git/` or `.kiso/`, a destructive `git push` (force, mirror, delete, prune) or a package publish — those reach you every time, unless the mode is full access. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again.
+A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. It never carries a destructive command, a write into `.git/` or `.kiso/`, a destructive `git push` (force, mirror, delete, prune) or a registry write (publish, unpublish, deprecate, a dist-tag change) — those reach you every time, unless the mode is full access. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again.
 
 **Don't ask** is a second setting beside the mode: may kiso stop for you? Turned on — `--dont-ask`, `/dont-ask`, `KISO_DONT_ASK=1` or `"dontAsk": true` — it never does. Whatever would ask is refused and the model is told why, the model is offered no questions, and a call cut off mid-flight stays unresolved rather than guessed. It grants nothing: `full-access` with don't ask is the hands-off pair, `default` with don't ask the careful one for CI. The old names still work — `bypass` is `full-access`, and `dontAsk` is `default` with the switch on.
 

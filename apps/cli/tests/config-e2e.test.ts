@@ -162,16 +162,19 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 });
 
 describe("merge round B — the project config rides the E3 trust gate", () => {
+	// 0.46.2: the profile is the user's; the project only picks it by name
+	// (a project's `models` is refused — project-config-tighten-only.test.ts)
 	it("granted → the project's model appears in the /model listing", () => {
 		const { env, dirs } = isolatedEnv();
 		env.MY_TEST_KEY = "sk-fake"; // non-top-level — the env layer stays silent, the config resolves
-		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-p1-"));
-		mkdirSync(join(workdir, ".kiso"), { recursive: true });
 		writeFileSync(
-			join(workdir, ".kiso", "config.json"),
-			JSON.stringify({ model: "proj-model", models: { "proj-model": { kind: "openai-compat", model: "proj-model-x", apiKeyEnv: "MY_TEST_KEY" } } }),
+			join(dirs.home, "config.json"),
+			JSON.stringify({ models: { "proj-model": { kind: "openai-compat", model: "proj-model-x", apiKeyEnv: "MY_TEST_KEY" } } }),
 			"utf8",
 		);
+		const workdir = mkdtempSync(join(tmpdir(), "kiso-config-e2e-p1-"));
+		mkdirSync(join(workdir, ".kiso"), { recursive: true });
+		writeFileSync(join(workdir, ".kiso", "config.json"), JSON.stringify({ model: "proj-model" }), "utf8");
 		const out = stripANSI(
 			ptyRun(env, [
 				["trust this project", "y\r"],
