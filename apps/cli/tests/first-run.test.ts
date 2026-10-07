@@ -117,7 +117,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 		const first = ptyRun(
 			env,
 			cwd,
-			[["trust this project's .kiso?", "y\r"], ["[5 extensions: built-in: mcp, skills, subagent, ask · project:", "exit\r"]],
+			[["trust this project", "y\r"], ["[5 extensions: built-in: mcp, skills, subagent, ask · project:", "exit\r"]],
 			dirs.home,
 			0,
 		);
@@ -127,7 +127,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 		//   the stream (the scaffold is silent — the FILES carry the evidence:
 		//   empty at the question per the snapshot, the scaffold + the trust
 		//   record asserted below)
-		const q = first.transcript.indexOf("trust this project's .kiso?");
+		const q = first.transcript.indexOf("trust this project");
 		const b = first.transcript.indexOf("[5 extensions: built-in: mcp, skills, subagent, ask · project:");
 		expect(q).toBeGreaterThan(0);
 		expect(b).toBeGreaterThan(q);
@@ -139,7 +139,7 @@ describe("R-D 0.1.45-B — the first-run scaffold (real PTY, sentinel file)", ()
 
 		// ── run 2: the sentinel is present — silent, no re-ask, no re-scaffold ──
 		const second = ptyRun(env, cwd, [["▌ ", "exit\r"]], dirs.home, 0);
-		expect(second.transcript).not.toContain("trust this project's");
+		expect(second.transcript).not.toContain("trust this project");
 		expect(second.transcript).not.toContain("first run — scaffolded");
 		// the home listing at run 2's prompt is EXACTLY the post-run-1 state —
 		// the second run performs zero new home writes

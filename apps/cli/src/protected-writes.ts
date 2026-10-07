@@ -20,6 +20,8 @@ import { relative, sep } from "node:path";
 import type { PolicyCall, PolicyVerdict } from "@vincemakes/kiso-core";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { resolveShellPath } from "./shell-words.js";
+import { isDestructiveCall } from "./floor.js";
+import { isRemoteBoundaryCall } from "./remote-boundary.js";
 
 const PROTECTED = new Set([".git", ".kiso"]);
 const WRITERS = new Set(["write_file", "edit_file"]);
@@ -37,6 +39,17 @@ export function isProtectedWrite(call: PolicyCall, workspaceRoot: string): boole
 }
 
 const ABSTAIN: PolicyVerdict = { action: "abstain" };
+
+/**
+ * The calls a saved allow never carries — they reach a person every time
+ * in the asking tiers: a write into .git/ or .kiso/, a destructive
+ * command (floor.ts, which also answers yes for a line it cannot read),
+ * and a command across the remote boundary (remote-boundary.ts, 0.46.2).
+ * create-coding-agent.ts wires it into every guarded saved allow.
+ */
+export function neverInheritedCall(call: PolicyCall, workspaceRoot: string): boolean {
+	return isProtectedWrite(call, workspaceRoot) || isDestructiveCall(call) || isRemoteBoundaryCall(call);
+}
 
 /**
  * A saved allow ("yes, don't ask again for <tool>") allows by TOOL, so on

@@ -6,8 +6,8 @@
  * one band, in an order the editor keeps in one place: the panel first,
  * then the session picker, then the composer's own bands. What the
  * panel may do to the composer is the `BandHost` surface and nothing
- * else: it types its amend reason, its custom ask answer and its custom
- * pick into the composer, stashes the composer at open, restores it at
+ * else: it types its amend reason, its custom ask answer and a pick's
+ * filter into the composer, stashes the composer at open, restores it at
  * close — that is the whole coupling, and it is visible here.
  *
  * DECLARED MOVE (S5, 2026-09-06): every method below stood in editor.ts
@@ -17,9 +17,9 @@
  * goes through the host.
  */
 import {
-	PICK_MAX,
 	panelOptions,
-	pickWindow,
+	pickList,
+	pickWindowOf,
 	saferDegradedNote,
 	type AskRuntime,
 	type PanelPhase,
@@ -139,7 +139,7 @@ export class PanelInput {
 			safer: opts?.safer,
 			saferRun: null,
 			ask: view.ask === undefined ? null : askStart(view.ask),
-			pick: view.pick === undefined ? null : { cursor: start, phase: "options" as const, level: startLevel(view.pick.options[start]) },
+			pick: view.pick === undefined ? null : { cursor: start, level: startLevel(view.pick.options[start]) },
 			onCommit,
 			stash: this.host.stash(),
 		};
@@ -166,8 +166,19 @@ export class PanelInput {
 			...(panel.note === null ? {} : { note: panel.note }),
 			...(panel.saferRun === null ? {} : { safer: panel.saferRun }),
 			...(panel.ask === null ? {} : { ask: panel.ask }),
-			...(panel.pick === null ? {} : { pick: panel.pick }),
+			...(panel.pick === null ? {} : { pick: this.#pickNow(panel.view, panel.pick) }),
 		};
+	}
+
+	/** The pick's runtime as the renderer and the keys read it (Graphite
+	 *  P3): a filter's query is the composer's text, read now, and the
+	 *  cursor and level are the CORRECTED ones — a row the filter took away
+	 *  is never reported as the selection. */
+	#pickNow(view: PanelView, pick: PickRuntime): PickRuntime {
+		const now = view.pick?.input === "filter" ? { ...pick, query: this.host.line() } : pick;
+		if (view.pick === undefined) return now;
+		const list = pickList(view.pick, now);
+		return { ...now, cursor: list.cursor, level: list.level };
 	}
 
 	/**
@@ -185,14 +196,15 @@ export class PanelInput {
 		if (panel === null) return null;
 		const enterBytes = key.kind === "enter" && key.crlf ? 2 : 1;
 		if (panel.pick !== null) {
-			const typing = panel.pick.phase === "custom";
+			const filter = panel.view.pick?.input === "filter";
 			if (key.kind === "esc") {
-				this.#pickPanelEsc();
+				this.#close({ action: "cancel" });
 				return 1;
 			}
 			if (key.kind === "enter") {
 				if (pasting) {
-					this.host.newline();
+					// a pasted line break is not a pick, and a filter is one line
+					if (!filter) this.host.newline();
 					return enterBytes;
 				}
 				this.#pickPanelEnter();
@@ -200,18 +212,24 @@ export class PanelInput {
 			}
 			if (key.kind === "char") {
 				const c = key.ch;
-				if (!typing && c >= "1" && c <= "9") {
-					this.#pickPanelDigit(Number(c) - 1);
-					return 1;
+				// Graphite P3: a filter takes every printable key — a digit or an
+				// `h` is a letter of a model name there. Backspace and the
+				// composer's other editing keys fall through to the composer,
+				// and the list re-derives from its text on the next read.
+				if (filter) {
+					if (c >= " " && c !== "\x7f") {
+						this.host.insert(c.codePointAt(0)!);
+						this.host.render();
+						return 1;
+					}
+				} else {
+					if ((panel.view.pick?.input ?? "digits") === "digits" && c >= "1" && c <= "9") {
+						this.#pickPanelDigit(Number(c) - 1);
+						return 1;
+					}
+					if ((c === "h" || c === "l") && this.#levelStep(c === "h" ? -1 : 1)) return 1;
+					if (c >= " " && c !== "\x7f") return 1;
 				}
-				if (!typing && (c === "h" || c === "l") && this.#levelStep(c === "h" ? -1 : 1)) return 1;
-				if (!typing && (c === "t" || c === "T") && panel.view.pick?.typeHint !== undefined) {
-					panel.pick = { cursor: panel.pick.cursor, phase: "custom", level: panel.pick.level };
-					this.host.clear();
-					this.host.render();
-					return 1;
-				}
-				if (!typing && c >= " " && c !== "\x7f") return 1;
 			}
 		}
 		if (panel.ask !== null) {
@@ -292,19 +310,19 @@ export class PanelInput {
 	arrow(dir: "up" | "down"): boolean {
 		const panel = this.#panel;
 		if (panel === null) return false;
-		if (panel.pick !== null && panel.pick.phase === "options") {
+		if (panel.pick !== null) {
 			// DC-58: EVERY option is reachable by ↑↓ — the window follows the
-			// cursor (`pickWindow`) and PICK_MAX is only how many rows one
-			// screen holds. This bound used to be `min(count, PICK_MAX)`, which
-			// is what left a 60-profile config with nine reachable rows.
-			const n = panel.view.pick!.options.length;
-			const cur = panel.pick.cursor;
-			const next = dir === "up" ? Math.max(0, cur - 1) : Math.min(Math.max(0, n - 1), cur + 1);
+			// cursor. P3: the walk is over what the list SHOWS (a filter's
+			// matches, then the direct row), so ↑↓ never lands on a row the
+			// person cannot see.
+			const list = pickList(panel.view.pick!, this.#pickNow(panel.view, panel.pick));
+			const at = list.shown.indexOf(list.cursor);
+			const to = list.shown[dir === "up" ? Math.max(0, at - 1) : Math.min(list.shown.length - 1, at + 1)];
 			// OR-7: the second axis belongs to the highlighted option, so it
 			// re-lands on THAT option's own level. Carrying the previous
 			// row's index across would point at a level this model may not
 			// have — the silent clamp the coordination note exists to end.
-			panel.pick = { cursor: next, phase: "options", level: startLevel(panel.view.pick!.options[next]) };
+			if (to !== undefined) panel.pick = { cursor: to, level: startLevel(panel.view.pick!.options[to]) };
 		} else if (panel.ask !== null && panel.ask.phase === "options") this.#askStep(dir);
 		else if (panel.phase === "safer") this.#saferMove(dir === "up" ? -1 : 1);
 		else if (panel.phase !== "asking") this.#panelMove(dir === "up" ? -1 : 1);
@@ -333,10 +351,11 @@ export class PanelInput {
 	 *  no axis to walk, which is what leaves the key to the composer. */
 	#levelStep(dir: -1 | 1): boolean {
 		const panel = this.#panel;
-		if (panel === null || panel.pick === null || panel.pick.phase !== "options") return false;
-		const o = panel.view.pick?.options[panel.pick.cursor];
-		if (o?.levels === undefined) return false;
-		panel.pick = { cursor: panel.pick.cursor, phase: "options", level: stepLevel(o, panel.pick.level, dir) };
+		if (panel === null || panel.pick === null) return false;
+		const list = pickList(panel.view.pick!, this.#pickNow(panel.view, panel.pick));
+		const o = panel.view.pick!.options[list.cursor];
+		if (o?.levels === undefined || o.levels.length === 0) return false;
+		panel.pick = { cursor: list.cursor, level: stepLevel(o, list.level, dir) };
 		this.host.render();
 		return true;
 	}
@@ -524,43 +543,31 @@ export class PanelInput {
 	#pickPanelDigit(index: number): void {
 		const panel = this.#panel;
 		if (panel === null || panel.pick === null) return;
-		const count = panel.view.pick!.options.length;
 		// DC-58: a digit names the row ON SCREEN. The window's origin is what
-		// turns a visible position into an option index — the same
-		// `pickWindow` the renderer drew the rows with, so what the row says
-		// and what the key does cannot drift apart.
-		const { first, size } = this.host.pickWindow?.() ?? pickWindow(panel.pick.cursor, count, PICK_MAX);
+		// turns a visible position into an option — the same window the
+		// renderer drew the rows with, so what the row says and what the key
+		// does cannot drift apart.
+		const now = this.#pickNow(panel.view, panel.pick);
+		const { first, size } = this.host.pickWindow?.() ?? pickWindowOf(panel.view, now, Number.MAX_SAFE_INTEGER, process.stdout.rows ?? 24);
 		if (index < 0 || index >= size) return;
-		const target = first + index;
-		if (target >= count) return;
-		panel.pick = { cursor: target, phase: "options", level: startLevel(panel.view.pick!.options[target]) };
+		const target = pickList(panel.view.pick!, now).shown[first + index];
+		if (target === undefined || target >= panel.view.pick!.options.length) return;
+		panel.pick = { cursor: target, level: startLevel(panel.view.pick!.options[target]) };
 		this.host.render();
 	}
 
 	#pickPanelEnter(): void {
 		const panel = this.#panel;
 		if (panel === null || panel.pick === null) return;
-		if (panel.pick.phase === "custom") {
-			const line = this.host.line().trim();
-			if (line === "") return;
-			this.#close({ action: "picked", result: { custom: line } });
+		const list = pickList(panel.view.pick!, this.#pickNow(panel.view, panel.pick));
+		if (list.cursor < 0) return; // nothing to take
+		// P3: the direct row hands back what was typed — the old `t` row's result
+		if (list.cursor === panel.view.pick!.options.length) {
+			if (list.direct !== null) this.#close({ action: "picked", result: { custom: list.direct } });
 			return;
 		}
-		if (panel.view.pick!.options.length === 0) return; // nothing to take
-		const level = panel.pick.level;
-		this.#close({ action: "picked", result: { index: panel.pick.cursor }, ...(level === null ? {} : { level }) });
-	}
-
-	#pickPanelEsc(): void {
-		const panel = this.#panel;
-		if (panel === null || panel.pick === null) return;
-		if (panel.pick.phase === "custom") {
-			panel.pick = { cursor: panel.pick.cursor, phase: "options", level: panel.pick.level };
-			this.host.clear();
-			this.host.render();
-			return;
-		}
-		this.#close({ action: "cancel" });
+		const level = list.level;
+		this.#close({ action: "picked", result: { index: list.cursor }, ...(level === null ? {} : { level }) });
 	}
 
 	/** Close: the state is cleared FIRST, the stashed composer comes

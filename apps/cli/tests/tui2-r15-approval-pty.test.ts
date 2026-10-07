@@ -51,7 +51,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 			cwd: ws,
 		});
 		// the panel frame, read at its last fully-painted affordance row
-		const grid = screenAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
+		const grid = screenAt(raw, "↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies");
 		const joined = grid.join("\n");
 		// the ONE changed line, both sides
 		expect(joined).toContain("-   // OLD");
@@ -82,7 +82,7 @@ describe("TUI2-R1.5 ② — the edit approval diff on a real PTY", () => {
 			delays: [[2, "1\r"]],
 			cwd: ws,
 		});
-		const screen = screenAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
+		const screen = screenAt(raw, "↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies");
 		const joined = screen.join("\n");
 		expect(joined).toContain("pattern not found in src/parser.ts");
 		// 0.40.0: the note is drawn in the MARKER column — not indented where

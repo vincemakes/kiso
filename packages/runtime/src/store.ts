@@ -61,6 +61,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
+import { readSessionName } from "./profile.js";
 import {
 	LockedError,
 	nativeLockAdapter,
@@ -480,7 +481,9 @@ export class SessionStore {
 			if (records.length === 0) continue;
 			metas.push({
 				id,
-				title: sessionTitle(records),
+				// Graphite R3d: the name the person gave the session, when it has
+				// one; the title derived from its first real line otherwise
+				title: readSessionName(this.root, id) ?? sessionTitle(records),
 				events: records.length,
 				runs: new Set(records.map((r) => r.runId)).size,
 				createdAt: records[0]?.ts ?? 0,

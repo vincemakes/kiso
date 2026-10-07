@@ -39,6 +39,8 @@ import {
 import { displayWidth } from "../src/width.js";
 import { visibleWidth } from "../src/components.js";
 
+const stripAnsi = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
+
 const ORIG_TTY = process.stdout.isTTY;
 const setTTY = (v: boolean): void => {
 	Object.defineProperty(process.stdout, "isTTY", { value: v, configurable: true });
@@ -160,7 +162,15 @@ describe("v2a/v5/KC3: the palette", () => {
 		// cannot hide inside a sequence.
 		const MONO = /^\x1b\[(?:0|1|2|3|4|7|22|23|24|27|39|49|38;5;(?:23[2-9]|24\d|25[0-5])|48;5;(?:23[2-9]|24\d|25[0-5]))m$/;
 		const FUNCTIONAL: Record<string, string> = { red: "\x1b[31m", green: "\x1b[32m", warn: "\x1b[33m" };
+		// Graphite: COLOR_ON is the UNKNOWN ground's palette, and §3.1 keeps
+		// it mono — every Graphite colour member is empty there, the breath
+		// has no steps and no tier was written in. The colours live on a
+		// KNOWN ground only (dc3-palette-ground's gates).
+		expect(COLOR_ON.breath).toEqual([]);
+		expect(COLOR_ON.tier).toBeNull();
 		for (const [name, code] of Object.entries(COLOR_ON)) {
+			if (name === "breath" || name === "tier") continue;
+			if (typeof code !== "string") throw new Error(`${name} is not an SGR string`);
 			if (name in FUNCTIONAL) {
 				expect(code, `${name} is a FUNCTIONAL color — the recolor never moves it`).toBe(FUNCTIONAL[name]);
 				continue;
@@ -372,26 +382,36 @@ describe("v7 W1: the banner tiers (the height input)", () => {
 	 * the same rows render at every height — which is one fewer state in
 	 * a table whose states existed only to protect the art.
 	 */
-	it("no art at any height — the tier the art needed is gone with it", () => {
+	/**
+	 * Graphite §7.10 — DECLARED REVERSAL of the R2 supersession above: the
+	 * wordmark is back, and a HEIGHT tier with it — 20 rows (owner,
+	 * 2026-09-29: the 80×24 window a Mac opens by default shows it). Under
+	 * it, narrower than the wordmark at the content edge (30), and on a raw
+	 * PTY or a pipe (0 rows) the head is one line, its mark in column 0.
+	 */
+	it("under 20 rows the head is one line; from 20, the wordmark", () => {
 		for (const [W, H] of [
-			[40, 20],
+			[40, 19],
 			[80, 15],
-			[39, 24],
+			[29, 24],
 			[80, 13],
 			[80, 0], // a raw PTY / pipe reports rows = 0
+			[80, 19],
 		] as const) {
 			const rows = bannerLines(W, H, V, "");
-			expect(rows[0]!, `W=${W} H=${H}`).toBe(`kiso ${V}`);
+			const head = `✦ kiso ${V} · the coding agent that survives kill -9`;
+			expect(stripAnsi(rows[0]!), `W=${W} H=${H}`).toBe(head.length <= W ? head : `${head.slice(0, W - 1)}…`);
 			expect(rows.every((r) => !r.includes("█"))).toBe(true);
-			for (const r of rows) expect(truncateRow(r, W), `W=${W} H=${H}: ${r}`).toBe(r);
 		}
+		expect(bannerLines(80, 20, V, "").some((r) => r.includes("█"))).toBe(true);
+		expect(bannerLines(80, 24, V, "").some((r) => r.includes("█")), "the default window").toBe(true);
 	});
-	it("the name is a word now, and the extensions are a labelled fact", () => {
-		const rows = bannerLines(40, 20, V, "[3 extensions: asky]");
-		expect(rows[0]).toBe(`kiso ${V}`);
+	it("the name leads the head, and a bare extensions text is a labelled fact", () => {
+		const rows = bannerLines(80, 19, V, "[3 extensions: asky]").map(stripAnsi);
+		expect(rows[0]).toBe(`✦ kiso ${V} · the coding agent that survives kill -9`);
 		expect(rows[1]).toBe("");
 		expect(rows[2]).toBe("  EXTENSIONS  [3 extensions: asky]");
-		expect(rows).toHaveLength(3); // no meta bound: no MODEL, no WORKSPACE, no keys
+		expect(rows).toHaveLength(3); // no facts bound: no SESSION, no RULES
 	});
 	it("all three tiers at 40, 64, 88, 120: no row exceeds W (truncateRow is the width authority)", () => {
 		for (const W of [40, 64, 88, 120]) {
@@ -482,10 +502,10 @@ describe("v7 W5: the resume list — the opening-screen sessions (W5)", () => {
 		// list — one blank, then the list — is the subject here and is
 		// untouched.
 		const ext = big.findIndex((r) => r.includes("[3 extensions: asky]"));
-		expect(big[ext]).toBe("  EXTENSIONS  [3 extensions: asky]");
+		expect(stripAnsi(big[ext]!)).toBe("  EXTENSIONS  [3 extensions: asky]"); // Graphite §7.10: the content edge
 		expect(big[ext + 1]).toBe("");
 		expect(big[ext + 2]).toBe("  ✦ resume");
-		expect(big.length).toBe(7); // name + blank + extensions + blank + 3 resume rows
+		expect(big.length).toBe(15); // the wordmark's nine rows + blank + extensions + blank + 3 resume rows
 		for (const r of big) expect(truncateRow(r, 80)).toBe(r);
 		// the narrowest BIG tier still aligns the meta at exactly W (40)
 		const narrow = bannerLines(40, 20, "0.1.37", "", METAS, NOW);

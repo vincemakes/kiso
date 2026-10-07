@@ -14,12 +14,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { PANEL_KEYS_ROW, helpRows, keysSheetRows } from "../src/strings.js";
+import { SHEET_CLOSE, helpRows, keysSheetRows } from "../src/strings.js";
 import { displayWidth } from "../src/width.js";
 
 const plain = (row: string): string => row.replace(/\x1b\[[0-9;]*m/g, "");
 const helpLines = (): string[] => helpRows().flatMap((r) => plain(r).split("\n"));
-const panelRow = (W: number): string => plain(keysSheetRows(W)[keysSheetRows(W).length - 1]!);
+const closeRow = (W: number): string => plain(keysSheetRows(W)[keysSheetRows(W).length - 1]!);
 
 describe("DC-1 — /help has one description column", () => {
 	it("every description begins at the same column", () => {
@@ -38,34 +38,18 @@ describe("DC-1 — /help has one description column", () => {
 	});
 });
 
-describe("DC-2 — the panel row degrades by clause, never mid-word", () => {
-	it("is whole when the width allows it", () => {
-		expect(panelRow(100)).toBe(PANEL_KEYS_ROW);
-	});
-
-	it("drops whole clauses rather than cutting one in half", () => {
-		for (const W of [60, 64, 68, 72, 75]) {
-			const row = panelRow(W);
+/* DECLARED REVERSAL (the sheets round, owner, 2026-10-06): DC-2's panel
+   row (`panels: ↑↓ move · ⏎ confirms · digits act on their row · t types`)
+   and its clause-dropping ladder retired with the keys sheet's grid. Each
+   panel's own key row says its keys (§8.2, P3, P4), and the row had gone
+   stale. What closes the sheet now is the row every sheet closes on. */
+describe("the sheets round — the keys sheet closes on the row every sheet has", () => {
+	it("whole where it fits, cut with … where it does not, and always last", () => {
+		for (let W = 12; W <= 100; W += 1) {
+			const row = closeRow(W);
 			expect(displayWidth(row), `W=${W} overruns`).toBeLessThanOrEqual(W);
-			// what survives is a run of whole clauses from the front
-			const kept = row.replace(/…$/, "");
-			expect(PANEL_KEYS_ROW.startsWith(kept), `W=${W}: ${JSON.stringify(row)}`).toBe(true);
-			if (!row.endsWith("…")) {
-				const rest = PANEL_KEYS_ROW.slice(kept.length);
-				expect(rest === "" || rest.startsWith(" · "), `W=${W} cut mid-clause`).toBe(true);
-			}
-		}
-	});
-
-	it("marks the cut when even the first clause will not fit", () => {
-		const row = panelRow(12);
-		expect(displayWidth(row)).toBeLessThanOrEqual(12);
-		expect(row.endsWith("…")).toBe(true);
-	});
-
-	it("never leaves a dangling one-character clause", () => {
-		for (let W = 40; W <= 80; W += 1) {
-			expect(panelRow(W), `W=${W}`).not.toMatch(/· .$/);
+			if (W >= SHEET_CLOSE.length + 2) expect(row, `W=${W}`).toBe(`  ${SHEET_CLOSE}`);
+			else expect(row.endsWith("\u2026"), `W=${W}: ${row}`).toBe(true);
 		}
 	});
 });

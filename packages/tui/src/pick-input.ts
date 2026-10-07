@@ -17,9 +17,8 @@
  * stood in editor.ts; the bodies are the same, the buffer access goes
  * through the host.
  */
-import { AT_VISIBLE } from "./at-picker.js";
 import type { BandHost } from "./panel-input.js";
-import { scopeSessions, sessionFilter, type SessionCardView, type SessionPickState } from "./session-picker.js";
+import { resumeVisible, scopeSessions, sessionFilter, type SessionCardView, type SessionPickState } from "./session-picker.js";
 
 export class PickInput {
 	#cards: (() => readonly SessionCardView[]) | null = null;
@@ -63,8 +62,9 @@ export class PickInput {
 		// title says is showing, never reaches past it
 		const scoped = this.#here === undefined ? null : scopeSessions(this.#cards(), this.#here, this.#all);
 		const cards = scoped === null ? this.#cards() : scoped.cards;
-		const matches = sessionFilter(cards, this.host.line());
-		return { cards, matches, selected: Math.max(0, Math.min(this.#sel, matches.length - 1)), scope: scoped?.scope ?? null };
+		const query = this.host.line();
+		const matches = sessionFilter(cards, query);
+		return { cards, matches, selected: Math.max(0, Math.min(this.#sel, matches.length - 1)), scope: scoped?.scope ?? null, query };
 	}
 
 	/** 0.40.0 — tab flips CURRENT ↔ ALL. The filter owns every printable
@@ -80,14 +80,13 @@ export class PickInput {
 		return true;
 	}
 
-	/** The band's height estimate: the header + the windowed rows (or
-	 *  the one "no match" row) + the counter. */
-	rows(): number {
+	/** The band's height estimate: the header, the windowed rows and the
+	 *  selected row's opened second row (or the one "no match" row), and
+	 *  the key row — sessionPickerRows' shape at this terminal height. */
+	rows(height: number): number {
 		const view = this.state();
 		if (view === null) return 0;
-		// 0.40.1: + the unknown-workspace row, when CURRENT shows it
-		const unknownRow = view.scope != null && !view.scope.all && view.scope.unknown > 0 ? 1 : 0;
-		return Math.min(Math.max(view.matches.length, 1), AT_VISIBLE) + 2 + unknownRow;
+		return view.matches.length === 0 ? 3 : Math.min(view.matches.length, resumeVisible(height)) + 3;
 	}
 
 	/** ↑↓: the selection walks the matches and stops at both ends. True

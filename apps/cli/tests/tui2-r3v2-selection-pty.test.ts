@@ -45,11 +45,11 @@ describe("TUI2-R3v2 ① — the selection panel on a real PTY", () => {
 			delays: [[2, "\r"]], // ← the whole product claim: ONE bare enter
 		});
 		// the panel painted the v4 list before the answer landed
-		const grid = screenAt(raw, "1-4 instant");
+		const grid = screenAt(raw, "1–4 instant");
 		const joined = grid.join("\n");
 		expect(joined).toContain("Yes, run it");
 		expect(joined).toContain("Show me safer ways to do this");
-		expect(joined).toContain("↑↓ move · ⏎ or click confirms · 1-4 instant · esc");
+		expect(joined).toContain("↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies"); // Graphite P4: esc says it denies
 		// …and the bare enter ran it
 		expect(raw).toContain("approved-by-selection");
 	}, 240_000);
@@ -82,7 +82,7 @@ describe("TUI2-R3v2 ① — the selection panel on a real PTY", () => {
 			feeds: [["▌ ", "go\r"]],
 			delays: [[2.5, "\x1b"], [4, "exit\r"]], // esc — the hint is READ, not acted on
 		});
-		const grid = screenAt(raw, "1-4 instant").join("\n");
+		const grid = screenAt(raw, "1–4 instant").join("\n");
 		expect(grid).toContain("deletes files permanently (build-artifacts)");
 	}, 240_000);
 

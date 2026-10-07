@@ -335,7 +335,7 @@ describe("R7a D — every call of the stretch keeps its target on screen", () =>
 		//
 		// What is asserted until then: the running call is NAMED, always,
 		// and its affordance says where its output went.
-		expect(rows, "the running call lost its own row, not just its tail").toContain("shell npm run check");
+		expect(rows, "the running call lost its own row, not just its tail").toMatch(/SHELL +npm run check/); // Graphite §7.5
 		expect(rows.includes("114 passed") || rows.includes("ctrl+o"), "its output is neither on screen nor reachable").toBe(true);
 	});
 });

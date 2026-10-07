@@ -104,8 +104,9 @@ describe("TUI2-R3v2 ③ — the safer-options arc, end to end", () => {
 
 		// …the pick went through the AMEND channel, so the model answered
 		// with a new call, and the panel marked it
-		const amended = screenAt(raw, "(amended)").join("\n");
-		expect(amended, "the re-presented call carries the v4 marker").toContain("(amended)");
+		// Graphite P4 (DECLARED): the marker rides the band's facts
+		const amended = screenAt(raw, "amended · asked by").join("\n");
+		expect(amended, "the re-presented call carries the v4 marker").toContain("needs you · amended · asked by");
 		expect(raw).toContain("Understood — narrower call.");
 
 		// …and the trace shows EXACTLY ONE side query, marked

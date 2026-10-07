@@ -170,6 +170,13 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 		delete (process.stdout as { isTTY?: boolean }).isTTY;
 	});
 
+	// The sweeps render a whole recorded session at each size; they assert
+	// the frames' shape, never their speed. vitest's 5 s default is not
+	// this file's contract: on the Windows runner A5 (about 1.2 s here)
+	// crossed it the first time the Graphite renderer ran there (the second
+	// main-sync round). The budget is the work's, stated.
+	const REPLAY_BUDGET = 30_000;
+
 	it("A7 — one answer copy in the terminal at every frame (the seam never re-emits), across the size sweep", () => {
 		// the marker counts live in the SCROLLBACK too (countsAll) — the
 		// duplication the reviewer saw was the pre-frame live copy the
@@ -194,7 +201,7 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 			expect(frames.some((f) => f.am0.rows > 0), `${W}x${H}: the M0 marker reached the terminal`).toBe(true);
 			expect(frames.some((f) => f.am1.rows > 0), `${W}x${H}: the M1 marker reached the terminal`).toBe(true);
 		}
-	});
+	}, REPLAY_BUDGET);
 
 	it("A8 — the W11 boundary's blank never grows into a pileup band once the content fills the screen", () => {
 		// the band's birth (frames 664-670 at 80×24): the bottom-anchored
@@ -262,7 +269,7 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				).toBeLessThanOrEqual(2);
 			}
 		}
-	});
+	}, REPLAY_BUDGET);
 
 	it("A5 — the verdicts bind INTO the cells: no free-standing approval rows anywhere, the decidedBy rides the settled head row", () => {
 		// the fixture's permission events (d-66: the human approved call_00;
@@ -275,7 +282,10 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 		const sizes = [[40, 12], [40, 24], [80, 24]] as const;
 		for (const [W, H] of sizes) {
 			const { frames } = replay(W, H);
-			const orphan = /^ {0,2}(approved|denied)(: |$)/;
+			// Graphite §1.8: rows begin at column 4 now, so the orphan form is
+			// matched at ANY indent — a column-bound pattern would have gone
+			// silently vacuous when the edge moved.
+			const orphan = /^\s*(approved|denied)(: |$)/;
 			for (const f of frames) {
 				for (const line of f.all) {
 					expect(line, `${W}x${H} frame ${f.n}: the free-standing verdict orphan (A5)`).not.toMatch(orphan);
@@ -295,7 +305,11 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				`${W}x${H}: no policy byline survives anywhere (R1.5 ⑤)`,
 			).toBe(false);
 		}
-	});
+		// …and the gate is not vacuous: the human's approval IS on screen,
+		// bound into its card's head row, at a width with room for it.
+		const { frames } = replay(80, 24);
+		expect(frames.some((f) => f.all.some((l) => /[A-Z]+ +\S.*· approved/.test(l))), "no verdict bound into a head row — A5 checked nothing").toBe(true);
+	}, REPLAY_BUDGET);
 
 	it("D3 — the box chrome is intact at every frame (the cells' rows never overlap the box)", () => {
 		// the D3 residue: a committed or live row landing on the chrome
@@ -321,5 +335,5 @@ describe("A7 — the replay of the reviewer's dogfood session", () => {
 				expect(bottom, `${W}x${H} frame ${f.n}: the bottom rail runs the full width`).toMatch(/^\u2500+$/);
 			}
 		}
-	});
+	}, REPLAY_BUDGET);
 });

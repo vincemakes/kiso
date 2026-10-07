@@ -97,7 +97,9 @@ describe("DC-48 — in the field, the row is cut and the fact is said", () => {
 			body.render();
 			vi.advanceTimersByTime(30);
 			const said = writes.join("").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
-			const n = (said.match(/a row was cut to width/g) ?? []).length;
+			// Graphite §7.12: a meta row folds its sentence under itself, so at
+			// this width the words may cross a row boundary
+			const n = (said.match(/a\s+row\s+was\s+cut\s+to\s+width/g) ?? []).length;
 			expect(n, "the notice never appeared").toBeGreaterThanOrEqual(1);
 			expect(n, "a row-by-row complaint — a resize storm would drown the transcript").toBe(1);
 		});

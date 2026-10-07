@@ -28,13 +28,16 @@ kiso sessions [--all|--current]  list durable sessions, with their state
 kiso help                      this help
 ```
 
-- **Navigation (0.10.0).** `kiso resume` with no id opens a PICKER: one row
-  per session, `↑↓` to walk, type to filter, `⏎` to continue, `esc` to
-  leave. Each row SAYS the state kiso will actually resume into, in words
-  (never a glyph), read from the session's own durable log and nothing
-  else:
+- **Navigation (0.10.0).** `kiso resume` with no id opens a PICKER: a table
+  with one row per session (its title, its state, how long ago, how many
+  turns), `↑↓` to walk, type to filter, `⏎` to continue, `esc` to leave.
+  A finished session's state is left blank; any other says a word
+  (`interrupted`, `1 ask`, `1 uncertain`, `max turns`). The row under the
+  cursor opens into a second row that SAYS the state kiso will actually
+  resume into, in words (never a glyph), read from the session's own
+  durable log and nothing else, then when it started and its profile:
 
-  | the row's note | means | what `kiso resume` will do |
+  | the note | means | what `kiso resume` will do |
   |---|---|---|
   | `completed clean` | the run ended cleanly | continue from a settled session |
   | `failed`, or the outcome (`aborted`, `max turns`) | the run ended some other way | continue from where it stopped |
@@ -363,14 +366,17 @@ kiso resume <id> [prompt]      continue a session in a new process
 kiso sessions [--all|--current]  list durable sessions, with their state
 ```
 
-`kiso resume` with no id opens a picker: one row per session, arrows to walk,
-type to filter, enter to continue. It opens on the sessions that started in
-this directory — only those; tab shows every session, each tagged with where it
-started. Sessions from before 0.40.0 recorded no workspace (no event in their
-log names one); they are counted in one line and listed under tab. Each row
-SAYS the state kiso will resume into, in words:
+`kiso resume` with no id opens a picker: a table with one row per session,
+arrows to walk, type to filter, enter to continue. It shows eight sessions on a
+terminal 30 rows or taller, five below, with `↑` / `↓` in the margin when the
+list goes on. It opens on the sessions that started in this directory — only
+those; tab shows every session, with a column for where each started. Sessions
+from before 0.40.0 recorded no workspace (no event in their log names one);
+the key row counts them with the rest of what tab adds, and tab lists them as
+`unknown`. The row under the cursor opens into a second row that SAYS the
+state kiso will resume into, in words:
 
-| the row's note | means | what `kiso resume` will do |
+| the note | means | what `kiso resume` will do |
 |---|---|---|
 | `completed clean` | the run ended cleanly | continue from a settled session |
 | `failed`, or the outcome (`aborted`, `max turns`) | the run ended some other way | continue from where it stopped |
@@ -403,8 +409,27 @@ rules you already granted.
 written to `~/.kiso/extensions/dont-ask-again.mjs`, which is human-editable and
 human-deletable: drop a tool from its set, or delete the file, and the next call
 asks. The file is allow-only by design — it can never deny or ask — so the mode
-and safe-defaults moats keep their teeth. It never carries a destructive command
-or a write into `.git/` or `.kiso/`: those reach you every time.
+and safe-defaults moats keep their teeth. It never carries a destructive command,
+a write into `.git/` or `.kiso/`, or a command across the **remote boundary**:
+those reach you every time.
+
+**The remote boundary.** Two kinds of command change state that other people
+share, so a rule remembered by tool name does not carry them: a destructive
+`git push` (`--force` / `-f`, `--force-with-lease`, `--force-if-includes`, a `+`
+refspec, `--mirror`, `--delete` / `-d` or a `:branch` refspec, `--prune`, or an
+abbreviation git accepts for one, such as `--mirr`; a dry run is exempt, and the
+last of `-n`, `--dry-run` and `--no-dry-run` decides), and a write to the
+package registry with `npm` / `pnpm` / `yarn`: a publish, an unpublish, a
+deprecation, or a dist-tag added or removed (`npm dist-tag add`, `yarn tag rm`,
+`yarn npm tag add`; npm's abbreviations such as `npm pub` too; not
+`npm run publish`). A dry run is exempt only where the command honours one —
+publish and unpublish, read as npm reads the flag, so `--dry-run false` is a
+real publish; `deprecate`, `dist-tag` and yarn classic's `publish` have no dry
+run. Listing tags and `npm view` are not writes. Authority you give now still
+runs them: full access does, and so does an extension of yours that allows them.
+With don't ask on, they are refused with the reason, and the run goes on. Only
+direct invocations are read — `npm run release`, a script, a git alias are not
+seen; it is a guardrail, not a sandbox.
 
 **The catastrophe floor.** In every mode, full access included, kiso refuses a
 destructive command (`rm`, `git clean -f`, `git reset --hard`,

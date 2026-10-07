@@ -10,9 +10,9 @@
  * Two things this file pins that the PTY case cannot:
  *   - ↑↓ really walk the cursor. A pty feed fires once on its needle, so
  *     a burst of arrows proves nothing about a walk;
- *   - the panel offers NO `t` row for a closed set, and `t` therefore
- *     opens no phase. A key that leads to a surface the panel does not
- *     draw is worse than an absent key.
+ *   - the panel offers NO way to type an answer for a closed set (P3: the
+ *     `t` row and its phase are gone; a model picker's filter offers a typed
+ *     `provider/model` as a row instead).
  */
 
 import { describe, expect, it } from "vitest";
@@ -41,7 +41,7 @@ const plain = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, "");
 
 describe("DC-36 — the mode picker", () => {
 	it("offers every OFFERED tier, and no `t` row: the four are the whole world", () => {
-		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
+		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, level: null } }, 90, 14).map(plain);
 		const body = rows.join("\n");
 		for (const t of TIERS) expect(body, `${t} is not offered`).toContain(t);
 		expect(body, "a closed set was given a `type it directly` row").not.toMatch(/^\s*t\s/m);
@@ -52,13 +52,13 @@ describe("DC-36 — the mode picker", () => {
 		// TUI2-R2 ④, but THIS row — the one a human reads while the panel
 		// is up — advertised only the digits, and the owner read it as
 		// "type the answer".
-		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
+		const rows = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, level: null } }, 90, 14).map(plain);
 		expect(rows.join("\n")).toContain("↑↓ move");
 	});
 
 	it("the cursor is what the panel marks — it moves with the pick state", () => {
 		const at = (cursor: number): string =>
-			panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor, phase: "options", level: null } }, 90, 14)
+			panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: { cursor, level: null } }, 90, 14)
 				.map(plain)
 				.find((r) => r.trimStart().startsWith("→")) ?? "";
 		expect(at(0), "the cursor does not mark the first tier").toContain("default");
@@ -66,12 +66,15 @@ describe("DC-36 — the mode picker", () => {
 		expect(at(0)).not.toBe(at(3));
 	});
 
-	it("a model picker KEEPS its `t` row — its list is never the whole world", () => {
-		// the asymmetry is the point: a model that exists but is not
-		// configured has to stay typeable, which is why typeHint is
-		// optional rather than gone.
-		const withHint: PickSpec = { ...SPEC, typeHint: "type provider/model directly" };
-		const rows = panelRowsOf({ view: modePickView(withHint, "▸ default"), phase: "options", cursor: 0, pick: { cursor: 0, phase: "options", level: null } }, 90, 14).map(plain);
-		expect(rows.join("\n")).toContain("type provider/model directly");
+	// RE-DERIVED (Graphite P3): the `t` row retired into the model picker's
+	// filter. The asymmetry it pinned stands: a model that exists but is not
+	// configured has to stay typeable, and a closed set offers no such row.
+	it("a model picker KEEPS a way to type a model — its list is never the whole world", () => {
+		const typed = { cursor: 0, level: null, query: "openai/deepseek-reasoner" };
+		const open: PickSpec = { ...SPEC, input: "filter", direct: true };
+		const rows = panelRowsOf({ view: modePickView(open, "▸ default"), phase: "options", cursor: 0, pick: typed }, 90, 14).map(plain);
+		expect(rows.join("\n")).toContain("use openai/deepseek-reasoner directly");
+		const closed = panelRowsOf({ view: modePickView(SPEC, "▸ default"), phase: "options", cursor: 0, pick: typed }, 90, 14).map(plain);
+		expect(closed.join("\n"), "a closed set has nothing to type into").not.toContain("directly");
 	});
 });

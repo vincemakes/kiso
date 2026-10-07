@@ -32,8 +32,8 @@ describe("0.40.0 — the resume picker is scoped to the workspace (PTY)", () => 
 		const answer = (text: string): string => fauxScript([{ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] }, ...spares(3)]);
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: answer("alpha answered.") });
 		const e = env as NodeJS.ProcessEnv;
-		ptyRun(["--mode", "bypass", "ws-alpha"], e, { cwd: alpha, feeds: [["/ commands · ↑ history", "the alpha task\r"], ["alpha answered.", "exit\r"]] });
-		ptyRun(["--mode", "bypass", "ws-beta"], { ...e, KISO_FAUX_SCRIPT: answer("beta answered.") }, { cwd: beta, feeds: [["/ commands · ↑ history", "the beta task\r"], ["beta answered.", "exit\r"]] });
+		ptyRun(["--mode", "bypass", "ws-alpha"], e, { cwd: alpha, feeds: [["/mode to switch", "the alpha task\r"], ["alpha answered.", "exit\r"]] });
+		ptyRun(["--mode", "bypass", "ws-beta"], { ...e, KISO_FAUX_SCRIPT: answer("beta answered.") }, { cwd: beta, feeds: [["/mode to switch", "the beta task\r"], ["beta answered.", "exit\r"]] });
 
 		// the record: each session's revision 1 names where it started
 		const ws = (id: string): unknown => (JSON.parse(readFileSync(join(dirs.home, "sessions", `${id}.meta.json`), "utf8")) as { profile: { workspace: unknown } }).profile.workspace;
@@ -44,14 +44,14 @@ describe("0.40.0 — the resume picker is scoped to the workspace (PTY)", () => 
 			ptyRun(["--mode", "bypass", "resume"], e, {
 				cwd: alpha,
 				feeds: [
-					["this workspace 1 of 2", "\t"],
-					["all 2", "\x1b"],
+					["this workspace · 1 of 2", "\t"],
+					["every workspace · 2", "\x1b"],
 				],
 			}),
 		);
-		expect(out).toContain("sessions · this workspace 1 of 2 · tab all");
+		expect(out).toContain("resume · this workspace · 1 of 2");
 		expect(out).toContain("the alpha task");
-		expect(out).toContain("sessions · all 2 · tab this workspace (1)");
+		expect(out).toContain("resume · every workspace · 2");
 		// under ALL the foreign row says where it came from
 		expect(out).toMatch(/the beta task[^\n]*beta/);
 
