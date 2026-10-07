@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * gates-wait.mjs <round-dir> [--legs=N] — the 0.47.0 kit's wait probes (§6),
+ * gates-wait.mjs <round-dir> [--legs=N] — the 0.48.0 kit's wait probes (§6),
  * read from every non-void W1 / W2 leg's own records (tasks-counters.mjs,
  * always recomputed). rc only: the control has no `wait`.
  *

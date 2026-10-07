@@ -3,7 +3,7 @@ bench-plan-wait-release-1-2026-10-06): the feeder keeps a leg alive while a
 wait is pending and treats a wait's end like any task end; the counters
 read the waits, the chain, each wake's cold prefix and the empty-promise
 heuristic from a leg's own records; the W2 fake `gh` answers pending, then
-a conclusion that follows the repo's own tests (seven pending polls since the 0.47.0 kit); run-task.sh wires W1/W2.
+a conclusion that follows the repo's own tests (seven pending polls since the 0.48.0 kit); run-task.sh wires W1/W2.
 
 Run: python3 tests/test_eval_wait.py   (from bench/; npm run check runs it)
 """

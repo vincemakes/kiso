@@ -1,4 +1,4 @@
-"""The 0.47.0 release gate's machinery (kiso-doc kit-0470-ceremony rev 2):
+"""The wait release gate's machinery (0.48.0; kiso-doc kit-0480-ceremony):
 the registered n as a machine gate (paired-compare --expect-pairs, INVALID
 not FAIL), exact version matching in both runners, run-paired's pair list
 and run-probe's first run id (the re-run paths), the read-only void audit
@@ -6,7 +6,7 @@ and run-probe's first run id (the re-run paths), the read-only void audit
 are an instrument failure), and the wait probe gates (the idle wake gated,
 W-F1 gated, gh by the model gated).
 
-Run: python3 tests/test_ceremony_0470.py   (from bench/; npm run check runs it)
+Run: python3 tests/test_ceremony_0480.py   (from bench/; npm run check runs it)
 """
 import json, os, subprocess, sys, tempfile, time, unittest
 
@@ -87,7 +87,7 @@ RC_H, CTL_H = "a" * 64, "b" * 64
 
 class Audit(unittest.TestCase):
     def audit(self, root, *extra):
-        r = run(["node", "audit-legs.mjs", root, "T5", "--rc=0.47.0", "--ctl=0.46.2", *extra])
+        r = run(["node", "audit-legs.mjs", root, "T5", "--rc=0.48.0-rc.1", "--ctl=0.47.0", *extra])
         return r.returncode, json.loads(r.stdout)
 
     def pmset(self, root, text=""):
@@ -98,7 +98,7 @@ class Audit(unittest.TestCase):
     def test_a_clean_set_voids_nothing(self):
         with tempfile.TemporaryDirectory() as root:
             for i in (1, 2):
-                leg(root, "T5", f"rc{i}", "0.47.0", RC_H); leg(root, "T5", f"ctl{i}", "0.46.2", CTL_H)
+                leg(root, "T5", f"rc{i}", "0.48.0-rc.1", RC_H); leg(root, "T5", f"ctl{i}", "0.47.0", CTL_H)
             code, out = self.audit(root, self.pmset(root))
             self.assertEqual(code, 0, out)
             self.assertEqual(out["voidPairs"], [])
@@ -107,14 +107,14 @@ class Audit(unittest.TestCase):
 
     def test_each_cause_voids_its_pair_and_names_itself(self):
         with tempfile.TemporaryDirectory() as root:
-            leg(root, "T5", "rc1", "0.47.0-rc.1", RC_H); leg(root, "T5", "ctl1", "0.46.2", CTL_H)       # version (substring would pass)
-            leg(root, "T5", "rc2", "0.47.0", [RC_H, CTL_H]); leg(root, "T5", "ctl2", "0.46.2", CTL_H)   # two tool tables in one leg
-            leg(root, "T5", "rc3", "0.47.0", RC_H, effort="high"); leg(root, "T5", "ctl3", "0.46.2", CTL_H)  # effort differs in the pair
-            leg(root, "T5", "rc4", "0.47.0", RC_H, hit=(1000, 500)); leg(root, "T5", "ctl4", "0.46.2", CTL_H, hit=(1000, 950))  # cache collapse
+            leg(root, "T5", "rc1", "0.48.0-rc.10", RC_H); leg(root, "T5", "ctl1", "0.47.0", CTL_H)       # version (substring would pass)
+            leg(root, "T5", "rc2", "0.48.0-rc.1", [RC_H, CTL_H]); leg(root, "T5", "ctl2", "0.47.0", CTL_H)   # two tool tables in one leg
+            leg(root, "T5", "rc3", "0.48.0-rc.1", RC_H, effort="high"); leg(root, "T5", "ctl3", "0.47.0", CTL_H)  # effort differs in the pair
+            leg(root, "T5", "rc4", "0.48.0-rc.1", RC_H, hit=(1000, 500)); leg(root, "T5", "ctl4", "0.47.0", CTL_H, hit=(1000, 950))  # cache collapse
             slept_end = time.time() - 3600
-            leg(root, "T5", "rc5", "0.47.0", RC_H, ended_at=slept_end); leg(root, "T5", "ctl5", "0.46.2", CTL_H)
+            leg(root, "T5", "rc5", "0.48.0-rc.1", RC_H, ended_at=slept_end); leg(root, "T5", "ctl5", "0.47.0", CTL_H)
             when = time.strftime("%Y-%m-%d %H:%M:%S %z", time.localtime(slept_end - 30))
-            leg(root, "T5", "rc6", "0.47.0", RC_H); leg(root, "T5", "ctl6", "0.46.2", CTL_H)  # clean
+            leg(root, "T5", "rc6", "0.48.0-rc.1", RC_H); leg(root, "T5", "ctl6", "0.47.0", CTL_H)  # clean
             code, out = self.audit(root, self.pmset(root, f"{when} Sleep               \tEntering Sleep state\n"))
             self.assertEqual(code, 1)
             self.assertEqual(out["voidPairs"], ["1", "2", "3", "4", "5"])
@@ -130,15 +130,15 @@ class Audit(unittest.TestCase):
 
     def test_arms_with_the_same_tool_table_are_an_instrument_failure(self):
         with tempfile.TemporaryDirectory() as root:
-            leg(root, "T5", "rc1", "0.47.0", RC_H); leg(root, "T5", "ctl1", "0.46.2", RC_H)
+            leg(root, "T5", "rc1", "0.48.0-rc.1", RC_H); leg(root, "T5", "ctl1", "0.47.0", RC_H)
             code, out = self.audit(root, self.pmset(root))
             self.assertEqual(code, 2)
             self.assertIn("the arms are not what the round compares", out["instrument"][0])
 
     def test_an_rc_only_probe_lists_legs_to_replace_not_pairs(self):
         with tempfile.TemporaryDirectory() as root:
-            leg(root, "W1", "rc1", "0.47.0", RC_H); leg(root, "W1", "rc2", "0.46.9", RC_H)
-            r = run(["node", "audit-legs.mjs", root, "W1", "--rc=0.47.0", self.pmset(root)])
+            leg(root, "W1", "rc1", "0.48.0-rc.1", RC_H); leg(root, "W1", "rc2", "0.48.0-rc", RC_H)
+            r = run(["node", "audit-legs.mjs", root, "W1", "--rc=0.48.0-rc.1", self.pmset(root)])
             out = json.loads(r.stdout)
             self.assertEqual((r.returncode, out["replaceLegs"], out["voidPairs"]), (1, ["rc2"], []))
 

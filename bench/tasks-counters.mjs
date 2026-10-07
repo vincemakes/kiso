@@ -46,7 +46,7 @@
  *                       know", "once CI …") while the run registered no wait and started no
  *                       background task — INFORMATIONAL, a text heuristic (frozen phrase list)
  *   waitOnWait          waits whose source is {kind:"task"} naming a task that is itself a
- *                       wait (W-F1; the 0.47.0 kit gates it at 0)
+ *                       wait (W-F1; the 0.48.0 kit gates it at 0)
  *   subSecondTimers     timer waits under 1,000 ms (W-F1; gated at 0)
  *   ghShellCalls        shell calls whose command runs `gh` (W2 forbids it; gated at 0)
  */

@@ -44,7 +44,7 @@ run_leg() {
 	W=$(leg_dir "$RUN")
 	SAW=$(node -e 'try { console.log(String(JSON.parse(require("fs").readFileSync(process.argv[1] + "/meta.json", "utf8")).kisoVersion ?? "missing")); } catch { console.log("missing"); }' "$W" 2>/dev/null || echo missing)
 	WANT=$(want_ver "$ARM")
-	# EXACT (0.47.0 kit §2): a substring match let 0.47.0 pass for 0.47.0-rc.1
+	# EXACT (0.48.0 kit §2): a substring match let 0.48.0 pass for 0.48.0-rc.1
 	if [ "$SAW" != "$WANT" ]; then
 		printf 'VOID: launched as %s, its meta records %s (wanted exactly %s)\n' "$ARM" "$SAW" "$WANT" > "$W/void"
 		echo "    VOID — wanted exactly $WANT, the leg records $SAW"; VOID=$((VOID + 1))
@@ -82,7 +82,7 @@ RERUN=""
 NVOIDPAIRS=0
 I=1
 STOPPED=""
-# PAIR_LIST (0.47.0 kit §7): re-run exactly these pairs, under PAIR_SUFFIX
+# PAIR_LIST (0.48.0 kit §7): re-run exactly these pairs, under PAIR_SUFFIX
 # (default c) — the pairs audit-legs.mjs voided after the set. A void pair in
 # this mode is reported, never run a further time.
 if [ -n "${PAIR_LIST:-}" ]; then

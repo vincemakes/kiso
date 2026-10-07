@@ -8,7 +8,7 @@
 #
 # `pr view … --json headRefOid`   → {"headRefOid": <head>}
 # `pr checks … --json …`          → pending for the first SEVEN polls after
-#                                   every (re)arm (0.47.0 kit §6: long enough
+#                                   every (re)arm (0.48.0 kit §6: long enough
 #                                   that the model's closing message has
 #                                   ended and the session is idle when the
 #                                   conclusion lands), then one conclusion: the

@@ -23,7 +23,7 @@ mkdir -p "$ROOT"
 
 VOID=0
 STOPPED=""
-# PROBE_FIRST (0.47.0 kit §7): a void probe leg is re-run under the NEXT run
+# PROBE_FIRST (0.48.0 kit §7): a void probe leg is re-run under the NEXT run
 # id, never its own — start the numbering there (`PROBE_FIRST=7 run-probe.sh W1 1`)
 I=${PROBE_FIRST:-1}
 LAST=$((I + LEGS - 1))
@@ -39,7 +39,7 @@ while [ "$I" -le "$LAST" ]; do
 	KISO_ROUND="$ROUND" KISO_BIN="$KISO_BIN_RC" KISO_VERSION="" sh "$B/run-task.sh" "$TASK" "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	W="$ROOT/kiso-$TASK-$RUN"
 	SAW=$(node -e 'try { console.log(String(JSON.parse(require("fs").readFileSync(process.argv[1] + "/meta.json", "utf8")).kisoVersion ?? "missing")); } catch { console.log("missing"); }' "$W" 2>/dev/null || echo missing)
-	# EXACT (0.47.0 kit §2)
+	# EXACT (0.48.0 kit §2)
 	if [ "$SAW" != "$RC_VERSION" ]; then
 		printf 'VOID: its meta records %s (wanted exactly %s)\n' "$SAW" "$RC_VERSION" > "$W/void"
 		echo "    VOID — wanted exactly $RC_VERSION, the leg records $SAW"; VOID=$((VOID + 1))

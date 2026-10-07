@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * audit-legs.mjs <round-dir> <task> --rc=<version> [--ctl=<version>] [--pmset=<file>]
- * — the 0.47.0 kit's void audit (§7), read-only over a set's records.
+ * — the 0.48.0 kit's void audit (§7), read-only over a set's records.
  *
  * The runners void two causes live (the version, a cache collapse) because
  * they decide what to run next. The other causes are facts in records that do

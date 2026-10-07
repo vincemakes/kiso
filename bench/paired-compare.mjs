@@ -52,7 +52,7 @@ const MARGINS = {
 };
 
 /**
- * expectPairs (0.47.0 kit §4): the pre-registered sample size is a MACHINE
+ * expectPairs (0.48.0 kit §4): the pre-registered sample size is a MACHINE
  * gate. When given, any count of usable pairs other than it is INVALID — no
  * verdict, neither PASS nor FAIL: the product did not fail, the experiment
  * did not reach its registered n. Without it the old behaviour stands (the
