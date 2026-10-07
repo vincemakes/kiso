@@ -18,6 +18,7 @@ import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 import { taskNoticeLines, taskWhat } from "./task-notice.js";
+import { cliWaitDrivers } from "./wait-drivers.js";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
@@ -101,7 +102,9 @@ export function tasksFor(sessionId: string | undefined): TaskManager | undefined
 	let manager = taskManagers.get(sessionId);
 	if (manager === undefined) {
 		taskBackend ??= processTaskBackend();
-		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend });
+		// ADR-0059: the CLI's wait drivers (GitHub over `gh`) ride the manager;
+		// `timer` and `task` are the runtime's own
+		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend, drivers: cliWaitDrivers({ cwd: () => workspaceRoot() }) });
 		manager.observe();
 		taskManagers.set(sessionId, manager);
 	}

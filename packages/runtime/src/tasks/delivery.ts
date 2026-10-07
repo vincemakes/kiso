@@ -15,8 +15,8 @@
  * Exactly once, from the log: a transition counts as delivered when a
  * `user_input` whose `via.items` names it is in the session's log (ADR-0051
  * Amendment 8). The set is a cache rebuilt from the log, never a second
- * truth. Lineage from the log too: a task started inside a wake run (a run
- * whose first input is a task notice) never wakes — depth 1.
+ * truth. The chain budget from the log too (ADR-0059 §3.3): the wake runs
+ * since the last run a person started are counted, never kept.
  *
  * The summary snapshot is what the MODEL was told, never the live journal:
  * a compaction must not reveal a transition that has not been delivered.
@@ -49,12 +49,16 @@ type Mode = "silent" | "notify" | "wake";
 
 export interface TaskDeliveryOptions {
 	readonly manager: TaskManager;
-	/** The session's durable events: receipts and lineage are read here. */
+	/** The session's durable events: receipts and the chain are read here. */
 	readonly events: () => readonly Event[];
 	/** The session's live run, when one is running. */
 	readonly liveRun: () => Run | undefined;
 	/** False turns every wake into a notify (the switch, ADR-0058 §8.4). */
 	readonly wake?: boolean;
+	/** ADR-0059 §3.3 — the chain budget: how many autonomous wakes may follow
+	 *  one person's input before a terminal delivers as a notify instead.
+	 *  Replaces ADR-0058 §8 guard 3 (lineage depth 1). Default 20. */
+	readonly maxWakes?: number;
 	/** Start ONE continuation run whose first input is this notice. */
 	readonly onWake?: (input: { readonly content: string; readonly via: UserInputVia }) => void;
 	/** Transitions within this window merge into one notice. Default 1 s. */
@@ -75,6 +79,7 @@ interface Pending {
 }
 
 const key = (i: TaskDeliveryItem): string => `${i.taskId}:${i.transition}`;
+export const DEFAULT_MAX_WAKES = 20;
 
 /** ADR-0058 3d (D3): a child's excerpt, and a group's excerpts together. */
 const CHILD_EXCERPT_BYTES = 4_096;
@@ -181,7 +186,8 @@ export class TaskDelivery {
 		if (task.agent !== undefined && item.transition !== "ready") return this.#agentEnded(task, item);
 		const mode = this.#modeOf(task, item);
 		if (mode === "silent") return;
-		this.#buffer.push({ item, line: this.#line(task, item), mode });
+		const spent = mode === "notify" && this.#eligible(task, item) && !this.#underBudget();
+		this.#buffer.push({ item, line: spent ? `${this.#line(task, item)}\nchain budget spent: ${this.#wakesSinceLastPerson()} autonomous wakes since the person's last message — continue when they speak` : this.#line(task, item), mode });
 		if (this.#timer === null) this.#timer = setTimeout(() => this.#flush(), this.#o.windowMs ?? 1_000);
 	}
 
@@ -233,7 +239,7 @@ export class TaskDelivery {
 		this.#scanned = events.length;
 	}
 
-	/** ADR-0058 §8 defaults, then the guards: the switch, and lineage. */
+	/** ADR-0058 §8 defaults, then the guards: the switch, and the chain budget. */
 	#modeOf(task: TaskInfo, item: TaskDeliveryItem): Mode {
 		if (item.transition === "ready" || item.transition === "stopped" || item.transition === "unknown") return "notify";
 		if (task.executionId === undefined) return "notify"; // started by the person: never a wake
@@ -242,13 +248,44 @@ export class TaskDelivery {
 	}
 
 	#wakes(item: TaskDeliveryItem): boolean {
-		if (this.#o.wake === false) return false;
-		if (item.transition !== "exited" && item.transition !== "failed") return false;
 		const task = this.#o.manager.get(item.taskId);
-		if (task === undefined || task.executionId === undefined || task.profile === "service") return false;
+		if (task === undefined || !this.#eligible(task, item)) return false;
 		// a child wakes only with its whole group (D2): never on its own
 		if (task.agent !== undefined && !this.#complete(this.#groupOf(task))) return false;
-		return !this.#startedInWakeRun(task.executionId);
+		return this.#underBudget();
+	}
+
+	/** The transition could wake, budget aside: the switch, a terminal, an
+	 *  execution's task, not a service — and not a wait that resolved at a
+	 *  restart because its time had passed (the restart rule, release 1). */
+	#eligible(task: TaskInfo, item: TaskDeliveryItem): boolean {
+		if (this.#o.wake === false) return false;
+		if (item.transition !== "exited" && item.transition !== "failed") return false;
+		if (task.executionId === undefined || task.profile === "service") return false;
+		if (task.state.kind === "ended" && task.state.wait?.overdue === true) return false;
+		return true;
+	}
+
+	/** ADR-0059 §3.3: the chain budget, derived from the log — never a
+	 *  counter. The count is the wake runs (first input a runtime notice)
+	 *  since the last run a person started. */
+	#underBudget(): boolean {
+		return this.#wakesSinceLastPerson() < (this.#o.maxWakes ?? DEFAULT_MAX_WAKES);
+	}
+
+	#wakesSinceLastPerson(): number {
+		let wakes = 0;
+		let firstOfRun = true;
+		for (const e of this.#o.events()) {
+			if (e.type === "terminal") {
+				firstOfRun = true;
+				continue;
+			}
+			if (e.type !== "user_input" || !firstOfRun) continue;
+			firstOfRun = false;
+			wakes = isRuntimeInput(e) ? wakes + 1 : 0;
+		}
+		return wakes;
 	}
 
 	/** ADR-0058 3d: an agent task has ended — a failure goes into a live run
@@ -379,23 +416,8 @@ export class TaskDelivery {
 		return `<kiso-task ${attrs.join(" ")}/>`;
 	}
 
-	/** Lineage depth 1: the run that started the task began with a notice. */
-	#startedInWakeRun(executionId: string): boolean {
-		const events = this.#o.events();
-		const at = events.findIndex((e) => e.type === "tool_execution_started" && e.executionId === executionId);
-		if (at < 0) return false;
-		let start = 0;
-		for (let n = at - 1; n >= 0; n--) {
-			if (events[n]!.type === "terminal") {
-				start = n + 1;
-				break;
-			}
-		}
-		const first = events.slice(start, at).find((e): e is Event & { type: "user_input" } => e.type === "user_input");
-		return isRuntimeInput(first);
-	}
-
 	#line(task: TaskInfo, item: TaskDeliveryItem): string {
+		if (task.profile === "wait" && task.wait !== undefined) return waitLine(task, item);
 		const attrs = [`id="${task.id}"`, `status="${item.transition}"`];
 		if (task.state.kind === "ended" && task.state.exitCode !== null) attrs.push(`code="${task.state.exitCode}"`);
 		if (task.state.kind === "ended" && task.state.signal !== null) attrs.push(`signal="${task.state.signal}"`);
@@ -476,3 +498,23 @@ function readTail(task: TaskInfo, bytes: number): string {
 		return "";
 	}
 }
+
+/** ADR-0059 §4 — a wait's notice line: what it awaited and how it ended,
+ *  then the event's payload verbatim (the facts the driver observed, never
+ *  a summary of them), capped. */
+function waitLine(task: TaskInfo, item: TaskDeliveryItem): string {
+	const w = task.wait!;
+	const s = task.state;
+	const status = s.kind === "ended" ? (s.stopped ? "stopped" : (s.wait?.outcome ?? "failed")) : item.transition;
+	const attrs = [`id="${task.id}"`, `status="${status}"`, `kind="${w.source.kind}"`];
+	for (const [k, v] of Object.entries(w.source)) if (k !== "kind" && (typeof v === "string" || typeof v === "number")) attrs.push(`${k}="${String(v).replace(/"/g, "&quot;")}"`);
+	if (w.note !== undefined) attrs.push(`note="${w.note.replace(/"/g, "&quot;")}"`);
+	if (task.endedAt !== undefined) attrs.push(`duration="${duration(task.endedAt - task.startedAt)}"`);
+	const tag = `<kiso-wait ${attrs.join(" ")}/>`;
+	if (s.kind !== "ended") return tag;
+	if (s.error !== undefined) return `${tag}\nerror: ${s.error}`;
+	if (s.wait?.outcome !== "fired" || s.wait.payload === undefined || s.wait.payload === null) return tag;
+	const payload = JSON.stringify(s.wait.payload);
+	return payload === "{}" ? tag : `${tag}\n${payload.length > WAIT_PAYLOAD_CAP ? `${payload.slice(0, WAIT_PAYLOAD_CAP)}…[truncated]` : payload}`;
+}
+const WAIT_PAYLOAD_CAP = 4_096;

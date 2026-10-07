@@ -1852,6 +1852,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			? () => {}
 			: session.useTasks(taskManager, {
 					wake: mergedConfig.taskWake !== false,
+					...(mergedConfig.maxWakes !== undefined ? { maxWakes: mergedConfig.maxWakes } : {}),
 					onWake: (w) => queueTurn(w.content, w.via),
 					// Amendment 8: a loss is said when kiso concludes it — the
 					// model's notice still rides the next run, and is not said again
