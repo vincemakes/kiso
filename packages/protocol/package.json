@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-protocol",
-	"version": "0.46.2",
+	"version": "0.47.0",
 	"description": "kiso protocol — the wire contract between a hosted kiso session and its clients: request envelopes, wire events (a projection of the durable stream, never the stream itself), the session snapshot, one error shape, a version. Zero runtime dependencies.",
 	"type": "module",
 	"license": "MIT",
