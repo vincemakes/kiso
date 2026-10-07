@@ -243,6 +243,16 @@ export interface NoticeRow {
 	readonly mark?: NoticeMark;
 }
 
+/** The last sweep (owner, 2026-10-06) — one part of what `/think` or
+ *  `/last` brings back: a dim title (`input`, `output`) when it has one,
+ *  and its text in the look of what it is — thinking's grey italic, or a
+ *  call's output in `ink2`, hung under the title. */
+export interface RecallSection {
+	readonly title?: string;
+	readonly text: string;
+	readonly style: "thinking" | "output";
+}
+
 export type BodyCell =
 	| { kind: "user"; text: string; done: true; turn: number }
 	| {
@@ -322,6 +332,10 @@ export type BodyCell =
 	 *  never sent (a `!cmd` is a user turn and draws the same way from its
 	 *  text, see `bangOf`). */
 	| { kind: "bang"; command: string; output: string; isError: boolean; done: true }
+	/** The last sweep — what `/think` or `/last` brings back, on the
+	 *  terminal: a meta row (`THINKING`, `LAST CALL`) and the sections
+	 *  under it. `text` is what a pipe prints, unchanged. */
+	| { kind: "recall"; text: string; label: string; sentence: string; sections: readonly RecallSection[]; done: true }
 	| { kind: "terminal"; label: string; line: string; done: true };
 
 const TOOL_SUMMARY_MAX = 60; // the tool line's parameter summary, chars
@@ -353,6 +367,8 @@ export function cellComponent(cell: BodyCell): Component {
 			return new RawBlock(cell);
 		case "bang":
 			return new BangCard(cell);
+		case "recall":
+			return new RecallBlock(cell);
 		case "terminal":
 			return new TerminalBlock(cell);
 	}
@@ -2062,6 +2078,32 @@ class ErrorLine implements Component {
 			return rows;
 		}
 		return folded.map((r, i) => (i === 0 ? cutLine(`${head}${lit(r)}`, W) : `${EDGE}${" ".repeat(META_LABEL)}${p.dim}${r}${p.reset}`));
+	}
+}
+
+/** The last sweep (owner, 2026-10-06) — `/think` and `/last` on the
+ *  terminal. They printed at column 0 under `--- … ---` rules, a blank row
+ *  between every part; now the row says what came back (`THINKING the last
+ *  block · 3 lines`, `LAST CALL LIST (root) · 2 lines`) and each part
+ *  follows in its own look: thinking as the thinking block draws it, a
+ *  call's input and output under dim titles, in `ink2`, hung by two. One
+ *  cell, so no blank row splits it. */
+class RecallBlock implements Component {
+	constructor(private readonly cell: { label: string; sentence: string; sections: readonly RecallSection[] }) {}
+	render(W: number, ctx: FrameCtx): string[] {
+		const p = palette();
+		const rows = new ErrorLine({ text: "", label: this.cell.label, sentence: this.cell.sentence, oneRow: true }).render(W, ctx);
+		for (const s of this.cell.sections) {
+			if (s.title !== undefined) rows.push(cutLine(`${EDGE}${p.dim}${s.title}${p.reset}`, W));
+			if (s.style === "thinking") {
+				rows.push(...new ThinkingBlock({ text: s.text, done: true }).render(W, ctx));
+				continue;
+			}
+			const room = Math.max(1, W - EDGE.length - HANG);
+			const lines = escapeTerminal(stripAnsi(s.text)).replace(/\n+$/, "").split("\n").flatMap((l) => foldLine(l, room));
+			for (const l of lines) rows.push(`${EDGE}${" ".repeat(HANG)}${p.ink2}${l}${p.fgEnd}`);
+		}
+		return rows;
 	}
 }
 

@@ -1070,7 +1070,10 @@ export function pickBlockRows(view: PanelView, state: PickRuntime, W: number, ma
 	if (total === 0) rows.push(`  ${cutLine(`${p.dim}${escapeTerminal(spec.emptyNote ?? "no options")}${p.reset}`, room)}`);
 	else if (list.shown.length === 0) rows.push(`  ${cutLine(`${p.dim}nothing matches "${escapeTerminal(list.query)}"${p.reset}`, room)}`);
 	if (list.shown.length === 0) {
-		rows.push(bandKeyRow(["esc"], 0, 0, W));
+		// the last sweep (owner, 2026-10-06): a list with nothing in it has no
+		// place to count (it read `0/0` under "no profiles"); a filter that
+		// matches nothing still counts 0/0, as /resume's does
+		rows.push(total === 0 ? cutLine(`${p.dim}  esc${p.reset}`, W) : bandKeyRow(["esc"], 0, 0, W));
 		return rows;
 	}
 	const win = pickWindowOf(view, state, maxRows, height);

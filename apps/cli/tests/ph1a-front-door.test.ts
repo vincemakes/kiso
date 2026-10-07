@@ -311,7 +311,9 @@ describe("PH-F8 (P0) — the /model switch is atomic on the wire", () => {
 				["working", "exit\r"],
 			], workdir, 30),
 		);
-		expect(out).toContain("[exit queued — closing after the current run completes]");
+		// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the reply
+		// is a sentence without its brackets; a pipe still prints them
+		expect(out).toContain("exit queued — closing after the current run completes");
 		expect(out).toContain("reply-from-slow-model");
 		expect(seenModels.length).toBe(before + 1);
 	});

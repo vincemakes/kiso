@@ -83,6 +83,7 @@ import {
 	type BodyCell,
 	type FrameCtx,
 	type NoticeMark,
+	type RecallSection,
 	breathFrame,
 	widthCut,
 } from "./components.js";
@@ -882,6 +883,22 @@ export class Body {
 		// ONE cell for the notice, so its rows stay together (D1 puts a blank
 		// between two cells)
 		this.#cells.push({ kind: "notice", text, done: true, label: first.label, sentence: first.sentence, ...(first.mark !== undefined ? { mark: first.mark } : {}), oneRow: true, ...(also.length > 0 ? { also } : {}) });
+		this.#mark();
+	}
+
+	/** The last sweep (owner, 2026-10-06) — what `/think` or `/last` brings
+	 *  back: on the terminal ONE cell, a meta row (`label`, `sentence`) and
+	 *  the sections under it; a pipe keeps `text`, byte for byte. */
+	recall(text: string, label: string, sentence: string, sections: readonly RecallSection[]): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "recall", text, label, sentence, sections, done: true });
 		this.#mark();
 	}
 

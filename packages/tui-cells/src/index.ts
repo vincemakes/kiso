@@ -80,7 +80,7 @@ export {
 	type TrustArtifact,
 } from "./strings.js";
 // KC3.5: the interrupted-ask copy and the extracted /help table.
-export { coldResumeLine, coldResumeView, extensionsBannerText, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
+export { coldResumeLine, coldResumeView, extensionsBannerText, extensionsFact, helpRows, unansweredAskView, type BannerExtension } from "./strings.js";
 // TUI2-R2pre ④: the ONE display-verb table — the screen names the act,
 // the tool table names the call.
 export { displayVerb } from "./strings.js";

@@ -31,7 +31,7 @@ import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
-import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
+import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
@@ -527,11 +527,16 @@ function bannerExtensionText(): string {
 	// terminal layer (extensionsBannerText — a pure function of the three
 	// name lists, including the "(connecting…)" in-flight label). Which
 	// lists exist is the CLI's fact and stays here.
-	// 0.40.0: with the don't-ask switch on the ask extension is loaded but
-	// offers no tool (builtin.ts offInDontAsk) — the banner says so, rather
-	// than listing it as if it could ask.
+	return extensionsBannerText(...extensionLists());
+}
+
+/** The three lists both forms are built from — the pipe's line and the
+ *  opening's EXTENSIONS row. 0.40.0: with the don't-ask switch on the ask
+ *  extension is loaded but offers no tool (builtin.ts offInDontAsk) — the
+ *  banner says so, rather than listing it as if it could ask. */
+function extensionLists(): [readonly BannerExtension[], readonly BannerExtension[], readonly BannerExtension[]] {
 	const builtIn = builtInExtensions.map((e) => (e.name === "ask" && getDontAsk() ? { name: e.name, note: "off in dontAsk" } : e));
-	return extensionsBannerText(builtIn, userExtensions, projectExtensions);
+	return [builtIn, userExtensions, projectExtensions];
 }
 
 /** E1: the startup banner line(s) — TTY: logo + merged extensions + the
@@ -582,7 +587,7 @@ async function announceUpdate(): Promise<void> {
 	}
 }
 
-function extensionsBanner(resumedEvents = 0): void {
+function extensionsBanner(sessionId: string, resumedEvents = 0): void {
 	const text = bannerExtensionText();
 	if (!process.stdout.isTTY) {
 		if (text !== "") bodyLog(`${text}\n`);
@@ -607,11 +612,15 @@ function extensionsBanner(resumedEvents = 0): void {
 	body.banner(VERSION, text.replace(/^ · /, ""), [], {
 		resumed: resumedEvents > 0,
 		facts: openingFacts({
+			// the last sweep: the new rows are the dock's; off one the
+			// `session <id>` and `[faux mode — …]` lines still print
+			sessionId: dock.active ? sessionId : null,
 			resumedEvents,
+			faux: dock.active && currentFaux,
 			rules: projectInstructions(cwd, protectedFiles())?.name ?? null,
 			skills: skills === null ? null : { count: skills.entries.length, broken: skills.broken.length },
 			mcp: mcp === undefined ? null : { tools: (mcp.tools ?? []).map((t) => t.name), connecting: mcp.connecting === true },
-			extensions: text.replace(/^ · /, ""),
+			extensions: dock.active ? extensionsFact(...extensionLists()) : text === "" ? null : { value: text.replace(/^ · /, "") },
 			// DC-49 — REALPATH on both sides. A symlinked HOME (or a symlinked
 			// cwd) compares unequal as raw strings while being the same
 			// directory, and the row would then be absent exactly where it is
@@ -990,7 +999,7 @@ async function reloadAgent(
 		setAgentModel(oldCfg.agent, oldCfg.endpoint);
 		if (oldCfg.delegation === undefined) delete process.env.KISO_DELEGATION_CONFIG_JSON;
 		else process.env.KISO_DELEGATION_CONFIG_JSON = oldCfg.delegation;
-		bodyLog(`[reload] ${err instanceof Error ? err.message : String(err)} — nothing changed, the previous set is still in force`);
+		body.notice(`[reload] ${err instanceof Error ? err.message : String(err)} — nothing changed, the previous set is still in force`);
 		return old;
 	}
 	// The new set is built and sound; only now does the old one go.
@@ -1003,7 +1012,7 @@ async function reloadAgent(
 			// best-effort — a survivor is removed by a later startup's sweep (temp-sweep.ts) once this process is gone
 		}
 	}
-	if (announce) bodyLog(`[reload] ${loadedExtensions.length} extensions, ${skillCount()} skills — the conversation is unchanged`);
+	if (announce) body.notice(`[reload] ${loadedExtensions.length} extensions, ${skillCount()} skills — the conversation is unchanged`);
 	return next;
 }
 
@@ -1092,7 +1101,10 @@ async function chatLoop(
 		} else if (refused) {
 			refused = false; // back in the session that was already on screen
 		} else if (prev === null) {
-			bodyLog(`session ${id}\n`);
+			// the last sweep (owner, 2026-10-06): on the terminal the opening's
+			// SESSION row names the id — this line stood above the opening at
+			// column 0. A pipe keeps it.
+			if (!dock.active) bodyLog(`session ${id}\n`);
 			// REL-0152-D5: a session with history says what that history WAS.
 			// Resuming used to print this one line and drop you at an empty
 			// prompt inside a conversation with thousands of events — the
@@ -1107,7 +1119,7 @@ async function chatLoop(
 			// recent sessions just to draw a badge, and `agent.session()`
 			// throws on profile drift — so one drifted session anywhere in the
 			// history stopped kiso from starting at all.
-			extensionsBanner(session.log.all.length);
+			extensionsBanner(id, session.log.all.length);
 			// OR-9 (owner, 2026-09-09): the update card under the banner, at
 			// EVERY start while a newer version is known — §7.10's once-only
 			// line is superseded. What the cache knows is painted NOW, with
@@ -1126,7 +1138,7 @@ async function chatLoop(
 			if (tmuxHint !== null) body.notice(tmuxHint);
 			void announceUpdate();
 		} else {
-			bodyLog(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
+			body.notice(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);
 			showResumeTail(session.log.all, session.id);
 			if (currentFaux) session.setAdapter(createFauxProvider(readFauxScript().slice(fauxSkip(id))));
 		}

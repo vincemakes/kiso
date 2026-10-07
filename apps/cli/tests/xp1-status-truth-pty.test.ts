@@ -100,10 +100,12 @@ describe("XP-1 — the row and the request agree, per session", () => {
 					["/mode to switch", "hello there\r"],
 					["What would you like me to inspect", "/clear\r"],
 					// inside the FRESH session: switch the live selection
-					["previous: conv-a", "/model switched\r"],
+					// RE-DERIVED (the last sweep, owner 2026-10-06): a switch is a
+					// SESSION row on a dock — the id, and the way back
+					["/resume conv-a returns", "/model switched\r"],
 					// back to conv-a — whose OWN profile is the faux default
 					["takes effect on the next turn", "/resume conv-a\r"],
-					["session conv-a (switched", "exit\r"],
+					["conv-a · /resume", "exit\r"],
 				],
 				workdir,
 			),
@@ -123,7 +125,7 @@ describe("XP-1 — the row and the request agree, per session", () => {
 
 		// ── the display half: after resuming conv-a, the repainted idle
 		// row carries CONV-A's model, not the other session's selection ──
-		const back = out.lastIndexOf("session conv-a (switched");
+		const back = [...out.matchAll(/SESSION {5}conv-a · \/resume/g)].at(-1)?.index ?? -1;
 		expect(back).toBeGreaterThanOrEqual(0);
 		const after = out.slice(back);
 		expect(after, "the row tells conv-a's truth").toContain("/mode to switch · faux");

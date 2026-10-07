@@ -162,7 +162,7 @@ export function askUi(input: LineInput): AskUI {
 			// question the model puts is declined, recorded as unanswered,
 			// exactly as a non-interactive session declines it.
 			if (getDontAsk()) {
-				bodyLog("[dontAsk] the model's question was declined — nothing asks in dontAsk");
+				body.notice("[dontAsk] the model's question was declined — nothing asks in dontAsk");
 				return askDeclineAll(spec);
 			}
 			const verdict = await askPanel(input, askView(spec));

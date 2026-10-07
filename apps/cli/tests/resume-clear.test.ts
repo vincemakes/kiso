@@ -90,12 +90,15 @@ describe("/clear — a fresh conversation, history untouched", () => {
 				// a turn IN the new session — a run-less session writes no
 				// file by design (the E1 lazy-marker semantics), so the new
 				// log materializes here
-				["previous: first-conv", "fresh hello\r"],
+				// RE-DERIVED (the last sweep, owner 2026-10-06): on a dock the
+				// switch is a SESSION row that says the way back, and the opening
+				// names the id (the `session <id>` lines retired there)
+				["/resume first-conv returns", "fresh hello\r"],
 				["fresh hello", "exit\r"],
 			], workdir),
 		);
-		expect(out).toContain("session first-conv");
-		expect(out).toContain("previous: first-conv");
+		expect(out).toMatch(/SESSION {5}first-conv · new/);
+		expect(out).toMatch(/SESSION {5}\S+ · \/resume first-conv returns/);
 		// the old durable log is INTACT (clear never erases history) and
 		// the new turn never leaked into it
 		const old = readFileSync(join(dirs.home, "sessions", "first-conv.jsonl"), "utf8");
@@ -118,11 +121,12 @@ describe("/resume — the in-session door", () => {
 			ptyRun(["chat", "conv-a"], env, [
 				["/mode to switch", "alpha turn\r"],
 				["What would you like me to inspect", "/clear\r"],
-				["previous: conv-a", "/resume conv-a\r"],
-				["session conv-a (switched", "exit\r"],
+				["/resume conv-a returns", "/resume conv-a\r"],
+				// RE-DERIVED (the last sweep): back in conv-a, the row names it
+				["conv-a · /resume", "exit\r"],
 			], workdir),
 		);
-		expect(out).toContain("session conv-a (switched");
+		expect(out).toMatch(/SESSION {5}conv-a · \/resume \S+ returns/);
 		// conv-a's log still ends where it ended — the switch appended nothing
 		const log = readFileSync(join(dirs.home, "sessions", "conv-a.jsonl"), "utf8");
 		expect(log).toContain("alpha turn");
@@ -161,7 +165,7 @@ describe("the guard no longer fires for the two new commands", () => {
 		const out = strip(
 			ptyRun(["chat", "guard-check"], env, [
 				["/mode to switch", "/clear\r"],
-				["previous: guard-check", "exit\r"],
+				["/resume guard-check returns", "exit\r"],
 			], workdir),
 		);
 		expect(out).not.toContain("unknown command: /clear");

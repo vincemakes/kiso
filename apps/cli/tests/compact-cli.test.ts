@@ -257,8 +257,10 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		);
 		const plain = stripANSI(out);
 
-		// The mid-run refusal is visible.
-		expect(plain).toContain("[/compact] a turn is running");
+		// The mid-run refusal is visible. RE-DERIVED (the last sweep, owner
+		// 2026-10-06): on a dock without its `[/compact]` brackets.
+		expect(plain).toContain("a turn is running — wait for it to finish");
+		expect(plain).not.toContain("[/compact] a turn is running");
 		// W18 re-baseline: the success NoticeCell is the RECAP — the covered
 		// rounds (9 total − 4 kept = 5, pinned with the coversToSeq:14
 		// boundary below), the one summary, the savings, and the elapsed.
@@ -346,7 +348,9 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// size carries the output bar ("~Nk → ▱▱▱▱▱▱ 0/32k"); nothing has
 		// streamed during the 1.5s delay, so it reads zero at the second tick.
 		expect(plain).toContain("0/32k · 1s");
-		expect(plain).toContain("[/compact] cancelled — nothing was persisted");
+		// RE-DERIVED (the last sweep): on a dock without its brackets
+		expect(plain).toContain("cancelled — nothing was persisted");
+		expect(plain).not.toContain("[/compact] cancelled");
 		// The cancel left the session untouched: no summarized event on disk.
 		const durable = readFileSync(join(home, "sessions", "kc.jsonl"), "utf8");
 		expect(durable).not.toContain('"type":"summarized"');

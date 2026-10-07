@@ -5,7 +5,7 @@
  */
 
 import type { SessionRoute } from "./projects.js";
-import { STATUS_GLYPHS, contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, displayVerb, escapeTerminal, helpRows, infoSheetRows, kUnit, modePickView, modelPickView, namedPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
+import { STATUS_GLYPHS, contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, displayVerb, escapeTerminal, helpRows, toolTarget, infoSheetRows, kUnit, modePickView, modelPickView, namedPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
 import type { AgentSession } from "@vincemakes/kiso-runtime";
@@ -374,9 +374,12 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const t = body.lastThinking();
 			if (t === null) {
-				bodyLog("[no thinking yet]");
+				body.notice("[no thinking yet]");
 			} else {
-				bodyLog(escapeTerminal(t));
+				// the last sweep (owner, 2026-10-06): on the terminal a THINKING
+				// row and the block in thinking's own look; a pipe prints the text
+				const lines = t.trim().split("\n").length;
+				body.recall(escapeTerminal(t), "THINKING", `the last block \u00b7 ${lines} line${lines === 1 ? "" : "s"}`, [{ text: t, style: "thinking" }]);
 			}
 			ctx.input.prompt();
 		});
@@ -389,7 +392,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const tool = body.lastTool();
 			if (tool === null) {
-				bodyLog("[no tool call yet]");
+				body.notice("[no tool call yet]");
 			} else {
 				// TUI2-R2pre ④: the SECTION HEADERS say the act ("--- read
 				// input ---") on the interactive SCREEN; the two payloads
@@ -402,11 +405,21 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// is a machine-readable log whose bytes other things (the
 				// e2e gates, anyone's script) already depend on. Without the
 				// dock, this is that log — so it keeps the call's own name.
-				const verb = dock.active ? displayVerb(tool.name) : tool.name;
-				bodyLog(`--- ${verb} input ---`);
-				bodyLog(escapeTerminal(JSON.stringify(tool.input, null, 2)));
-				bodyLog(`--- ${verb} output${tool.result.isError ? " (error)" : ""} ---`);
-				bodyLog(escapeTerminal(tool.result.content));
+				//
+				// The last sweep (owner, 2026-10-06): the screen's form is no
+				// longer the rules with a display verb — it is a LAST CALL row
+				// (the card's verb and target, how much came back) and the two
+				// payloads under dim titles, one cell. The pipe keeps the log.
+				const input = escapeTerminal(JSON.stringify(tool.input, null, 2));
+				const output = escapeTerminal(tool.result.content);
+				const pipe = [`--- ${tool.name} input ---`, input, `--- ${tool.name} output${tool.result.isError ? " (error)" : ""} ---`, output].join("\n");
+				const n = tool.result.content.replace(/\n+$/, "").split("\n").length;
+				const head = `${displayVerb(tool.name).toUpperCase()} ${toolTarget(tool.name, tool.input)}`.trim();
+				const said = tool.result.content === "" ? "no output" : `${n} line${n === 1 ? "" : "s"}${tool.result.isError ? " \u00b7 failed" : ""}`;
+				body.recall(pipe, "LAST CALL", `${head} \u00b7 ${said}`, [
+					{ title: "input", text: input, style: "output" },
+					{ title: tool.result.isError ? "output (error)" : "output", text: output, style: "output" },
+				]);
 			}
 			ctx.input.prompt();
 		});
@@ -537,7 +550,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const answer = lastAnswer(ctx.session.projected());
 			if (answer === null) {
-				bodyLog("[nothing to copy — no answer yet]");
+				body.notice("[nothing to copy — no answer yet]");
 			} else {
 				const r = clipboardWrite(answer);
 				// The MESSAGE comes from clipboardWrite, never from here —
@@ -562,11 +575,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 			const r = body.rewrap();
 			if (r.lines.length === 0) {
-				bodyLog("[/rewrap] no prose to re-wrap yet");
+				body.notice("[/rewrap] no prose to re-wrap yet");
 			} else {
-				bodyLog(`--- re-wrapped ${r.blocks} block${r.blocks === 1 ? "" : "s"} at the current width (appended — the history above is unchanged) ---`);
+				body.notice(`--- re-wrapped ${r.blocks} block${r.blocks === 1 ? "" : "s"} at the current width (appended — the history above is unchanged) ---`);
 				bodyLog(r.lines.join("\n")); // DC-51: one call, one cell
-				if (r.skipped > 0) bodyLog(`--- ${r.skipped} earlier block${r.skipped === 1 ? "" : "s"} not re-wrapped (bounded at two screens) ---`);
+				if (r.skipped > 0) body.notice(`--- ${r.skipped} earlier block${r.skipped === 1 ? "" : "s"} not re-wrapped (bounded at two screens) ---`);
 			}
 			ctx.input.prompt();
 		});
@@ -741,18 +754,18 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			if (words === "") {
 				const named = readSessionName(root, ctx.session.id);
 				const derived = sessionTitle(ctx.session.log.all.map((event) => ({ runId: "", ts: 0, event }) as StoreRecord));
-				bodyLog(named !== null ? `name: ${escapeTerminal(named)} \u00b7 /name - clears it` : `unnamed \u2014 /resume lists it as "${escapeTerminal(derived)}" \u00b7 /name <words> names it`);
+				body.notice(named !== null ? `name: ${escapeTerminal(named)} \u00b7 /name - clears it` : `unnamed \u2014 /resume lists it as "${escapeTerminal(derived)}" \u00b7 /name <words> names it`);
 			} else if (words === "-") {
 				writeSessionName(root, ctx.session.id, null);
 				setTitleName(null);
 				// the tasks round: the tab says kiso since the card round, so what the
 				// first line names again is the session in /resume
-				bodyLog("name cleared \u2014 /resume lists it by its first line again");
+				body.notice("name cleared \u2014 /resume lists it by its first line again");
 			} else {
 				const name = [...words].slice(0, NAME_MAX).join("");
 				writeSessionName(root, ctx.session.id, name);
 				setTitleName(name);
-				bodyLog(`named "${escapeTerminal(name)}"`);
+				body.notice(`named "${escapeTerminal(name)}"`);
 			}
 			ctx.input.prompt();
 		});
@@ -879,8 +892,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					}
 					const chosen = "index" in picked ? (OFFERED_MODES[picked.index] === undefined ? undefined : { mode: OFFERED_MODES[picked.index]! }) : parseMode(picked.custom);
 					if (chosen === undefined) {
-						bodyLog(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}`);
-						bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
+						body.notice(`no such mode: ${"index" in picked ? String(picked.index) : picked.custom.trim()}\ntiers: ${OFFERED_MODES.join(" ")}`);
 					} else {
 						switchTier(chosen);
 					}
@@ -893,8 +905,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			} else {
 				const typed = parseMode(arg);
 				if (typed === undefined) {
-					bodyLog(`no such mode: ${arg}`);
-					bodyLog(`tiers: ${OFFERED_MODES.join(" ")}`);
+					body.notice(`no such mode: ${arg}\ntiers: ${OFFERED_MODES.join(" ")}`);
 				} else {
 					switchTier(typed);
 				}
@@ -1043,7 +1054,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					const direct = directWriteProfile(profName);
 					const profile = direct ?? configModels[profName];
 					if (profile === undefined) {
-						bodyLog(`no such model profile: ${profName}`);
+						body.notice(`no such model profile: ${profName}`);
 					} else if (!profileAvailable(profile)) {
 						// the PROFILE name, not the whole argument: what is
 						// unavailable is the credential, and an effort token
@@ -1410,11 +1421,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				ctx.chainRef.current = ctx.chainRef.current.then(async () => {
 					const route = ctx.route?.(arg) ?? null;
 					if (route === null || route.kind === "refused") {
-						bodyLog(route?.line ?? `no such session: ${escapeTerminal(arg)} — /resume lists them`);
+						body.notice(route?.line ?? `no such session: ${escapeTerminal(arg)} — /resume lists them`);
 						ctx.input.prompt();
 						return;
 					}
-					if (route.kind === "elsewhere" && route.line !== null) bodyLog(route.line);
+					if (route.kind === "elsewhere" && route.line !== null) body.notice(route.line);
 					ctx.requestSwitch(arg);
 				});
 				return;
@@ -1425,7 +1436,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		const others = ctx.sessions().filter((id) => id !== ctx.session.id);
 		if (others.length === 0) {
 			ctx.chainRef.current = ctx.chainRef.current.then(async () => {
-				bodyLog("no other sessions — /clear starts a fresh one");
+				body.notice("no other sessions — /clear starts a fresh one");
 				ctx.input.prompt();
 			});
 			return;
@@ -1441,11 +1452,11 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				// session is refused with where to go
 				const route = ctx.sessions().includes(picked) ? null : (ctx.route?.(picked) ?? null);
 				if (route?.kind === "refused") {
-					bodyLog(route.line);
+					body.notice(route.line);
 					ctx.input.prompt();
 					return;
 				}
-				if (route?.kind === "elsewhere" && route.line !== null) bodyLog(route.line);
+				if (route?.kind === "elsewhere" && route.line !== null) body.notice(route.line);
 				ctx.requestSwitch(picked);
 			});
 			return;
@@ -1475,7 +1486,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				const userDir = tildePath(join(kisoHome(), "skills"));
 				ctx.input.openSheet((W) => skillsSheetRows(catalog, skillSource, userDir, W));
 			} else if (skill?.kind === "list") bodyLog(skillsRows(loadedSkillsCatalog(), skillSource, tildePath(join(kisoHome(), "skills"))).map(escapeTerminal).join("\n"));
-			else if (skill?.kind === "error") bodyLog(escapeTerminal(skill.message));
+			else if (skill?.kind === "error") body.notice(escapeTerminal(skill.message));
 			ctx.input.prompt();
 		});
 		return;
@@ -1499,7 +1510,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 			// reading when they typed it.
 			const word = trimmed.split(/\s+/)[0] ?? trimmed;
 			const known = slashCommandNames().includes(word);
-			bodyLog(
+			body.notice(
 				known
 					? `${escapeTerminal(word)} takes no arguments — /help says what it does`
 					: `unknown command: ${escapeTerminal(word)} — /help lists the commands`,
@@ -1521,14 +1532,14 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	const manager = tasksFor(ctx.session.id);
 	if (manager === undefined) {
-		bodyLog("no tasks here — this session has no task manager");
+		body.notice("no tasks here — this session has no task manager");
 		return;
 	}
 	let list: TaskInfo[];
 	try {
 		list = manager.list();
 	} catch (err) {
-		bodyLog(`tasks: ${(err as Error).message}`);
+		body.notice(`tasks: ${(err as Error).message}`);
 		return;
 	}
 	const show = (t: TaskInfo): void => {
@@ -1545,22 +1556,22 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 		for (const line of lines) bodyLog(`  ${line}`);
 	};
 	const stop = (t: TaskInfo): void => {
-		bodyLog(manager.stop(t.id, "person") ? `${t.id}: stop requested` : `${t.id}: nothing to stop (${taskStateLabel(t)})`);
+		body.notice(manager.stop(t.id, "person") ? `${t.id}: stop requested` : `${t.id}: nothing to stop (${taskStateLabel(t)})`);
 	};
 	const [verb, id] = arg.split(/\s+/);
 	if (verb === "show" || verb === "stop") {
 		const t = list.find((x) => x.id === id);
-		if (t === undefined) bodyLog(`no task ${id ?? ""} in this session`);
+		if (t === undefined) body.notice(`no task ${id ?? ""} in this session`);
 		else if (verb === "show") show(t);
 		else stop(t);
 		return;
 	}
 	if (arg !== "") {
-		bodyLog("usage: /tasks · /tasks show <id> · /tasks stop <id>");
+		body.notice("usage: /tasks · /tasks show <id> · /tasks stop <id>");
 		return;
 	}
 	if (list.length === 0) {
-		bodyLog("no tasks in this session");
+		body.notice("no tasks in this session");
 		return;
 	}
 	for (const t of list) if (t.state.kind === "unknown") seenUnknownTasks.add(t.id);

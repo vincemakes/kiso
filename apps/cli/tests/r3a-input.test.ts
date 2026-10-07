@@ -115,11 +115,13 @@ describe("R3a — cross-session history", () => {
 		//
 		// The resume list left the opening this round, so the crutch went
 		// with it. Two ↑ walk past `exit` to the line the recall is actually
-		// being tested on, and the needle is `session ` rather than `› `
-		// because the prompt is on screen from the dock's first frame,
-		// before the history file has been read and bound.
+		// being tested on, and the needle is the session's id rather than
+		// `› ` because the prompt is on screen from the dock's first frame,
+		// before the history file has been read and bound. RE-DERIVED (the
+		// last sweep, owner 2026-10-06): the id is the opening's SESSION row
+		// now — the `session <id>` line above it retired on a dock.
 		const out2 = strip(ptyRun(["chat", "hist-two"], env, [
-			["session ", "\x1b[A\x1b[A"],
+			["hist-two", "\x1b[A\x1b[A"],
 			["remember this exact line", "\rexit\r"],
 		], workdir));
 		expect(out2).toContain("remember this exact line");

@@ -977,19 +977,27 @@ function openingRule(n: number): string {
 
 /** The facts as rows `room` cells wide: the label dim in its column, the
  *  fact in ink, the note dim after it. A row that does not fit loses its
- *  note first; a fact still too long HANGS under itself, folded by word —
- *  an extensions list cut at the width would hide which extensions
- *  loaded, on the one screen whose job is to say so. */
+ *  note first — from its end, one ` · ` part at a time (the last sweep,
+ *  owner 2026-10-06: `<id> · new · resumable after kill -9` keeps `new`
+ *  beside the wordmark when a 24-cell session id leaves no room for the
+ *  rest); a fact still too long HANGS under itself, folded by word — an
+ *  extensions list cut at the width would hide which extensions loaded, on
+ *  the one screen whose job is to say so. */
 function factRows(facts: readonly BannerFact[], room: number): string[] {
 	const p = palette();
 	const rows: string[] = [];
 	for (const f of facts) {
 		const label = `${p.dim}${f.label}${p.reset}${" ".repeat(Math.max(1, FACT_LABEL_W - f.label.length))}`;
 		const value = escapeTerminal(f.value);
-		const note = f.note === undefined ? "" : escapeTerminal(f.note);
-		const whole = `${label}${value}${note === "" ? "" : `${p.dim} \u00b7 ${note}${p.reset}`}`;
-		if (visibleWidth(whole) <= room) {
-			rows.push(whole);
+		const parts = f.note === undefined || f.note === "" ? [] : escapeTerminal(f.note).split(" \u00b7 ");
+		let fitted: string | null = null;
+		for (let n = parts.length; n >= 0 && fitted === null; n -= 1) {
+			const kept = parts.slice(0, n).join(" \u00b7 ");
+			const row = `${label}${value}${kept === "" ? "" : `${p.dim} \u00b7 ${kept}${p.reset}`}`;
+			if (visibleWidth(row) <= room) fitted = row;
+		}
+		if (fitted !== null) {
+			rows.push(fitted);
 			continue;
 		}
 		const valueRoom = room - FACT_LABEL_W;

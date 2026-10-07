@@ -50,7 +50,7 @@ export {
 	type PanelVerdict,
 	type PanelView,
 } from "./approval-panel.js";
-export { Container, foldLine, foldWords, infoSheetRows, visibleWidth, SPINNER, type Component, type FrameCtx, type NoticeMark } from "./components.js";
+export { Container, foldLine, foldWords, infoSheetRows, visibleWidth, SPINNER, type Component, type FrameCtx, type NoticeMark, type RecallSection } from "./components.js";
 export {
 	Editor,
 	MENU_ITEMS,
@@ -166,4 +166,4 @@ export { currentGroundRgb, parseOscColor, resolveGround, type Ground, type Rgb }
 // one duration form: the CLI's own surfaces label a settled duration the
 // way a settled card does, rather than writing a second one.
 export { settledLabel } from "@vincemakes/kiso-tui-cells";
-export { KEY_BINDINGS, SHEET_CLOSE, coldResumeLine, coldResumeView, displayVerb, extensionsBannerText, helpRows, keysHelpRow, keysSheetRows, slashCommandNames, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";
+export { KEY_BINDINGS, SHEET_CLOSE, coldResumeLine, coldResumeView, displayVerb, extensionsBannerText, extensionsFact, helpRows, keysHelpRow, keysSheetRows, slashCommandNames, unansweredAskView, type BannerExtension, type KeyBinding } from "./strings.js";

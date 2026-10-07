@@ -926,7 +926,13 @@ export class Editor {
 		// 0.40.1: the built-ins first, then the extras (skills) — and a
 		// built-in WINS a shared name, so a skill named like a command is
 		// never listed twice and never shadows it (the dispatcher's rule)
-		return this.#menuAll().filter((m) => m.name.startsWith(line));
+		const matches = this.#menuAll().filter((m) => m.name.startsWith(line));
+		// the last sweep (owner, 2026-10-06): a line that IS a command's name
+		// lists that command first, so ⏎ runs it. `/skill` listed `/skills`
+		// first (the table's order) and ⏎ completed the line to it — the
+		// command typed in full never ran. The rest keep the table's order.
+		const exact = matches.findIndex((m) => m.name === line);
+		return exact <= 0 ? matches : [matches[exact]!, ...matches.slice(0, exact), ...matches.slice(exact + 1)];
 	}
 
 	/** 0.40.1 — bind the menu's extra entries (the CLI binds the installed
