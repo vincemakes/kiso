@@ -192,6 +192,13 @@ describe("0430-F1: the same durable prefix, fresh and recovered, writes the same
 		}
 	});
 
+	it("K15a: an undeclared argument is refused with the SAME words on both paths, naming it", async () => {
+		const r = await bothPaths({ name: "probe", input: { x: 1, quality: "high" } });
+		const text = (log: Event[]) => log.filter((e) => e.type === "tool_result").map((e) => (e as Event & { type: "tool_result" }).content);
+		expect(text(r.logA)).toEqual(['Arguments failed schema validation:/ must NOT have additional properties: "quality"']);
+		expect(text(r.logB)).toEqual(text(r.logA));
+	});
+
 	it("a crash after the started receipt, before the result, with no decision on disk: the recovery repairs from the receipt and invents no decision", async () => {
 		seen.length = 0;
 		const dirA = mkdtempSync(join(tmpdir(), "kiso-parity-crash-"));

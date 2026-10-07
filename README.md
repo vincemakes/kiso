@@ -9,7 +9,7 @@
 - **You decide, and the floor holds.** Four approval modes and a don't-ask switch; "don't ask again" becomes a rule file you can delete; even in full access, a command that would destroy something unrecoverable is refused.
 - **Any model you have.** DeepSeek, Claude, GPT, a ChatGPT subscription, and any OpenAI-compatible endpoint or gateway. Keys never go in the config file.
 - **You can see where it goes.** Each turn ends with its fresh input, output and cache hits; `/context` shows what fills the context; `/status` says where the window figure comes from.
-- **Small and inspectable.** The kernel is capped at 2,200 lines (2,192 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 45 ADRs, with why, and when to overturn it.
+- **Small and inspectable.** The kernel is capped at 2,200 lines (2,194 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 45 ADRs, with why, and when to overturn it.
 
 ## Install
 
