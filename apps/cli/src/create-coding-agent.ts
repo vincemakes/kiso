@@ -8,6 +8,7 @@
  * the body is not edited beyond the rename and activeStoreDir's setter.
  */
 
+import { onInRunSummary } from "./in-run-compaction.js";
 import { activeStoreDir, childTurnBudget, setActiveStoreDir, body, bodyLog, dock, codingToolOptions, extensionsDir, floorOn, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
 import { claimProjectDir, projectLayoutActive } from "./projects.js";
 import { migrationNotice, pendingLegacyIds, planMigration, runMigration } from "./session-migration.js";
@@ -314,6 +315,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 				isCheck: (command: string) => runsACheck(command, Object.values(merged.checks ?? {})),
 				// ADR-0055 Amendment 2: a discarded checkpoint says so, in sizes only.
 				onDiscard: (d) => body.notice(compactionDiscardedNotice(d)),
+				// the compaction round (owner, 2026-10-06): a summary inside a run
+				// is drawn while it runs — the running row reads it
+				onSummary: onInRunSummary,
 				// ADR-0055 Amendment 2 (decision 3): only a window someone stated
 				// arms the overflow belt — read from the LIVE binding, so it moves
 				// with /model and /resume; the fallback reads as null.

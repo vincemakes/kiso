@@ -135,16 +135,19 @@ export interface RowSegment {
 export function composeRow(head: string, segments: readonly (RowSegment | null | undefined)[], W?: number): string {
 	const present = segments.filter((x): x is RowSegment => x != null && x.text !== "");
 	const join = (xs: readonly RowSegment[]): string => [head, ...xs.map((x) => x.text)].join(" · ");
+	// the compaction round: a fact may carry colour (the progress cells), and
+	// its codes take no cells — measured without them, a plain row as before
+	const width = (t: string): number => displayWidth(t.replace(/\x1b\[[0-9;]*m/g, ""));
 	const full = join(present);
-	if (W === undefined || displayWidth(full) <= W) return full;
+	if (W === undefined || width(full) <= W) return full;
 	// 1. elide every label in its middle
 	let row = present.map((x) => (x.kind === "label" ? { ...x, text: elideMiddle(x.text, LABEL_ON_ROW) } : x));
-	if (displayWidth(join(row)) <= W) return join(row);
+	if (width(join(row)) <= W) return join(row);
 	// 2. drop hints from the end, one at a time
 	for (let i = row.length - 1; i >= 0; i -= 1) {
 		if (row[i]!.kind !== "hint") continue;
 		row = [...row.slice(0, i), ...row.slice(i + 1)];
-		if (displayWidth(join(row)) <= W) return join(row);
+		if (width(join(row)) <= W) return join(row);
 	}
 	// 3. facts are never dropped: past this point the row is over budget,
 	//    and it is invariant ①'s to cut — which it will do to the LAST
@@ -236,6 +239,18 @@ export function runningStatus(
  * inline template in dispatch (0.40.0) so it composes like every other
  * row and has a place for what the launch build adds to it.
  */
+/** The compaction round (owner, 2026-10-06) — the summary's progress in
+ *  the bar's own cells (§8.9's ctx meter, `meterCells`): `▆` filled in
+ *  `ink2`, the rest in the track colour. `▰▱` drew tiny in Menlo and
+ *  retired from the bar; off a known ground there are no colours to tell
+ *  filled from empty, so the glyphs carry it there. */
+function progressCells(ratio: number, cells: number): string {
+	const p = palette();
+	if (p.track === "") return meterGlyphs(ratio, cells);
+	const filled = Math.max(0, Math.min(cells, Math.round((Number.isFinite(ratio) ? ratio : 0) * cells)));
+	return `${p.ink2}${"\u2586".repeat(filled)}${p.track}${"\u2586".repeat(cells - filled)}${p.fgEnd}`;
+}
+
 export function compactingStatus(
 	glyph: string,
 	rounds: number,
@@ -252,13 +267,14 @@ export function compactingStatus(
 	// bar never invents a denominator.
 	const covered =
 		progress != null && progress.budget !== null && progress.budget > 0
-			? `~${kUnit(tokens)} \u2192 ${meterGlyphs(progress.produced / progress.budget, BAR_ON_ROW)} ${kUnit(progress.produced)}/${kUnit(progress.budget)}`
+			? `~${kUnit(tokens)} \u2192 ${progressCells(progress.produced / progress.budget, BAR_ON_ROW)} ${kUnit(progress.produced)}/${kUnit(progress.budget)}`
 			: `~${kUnit(tokens)} tokens`;
 	return composeRow(`${glyph} compacting`, [
 		// Graphite §8.7 (R3b, G7): why it is compacting — `manual` for
 		// /compact, `auto` past the configured threshold — first, a fact
 		why !== undefined && why !== "" ? { kind: "fact", text: why } : null,
-		{ kind: "fact", text: `${rounds} rounds` },
+		// the compaction round: one round is a round
+		{ kind: "fact", text: `${rounds} round${rounds === 1 ? "" : "s"}` },
 		{ kind: "fact", text: covered },
 		// why the figure jumped when the usage landed — a HINT, so a narrow
 		// row gives it up before the bar, the seconds or the retry
