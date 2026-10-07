@@ -39,6 +39,20 @@ jobs:
     steps:
       # the npm tarballs carry LF; a CRLF checkout would test bytes no user gets
       - run: git config --global core.autocrlf false
+      # Defender's real-time scan of every file the suites create stalls the
+      # runner for seconds at a time: on 2026-10-07, 4 of 29 windows runs went
+      # red, each a cluster of unrelated store-heavy tests timing out together
+      # (one file: median 291 ms, worst 6,265 ms). The workspace and the temp
+      # roots are excluded; a runner that refuses says so and the job goes on.
+      - name: Exclude the workspace and temp from Defender's real-time scan
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE", "$env:RUNNER_TEMP", "$env:TEMP" -ErrorAction Stop
+            Write-Host "Defender exclusions: $((Get-MpPreference).ExclusionPath -join ', ')"
+          } catch {
+            Write-Host "::warning::Defender exclusion not applied: $($_.Exception.Message)"
+          }
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
@@ -50,4 +64,7 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: node scripts/windows-probe.mjs
-      - run: npx vitest run -c vitest.unit.config.ts
+      # 15 s per test on this job only (vitest's default 5 s holds on Linux and
+      # locally): a runner stall must not read as a failure, and a test that
+      # truly hangs still fails here
+      - run: npx vitest run -c vitest.unit.config.ts --testTimeout=15000
