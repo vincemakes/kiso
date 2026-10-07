@@ -68,18 +68,26 @@ const INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
  * a protected one is skipped as though absent.
  */
 export function readProjectInstructions(cwd: string, protectedFiles: readonly string[] = []): string {
+	const found = projectInstructions(cwd, protectedFiles);
+	if (found === null) return "";
+	const { name, text } = found;
+	return `\n\n=== Project instructions (${name}) ===\n${text.length > 8 * 1024 ? text.slice(0, 8 * 1024) + `\n\n[truncated at ${8 * 1024} chars]` : text}`;
+}
+
+/** The instruction file the prompt reads, and its text — the ONE lookup,
+ *  so the opening's RULES fact (Graphite §7.10) names exactly the file the
+ *  model is given, never a file it is not. */
+export function projectInstructions(cwd: string, protectedFiles: readonly string[] = []): { readonly name: string; readonly text: string } | null {
 	const id = protectedIdentity(protectedFiles);
 	for (const name of INSTRUCTION_FILES) {
 		if (isProtectedPath(join(cwd, name), id)) continue;
-		let text: string;
 		try {
-			text = readFileSync(join(cwd, name), "utf8");
+			return { name, text: readFileSync(join(cwd, name), "utf8") };
 		} catch {
 			continue; // not present — try the next
 		}
-		return `\n\n=== Project instructions (${name}) ===\n${text.length > 8 * 1024 ? text.slice(0, 8 * 1024) + `\n\n[truncated at ${8 * 1024} chars]` : text}`;
 	}
-	return "";
+	return null;
 }
 
 /** A area: the session's system prompt — the constant plus any project

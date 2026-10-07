@@ -188,7 +188,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(di
 		// R-D 0.1.45: the built-in column + the user's safe-test (E5: the
 		// three default built-ins are bundled in; the banner names all four).
 		expect(out1).toContain("[5 extensions: built-in: mcp, skills, subagent, ask · safe-test]");
-		expect(out1).not.toContain("read_file needs approval"); // the read was AUTO-allowed — no prompt
+		expect(out1).not.toContain("needs you · asked by"); // the read was AUTO-allowed — no prompt (Graphite P4: the approval band)
 		expect(out1).toContain("approve write_file"); // the write WAS asked of the human
 		expect(out1).toContain("[Permission denied]"); // the destructive shell was denied to the model
 		// Exactly one decide() per called tool — the marker is the policy's own log.
@@ -217,7 +217,7 @@ driver(${JSON.stringify(CLI)}, ${JSON.stringify(home)}, ${JSON.stringify(join(di
 		const out2 = execFileSync("python3", ["-c", phase2], { encoding: "utf8", timeout: 90_000, env });
 		expect(out2).toContain("done"); // the trajectory completed
 		expect((out2.match(/approve write_file/g) ?? [])).toHaveLength(1); // ONLY the new request — already-ruled ones are not re-asked
-		expect(out2).not.toContain("read_file needs approval");
+		expect(out2).not.toContain("needs you · asked by");
 		expect(out2).not.toContain("(a)bandon"); // no uncertain executions
 		expect(readFileSync(marker, "utf8").trim().split("\n")).toEqual(["read_file", "write_file", "shell", "write_file"]); // the policy does not re-run
 		// Both writes actually landed.

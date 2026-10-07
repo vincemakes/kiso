@@ -10,12 +10,12 @@
  * with a retryable 429 whose Retry-After holds the wait for 2.5 s, and
  * reads the screen frame by frame as a terminal would have shown it:
  *
- *  - the row says `retrying 1/10 · rate_limit · 3s` during the wait;
+ *  - the live row says `↻ retrying 1/10 · rate_limit · next try in 3s`
+ *    during the wait (Graphite §8.7: the retry replaces `working`);
  *  - the countdown MOVES on its own (the kernel announces once — the row
  *    recomputes what is left at every repaint);
- *  - at 80 columns the row is composed to fit: the gesture hint gives way
- *    and the context figure, a fact, stays (composed blind, the row was
- *    cut from the end and the context figure went first);
+ *  - at 80 columns the row is composed to fit, whole, and the context
+ *    figure, a fact, stays on the status bar through the wait;
  *  - once the retried attempt streams, the row stops saying it is
  *    retrying, and the answer lands;
  *  - the retry is an OBSERVATION: nothing about it is written to the log.
@@ -118,33 +118,38 @@ describe("ADR-0005 Amendment 2 — a retry you can see", () => {
 		// Replay into the emulator; after every read, note the retry row if
 		// one is on screen, and the first moment the answer is.
 		const emu = new VtScreen(24, 80);
-		const retryRows: { at: number; row: string }[] = [];
+		const retryRows: { at: number; row: string; bar: string }[] = [];
 		let answerAt = -1;
 		for (const [at, hex] of chunks) {
 			emu.write(Buffer.from(hex, "hex"));
 			const grid = emu.visible();
 			const row = grid.find((r) => r.includes("retrying"));
-			if (row !== undefined && retryRows[retryRows.length - 1]?.row !== row) retryRows.push({ at, row: row.trimEnd() });
+			if (row !== undefined && retryRows[retryRows.length - 1]?.row !== row) retryRows.push({ at, row: row.trimEnd(), bar: grid[23]! });
 			if (answerAt < 0 && grid.some((r) => r.includes("the answer after the wait"))) answerAt = at;
 		}
 		const seen = retryRows.map((r) => r.row).join("\n");
 
 		// The retry is on screen, with the attempt, the budget, the code, and
 		// the wait rounded up: Retry-After 2,500 ms reads "3s".
-		const first = retryRows.findIndex((r) => r.row.includes("retrying 1/10 · rate_limit · 3s"));
+		// Graphite §8.7: the retry REPLACES `working` on the live row.
+		const first = retryRows.findIndex((r) => r.row.includes("↻ retrying 1/10 · rate_limit · next try in 3s"));
 		expect(first, `the announced retry on the row\n${seen}`).toBeGreaterThanOrEqual(0);
 		// The countdown moves without another announcement.
-		const later = retryRows.findIndex((r, i) => i > first && r.row.includes("retrying 1/10 · rate_limit · 1s"));
+		const later = retryRows.findIndex((r, i) => i > first && r.row.includes("retrying 1/10 · rate_limit · next try in 1s"));
 		expect(later, `the countdown reached 1s on its own\n${seen}`).toBeGreaterThan(first);
-		// ...and the row stayed alive while it waited: the spinner and the
-		// clock repaint, so a wait never looks like a frozen row.
-		expect(retryRows.length, `the row repainted during the wait\n${seen}`).toBeGreaterThanOrEqual(5);
+		// ...and the row stayed alive while it waited, so a wait never looks
+		// like a frozen row. Graphite §8.7: the countdown IS the pulse (the
+		// retry's mark is a still `↻`) — every whole second of the wait was
+		// on screen.
+		for (const s of [3, 2, 1]) expect(retryRows.some((r) => r.row.includes(`next try in ${s}s`)), `${s}s was on the row\n${seen}`).toBe(true);
 
-		// Fitted to 80 columns: the hint gave way, the context figure stayed.
-		for (const { row } of retryRows) {
-			expect(row, row).not.toContain("alt+⏎ redirect");
-			expect(row, row).toMatch(/ctx (left ~\d+%|\?)/);
+		// Fitted to 80 columns: the retry's facts stayed whole and its key is
+		// the one that applies. Graphite §8.9: the context figure lives on
+		// the status bar now, and it stayed there through the wait.
+		for (const { row, bar } of retryRows) {
+			expect(row, row).toContain("esc gives up");
 			expect(row, row).not.toContain("…");
+			expect(bar, bar).toMatch(/ctx (\?|[\u2586 ]*\d+%)/);
 		}
 
 		// The retried attempt streamed, and the row let go of the retry.

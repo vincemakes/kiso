@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import { Editor } from "../src/editor.js";
 import { panelAffordanceOf, panelRowsOf } from "../src/ask-panel.js";
 import { enabledLevel, modelPickView, stepLevel, type PanelVerdict, type PickOption } from "../src/approval-panel.js";
+import { palette, setGround } from "../src/lines.js";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
@@ -24,15 +25,41 @@ const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 const LADDER = ["low", "medium", "high", "xhigh", "max"] as const;
 
 function view(options: readonly PickOption[]) {
-	return modelPickView({ header: "model — current: x", options, typeHint: "type provider/model directly" }, "▸ idle");
+	return modelPickView({ header: "model — current: x", options }, "▸ idle");
 }
 
 /** The panel's rows plus its affordance, as the compositor would draw
  *  them — the affordance is where the new gesture is advertised. */
 function rows(options: readonly PickOption[], cursor: number, level: number | null): string[] {
-	const state = { view: view(options), phase: "options" as const, cursor: 0, pick: { cursor, phase: "options" as const, level } };
+	const state = { view: view(options), phase: "options" as const, cursor: 0, pick: { cursor, level } };
 	return [...panelRowsOf(state, 100, 14), panelAffordanceOf(state)].map(strip);
 }
+
+/** Run `fn` with the colour ON (a TTY, a light ground, no NO_COLOR):
+ *  Graphite P3 marks the level in force with colour, not brackets, so the
+ *  mark is in the bytes — and a check without colour would pass on empty
+ *  strings. */
+function withColour<T>(fn: () => T): T {
+	Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+	const was = process.env.NO_COLOR;
+	delete process.env.NO_COLOR;
+	setGround("light");
+	try {
+		expect(palette().gold, "the palette is on").not.toBe("");
+		return fn();
+	} finally {
+		setGround("unknown");
+		if (was !== undefined) process.env.NO_COLOR = was;
+		delete (process.stdout as { isTTY?: boolean }).isTTY;
+	}
+}
+const lit = (options: readonly PickOption[], cursor: number, level: number | null): string =>
+	withColour(() => panelRowsOf({ view: view(options), phase: "options" as const, cursor: 0, pick: { cursor, level } }, 100, 14).join("\n"));
+const goldLevel = (t: string): string =>
+	withColour(() => {
+		const p = palette();
+		return `${p.bold}${p.gold}${t}${p.reset}`;
+	});
 
 describe("OR-7 — the level cursor is corrected, never invented", () => {
 	it("lands on the asked-for index, steps over a forbidden one, and is null when the option marks none", () => {
@@ -60,30 +87,37 @@ describe("OR-7 — the level cursor is corrected, never invented", () => {
 });
 
 describe("OR-7 — the strip", () => {
-	it("brackets the cursor, dims the forbidden, and appears only under a row that has levels", () => {
+	// MOVED (Graphite P3, owner 2026-10-04 — DECLARED): the strip rides the
+	// selected row's OPENED row, it says `effort` without a colon, and the
+	// level in force is bold gold rather than bracketed.
+	it("marks the cursor gold, dims the forbidden, and appears only under a row that has levels", () => {
 		const options: readonly PickOption[] = [
 			{ label: "anthropic/opus", note: "profile: a", levels: LADDER, level: 2, disabled: [3] },
 			{ label: "openai-compat/plain", note: "profile: p" },
 		];
 		const withAxis = rows(options, 0, 2).join("\n");
-		expect(withAxis).toContain("effort: low · medium · [high] · xhigh · max");
-		// the bracket follows the RUNTIME cursor, not the option's starting
+		expect(withAxis).toContain("effort low · medium · high · xhigh · max");
+		expect(lit(options, 0, 2)).toContain(goldLevel("high"));
+		// the mark follows the RUNTIME cursor, not the option's starting
 		// index: this row still says `level: 2`, and the state says 4.
-		expect(rows(options, 0, 4).join("\n")).toContain("effort: low · medium · high · xhigh · [max]");
+		expect(lit(options, 0, 4)).toContain(goldLevel("max"));
+		expect(lit(options, 0, 4)).not.toContain(goldLevel("high"));
 		// the affordance names the gesture, the way DC-36 made ↑↓ name theirs
 		expect(withAxis).toContain("←→ effort");
 
 		// the second row has no levels: no strip, and the old affordance
 		const withoutAxis = rows(options, 1, null).join("\n");
-		expect(withoutAxis).not.toContain("effort:");
+		expect(withoutAxis).not.toContain("effort low");
 		expect(withoutAxis).not.toContain("←→ effort");
 	});
 
 	it("a null default marks nothing — the panel never promotes a level into one", () => {
 		const options: readonly PickOption[] = [{ label: "openai-responses/gpt-6-astra", note: "profile: astra", levels: ["low", "high"] }];
 		const text = rows(options, 0, null).join("\n");
-		expect(text).toContain("effort: low · high");
-		expect(text, "no bracket anywhere: the row states no default").not.toContain("[");
+		expect(text).toContain("effort low · high");
+		const bytes = lit(options, 0, null);
+		expect(bytes, "no level is marked: the row states no default").not.toContain(goldLevel("low"));
+		expect(bytes).not.toContain(goldLevel("high"));
 	});
 
 	it("the levelNote is reproduced when the cursor could not land where it was asked", () => {

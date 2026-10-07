@@ -80,16 +80,18 @@ const LINE = "New version 99.0.0 is available. Run kiso update";
 const TITLE = "Update available";
 
 describe("the update card reaches the screen", () => {
-	it("idle: the card sits under the opening's keys row and above the composer", async () => {
+	it("idle: the card sits under the opening's facts and above the composer", async () => {
 		const raw = run({ busy: false });
 		const rows = screen(raw).map((r) => r.replace(/\s+$/, ""));
 		const at = rows.findIndex((r) => r.includes(LINE));
 		expect(at, "the card never reached the screen").toBeGreaterThanOrEqual(0);
 
 		// it follows the opening rather than displacing it
-		const keys = rows.findIndex((r) => r.includes("esc interrupt"));
+		// Graphite §7.10: the opening ends in what loaded (the R2 keys row
+		// retired to the input's key ladder); the extensions fact is its last
+		const keys = rows.findIndex((r) => /^ {2}EXTENSIONS {2}/.test(r));
 		expect(keys, "no opening on screen").toBeGreaterThanOrEqual(0);
-		expect(at, "the line landed above the opening's keys row").toBeGreaterThan(keys);
+		expect(at, "the line landed above the opening's last fact").toBeGreaterThan(keys);
 
 		// …and the CARD is the last thing the opening says: the title and the
 		// opening rule stand over the version line, the changelog and the

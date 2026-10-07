@@ -189,7 +189,7 @@ describe("T-Q4 — the happy path: two questions, one durable answers JSON", () 
 			["chat", "q4"],
 			"q4",
 			[
-				["/ commands · \u2191 history", "set the project up\r", 0],
+				["/mode to switch", "set the project up\r", 0],
 				["which bundler?", "1", 1], // single-select: answers AND advances
 				["which test runners?", "1", 2], // multi: toggles vitest
 				["◉ vitest", "\r", 3], // ...and enter submits the set
@@ -203,7 +203,7 @@ describe("T-Q4 — the happy path: two questions, one durable answers JSON", () 
 		//    descriptions and the walk counter
 		expect(screen).toContain("which bundler?");
 		expect(screen).toContain("fast dev server");
-		expect(screen).toContain("‹ 1/2 ›");
+		expect(screen).toContain("1 of 2"); // Graphite P4: the place in the set rides the band's name
 		expect(screen).toContain("which test runners?");
 
 		// ② ONE durable tool_result, carrying both answers in the shapes
@@ -237,7 +237,7 @@ describe("T-Q4 — the happy path: two questions, one durable answers JSON", () 
 			["chat", "q4d"],
 			"q4d",
 			[
-				["/ commands · \u2191 history", "set the project up\r", 0],
+				["/mode to switch", "set the project up\r", 0],
 				["which bundler?", "\x1b", 1],
 			],
 			["understood, I will pick"],
@@ -260,7 +260,7 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 			{ ...env, KISO_FAUX_SCRIPT: faux1 },
 			["chat", "q5"],
 			"q5",
-			[["/ commands · \u2191 history", "set the project up\r", 0]],
+			[["/mode to switch", "set the project up\r", 0]],
 			[],
 			{ timeout: 25, killWhen: "which bundler?" },
 		);
@@ -290,9 +290,13 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 			["resume", "q5"],
 			"q5",
 			[
-				["ask it again?", "1\r", 0], // 1 = re-ask (the rerun resolution)
-				["which bundler?", "2", 2], // the panel RE-PRESENTS — esbuild this time
-				["which test runners?", "2", 3], // node:test
+				// Graphite P1b (owner, 2026-09-30) — RE-DERIVED: the recovery panel
+				// quotes the interrupted questions now, so the question texts are on
+				// screen before the ask re-presents; the answers wait for what only
+				// the ask panel draws — an option's own words
+				["again? · never answered", "1\r", 0], // 1 = re-ask (the rerun resolution)
+				["one binary", "2", 2], // the panel RE-PRESENTS — esbuild this time
+				["node:test", "2", 3], // node:test
 				["◉ node:test", "\r", 4],
 			],
 			["locked in after the crash"],
@@ -301,8 +305,8 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 
 		// the interrupted ask was announced as a QUESTION, not as a side
 		// effect that may have applied
-		expect(second).toContain("an unanswered question was interrupted — ask it again?");
-		expect(second).toContain("an unanswered question was interrupted — ask it again?");
+		expect(second).toContain("ask them again? · never answered");
+		expect(second).toContain("The session stopped while these questions waited for you.");
 		expect(second).not.toContain("did the interrupted execution apply?");
 
 		// the SAME questions came back, and were answered
@@ -324,7 +328,7 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 
 		// ── leg 3: a SECOND resume asks nothing — the answer is durable ──
 		const startedBefore = answered.filter((r) => r.event.type === "tool_execution_started").length;
-		const third = pty({ ...env, KISO_FAUX_SCRIPT: script(dir, [say("nothing to do")]) }, ["resume", "q5"], "q5", [], ["/ commands · \u2191 history"], {
+		const third = pty({ ...env, KISO_FAUX_SCRIPT: script(dir, [say("nothing to do")]) }, ["resume", "q5"], "q5", [], ["/mode to switch"], {
 			timeout: 20,
 		});
 		// DECLARED CHANGE (4c): this leg used to assert the question's WORDS
@@ -332,10 +336,11 @@ describe("T-Q5 — THE MOAT: the ask survives kill -9", () => {
 		// cells, so the ANSWERED ask is on screen as history — its settled
 		// card names the questions it asked. What "asks nothing" means is
 		// that no PANEL comes up: the panel's own status row is absent.
-		expect(third).not.toContain("answers are durable facts");
+		// Graphite P4: no panel means no question band (its status sentence retired)
+		expect(third.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).not.toMatch(/question · [^\n]*1 of 2/);
 		expect(third).not.toContain("question 1 of 2");
 		expect(third.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("asked 2 questions (answered)");
-		expect(third).not.toContain("ask it again?");
+		expect(third).not.toContain("never answered"); // P1b: the recovery panel's band, singular or plural
 		expect(third).not.toContain("did the interrupted execution apply?");
 		// nothing re-executed: no new ask, no new started execution
 		expect(durable(dirs.home, "q5").filter((r) => r.event.type === "tool_execution_started")).toHaveLength(startedBefore);
@@ -353,7 +358,7 @@ describe("T-Q6 — the races, both orderings", () => {
 			{ ...env, KISO_FAUX_SCRIPT: faux },
 			["chat", "q6a"],
 			"q6a",
-			[["/ commands · \u2191 history", "set the project up\r", 0], ["which bundler?", "1", 0]],
+			[["/mode to switch", "set the project up\r", 0], ["which bundler?", "1", 0]],
 			[],
 			{ timeout: 25, killWhen: "which bundler?" },
 		);
@@ -382,7 +387,7 @@ describe("T-Q6 — the races, both orderings", () => {
 			["chat", "q6b"],
 			"q6b",
 			[
-				["/ commands · \u2191 history", "set the project up\r", 0],
+				["/mode to switch", "set the project up\r", 0],
 				["which bundler?", "\x03", 1], // Ctrl+C — abort with the panel up
 			],
 			["aborting run"],
@@ -409,7 +414,7 @@ describe("T-Q6 — the races, both orderings", () => {
 			["chat", "q6c"],
 			"q6c",
 			[
-				["/ commands · \u2191 history", "set the project up\r", 0],
+				["/mode to switch", "set the project up\r", 0],
 				["which bundler?", "/@", 1], // the menu and picker openers — swallowed
 				["which bundler?", "\x1b\r", 2], // the redirect gesture (alt+⏎)
 			],
@@ -443,9 +448,9 @@ describe("0.40.0 — dontAsk offers no ask_user, and leaving dontAsk brings it b
 			["chat", "dq"],
 			"dq",
 			[
-				["/ commands · ↑ history", "set the project up\r", 0],
+				["/mode to switch", "set the project up\r", 0],
 				["first done", "/mode default\r", 1],
-				["mode → default", "again\r", 2],
+				["MODE\x1b[0m", "again\r", 2], // Graphite R3e: the switch is the MODE row on a terminal
 				["which bundler?", "\x1b", 3],
 			],
 			["second done"],

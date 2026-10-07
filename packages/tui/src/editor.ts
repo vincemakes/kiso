@@ -31,7 +31,7 @@ import { type PanelState, type PanelVerdict, type PanelView, type SaferAnswer } 
 // KC3.5: the panel-slot dispatchers — the ask branch folded into the
 // W21 lead/rows, so this file keeps ONE panel and one key owner.
 import { panelLead } from "./ask-panel.js";
-import { AT_VISIBLE, atFilter, type AtItem, type AtMatch } from "./at-picker.js";
+import { AT_CAP, atFilter, atNameWidth, bandVisible, type AtItem, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker — the band's THIRD occupant. Its filter
 // is the @ picker's rank aimed at the session id; the editor owns the
 // keys, the compositor draws the rows.
@@ -147,6 +147,8 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	// never be re-wrapped in place (ADR-0046); this appends it re-folded.
 	{ name: "/rewrap", desc: "re-print the recent prose at the current width" },
 	{ name: "/status", desc: "show session id, event count, and context estimate" },
+	// Graphite R3d: the session's own name (the title, the /resume row)
+	{ name: "/name", desc: "name this session · /name shows it · /name - clears it" },
 	{ name: "/settings", desc: "show the settings in force, each value's source, and how to change it" },
 	// TUI2-R1 (E): the rent-ledger attribution — where the context went
 	{ name: "/context", desc: "show where the context went — the last request's rent ledger" },
@@ -389,6 +391,9 @@ export class Editor {
 	 *  exists for interactions (a lead, a status, a reducer, a stashed
 	 *  buffer), and the sheet has no interaction to speak of. */
 	#sheetOpen = false;
+	/** Graphite R3e: a sheet with the CALLER's rows (`/status`), null for the
+	 *  keys sheet. Any key closes either. */
+	#sheetRows: ((W: number) => string[]) | null = null;
 	#menuOpen = false; // v3 §04: the slash-command menu
 	/** 0.40.1: the menu's extra entries (the installed skills), read LIVE on
 	 *  every keystroke — a skill added by /reload appears without rebinding. */
@@ -409,6 +414,9 @@ export class Editor {
 	// bit with no token under the cursor is inert by construction — the
 	// next open re-snapshots, so a stale list can never be shown.
 	#atList: readonly AtItem[] | null = null;
+	/** Graphite P2: the widest file name in the list, in cells — measured
+	 *  once per open, as the list is listed */
+	#atNameCol = 0;
 	#atItems: (() => readonly AtItem[]) | null = null;
 	// TUI2-R2 ② — the session picker. Two fields: the bound source (its
 	// presence IS "the picker is up") and the selection. The query, like
@@ -652,6 +660,32 @@ export class Editor {
 		return this.#sheetOpen;
 	}
 
+	/** Graphite R3e: what the sheet shows — false when it is closed, true for
+	 *  the keys sheet, the caller's rows otherwise. */
+	sheetContent(): boolean | ((W: number) => string[]) {
+		return !this.#sheetOpen ? false : (this.#sheetRows ?? true);
+	}
+
+	/** Graphite R3e: open a read-only sheet over the input with the caller's
+	 *  rows (`/status`, `/context`, `/skills`). Any key closes it, and what
+	 *  is typed goes to the input; esc is eaten. */
+	openSheet(rows: (W: number) => string[]): void {
+		this.#sheetRows = rows;
+		this.#sheetOpen = true;
+		this.#onRender();
+	}
+
+	/** The sheets round (owner, 2026-10-06): `/help` opens the command
+	 *  list — the band a typed `/` opens, filtered as the person types. On
+	 *  an empty composer only: a line already being written is theirs. */
+	openCommands(): void {
+		if (this.#chars.length > 0) return;
+		this.#chars = ["/".codePointAt(0)!];
+		this.#cursor = 1;
+		this.#verticalGoalCol = null;
+		this.#refreshMenu();
+	}
+
 	clearLine(): void {
 		this.#undoStack.length = 0; // UD-1
 		this.#redoStack.length = 0;
@@ -819,7 +853,7 @@ export class Editor {
 	 *  the frame's clamp is the authority. */
 	#visibleRows(lineCount: number): number {
 		const H = process.stdout.rows ?? 24;
-		const bands = (this.#menuOpen ? this.#menuFiltered().length : 0) + this.#atRows() + this.#pickInput.rows() + this.#queueState().length;
+		const bands = (this.#menuOpen ? Math.min(this.#menuFiltered().length, bandVisible(H)) + 2 : 0) + this.#atRows() + this.#pickInput.rows(H) + this.#queueState().length;
 		return Math.max(1, Math.min(lineCount, N_MAX, Math.max(1, H - 3 - bands)));
 	}
 
@@ -860,9 +894,19 @@ export class Editor {
 	}
 
 	/** v3 §04: the menu's visible state for the dock — null when closed. */
-	menuState(): { items: readonly MenuItem[]; selected: number } | null {
+	menuState(): { items: readonly MenuItem[]; selected: number; total?: number; query?: string; nameCol?: number } | null {
 		if (!this.#menuOpen) return null;
-		return { items: this.#menuFiltered(), selected: this.#menuSel };
+		// Graphite P2: the whole list's size and its widest name (the column
+		// never moves while the person types), and the typed prefix
+		const all = this.#menuAll();
+		return { items: this.#menuFiltered(), selected: this.#menuSel, total: all.length, query: this.line().slice(1), nameCol: all.reduce((n, m) => Math.max(n, m.name.length - 1), 0) };
+	}
+
+	/** Every entry the menu can show: the built-ins, then the extras that do
+	 *  not shadow one (0.40.1's rule, shared with #menuFiltered). */
+	#menuAll(): MenuItem[] {
+		const builtins = new Set(MENU_ITEMS.map((m) => m.name));
+		return [...MENU_ITEMS, ...this.#menuExtras().filter((m) => !builtins.has(m.name))];
 	}
 
 	/** v3 §04: the filtered command list for the current buffer.
@@ -882,9 +926,13 @@ export class Editor {
 		// 0.40.1: the built-ins first, then the extras (skills) — and a
 		// built-in WINS a shared name, so a skill named like a command is
 		// never listed twice and never shadows it (the dispatcher's rule)
-		const builtins = new Set(MENU_ITEMS.map((m) => m.name));
-		const all = [...MENU_ITEMS, ...this.#menuExtras().filter((m) => !builtins.has(m.name))];
-		return all.filter((m) => m.name.startsWith(line));
+		const matches = this.#menuAll().filter((m) => m.name.startsWith(line));
+		// the last sweep (owner, 2026-10-06): a line that IS a command's name
+		// lists that command first, so ⏎ runs it. `/skill` listed `/skills`
+		// first (the table's order) and ⏎ completed the line to it — the
+		// command typed in full never ran. The rest keep the table's order.
+		const exact = matches.findIndex((m) => m.name === line);
+		return exact <= 0 ? matches : [matches[exact]!, ...matches.slice(0, exact), ...matches.slice(exact + 1)];
 	}
 
 	/** 0.40.1 — bind the menu's extra entries (the CLI binds the installed
@@ -968,10 +1016,13 @@ export class Editor {
 
 	/** KC3 §4 — the picker's visible state for the dock; null when
 	 *  closed. The compositor windows it and draws the counter. */
-	atState(): { matches: readonly AtMatch[]; selected: number; capped: boolean } | null {
+	atState(): { matches: readonly AtMatch[]; selected: number; capped: boolean; query: string; total: number; nameCol: number } | null {
 		const view = this.#atView();
 		if (view === null) return null;
-		return { matches: view.matches, selected: view.selected, capped: view.capped };
+		// Graphite P2: the band counts the whole list and lays its name column
+		// over it, so the folder column never moves while the person types
+		const total = Math.min(this.#atList?.length ?? 0, AT_CAP);
+		return { matches: view.matches, selected: view.selected, capped: view.capped, query: this.#atToken()?.query ?? "", total, nameCol: this.#atNameCol };
 	}
 
 	/** KC3 §3 — arm the picker at a freshly typed `@`. The gate is the
@@ -991,6 +1042,8 @@ export class Editor {
 		this.#atOpen = true;
 		this.#atSel = 0;
 		this.#atList = this.#atItems(); // §5: listed per OPEN, never per keystroke
+		this.#atNameCol = 0;
+		for (const item of this.#atList.slice(0, AT_CAP)) this.#atNameCol = Math.max(this.#atNameCol, atNameWidth(item.path));
 		this.#syncMouse();
 	}
 
@@ -998,6 +1051,7 @@ export class Editor {
 		this.#atOpen = false;
 		this.#atSel = 0;
 		this.#atList = null;
+		this.#atNameCol = 0;
 		this.#syncMouse();
 	}
 
@@ -1032,7 +1086,8 @@ export class Editor {
 	 *  plus the counter row. */
 	#atRows(): number {
 		const view = this.#atView();
-		return view === null ? 0 : Math.min(view.matches.length, AT_VISIBLE) + 1;
+		// Graphite P2: the band's name, its window, its key row
+		return view === null ? 0 : Math.min(view.matches.length, bandVisible(process.stdout.rows ?? 24)) + 2;
 	}
 
 	// ── TUI2-R2 ② — the session picker ───────────────────────────────
@@ -1198,16 +1253,22 @@ export class Editor {
 	#feedKeys(raw: Uint8Array): void {
 		const text = this.#pending + this.#decoder.decode(raw, { stream: true });
 		this.#pending = "";
-		// TUI2-R1 (D): the sheet is up — ANY key closes it, and the key
-		// that closed it is CONSUMED. The whole chunk goes, deliberately:
-		// an arrow key is three bytes, and closing on the first while
-		// letting `[A` fall through as literal text would be a sheet that
-		// types into your composer on the way out. A dismissal costs one
-		// keystroke; that is the entire contract.
+		// TUI2-R1 (D): the sheet is up — ANY key closes it. Graphite R3e: a
+		// sheet is read and then typed past — the whole chunk is typed as it
+		// would have been (it is parsed whole, so an arrow is an arrow, never
+		// `[A`); only esc, which means nothing else here, is eaten.
+		//
+		// DECLARED REVERSAL (the sheets round, owner, 2026-10-06): the keys
+		// sheet ate the key that closed it, where `/status` let it through;
+		// every sheet now closes the same way, and says so on its last row.
+		// The `?` that opens the keys sheet is eaten too: typed onto an
+		// empty composer it would open the sheet it just closed.
 		if (this.#sheetOpen) {
+			const keys = this.#sheetRows === null;
 			this.#sheetOpen = false;
+			this.#sheetRows = null;
 			this.#onRender();
-			return;
+			if (text === "\x1b" || (keys && text === "?")) return;
 		}
 		// R5 — while the viewer is up it OWNS the keyboard. Unlike the
 		// sheet (which any key dismisses) this surface is INTERACTIVE, so
@@ -1720,6 +1781,7 @@ export class Editor {
 				// already encodes "no panel, no menu, no picker, no browse".
 				// The precedence can only ever ADD: every state that used to
 				// insert a `?` still inserts one.
+				this.#sheetRows = null;
 				this.#sheetOpen = true;
 				this.#onRender();
 				i += 1;

@@ -57,20 +57,25 @@ describe("0.40.6 — /model rows carry availability, not the window", () => {
 		writeFileSync(join(dirs.home, "config.json"), `${JSON.stringify(THIRTEEN)}\n`);
 		const raw = ptyRun(["chat", "rows-a"], { ...env, DS_KEY: "fake" } as NodeJS.ProcessEnv, {
 			cols: 100,
-			feeds: [["/ commands · ↑ history", "/model\r"]],
+			feeds: [["/mode to switch", "/model\r"]],
 			delays: [
 				[2.6, "\x1b"],
 				[3.6, "exit\r"],
 			],
 		});
-		const rows = screenRows(raw).filter((l) => /(openai-compat|openai-responses)\/\S+ @/.test(l));
+		// MOVED (Graphite P3 — DECLARED): a row is a table — the model, its
+		// host as a column (no `kind/` prefix, no `@`), and a state word; the
+		// window is §8.2's five on this 24-row terminal, and `unavailable`
+		// became WHY in two words (`no key`, `sign in`), the whole reason on
+		// the selected row's opened line
+		const rows = screenRows(raw).filter((l) => / {2}(api\.deepseek\.com|chatgpt\.com|api\.gateway-aaaa\.ai|gateway-bbbb\.ai)\b/.test(l));
 		expect(rows.length, "the picker painted its rows").toBeGreaterThanOrEqual(5);
 		for (const r of rows) expect(r, "no window on a /model row").not.toMatch(/\bctx\b/);
-		const gateway = rows.filter((r) => /@(api\.gateway-aaaa\.ai|gateway-bbbb\.ai)/.test(r));
+		const gateway = rows.filter((r) => /(api\.gateway-aaaa\.ai|gateway-bbbb\.ai)/.test(r));
 		expect(gateway.length).toBeGreaterThan(0);
 		for (const r of gateway) {
-			expect(r, "the mark that matters is whole").toMatch(/\bunavailable\b/);
-			expect(r).not.toContain("unavailabl…");
+			expect(r, "the mark that matters is whole").toMatch(/\bno key\b/);
+			expect(r).not.toContain("no ke…");
 		}
 	}, 240_000);
 

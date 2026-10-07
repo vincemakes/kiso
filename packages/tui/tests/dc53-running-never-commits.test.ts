@@ -82,7 +82,7 @@ describe("DC-53 — a running call is never committed", () => {
 		body.userLine("search three places");
 		parallelBurst(body);
 		tick();
-		expect(screen().join("\n"), "the running call left the screen").toMatch(/search .*Desktop/);
+		expect(screen().join("\n"), "the running call left the screen").toMatch(/SEARCH .*Desktop/); // Graphite §7.5
 	});
 
 	it("NOTHING with a breathing mark ever reaches the scrollback", () => {

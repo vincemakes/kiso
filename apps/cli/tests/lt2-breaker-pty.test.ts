@@ -38,7 +38,7 @@ describe("LT-2 — the loop breaker on a real PTY", () => {
 		const raw = ptyRun(["--mode", "bypass", "lt2-breaker"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["Changing approach", "exit\r"],
 			],
 			timeout: 60,

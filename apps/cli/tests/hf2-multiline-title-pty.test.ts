@@ -36,7 +36,7 @@ describe("HF-2 — a multi-line first prompt on a real PTY", () => {
 		const first = ptyRun(["--mode", "bypass", "hf2-title"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", `${PASTE}\r`],
+				["/mode to switch", `${PASTE}\r`],
 				["took ", "exit\r"], // the recap (keyed on the plain word — the ✦ carries SGR between it and the word): the run is over
 			],
 			timeout: 60,
@@ -53,7 +53,7 @@ describe("HF-2 — a multi-line first prompt on a real PTY", () => {
 		const second = ptyRun(["--mode", "bypass", "hf2-second"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
 			feeds: [
-				["/ commands · ↑ history", "/resume\r"],
+				["/mode to switch", "/resume\r"],
 				["run this:", "\x1b"], // the picker is up with the title; esc closes it (alone: esc+letter in one write is alt)
 			],
 			delays: [[10, "exit\r"]], // the picker has closed by then; the prompt needle already fired once, so a clock ends the scenario

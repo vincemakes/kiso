@@ -45,13 +45,17 @@ describe("§2.3 — the thinking switch", () => {
 		// FOLDED: one row, carrying the count and the way back
 		body.toggleThinking();
 		const folded = strip(take());
-		expect(folded, "the fold names how to read the rest").toContain("/think");
-		expect(folded, "and it is one row, not the paragraphs").not.toContain("leaves nothing behind");
+		// Graphite §7.2: the hidden form is one `thinking · hidden` row, and the key
+		// that shows the blocks again is what it names
+		expect(folded, "the fold names how to read the rest").toMatch(/thinking · hidden · ctrl\+t/);
+		// (the needles sit inside one row: the block folds by WORD since R1e,
+		// so a phrase can straddle a row break)
+		expect(folded, "and it is one row, not the paragraphs").not.toContain("leaves nothing");
 		expect(folded, "the prose beside it is untouched").toContain("the answer is the first one.");
 
 		// UNFOLDED: the words are back
 		body.toggleThinking();
-		expect(strip(take()), "the second press restores the block").toContain("leaves nothing behind");
+		expect(strip(take()), "the second press restores the block").toContain("leaves nothing");
 
 		// and the record never moved, either way
 		expect(body.lastThinking(), "/think still reaches the whole block").toBe(THOUGHT);
@@ -66,7 +70,7 @@ describe("§2.3 — the thinking switch", () => {
 		body.textAppend("done.");
 		vi.advanceTimersByTime(16);
 		const out = strip(take());
-		expect(out, "the session stays one way up").toContain("/think");
+		expect(out, "the session stays one way up").toMatch(/thinking · hidden · ctrl\+t/);
 		expect(out).not.toContain("leaves nothing behind");
 	});
 

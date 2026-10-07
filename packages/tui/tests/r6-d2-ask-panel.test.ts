@@ -73,9 +73,10 @@ describe("R6/D2 B — the row names the finisher, and the real option count", ()
 	});
 
 	it("the digit range is the REAL count, never a hardcoded 1-4", () => {
-		expect(askAffordance(start(), q(2, false))).toContain("1-2 instant");
-		expect(askAffordance(start(), q(6, true))).toContain("space or 1-6 marks");
-		expect(askAffordance(start(), q(2, false))).not.toContain("1-4");
+		// (Graphite P4: the range is an en dash, as on every key row)
+		expect(askAffordance(start(), q(2, false))).toContain("1–2 instant");
+		expect(askAffordance(start(), q(6, true))).toContain("space or 1–6 marks");
+		expect(askAffordance(start(), q(2, false))).not.toMatch(/1[-–]4/);
 	});
 
 	it("the finisher is the LAST clause standing, in both modes, at every width", () => {

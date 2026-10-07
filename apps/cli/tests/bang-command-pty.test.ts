@@ -46,7 +46,7 @@ describe("§2.2 — the shell gesture", () => {
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: script() });
 		const raw = ptyRun(["chat", "bang-a"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "!echo marker-one\r"],
+				["/mode to switch", "!echo marker-one\r"],
 				["marker-one", "!!echo marker-two\r"],
 				["marker-two", "exit\r"],
 			],
@@ -54,6 +54,13 @@ describe("§2.2 — the shell gesture", () => {
 
 		// both reached the screen — the human ran two commands and saw both
 		expect(raw).toContain("marker-one");
+		// G3 (R2d): each as the person's command card, saying what became of
+		// it — and no fence's markers on the screen (both used to print them)
+		expect(raw).toContain("sent to the model");
+		expect(raw).toContain("not sent");
+		// (the terminal TITLE may still carry the fence: a session is named
+		// from its first line as sent — the transcript is the subject here)
+		expect(raw.replace(/\x1b\][^\x07]*\x07/g, "")).not.toContain("```console");
 		expect(raw).toContain("marker-two");
 		// the transcript shape: one fenced block per command, read as a
 		// terminal would print it
@@ -73,7 +80,7 @@ describe("§2.2 — the shell gesture", () => {
 			// as an argument would appear on screen the moment the command
 			// is drawn, and the assertion would be about the echo rather
 			// than about whether the command ran.
-			feeds: [["/ commands · ↑ history", `!sleep 20 && touch ${join(dirs.home, "ran-anyway")}\r`]],
+			feeds: [["/mode to switch", `!sleep 20 && touch ${join(dirs.home, "ran-anyway")}\r`]],
 			// esc lands while the sleep is still running; the command dies
 			// with its whole process group, and the composer comes back.
 			delays: [
@@ -103,7 +110,7 @@ describe("§2.2 — the shell gesture", () => {
 		const raw = ptyRun(["chat", "bang-e"], env as NodeJS.ProcessEnv, {
 			cwd: join(home, "proj"),
 			feeds: [
-				["/ commands · ↑ history", "!cat ~/.kiso/auth.json\r"],
+				["/mode to switch", "!cat ~/.kiso/auth.json\r"],
 				["~/.kiso/auth.json names", "!!cat $HOME/.kiso/auth.json\r"],
 				["$HOME/.kiso/auth.json names", "exit\r"],
 			],
@@ -136,7 +143,7 @@ describe("§2.2 — the shell gesture", () => {
 		const { env, dirs } = isolatedEnv({ KISO_FAUX_SCRIPT: script() });
 		ptyRun(["chat", "bang-c"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "\\!not-a-command\r"],
+				["/mode to switch", "\\!not-a-command\r"],
 				["seen it.", "exit\r"],
 			],
 		});

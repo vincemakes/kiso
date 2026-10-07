@@ -25,7 +25,7 @@
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Event } from "@vincemakes/kiso-core";
-import { readProfile, readSummary, writeSummary } from "./profile.js";
+import { readProfile, readSessionName, readSummary, writeSummary } from "./profile.js";
 import { executionLedger } from "./ledger.js";
 import { openRunId } from "./recovery.js";
 import { sessionTitle, type StoreRecord } from "./store.js";
@@ -126,6 +126,9 @@ export interface SessionListing {
 	readonly summary: SessionSummary | null;
 	readonly workspace: string | null;
 	readonly profileName: string | null;
+	/** Graphite R3d: the name the person gave it (`/name`), or null —
+	 *  optional, so a listing built before names existed still types */
+	readonly name?: string | null;
 }
 
 /** Every session in `root`, from the DIRECTORY and the sidecars only — no
@@ -156,6 +159,7 @@ export function listSessionSidecars(root: string): SessionListing[] {
 			summary: readSummary(root, id),
 			workspace: profile.kind === "ok" ? profile.profile.workspace : null,
 			profileName: profile.kind === "ok" ? profile.profile.profileName : null,
+			name: readSessionName(root, id),
 		});
 	}
 	return out;

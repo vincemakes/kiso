@@ -31,6 +31,11 @@ import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 
 const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 
+/** RE-DERIVED (the last sweep, owner 2026-10-06): on a dock `[reload] …`
+ *  is a sentence without its brackets — `reloaded 4 extensions, …`, and a
+ *  failure `reload failed: …`. A pipe still prints `[reload]`. */
+const RELOADED = "reloaded ";
+
 /** Every gate asserts this FIRST. Without it each one passes on a tree
  *  where `/reload` is an unknown command: the trust question is asked
  *  once because nothing reloaded, the binding survives because nothing
@@ -38,7 +43,7 @@ const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
  *  gate — three of these were, on the first red run. */
 function reloaded(out: string, times = 1): void {
 	expect(out, "the command exists at all").not.toContain("unknown command: /reload");
-	expect(out.split("[reload]").length - 1, `the reload ran ${times}×`).toBeGreaterThanOrEqual(times);
+	expect(out.split(RELOADED).length - 1, `the reload ran ${times}×`).toBeGreaterThanOrEqual(times);
 }
 
 /** A `!!` line that writes a SKILL.md the index will accept — the `\n`s
@@ -142,7 +147,7 @@ function addExtensionCmd(dir: string, name: string, mark: string): string {
  *  the needle that never appeared, and the fix is this one number. That is
  *  a thing someone should look at. */
 const BASELINE = 4;
-const reloadWith = (added: number): string => `[reload] ${BASELINE + added} extensions`;
+const reloadWith = (added: number): string => `${RELOADED}${BASELINE + added} extensions`;
 
 describe("§2.5 — /reload", () => {
 	it("gate 1 — a skill added mid-session is in the index AND its tool can read it", () => {
@@ -161,12 +166,12 @@ describe("§2.5 — /reload", () => {
 		});
 		const raw = ptyRun(["--mode", "bypass", "reload-skill"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["before.", writeSkillCmd(dirs.skills, "greet", "SKILL-ADDED-AFTER-START")],
 				// each step waits for the PREVIOUS one to have happened,
 				// not for a number of seconds to pass
 				[SHELL_DONE, "/reload\r"],
-				["[reload]", "use it\r"],
+				[RELOADED, "use it\r"],
 				["after.", "exit\r"],
 			],
 		});
@@ -189,10 +194,10 @@ describe("§2.5 — /reload", () => {
 		extensionWithTool(dirs.extensions, "probe.mjs", "probe_tool", "PROBE ANSWERED");
 		const raw = ptyRun(["--mode", "bypass", "reload-drop"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "call it\r"],
+				["/mode to switch", "call it\r"],
 				["first done.", `!!rm -f ${join(dirs.extensions, "probe.mjs")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
-				["[reload]", "call it again\r"],
+				[RELOADED, "call it again\r"],
 				["second done.", "exit\r"],
 			],
 		});
@@ -216,10 +221,10 @@ describe("§2.5 — /reload", () => {
 		});
 		const raw = ptyRun(["--mode", "bypass", "reload-broken"], env as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["before.", `!!printf 'throw new Error("deliberately broken");\\n' > ${join(dirs.extensions, "broken.mjs")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
-				["[reload]", "still there?\r"],
+				["reload failed", "still there?\r"],
 				["STILL ALIVE", "exit\r"],
 			],
 		});
@@ -247,14 +252,14 @@ describe("§2.5 — /reload", () => {
 		);
 		const raw = ptyRun(["chat", "reload-model"], { ...env, RELOAD_KEY: "fake" } as NodeJS.ProcessEnv, {
 			feeds: [
-				["/ commands · ↑ history", "/model beta\r"],
+				["/mode to switch", "/model beta\r"],
 				["model-beta", "/reload\r"],
-				["[reload]", "exit\r"],
+				[RELOADED, "exit\r"],
 			],
 		});
 		const out = strip(raw);
 		reloaded(out);
-		const after = out.slice(out.lastIndexOf("[reload]"));
+		const after = out.slice(out.lastIndexOf(RELOADED));
 		expect(after, "the switched binding came back").toContain("beta");
 		expect(after, "and the startup profile did not silently return").not.toContain("model-alpha");
 	}, 300_000);
@@ -283,8 +288,8 @@ describe("§2.5 — /reload", () => {
 			cwd: workdir,
 			timeout: 110,
 			feeds: [
-				["trust this project's .kiso?", "y\r"],
-				["/ commands · ↑ history", `!!rm -rf ${join(dirs.skills, "doomed")}${doneEcho(SHELL_DONE)}\r`],
+				["trust this project", "y\r"],
+				["/mode to switch", `!!rm -rf ${join(dirs.skills, "doomed")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
 				// ONE reload at a time, each awaited on a line the previous
 				// one could not have printed
@@ -307,7 +312,7 @@ describe("§2.5 — /reload", () => {
 		extensionWithTool(join(workdir, ".kiso", "extensions"), "proj.mjs", "proj_tool", "PROJECT TOOL");
 		const raw = ptyRun(["--mode", "bypass", "reload-trust"], env as NodeJS.ProcessEnv, {
 			cwd: workdir,
-			feeds: [["trust this project's .kiso?", "n\r"]],
+			feeds: [["trust this project", "n\r"]],
 			delays: [
 				[8, "/reload\r"],
 				[15, "exit\r"],
@@ -315,7 +320,7 @@ describe("§2.5 — /reload", () => {
 		});
 		const out = strip(raw);
 		reloaded(out);
-		const asks = out.split("trust this project's .kiso?").length - 1;
+		const asks = out.split("trust this project").length - 1;
 		expect(asks, "asked once — the reload did not re-put a question already answered").toBe(1);
 	}, 300_000);
 
@@ -340,8 +345,8 @@ describe("§2.5 — /reload", () => {
 			cwd: workdir,
 			timeout: 110,
 			feeds: [
-				["trust this project's .kiso?", "y\r"],
-				["/ commands · ↑ history", "/reload\r"],
+				["trust this project", "y\r"],
+				["/mode to switch", "/reload\r"],
 				// three reloads, driven ONE AT A TIME. Each is awaited on a
 				// line no earlier reload could have printed, because an
 				// extension is added between them.
@@ -392,7 +397,7 @@ describe("§2.5 — /reload", () => {
 		ptyRun(["chat", "reload-legacy"], env as NodeJS.ProcessEnv, {
 			timeout: 110,
 			feeds: [
-				["/ commands · ↑ history", "go\r"],
+				["/mode to switch", "go\r"],
 				["don't ask again", "2"], // grant `shell` on top of the legacy `read_file`
 				["granted.", "exit\r"],
 			],
@@ -431,7 +436,7 @@ describe("§2.5 — /reload", () => {
 		const raw = ptyRun(["chat", "reload-latefail"], env as NodeJS.ProcessEnv, {
 			timeout: 130,
 			feeds: [
-				["/ commands · ↑ history", `!!printf %s ${b64} | base64 -d > ${join(dirs.extensions, "collide.mjs")}\r`],
+				["/mode to switch", `!!printf %s ${b64} | base64 -d > ${join(dirs.extensions, "collide.mjs")}\r`],
 				["don't ask again", "2"], // the grant, on the panel the first turn raises
 			],
 			delays: [
@@ -477,7 +482,7 @@ describe("§2.5 — /reload", () => {
 		const raw = ptyRun(["chat", "reload-rule"], env as NodeJS.ProcessEnv, {
 			// default mode: shell ASKS
 			feeds: [
-				["/ commands · ↑ history", "/reload\r"], // reload FIRST — the rule is granted on a rebuilt agent
+				["/mode to switch", "/reload\r"], // reload FIRST — the rule is granted on a rebuilt agent
 				["don't ask again", "2"], // grant it
 			],
 			timeout: 110,

@@ -141,7 +141,7 @@ beforeAll(() => {
 	raw = ptyRun(["--mode", "default", "r2-cursor"], env as NodeJS.ProcessEnv, {
 		feeds: [
 			["▌ ", "go\r"],
-			["needs approval", "1\r"],
+			["needs you · asked by", "1\r"], // Graphite P4: the band's facts
 			["fixed it.", "\x0f"],
 		],
 		delays: [[5, "/context\r"], [7, "exit\r"]],
@@ -151,10 +151,10 @@ beforeAll(() => {
 
 describe("TUI2-R2 ⑤ — the cursor parks at the active input, in every named state", () => {
 	it("APPROVAL PANEL: on the panel's own prompt row, never inside its block", () => {
-		const term = termAt(raw, "↑↓ move · ⏎ or click confirms · 1-4 instant · esc", ROWS, COLS);
-		expect(term.visible().join("\n")).toContain("needs approval");
+		const term = termAt(raw, "↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies", ROWS, COLS);
+		expect(term.visible().join("\n")).toContain("needs you · asked by");
 		expectParked(term, "approval-panel");
-		expect(term.visible()[term.cursor.row] ?? "").not.toMatch(/needs approval|args \(full\)/);
+		expect(term.visible()[term.cursor.row] ?? "").not.toMatch(/needs you|args \(full\)/);
 	});
 
 	it("TYPED DURING A RUN: the keystroke lands where the cursor says it will", () => {

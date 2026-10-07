@@ -73,6 +73,7 @@ def driver(cli, env, feeds, workdir, timeout, session, mode_flag):
     winsize(24, 80)
     full = b""
     idx = 0
+    pos = 0
     end = time.time() + timeout
     done = False
     while time.time() < end and not done:
@@ -109,8 +110,15 @@ def driver(cli, env, feeds, workdir, timeout, session, mode_flag):
                 done = True
                 break
             full += data
-            while idx < len(feeds) and feeds[idx][0].encode() in full:
+            # each needle is looked for AFTER the previous one matched: two
+            # feeds that wait on the same words (a second /status) must not
+            # both fire on the first occurrence (Graphite R3e)
+            while idx < len(feeds):
+                at = full.find(feeds[idx][0].encode(), pos)
+                if at < 0:
+                    break
                 os.write(fd, feeds[idx][1].encode())
+                pos = at + len(feeds[idx][0].encode())
                 idx += 1
     try:
         os.kill(pid, signal.SIGTERM)
@@ -207,8 +215,8 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["/ commands · \u2191 history", "/status\r"],
-				["ctx ~", "go\r"],
+				["/mode to switch", "/status\r"],
+				["typing goes to the input", "go\r"],
 				// The go turn's OWN shell cell ("sleep 4") marks the run
 				// mid-flight — the recovery's leftover "working" status must
 				// never trigger this feed (that race submitted the /compact
@@ -240,8 +248,8 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// its work has no summary line anywhere. The row itself is
 				// the record, which is why the needle can be the row.)
 				["exit 0", "/compact\r"],
-				["/ commands · \u2191 history", "/status\r"],
-				["ctx ~", "exit\r"],
+				["/mode to switch", "/status\r"],
+				["typing goes to the input", "exit\r"],
 			],
 			dir,
 			"kc",
@@ -249,15 +257,19 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		);
 		const plain = stripANSI(out);
 
-		// The mid-run refusal is visible.
-		expect(plain).toContain("[/compact] a turn is running");
+		// The mid-run refusal is visible. RE-DERIVED (the last sweep, owner
+		// 2026-10-06): on a dock without its `[/compact]` brackets.
+		expect(plain).toContain("a turn is running — wait for it to finish");
+		expect(plain).not.toContain("[/compact] a turn is running");
 		// W18 re-baseline: the success NoticeCell is the RECAP — the covered
 		// rounds (9 total − 4 kept = 5, pinned with the coversToSeq:14
 		// boundary below), the one summary, the savings, and the elapsed.
-		expect(plain).toContain("[/compact] ✦ compacted · 5 rounds → 1 summary · saved ~");
-		// The context DROPPED after the compression: /status printed
-		// "ctx ~N%" twice — before (seeded, ~16%) and after (~7%).
-		const ctxs = [...out.matchAll(/ctx ~(\d+)%/g)].map((m) => Number(m[1]));
+		// Graphite §7.12: on the terminal the result is a COMPACTED meta row
+		expect(plain).toMatch(/COMPACTED +5 rounds → 1 summary · saved ~/);
+		// The context DROPPED after the compression: /status showed it twice
+		// — before (seeded, ~16%) and after (~7%). Graphite R3e: /status is a
+		// sheet now, its `context` row reading `~N% used`.
+		const ctxs = [...plain.matchAll(/context +~(\d+)% used/g)].map((m) => Number(m[1]));
 		expect(ctxs.length).toBeGreaterThanOrEqual(2);
 		expect(ctxs.at(-1)!).toBeLessThan(ctxs[0]!);
 
@@ -268,7 +280,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// rendering anywhere.
 		expect(plain).toContain("[summarized up to seq 14]");
 		// …and it is BELOW the recap, not somewhere above it.
-		expect(plain.indexOf("[summarized up to seq 14]")).toBeGreaterThan(plain.indexOf("[/compact] ✦ compacted"));
+		expect(plain.indexOf("[summarized up to seq 14]")).toBeGreaterThan(plain.indexOf("COMPACTED"));
 
 		// The summarized event is on disk, keyed to the covered boundary:
 		// 9 rounds total (8 seed inputs at 0..21 + the go turn at 22) →
@@ -303,7 +315,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 			env,
 			[
 				// The recovery resume completes, the REPL arms its first prompt.
-				["/ commands · \u2191 history", "/compact\r"],
+				["/mode to switch", "/compact\r"],
 				// The FIRST paint of the indeterminate row marks the call
 				// live — esc lands mid-flight (the call outlives the feed by
 				// ~1.4s, so the cancel is never a race against the settle).
@@ -311,7 +323,7 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				[" compacting · ", "\x1b"],
 				// The honest cancel notice — nothing was persisted (ADR-0044).
 				["cancelled — nothing was persisted", "/status\r"],
-				["ctx ~", "exit\r"],
+				["typing goes to the input", "exit\r"],
 			],
 			dir,
 			"kc",
@@ -321,7 +333,8 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 
 		// The row: the knowable pre-call data (4 covered rounds of the 8
 		// seeded, the token estimate) with the cancel affordance right-aligned.
-		expect(plain).toMatch(/[✧✦✶✸✺] compacting · 4 rounds · ~/);
+		// Graphite §8.7 (R3b): the row says why first — the person typed it
+		expect(plain).toMatch(/[✧✦✶✸✺] compacting · manual · 4 rounds · ~/);
 		expect(plain).toContain("esc to cancel");
 		// 0.40.0 (the owner's dogfood): the row WALKS the working twinkle, the
 		// same 200 ms spinner a running turn shows — never a static mark
@@ -335,7 +348,9 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		// size carries the output bar ("~Nk → ▱▱▱▱▱▱ 0/32k"); nothing has
 		// streamed during the 1.5s delay, so it reads zero at the second tick.
 		expect(plain).toContain("0/32k · 1s");
-		expect(plain).toContain("[/compact] cancelled — nothing was persisted");
+		// RE-DERIVED (the last sweep): on a dock without its brackets
+		expect(plain).toContain("cancelled — nothing was persisted");
+		expect(plain).not.toContain("[/compact] cancelled");
 		// The cancel left the session untouched: no summarized event on disk.
 		const durable = readFileSync(join(home, "sessions", "kc.jsonl"), "utf8");
 		expect(durable).not.toContain('"type":"summarized"');
@@ -372,8 +387,8 @@ describe("0.40.0 cli: the compacting row's bar on a real PTY", () => {
 		const out = ptyRun(
 			{ ...isoEnv, KISO_FAUX_SCRIPT: scriptPath },
 			[
-				["/ commands · \u2191 history", "/compact\r"],
-				["✦ compacted", "exit\r"],
+				["/mode to switch", "/compact\r"],
+				["COMPACTED", "exit\r"], // Graphite §7.12: the result is a meta row
 			],
 			dir,
 			"kb",
@@ -385,7 +400,7 @@ describe("0.40.0 cli: the compacting row's bar on a real PTY", () => {
 		expect(plain).toContain("→ ▱▱▱▱▱▱ 0/32k");
 		expect(plain).toContain("→ ▰▰▰▱▱▱ 16k/32k");
 		// and the call completed: the recap, and the durable checkpoint
-		expect(plain).toContain("[/compact] ✦ compacted · 4 rounds → 1 summary");
+		expect(plain).toMatch(/COMPACTED +4 rounds → 1 summary/);
 		expect(readFileSync(join(home, "sessions", "kb.jsonl"), "utf8")).toContain('"type":"summarized"');
 	});
 });
