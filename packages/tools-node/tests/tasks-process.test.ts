@@ -197,6 +197,39 @@ describe("ADR-0058 — the caller's death, a stop, the ready signal, the rotatio
 		manager.close();
 	});
 
+	it("a stop the moment the task reads running is a stop, never a lost runner: the runner holds TERM from its first act", async () => {
+		// the runner pauses right after command_started: the task already
+		// reads running, but the command and its stop do not exist yet. A
+		// SIGTERM there used to take the default disposition: the runner died
+		// with no record, and the task was lost
+		const { root, cwd, manager } = setup();
+		const t = await manager.start({ command: "sleep 30", cwd, env: { ...process.env, KISO_TASK_RUNNER_PAUSE_AFTER: "command_started" } });
+		await until(() => journalTypes(root, t.id), (types) => types.includes("command_started"));
+		expect(manager.stop(t.id, "person")).toBe(true);
+		// the stop's own path: the pause (600 ms), the spawn, TERM, the sweep
+		// and the output drain (at most 1 s) — 15 s is margin on a loaded runner
+		const ended = await until(() => manager.get(t.id)!, (i) => i.state.kind !== "running" && i.state.kind !== "starting", 15_000);
+		expect(ended.state).toMatchObject({ kind: "ended", stopped: true });
+		expect(journalTypes(root, t.id)).toContain("terminal");
+		manager.close();
+	}, 30_000);
+
+	it("a TERM alone in that window is a stop too: the signal is never dropped while the stop is being set up", async () => {
+		// no stop_requested record: only the signal, as `kill <runner pid>`
+		// sends it. A handler swapped between the two moments dropped it
+		const { root, cwd, manager } = setup();
+		const t = await manager.start({ command: "sleep 30", cwd, env: { ...process.env, KISO_TASK_RUNNER_PAUSE_AFTER: "command_started" } });
+		const types = await until(() => journalTypes(root, t.id), (ts) => ts.includes("command_started"));
+		expect(types).toContain("runner_started");
+		const runner = JSON.parse(readFileSync(join(root, t.id, "journal.jsonl"), "utf8").split("\n").find((l) => l.includes('"runner_started"'))!) as { pid: number };
+		process.kill(runner.pid, "SIGTERM");
+		// the same path as above, without the journal's 250 ms poll
+		const ended = await until(() => manager.get(t.id)!, (i) => i.state.kind !== "running" && i.state.kind !== "starting", 15_000);
+		expect(ended.state.kind).toBe("ended");
+		expect(journalTypes(root, t.id)).toContain("terminal");
+		manager.close();
+	}, 30_000);
+
 	it("the journal is the stop channel: a stop_requested record alone — no signal — stops the task", async () => {
 		// on win32 a signal to the runner is TerminateProcess, so the record
 		// (durable before any signal) is what every platform acts on

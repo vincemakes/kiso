@@ -76,17 +76,36 @@ function plannedOf(journal: string): Planned {
 }
 
 function main(dir: string): void {
+	// The runner's FIRST act: TERM is handled from here on, by one handler
+	// that is never removed. The task reads running the moment
+	// command_started is written, so a stop may arrive before the command and
+	// its stop exist; without a handler, TERM's default disposition killed
+	// the runner with no record, and the task was lost. A TERM before the
+	// stop exists is held, and performed as soon as it does (below). The
+	// handler is never swapped: a signal is dispatched from the event loop,
+	// after this synchronous main returns, and dropping the last listener in
+	// between would drop the signal with it.
+	let stopNow: (() => void) | null = null;
+	let heldTerm = false;
+	process.on("SIGTERM", () => {
+		if (stopNow !== null) stopNow();
+		else heldTerm = true;
+	});
 	const journal = join(dir, "journal.jsonl");
 	const planned = plannedOf(journal);
 	// test-only crash points: the process dies right after a record, before
 	// the step that record gates
 	const dieAfter = process.env.KISO_TASK_RUNNER_DIE_AFTER;
+	// test-only: hold the runner right after a record, so a stop can land in
+	// the window the record opens
+	const pauseAfter = process.env.KISO_TASK_RUNNER_PAUSE_AFTER;
 	// test-only: report a stop as unconfirmed (a survivor the platform could
 	// not kill cannot be made on purpose)
 	const forceUnconfirmed = process.env.KISO_TASK_RUNNER_STOP_UNCONFIRMED === "1";
 	const cap = Number(process.env.KISO_TASK_OUTPUT_CAP ?? OUTPUT_CAP_DEFAULT);
 	const env = { ...process.env };
 	delete env.KISO_TASK_RUNNER_DIE_AFTER;
+	delete env.KISO_TASK_RUNNER_PAUSE_AFTER;
 	delete env.KISO_TASK_RUNNER_STOP_UNCONFIRMED;
 	delete env.KISO_TASK_OUTPUT_CAP;
 
@@ -97,6 +116,7 @@ function main(dir: string): void {
 	if (dieAfter === "runner_started") process.exit(99);
 	append(journal, { type: "command_started", ts: Date.now() });
 	if (dieAfter === "command_started") process.exit(99);
+	if (pauseAfter === "command_started") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600);
 
 	const out = new RotatingOutput(join(dir, "output.log"), cap);
 	let finished = false;
@@ -165,7 +185,8 @@ function main(dir: string): void {
 			finish({ type: "terminal", ts: Date.now(), exitCode: e?.code ?? null, signal: e?.signal ?? null });
 		});
 	};
-	process.on("SIGTERM", stop);
+	stopNow = stop;
+	if (heldTerm) stop();
 	// the journal is the stop channel: re-read only when it grew
 	let journalSize = -1;
 	const watch = setInterval(() => {
