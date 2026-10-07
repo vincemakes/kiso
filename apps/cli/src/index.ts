@@ -1253,6 +1253,7 @@ async function readSecret(prompt: string): Promise<string> {
 function showResumeTail(events: Parameters<typeof resumeTail>[0], sessionId?: string): void {
 	const W = process.stdout.columns ?? 80;
 	// the tasks round: a task notice in the history reads its task's journal
+	// (Amendment 8: a lost task's row names what it ran — from the same list)
 	if (dock.active) replayInto(body, events as Parameters<typeof replayInto>[1], W, tasksForDisplay(tasksFor(sessionId)));
 	else bodyLog(resumeTail(events, W).join("\n"));
 }
@@ -1907,7 +1908,7 @@ async function main(): Promise<void> {
 		// Graphite §8.10: a closed session never leaves a working or
 		// waiting mark in the tab
 		setTitleState("ready");
-		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — outcome unknown`);
+		for (const id of tasksAtExit.unconfirmed) console.error(`${id}: stop unconfirmed — it may still be running`);
 		if (tasksAtExit.left.length > 0) console.error(`left running: ${tasksAtExit.left.join(", ")} — reopen this session to hear how ${tasksAtExit.left.length === 1 ? "it ends" : "they end"}`);
 		// finding #8 (P1): extension dispose runs on the same exit path — a
 		// dispose failure prints one line and NEVER changes the exit code.

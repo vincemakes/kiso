@@ -207,6 +207,15 @@ export class TaskManager {
 		const cached = this.#identity.get(id);
 		if (cached !== undefined && cached.key === key && (cached.verdict === "gone" || (!fresh && Date.now() - cached.at < this.#identifyEveryMs))) return cached.verdict;
 		const verdict = this.#backend.identify(runner.pid, runner.startedAt);
+		// Amendment 8: a probe that could not READ the identity just now (a
+		// loaded machine) is not a lost runner. For the state, a runner last
+		// verified, with a recorded start time, keeps that verdict until the
+		// next window; a stop checks fresh and still gets the raw answer, so
+		// a runner not verified NOW is never signalled.
+		if (verdict === "unverifiable" && runner.startedAt !== "" && cached?.key === key && cached.verdict === "verified") {
+			this.#identity.set(id, { key, verdict: "verified", at: Date.now() });
+			return fresh ? verdict : "verified";
+		}
 		this.#identity.set(id, { key, verdict, at: Date.now() });
 		return verdict;
 	}
@@ -494,7 +503,9 @@ export class TaskManager {
 			// a tool call is waiting on it: what it sees, its result reports
 			if (this.#waiting.has(id)) continue;
 			const before = this.#seen.get(id);
-			if (before === "ended" || before === "unknown" || before === "not_run") continue;
+			// a lost (`unknown`) task is still read: if its end is recorded
+			// later, that end is announced (Amendment 8)
+			if (before === "ended" || before === "not_run") continue;
 			let info: TaskInfo;
 			try {
 				info = this.#info(id)!;

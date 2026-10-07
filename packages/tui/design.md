@@ -883,11 +883,17 @@ what it names is cut with `…`, never folded under itself.
   once and the rows under it unlabelled: the task id, how it ended, then
   what ran, `dim`. A shell reads `exited 0` (the success colour) or
   `failed 1` (the failure colour); a child reads `answered` or `failed`;
-  `stopped` is `dim`; `◌ outcome unknown` is gold; a long-running command
-  that said it was ready reads `ready`. The words come from the task's own
-  journal, so a resumed session draws what a live one did. A pipe prints
-  `✦ task t1 exited · t2 exited` as it always did. DECLARED REVERSAL of
-  0.46.0's one row of bare transitions on the terminal.
+  `stopped` is `dim`; a task kiso lost track of reads `lost track — may
+  still be running` in gold, then `/tasks shows it` before what ran (so a
+  cut takes the command); a long-running command that said it was ready
+  reads `ready`. The words come from the task's own journal, so a resumed
+  session draws what a live one did. A loss is said once, the moment kiso
+  concludes it (ADR-0058 Amendment 8): the same row, and a delivery that
+  carries it later leaves it out. A pipe prints `✦ task t1 exited · t2
+  exited` and `✦ lost track of t3 (npm run dev) — it may still be running
+  · /tasks shows it` as written. DECLARED REVERSAL of 0.46.0's one row of
+  bare transitions on the terminal; the main sync (0.46.2) of the tasks
+  round's `◌ outcome unknown`.
 - `PROJECT` — the trust gate's answer (§8.12): `trusted · ~/w/.kiso ·
   config.json (97e337)`, `trusted` in the success colour, or `not
   trusted`.
@@ -1222,10 +1228,11 @@ default  /mode to switch  deepseek-v4-flash · max  ctx ▆▆▆▆▆▆▆▆
 
 The session's tasks (ADR-0058 3e; the second main-sync round, owner,
 2026-10-06) sit right after the mode, where 0.46.0's status row has them:
-`● 2 tasks running` with the `●` in the machine's blue, `◌ 1 unknown` (or
-`◌ 1 task unknown` alone) with the `◌` in gold — an outcome nobody can know
-is the one that needs the person (§4) — the words quiet like the rest of
-the bar. A fact: it never gives way. With no task it is absent and the bar
+`● 2 tasks running` with the `●` in the machine's blue, the words quiet
+like the rest of the bar. A fact: it never gives way. DECLARED REVERSAL
+(the main sync, 0.46.2, Amendment 8): the gold `◌ 1 unknown` beside it
+retired — "running" beside "may be running" read as a contradiction (the
+owner); a lost task is a TASK row in the transcript (§7.12), not a count. With no task it is absent and the bar
 is the bar it was. `/tasks` lists them (a pick band, §8.14).
 
 Nothing reserves a place for what has not shipped: an extension's status
@@ -1561,9 +1568,12 @@ shape (§8.8), and `/help` opens the command list. Off a dock (a pipe,
 - A task's output (`/tasks` → a task → show its output; the tasks round,
   owner, 2026-10-06): the band names the task, which output it is and how
   it ended (`t1 · its last output · exited 0`, `t2 · its answer ·
-  answered`); its newest twelve lines at the content edge in `ink2`, each
-  cut to one row; the closing row. DECLARED REVERSAL of the lines printed
-  into the conversation at column 0, a blank between each.
+  answered`); a task kiso lost track of says why first, in gold (`lost
+  track: its runner is gone without recording its end; it may still be
+  running` — the printed form's `t1 — lost track: …` line, the main sync);
+  its newest twelve lines at the content edge in `ink2`, each cut to one
+  row; the closing row. DECLARED REVERSAL of the lines printed into the
+  conversation at column 0, a blank between each.
 - `/help` opens the command list (§8.13) — the band a typed `/` opens,
   every command and installed skill with its description, filtered as
   the person types — on an empty composer. The list you read is the list

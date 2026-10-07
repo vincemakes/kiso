@@ -409,8 +409,20 @@ rules you already granted.
 written to `~/.kiso/extensions/dont-ask-again.mjs`, which is human-editable and
 human-deletable: drop a tool from its set, or delete the file, and the next call
 asks. The file is allow-only by design — it can never deny or ask — so the mode
-and safe-defaults moats keep their teeth. It never carries a destructive command
-or a write into `.git/` or `.kiso/`: those reach you every time.
+and safe-defaults moats keep their teeth. It never carries a destructive command,
+a write into `.git/` or `.kiso/`, or a command across the **remote boundary**:
+those reach you every time.
+
+**The remote boundary.** Two kinds of command change state that other people
+share, so a rule remembered by tool name does not carry them: a destructive
+`git push` (`--force` / `-f`, `--force-with-lease`, `--force-if-includes`, a
+`+` refspec, `--mirror`, `--delete` / `-d` or a `:branch` refspec, `--prune`;
+a `-n` / `--dry-run` is exempt), and a direct `npm` / `pnpm` / `yarn` publish
+(not `npm run publish`, not `--dry-run`). Authority you give now still runs
+them: full access does, and so does an extension of yours that allows them.
+With don't ask on, they are refused with the reason, and the run goes on. Only
+direct invocations are read — `npm run release`, a script, a git alias are
+not seen; it is a guardrail, not a sandbox.
 
 **The catastrophe floor.** In every mode, full access included, kiso refuses a
 destructive command (`rm`, `git clean -f`, `git reset --hard`,

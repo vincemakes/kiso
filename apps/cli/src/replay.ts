@@ -23,7 +23,7 @@
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
-import { taskNoticeRow, taskNoticeRows } from "./task-notice.js";
+import { taskNoticeLines, taskNoticeRows, taskWhat } from "./task-notice.js";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import type { NoticeMark } from "@vincemakes/kiso-tui";
 
@@ -86,9 +86,15 @@ function replayTurn(body: ReplayBody, turn: readonly Ev[], tasks: readonly TaskI
 				const ask = askOf(e);
 				if (ask !== null) body.userLine(ask);
 				else if ((e.via as { kind?: unknown } | undefined)?.kind === "tasks") {
-					// the tasks round: the same rows a live session drew, from the journal
+					// the tasks round: the same rows a live session drew, from the
+					// journal; the pipe's lines are taskNoticeLines' (Amendment 8: a
+					// lost task's line names what it ran)
 					const items = (e.via as { items: readonly TaskDeliveryItem[] }).items;
-					body.metaNotice(taskNoticeRow(items), taskNoticeRows(items, tasks));
+					const what = (taskId: string): string | undefined => {
+						const t = tasks.find((x) => x.id === taskId);
+						return t === undefined ? undefined : taskWhat(t);
+					};
+					body.metaNotice(taskNoticeLines(items, what).join("\n"), taskNoticeRows(items, tasks));
 				}
 				else if (e.source === "system") {
 					body.notice("verification pass");

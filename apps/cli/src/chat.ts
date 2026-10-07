@@ -30,8 +30,8 @@ import {
 } from "@vincemakes/kiso-tui";
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
-import { liveTasks, mergedConfig, queuedSwitchLines, seenUnknownTasks, setExitTasks, tasksFor } from "./state.js";
-import { taskCounts, taskNoticeRow, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
+import { deliveryLines, liveTasks, lostToldOf, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
+import { taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
 import { canonicalizeUsageForModel, requestBudget, tiersFor } from "@vincemakes/kiso-runtime/internal";
@@ -1064,8 +1064,12 @@ export async function consumeRun(
 				// any run that carries one, as replay.ts does for old logs.
 				// ADR-0058: a task notice is a row, never the person's chip
 				if (ev.via?.kind === "tasks") {
-					// the tasks round: one row per task, how it ended and what ran
-					body.metaNotice(taskNoticeRow(ev.via.items), taskNoticeRows(ev.via.items, tasksForDisplay(tasksFor(session.id))));
+					// the tasks round: one row per task, how it ended and what ran —
+					// a loss already said (Amendment 8) is left out, as the pipe's
+					// lines (deliveryLines) leave it out
+					const told = lostToldOf(session.id);
+					const shown = ev.via.items.filter((i) => !(i.transition === "unknown" && told.has(i.taskId)));
+					if (shown.length > 0) body.metaNotice(deliveryLines(session.id, ev.via.items).join("\n"), taskNoticeRows(shown, tasksForDisplay(tasksFor(session.id))));
 					break;
 				}
 				if (ev.source === "system") {
@@ -1661,18 +1665,18 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// most once a second; the idle row (repainted rarely) always reads —
 	// a task promoted or moved to the background makes no transition to
 	// hear, and the row the turn ends on must already count it
-	let taskRow: { readonly at: number; readonly seen: number; readonly counts: TaskCountsOnRow } | null = null;
+	let taskRow: { readonly at: number; readonly counts: TaskCountsOnRow } | null = null;
 	const taskCountsNow = (fresh = false): TaskCountsOnRow | undefined => {
 		const manager = tasksFor(session.id);
 		if (manager === undefined) return undefined;
-		if (fresh || taskRow === null || Date.now() - taskRow.at > 1_000 || taskRow.seen !== seenUnknownTasks.size) {
+		if (fresh || taskRow === null || Date.now() - taskRow.at > 1_000) {
 			let list: ReturnType<typeof manager.list> = [];
 			try {
 				list = manager.list();
 			} catch {
 				// a corrupt journal is reported where it is read on purpose
 			}
-			taskRow = { at: Date.now(), seen: seenUnknownTasks.size, counts: taskCounts(list, seenUnknownTasks) };
+			taskRow = { at: Date.now(), counts: taskCounts(list) };
 		}
 		return taskRow.counts;
 	};
@@ -1748,7 +1752,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		spentUsd = (spentUsd ?? 0) + usd;
 	};
 	const queueTurn = (line: string, via?: UserInputVia): void => {
-		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? taskNoticeRow(via.items) : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
+		const slot = { line: via?.kind === "skill" ? via.line : via?.kind === "tasks" ? (deliveryLines(session.id, via.items).join(" · ") || taskNoticeLines(via.items, taskWhatOf(session.id)).join(" · ")) : line, content: line, ...(via !== undefined ? { via } : {}), cancelled: false };
 		pendingTurns.push(slot);
 		queued += 1;
 		chainRef.current = chainRef.current.then(async () => {
@@ -1826,6 +1830,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			: session.useTasks(taskManager, {
 					wake: mergedConfig.taskWake !== false,
 					onWake: (w) => queueTurn(w.content, w.via),
+					// Amendment 8: a loss is said when kiso concludes it — the
+					// model's notice still rides the next run, and is not said again
+					onLost: (ids) => {
+						const told = lostToldOf(session.id);
+						for (const id of ids) told.add(id);
+						for (const line of taskNoticeLines(ids.map((taskId) => ({ taskId, transition: "unknown" as const })), taskWhatOf(session.id))) body.notice(line);
+					},
 					...(Number.isFinite(autoDetachFromEnv) && autoDetachFromEnv >= 0 ? { autoDetachMinAgeMs: autoDetachFromEnv } : {}),
 				});
 	// 3e: a task's change repaints the row it is counted on

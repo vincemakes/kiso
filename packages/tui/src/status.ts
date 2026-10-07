@@ -180,24 +180,19 @@ export function retrySegment(r: RetryOnRow): string {
 	return r.remainingMs > 0 ? `${head} · ${Math.ceil(r.remainingMs / 1000)}s` : head;
 }
 
-/** ADR-0058 (3e): the session's tasks, as the status rows count them. */
+/** ADR-0058 (3e, Amendment 8): the tasks kiso manages, as the status rows
+ *  count them. */
 export interface TaskCountsOnRow {
 	/** running or starting */
 	readonly running: number;
-	/** an outcome that cannot be known, not yet looked at in `/tasks` */
-	readonly unknown: number;
 }
 
-/** `● 2 tasks running · ◌ 1 unknown`, `◌ 1 task unknown` — or nothing.
- *  An unknown task is never hidden behind the panel: it is the one that
- *  needs the person most. */
+/** `● 2 tasks running` — or nothing. A task kiso lost track of is not a
+ *  second count here: it is an event, said once in the transcript
+ *  (Amendment 8). */
 export function tasksSegment(c: TaskCountsOnRow | undefined): string {
-	if (c === undefined) return "";
-	const n = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
-	if (c.running > 0 && c.unknown > 0) return `● ${n(c.running, "task")} running · ◌ ${c.unknown} unknown`;
-	if (c.running > 0) return `● ${n(c.running, "task")} running`;
-	if (c.unknown > 0) return `◌ ${n(c.unknown, "task")} unknown`;
-	return "";
+	if (c === undefined || c.running <= 0) return "";
+	return `● ${c.running} task${c.running === 1 ? "" : "s"} running`;
 }
 
 export function runningStatus(
@@ -528,13 +523,14 @@ export function statusBar(b: BarInput, W: number, expand: "expand all" | "collap
 	return cutLine(row, W);
 }
 
-/** The bar's task segment, painted: the marks coloured, the words dim. */
+/** The bar's task segment, painted: the mark coloured, the words dim.
+ *  The main sync (0.46.2, Amendment 8): the gold `◌ N unknown` beside it
+ *  retired — a task kiso lost track of is said once in the transcript, a
+ *  TASK row, not counted on the bar ("running" beside "may be running"
+ *  read as a contradiction to the owner). */
 function tasksOnBar(c: TaskCountsOnRow): string {
 	const p = palette();
-	const n = (k: number, word: string): string => `${k} ${word}${k === 1 ? "" : "s"}`;
-	const running = c.running > 0 ? `${p.blue}\u25cf${p.fgEnd} ${p.dim}${n(c.running, "task")} running${p.reset}` : "";
-	const unknown = c.unknown > 0 ? `${p.gold}\u25cc${p.fgEnd} ${p.dim}${c.running > 0 ? `${c.unknown} unknown` : `${n(c.unknown, "task")} unknown`}${p.reset}` : "";
-	return [running, unknown].filter((x) => x !== "").join(`${p.dim} \u00b7 ${p.reset}`);
+	return c.running > 0 ? `${p.blue}\u25cf${p.fgEnd} ${p.dim}${c.running} task${c.running === 1 ? "" : "s"} running${p.reset}` : "";
 }
 
 /**

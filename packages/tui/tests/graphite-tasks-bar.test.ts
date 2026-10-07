@@ -2,9 +2,12 @@
  * The second main-sync round (ADR-0058 3e on Graphite) — the session's tasks
  * are counted on the bar (§8.9), right after the mode, where 0.46.0's status
  * row has them (owner, 2026-10-06): `● N tasks running` with the mark in the
- * machine's blue, `◌ N unknown` with the mark in gold (an outcome nobody can
- * know is the one that needs the person, §4), the words quiet. A fact: it
- * never gives way. And the live row teaches ctrl+b exactly while a running
+ * machine's blue, the words quiet. A fact: it never gives way.
+ *
+ * RE-DERIVED (the main sync, 0.46.2, Amendment 8): the gold `◌ N unknown`
+ * beside it retired — a task kiso lost track of is said once in the
+ * transcript (a TASK row), not counted here; `TaskCountsOnRow` is
+ * `{ running }`. And the live row teaches ctrl+b exactly while a running
  * command can be moved to the background.
  */
 
@@ -24,25 +27,24 @@ const BAR: BarInput = { mode: "default", floorOff: false, model: "deepseek-flash
 describe("the bar counts the session's tasks", () => {
 	it("right after the mode, before `/mode to switch`", () => {
 		setGround("light");
-		const row = plain(statusBar({ ...BAR, tasks: { running: 2, unknown: 1 } }, 120, null));
-		expect(row).toMatch(/^ default {3}● 2 tasks running · ◌ 1 unknown {2}\/mode to switch {2}deepseek-flash/);
-		expect(plain(statusBar({ ...BAR, tasks: { running: 1, unknown: 0 } }, 120, null))).toContain(" default   ● 1 task running  /mode to switch");
-		expect(plain(statusBar({ ...BAR, tasks: { running: 0, unknown: 1 } }, 120, null))).toContain(" default   ◌ 1 task unknown  /mode to switch");
+		const row = plain(statusBar({ ...BAR, tasks: { running: 2 } }, 120, null));
+		expect(row).toMatch(/^ default {3}● 2 tasks running {2}\/mode to switch {2}deepseek-flash/);
+		expect(plain(statusBar({ ...BAR, tasks: { running: 1 } }, 120, null))).toContain(" default   ● 1 task running  /mode to switch");
+		expect(row).not.toContain("◌");
 	});
 
-	it("the marks carry the colour — blue running, gold unknown — and the words are quiet", () => {
+	it("the mark carries the colour — the machine's blue — and the words are quiet", () => {
 		setGround("light");
 		const p = palette();
-		expect([p.blue, p.gold, p.dim].includes(""), "the palette is on").toBe(false);
-		const row = statusBar({ ...BAR, tasks: { running: 2, unknown: 1 } }, 120, null);
+		expect([p.blue, p.dim].includes(""), "the palette is on").toBe(false);
+		const row = statusBar({ ...BAR, tasks: { running: 2 } }, 120, null);
 		expect(row).toContain(`${p.blue}●${p.fgEnd} ${p.dim}2 tasks running`);
-		expect(row).toContain(`${p.gold}◌${p.fgEnd} ${p.dim}1 unknown`);
 	});
 
 	it("no tasks: the bar is the bar it was, byte for byte", () => {
 		for (const g of ["light", "unknown"] as const) {
 			setGround(g);
-			expect(statusBar({ ...BAR, tasks: { running: 0, unknown: 0 } }, 100, null)).toBe(statusBar(BAR, 100, null));
+			expect(statusBar({ ...BAR, tasks: { running: 0 } }, 100, null)).toBe(statusBar(BAR, 100, null));
 		}
 	});
 
@@ -50,7 +52,7 @@ describe("the bar counts the session's tasks", () => {
 		for (const g of ["light", "dark", "unknown"] as const) {
 			setGround(g);
 			for (let W = 20; W <= 160; W += 1) {
-				const row = statusBar({ ...BAR, tasks: { running: 2, unknown: 1 } }, W, "expand all");
+				const row = statusBar({ ...BAR, tasks: { running: 2 } }, W, "expand all");
 				expect(visibleWidth(row), `${g} W=${W}`).toBeLessThanOrEqual(W);
 				if (W >= 70) expect(plain(row), `${g} W=${W}`).toContain("2 tasks running");
 			}
