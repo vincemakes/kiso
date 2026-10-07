@@ -211,6 +211,23 @@ record — did not pay for its rent: +150 tokens on EVERY request of a
 session with tasks (measured, round wait-r1), whether or not it ever
 waited, against a cost-weighted gain no round measured.
 
+**The reason, in its order.** Not the rent first: the tool did not add a
+capability the task model lacks, so no standing rent was worth paying for
+it — had `wait` changed what an agent can do, +150 tokens would have been
+cheap. Round wait-r1 also showed the abstraction leaking into the model:
+in one leg the model waited on its own wait and registered a 1 ms timer
+"to yield the turn" (finding W-F1), and the fix was more rules telling
+the model how to hold the concept. A task needs none: start it, end the
+message, its end wakes you.
+
+**What this does NOT rule.** It does not rule that every wait is a task.
+The scenarios evaluated (a long command, CI, a timer, a review) map onto
+tasks well enough; others — a webhook, a database state, an email, a
+person's approval from another client — may not, and wrapping each in an
+OS process is not the end design. When a product needs one, event waiting
+is designed again from that need, under whatever name fits; this ADR's
+text is a record of one attempt, not a constraint on the next.
+
 **What round wait-r1 still taught, kept:** the paired bench's noise on
 the Command Code route (two runs of one comparison: +43.6% and −3.3%),
 which is why the 0.48.0 gate runs at least 12 pairs per set and treats
