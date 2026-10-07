@@ -273,6 +273,36 @@ export function colourTier(colorterm: string | undefined): Tier {
 	return v === "truecolor" || v === "24bit" ? "24bit" : "256";
 }
 
+/** 0.47.1 (owner, 2026-10-07) — 24-bit where the terminal is KNOWN to
+ *  render it, though it does not say so in COLORTERM. Windows Terminal is
+ *  the case that found it: drawn in the 256 tier, the person's cream block
+ *  became pink (index 224) and its gold edge olive (186). Each terminal is
+ *  recognised by what it sets; the list is the reference implementation's.
+ *  Inside tmux or screen only COLORTERM counts — the outer terminal's
+ *  variables are inherited, its rendering is not. Apple Terminal says it
+ *  in COLORTERM where it renders 24-bit (§2), and keeps the 256 tier
+ *  otherwise. PURE: the environment and the platform are passed in. */
+export function terminalTier(env: Readonly<Record<string, string | undefined>>, platform: string): Tier {
+	if (colourTier(env.COLORTERM) === "24bit") return "24bit";
+	const term = (env.TERM ?? "").toLowerCase();
+	if (env.TMUX !== undefined || term.startsWith("tmux") || term.startsWith("screen")) return "256";
+	const program = (env.TERM_PROGRAM ?? "").toLowerCase();
+	const known =
+		env.WT_SESSION !== undefined ||
+		env.ITERM_SESSION_ID !== undefined ||
+		env.WEZTERM_PANE !== undefined ||
+		env.KITTY_WINDOW_ID !== undefined ||
+		env.GHOSTTY_RESOURCES_DIR !== undefined ||
+		["iterm.app", "wezterm", "ghostty", "kitty", "vscode", "warpterminal", "alacritty"].includes(program) ||
+		term.includes("ghostty") ||
+		term === "alacritty" ||
+		(env.TERMINAL_EMULATOR ?? "").toLowerCase() === "jetbrains-jediterm" ||
+		// a Windows console renders 24-bit even where Windows Terminal hosts
+		// it without WT_SESSION (cmd.exe from Win+R)
+		platform === "win32";
+	return known ? "24bit" : "256";
+}
+
 export function fg(c: Rgb, tier: Tier): string {
 	return tier === "24bit" ? `\x1b[38;2;${c.r};${c.g};${c.b}m` : `\x1b[38;5;${nearest256(c)}m`;
 }
