@@ -3,8 +3,8 @@
  * `<KISO_HOME>/preferences.json`.
  *
  * `config.json` is the human's file: kiso reads it and never writes it. A
- * choice made with a key — ctrl+t's thinking display, today the only one —
- * has to survive a restart, so it lands here instead: kiso-owned, private
+ * choice made with a key — ctrl+t's thinking display, and (B1) the effort
+ * last picked for each profile — has to survive a restart, so it lands here instead: kiso-owned, private
  * (0600, tmp + rename), and read back at start-up. A missing or unreadable
  * file is an empty one; an unknown value is ignored rather than guessed.
  *
@@ -14,11 +14,16 @@
  */
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { lookupModelMetadata, resolveReasoning, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
+import type { ModelProfile } from "./config.js";
 import { kisoHome } from "./state.js";
 
 export interface Preferences {
 	/** ctrl+t: the thinking blocks as one italic line each. Absent = shown. */
 	readonly thinking?: "shown" | "hidden";
+	/** B1: the effort last picked for each profile (`/model <p> <e>`, or the
+	 *  panel with a level) — where a NEW session of that profile starts. */
+	readonly effort?: Readonly<Record<string, string>>;
 }
 
 let prefs: Preferences | null = null;
@@ -30,8 +35,14 @@ export function preferencesPath(home: string = kisoHome()): string {
 
 function read(path: string): Preferences {
 	try {
-		const raw = JSON.parse(readFileSync(path, "utf8")) as { thinking?: unknown };
-		return raw.thinking === "shown" || raw.thinking === "hidden" ? { thinking: raw.thinking } : {};
+		const raw = JSON.parse(readFileSync(path, "utf8")) as { thinking?: unknown; effort?: unknown };
+		const out: { thinking?: "shown" | "hidden"; effort?: Record<string, string> } = {};
+		if (raw.thinking === "shown" || raw.thinking === "hidden") out.thinking = raw.thinking;
+		if (raw.effort !== null && typeof raw.effort === "object" && !Array.isArray(raw.effort)) {
+			const effort = Object.fromEntries(Object.entries(raw.effort as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
+			if (Object.keys(effort).length > 0) out.effort = effort;
+		}
+		return out;
 	} catch {
 		return {};
 	}
@@ -64,6 +75,28 @@ export function setPreference<K extends keyof Preferences>(key: K, value: NonNul
 		// an unwritable home: the choice still holds for this process
 	}
 	return true;
+}
+
+/** B1: remember an explicit effort pick for a profile. */
+export function rememberEffort(profile: string, effort: string): boolean {
+	return setPreference("effort", { ...(preferences().effort ?? {}), [profile]: effort });
+}
+
+/**
+ * B1: the effort a NEW session of `profile` starts at, from the one last
+ * picked — the picker's fallback: the level itself when the model has it,
+ * else the endpoint's registry default, else none (default/default, no
+ * reasoning key). Only a level that resolves for the model is returned, so
+ * the session never carries a setting its first request would refuse.
+ */
+export function startingEffort(profile: Pick<ModelProfile, "model" | "baseUrl">, remembered: string | undefined): string | null {
+	if (remembered === undefined || remembered === "default") return null;
+	const effort = lookupModelMetadata(profile.model, profile.baseUrl)?.capabilities.reasoning?.effort ?? null;
+	if (effort === null) return null;
+	const legal = (level: string): boolean =>
+		resolveReasoning(profile.model, { thinking: "default", effort: level } as ReasoningSetting, profile.baseUrl).ok;
+	if ((effort.levels as readonly string[]).includes(remembered) && legal(remembered)) return remembered;
+	return effort.default !== null && legal(effort.default) ? effort.default : null;
 }
 
 /** Tests: back to the state before startup. */

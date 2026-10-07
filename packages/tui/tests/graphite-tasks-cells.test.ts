@@ -142,3 +142,24 @@ describe("the Body", () => {
 		expect(out).not.toContain("ctrl+r transcript");
 	});
 });
+
+describe("the main sync (0.46.2, Amendment 8): the lost-track line is a TASK row", () => {
+	it("gold `lost track — may still be running`, where to look, then what ran — one row; the parenthesis only when known", async () => {
+		const { noticeMeta } = await import("../src/notice-meta.js");
+		const gold = { text: "lost track — may still be running", tone: "gold" };
+		expect(noticeMeta("✦ lost track of t3 (npm run dev) — it may still be running · /tasks shows it")).toEqual({
+			label: "TASK",
+			sentence: "t3 lost track — may still be running · /tasks shows it · npm run dev",
+			mark: gold,
+			oneRow: true,
+		});
+		expect(noticeMeta("✦ lost track of t3 — it may still be running · /tasks shows it")).toMatchObject({ label: "TASK", sentence: "t3 lost track — may still be running · /tasks shows it" });
+		// a command that holds its own parentheses and ` — ` is kept whole
+		expect(noticeMeta("✦ lost track of t4 (echo (a) — b) — it may still be running · /tasks shows it")).toMatchObject({ sentence: "t4 lost track — may still be running · /tasks shows it · echo (a) — b" });
+		// a pipe keeps the line as written
+		const writes: string[] = [];
+		const body = new Body({ active: () => false, height: () => 24, width: () => 80, editCol: () => 1, write: (s) => writes.push(s) });
+		body.notice("✦ lost track of t3 (npm run dev) — it may still be running · /tasks shows it");
+		expect(writes.join("")).toBe("✦ lost track of t3 (npm run dev) — it may still be running · /tasks shows it\n");
+	});
+});

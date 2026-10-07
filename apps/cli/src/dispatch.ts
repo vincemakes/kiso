@@ -16,12 +16,12 @@ import { activeStoreDir, agentBaseUrl, currentProfileName, setCurrentProfileName
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { profileProviderLabel, providerLabel } from "./provider-label.js";
 import { installedVersion, versionStatusLine } from "./stale-version.js";
-import { preferences, setPreference } from "./preferences.js";
+import { preferences, rememberEffort, setPreference } from "./preferences.js";
 import { settingRow, settingsFacts, settingsRows } from "./settings.js";
 import { floorOn, settingsLayers } from "./state.js";
 import { currentGround } from "@vincemakes/kiso-tui-cells/render";
-import { queuedSwitchLines, seenUnknownTasks, tasksFor } from "./state.js";
-import { taskOutput, taskRow, taskStateLabel, taskOutputSheetRows } from "./task-notice.js";
+import { queuedSwitchLines, tasksFor } from "./state.js";
+import { lostReason, taskOutput, taskRow, taskStateLabel, taskOutputSheetRows } from "./task-notice.js";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { contextWindowTokens, microcompactThresholdFor, startStatusSpinner, statedContextWindow, windowSourceNote } from "./chat.js";
 import { authForProfile, directWriteProfile, profileAvailable, resolveContextWindow, unavailableReason, type ModelProfile } from "./config.js";
@@ -105,7 +105,7 @@ function effortAxis(p: ModelProfile): Pick<PickOption, "levels" | "level" | "dis
 		// the sentence the coordination note asked for: said only when the
 		// cursor could NOT land where the previous selection asked.
 		...(carried !== undefined && carried !== "default" && carriedIdx < 0 && defaultIdx >= 0
-			? { levelNote: `effort ${carried} \u2192 ${levels[defaultIdx]}: the nearest this model supports` }
+			? { levelNote: `effort ${carried} \u2192 ${levels[defaultIdx]}: this model's default (it has no ${carried})` }
 			: {}),
 	};
 }
@@ -1141,6 +1141,10 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// §2.5: the ONE source a reload reads for the model — a
 							// switch made here must survive the rebuild.
 							setModelChoice(arg);
+							// B1: an explicit effort (typed, or the panel's level) is
+							// remembered for the profile — where its next NEW session
+							// starts (preferences.json)
+							if (direct === null && effortTok !== undefined && reasoning !== undefined) rememberEffort(profName, effortTok);
 							// The window a PROFILE states travels with the switch,
 							// like the model id and the endpoint. Leaving it behind
 							// is CTX-1 one field over: the row would show a
@@ -1527,8 +1531,8 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 /** ADR-0058 (3e) — `/tasks`, `/tasks show <id>`, `/tasks stop <id>`. On a
  *  dock the bare command is a pick: a task, then what to do with it. A
  *  stop is REQUESTED here; the row says `stopping` until the journal says
- *  how it ended. Looking at the list counts as having seen its unknown
- *  tasks (the status row stops counting them). */
+ *  how it ended. A task kiso lost track of says why in `show`
+ *  (Amendment 8). */
 async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	const manager = tasksFor(ctx.session.id);
 	if (manager === undefined) {
@@ -1552,6 +1556,9 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 			return;
 		}
 		const lines = taskOutput(t);
+		// Amendment 8: a lost task says why, before its output
+		const why = lostReason(t);
+		if (why !== undefined) bodyLog(`${t.id} — lost track: ${why}; it may still be running`);
 		bodyLog(`${t.id} — ${t.agent !== undefined ? "its answer" : "its last output"}${lines.length === 0 ? ": nothing yet" : ""}`);
 		for (const line of lines) bodyLog(`  ${line}`);
 	};
@@ -1574,7 +1581,6 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 		body.notice("no tasks in this session");
 		return;
 	}
-	for (const t of list) if (t.state.kind === "unknown") seenUnknownTasks.add(t.id);
 	if (!dock.active) {
 		for (const t of list) {
 			const r = taskRow(t);

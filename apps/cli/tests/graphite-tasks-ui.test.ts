@@ -3,13 +3,13 @@
  * background task besides the bar: the TASK meta rows (one per task, how
  * it ended in one word and its colour, then what ran) and a task's output
  * as a sheet. The words come from the task's own journal; the pipe keeps
- * `taskNoticeRow`'s line and the printed output, byte for byte.
+ * `taskNoticeLines`' lines and the printed output, byte for byte.
  */
 
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { palette, setGround, visibleWidth } from "@vincemakes/kiso-tui";
-import { taskNoticeRow, taskNoticeRows, taskOutcome, taskOutputSheetRows, tasksForDisplay } from "../src/task-notice.js";
+import { taskNoticeLines, taskNoticeRows, taskOutcome, taskOutputSheetRows, tasksForDisplay } from "../src/task-notice.js";
 
 const plain = (r: string): string => r.replace(/\x1b\[[0-9;]*m/g, "");
 beforeAll(() => {
@@ -28,7 +28,8 @@ describe("how a task ended, in one word", () => {
 		expect(taskOutcome(child("t2", "explorer", "map"), "exited")).toEqual({ word: "answered", tone: "ok" });
 		expect(taskOutcome(child("t2", "explorer", "map", { kind: "ended", exitCode: 2, signal: null, stopped: false }), "failed")).toEqual({ word: "failed", tone: "fail" });
 		expect(taskOutcome(task({ id: "t1", state: { kind: "ended", exitCode: null, signal: "SIGTERM", stopped: true } }), "stopped")).toEqual({ word: "stopped", tone: null });
-		expect(taskOutcome(task({ id: "t1", state: { kind: "unknown" } }), "unknown")).toEqual({ word: "◌ outcome unknown", tone: "gold" });
+		// RE-DERIVED (the main sync, 0.46.2, Amendment 8): a lost task in main's words
+		expect(taskOutcome(task({ id: "t1", state: { kind: "unknown" } }), "unknown")).toEqual({ word: "lost track — may still be running", tone: "gold" });
 		expect(taskOutcome(task({ id: "t1", state: { kind: "running", ready: true } }), "ready")).toEqual({ word: "ready", tone: "ok" });
 		// no journal entry: the delivery's own word, uncoloured
 		expect(taskOutcome(undefined, "exited")).toEqual({ word: "exited", tone: null });
@@ -50,10 +51,18 @@ describe("the TASK rows", () => {
 		expect(taskNoticeRows([{ taskId: "t1", transition: "stopped" }], [task({ id: "t1", state: { kind: "ended", exitCode: null, signal: "SIGTERM", stopped: true } })])[0]).not.toHaveProperty("mark");
 		// a task the journal does not know still gets its row
 		expect(taskNoticeRows([{ taskId: "t9", transition: "exited" }], [])).toEqual([{ label: "TASK", sentence: "t9 exited" }]);
+		// the main sync (Amendment 8): a lost task, gold, where to look before what ran
+		expect(taskNoticeRows([{ taskId: "t3", transition: "unknown" }], [task({ id: "t3", state: { kind: "unknown" } })])[0]).toEqual({
+			label: "TASK",
+			sentence: "t3 lost track — may still be running · /tasks shows it · for i in 1 2 3; do echo tick $i; sleep 1; done",
+			mark: { text: "lost track — may still be running", tone: "gold" },
+		});
+		expect(taskNoticeRows([{ taskId: "t9", transition: "unknown" }], [])[0]).toMatchObject({ sentence: "t9 lost track — may still be running · /tasks shows it", mark: { tone: "gold" } });
 	});
 
 	it("the pipe's line is unchanged", () => {
-		expect(taskNoticeRow([{ taskId: "t1", transition: "exited" }, { taskId: "t2", transition: "exited" }])).toBe("✦ task t1 exited · t2 exited");
+		// RE-DERIVED (the main sync): main's taskNoticeLines carries it now
+		expect(taskNoticeLines([{ taskId: "t1", transition: "exited" }, { taskId: "t2", transition: "exited" }])).toEqual(["✦ task t1 exited · t2 exited"]);
 	});
 
 	it("a journal that cannot be read gives no tasks, never an error", () => {

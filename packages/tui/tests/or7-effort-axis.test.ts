@@ -121,8 +121,8 @@ describe("OR-7 — the strip", () => {
 	});
 
 	it("the levelNote is reproduced when the cursor could not land where it was asked", () => {
-		const options: readonly PickOption[] = [{ label: "m", note: "profile: m", levels: ["low", "high"], level: 1, levelNote: "effort xhigh → high: the nearest this model supports" }];
-		expect(rows(options, 0, 1).join("\n")).toContain("effort xhigh → high: the nearest this model supports");
+		const options: readonly PickOption[] = [{ label: "m", note: "profile: m", levels: ["low", "high"], level: 1, levelNote: "effort xhigh → high: this model's default (it has no xhigh)" }];
+		expect(rows(options, 0, 1).join("\n")).toContain("effort xhigh → high: this model's default (it has no xhigh)");
 	});
 });
 
