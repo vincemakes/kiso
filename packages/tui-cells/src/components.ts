@@ -876,8 +876,17 @@ class ToolExecution implements Component {
 				// and answered); a policy's is ambient. The outcome word says
 				// which, once.
 				const word = c.verdict !== null && c.verdict.decision === "denied" && c.verdict.decidedBy === undefined ? "denied by you" : "denied";
-				const outcome = [`${word} \u00b7 ${escapeTerminal(c.reason)}`, word];
-				const body = toolBlockParts(c, W, ctx);
+				// 0.47.1 (finding 0470-F4, owner 2026-10-07): said once. The
+				// runtime's reason when the person gave none is the words
+				// "denied by user" — `denied by you · denied by user` said the
+				// refusal twice on one row, and the body (`[Permission denied]
+				// denied by user`, what the model was handed) a third time. So
+				// that refusal is `denied by you` alone, with no body. A refusal
+				// WITH a reason keeps both: the head gives its reason way on a
+				// narrow row (the pinned order), and the body still says it.
+				const quiet = word === "denied by you" && c.reason === DEFAULT_REFUSAL;
+				const outcome = quiet ? [word] : [`${word} \u00b7 ${escapeTerminal(c.reason)}`, word];
+				const body = quiet && c.resultText.trim() === `[Permission denied] ${c.reason}` ? { rows: [] as string[] } : toolBlockParts(c, W, ctx);
 				return card("fail", "  ", verb, escapeTerminal(toolTargetOf(c)), outcome, body.rows, null, W, true, fold);
 			}
 			// 4c: a card settled from the durable log carries no clock at
@@ -1498,9 +1507,12 @@ function toolBlockParts(c: Extract<BodyCell, { kind: "tool" }>, W: number, ctx: 
 		// A shell's conclusion is at the bottom, so its note goes ABOVE the
 		// tail; everything else answers at the top, so its note closes it.
 		// The card round: a settled, collapsed card's key rides the note.
-		return dir === "tail"
-			? [...cutNote(all.length - CAP_PREVIEW, "earlier", W, tone, keyed), ...tailWindow(all, CAP_PREVIEW, starts)]
-			: [...all.slice(0, CAP_PREVIEW), ...cutNote(all.length - CAP_PREVIEW, "more", W, tone, keyed)];
+		if (dir === "tail") {
+			const w = tailWindow(all, CAP_PREVIEW, starts);
+			return [...cutNote(w.lines, "earlier", W, tone, keyed, w.partial), ...w.rows];
+		}
+		const h = headCut(all, CAP_PREVIEW, starts);
+		return [...h.rows, ...cutNote(h.lines, "more", W, tone, keyed, h.partial)];
 	};
 	const shellTail = (out: { rows: string[]; starts: boolean[] }, dir: "head" | "tail"): string[] => capped(out.rows, dir, out.starts);
 	// a diff inside a card: its own rows, the head of them until the key
@@ -1641,16 +1653,42 @@ function blockLines(text: string, W: number, tone: "dim" | "body" = "dim"): { ro
  *  REVERSAL of §7.4's foot for a collapsed card — the note and the key
  *  were two rows for one fact. The key gives way after the count's word,
  *  the count never. */
-function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" | "body", key = false): string[] {
-	const n = `${cut} ${word} line${cut === 1 ? "" : "s"}`;
+function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" | "body", key = false, partial = false): string[] {
+	// 0.47.1 (finding 0470-F1, owner 2026-10-07): `cut` counts output
+	// LINES, the unit the note names (it counted rows: a wrapped line hidden
+	// whole was two or more "lines"). `partial`: the line at the cut is
+	// shown only in part — its start above a tail, its rest below a head —
+	// and the note says so rather than counting it.
+	const part = word === "earlier" ? "start" : "rest";
+	const lines = `${cut} ${word} line${cut === 1 ? "" : "s"}`;
+	const n = !partial ? lines : cut === 0 ? `the ${part} of this line` : `${lines} and the ${part} of this one`;
+	const short = !partial ? `\u2026 ${cut}` : cut === 0 ? "\u2026" : `\u2026 ${cut}+`;
+	// the part's clause gives way before the count's word does
+	const tiers = partial && cut > 0 ? [`\u2026 ${n}`, `\u2026 ${lines}`, short] : [`\u2026 ${n}`, short];
 	const room = bodyTextWidth(W);
 	if (key) {
-		for (const [left, k] of [[`\u2026 ${n}`, EXPAND_ROW], [`\u2026 ${cut}`, EXPAND_ROW], [`\u2026 ${cut}`, "ctrl+o"]] as const) {
+		for (const [left, k] of [...tiers.map((l) => [l, EXPAND_ROW] as const), [short, "ctrl+o"] as const]) {
 			const gap = room - visibleWidth(left) - visibleWidth(k);
 			if (gap >= 2) return noteRow(`${left}${" ".repeat(gap)}${k}`, W, tone);
 		}
 	}
-	return noteRow(pickTier([`\u2026 ${n}`, `\u2026 ${cut}`], room), W, tone);
+	return noteRow(pickTier(tiers, room), W, tone);
+}
+
+/** What a cut window hides, for its note (0.47.1, finding 0470-F1): the
+ *  output lines among the hidden rows, and whether the line at the cut is
+ *  shown in part. `starts` marks each row that begins a line; where it is
+ *  unknown (empty) every row counts as a line, as before. A tail that opens
+ *  on a continuation row shows the end of a line whose start is hidden —
+ *  that line is not counted, it is the note's `partial`. */
+function tailCount(shown: string[], hidden: readonly number[], starts: readonly boolean[], first: number): { rows: string[]; lines: number; partial: boolean } {
+	const partial = starts[first] === false;
+	return { rows: shown, lines: hidden.filter((i) => starts[i] !== false).length - (partial ? 1 : 0), partial };
+}
+function headCut(rows: readonly string[], cap: number, starts: readonly boolean[]): { rows: string[]; lines: number; partial: boolean } {
+	let lines = 0;
+	for (let i = cap; i < rows.length; i += 1) if (starts[i] !== false) lines += 1;
+	return { rows: rows.slice(0, cap), lines, partial: starts[cap] === false };
 }
 
 /** The card round — a shell's tail never opens on a blank row or in the
@@ -1664,9 +1702,13 @@ function cutNote(cut: number, word: "more" | "earlier", W: number, tone: "dim" |
  *  the plain tail. The rows it hides are counted in the note. `starts`
  *  marks each row that begins a line of output. */
 const TAIL_REACH = 12;
-function tailWindow(rows: readonly string[], cap: number, starts: readonly boolean[]): string[] {
+
+/** The runtime's reason for a refusal the person gave no words for
+ *  (session.approve(id, false)) — a card says `denied by you` alone then. */
+const DEFAULT_REFUSAL = "denied by user";
+function tailWindow(rows: readonly string[], cap: number, starts: readonly boolean[]): { rows: string[]; lines: number; partial: boolean } {
 	const n = rows.length;
-	if (n <= cap) return [...rows];
+	if (n <= cap) return { rows: [...rows], lines: 0, partial: false };
 	const blank = (i: number): boolean => visibleWidth(rows[i]!) <= visibleWidth(bodyRow());
 	let blanks = 0;
 	for (let i = n - cap; i < n; i += 1) if (blank(i)) blanks += 1;
@@ -1677,14 +1719,17 @@ function tailWindow(rows: readonly string[], cap: number, starts: readonly boole
 		const extra = n - s - cap;
 		if (blank(s) || starts[s] === false || blanks < extra) continue;
 		const out: string[] = [];
+		const hidden: number[] = Array.from({ length: s }, (_, i) => i);
 		let dropped = 0;
 		for (let i = s; i < n; i += 1) {
-			if (dropped < extra && blank(i)) dropped += 1;
-			else out.push(rows[i]!);
+			if (dropped < extra && blank(i)) {
+				dropped += 1;
+				hidden.push(i);
+			} else out.push(rows[i]!);
 		}
-		return out;
+		return tailCount(out, hidden, starts, s);
 	}
-	return rows.slice(n - cap);
+	return tailCount(rows.slice(n - cap), Array.from({ length: n - cap }, (_, i) => i), starts, n - cap);
 }
 
 /** The error text, uncapped: the answer is at the start, and the whole
@@ -1738,9 +1783,12 @@ function liveWindow(c: Extract<BodyCell, { kind: "tool" }>, W: number, cap: numb
 	if (from < 0) return [];
 	const rows = all.slice(from);
 	if (rows.length <= cap) return rows;
-	return c.name === "shell"
-		? [...cutNote(rows.length - cap, "earlier", W, tone), ...tailWindow(rows, cap, starts.slice(from))]
-		: [...rows.slice(0, cap), ...cutNote(rows.length - cap, "more", W, tone)];
+	if (c.name === "shell") {
+		const w = tailWindow(rows, cap, starts.slice(from));
+		return [...cutNote(w.lines, "earlier", W, tone, false, w.partial), ...w.rows];
+	}
+	const h = headCut(rows, cap, starts.slice(from));
+	return [...h.rows, ...cutNote(h.lines, "more", W, tone, false, h.partial)];
 }
 
 /** DC-46 — the window's HIGH-WATER, per cell: the room a frame leaves

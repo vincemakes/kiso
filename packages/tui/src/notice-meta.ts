@@ -30,7 +30,9 @@ export interface NoticeMeta {
  *  are read as a whole, and a label would only split them. */
 const SHAPES: readonly (readonly [RegExp, string | null, (m: RegExpExecArray) => string])[] = [
 	[/^✦ compacted (.*)$/s, "COMPACTED", (m) => m[1]!],
-	[/^\[\/compact\] ✦ compacted(?: · )?(.*)$/s, "COMPACTED", (m) => m[1]!],
+	// 0.47.1 (finding 0470-F3): one round is singular on the terminal; the
+	// pipe's text (`1 rounds`) is not touched
+	[/^\[\/compact\] ✦ compacted(?: · )?(.*)$/s, "COMPACTED", (m) => m[1]!.replace(/^1 rounds\b/, "1 round")],
 	[/^✦ pruned (.*)$/s, "PRUNED", (m) => m[1]!],
 	[/^✦ window learned — (.*)$/s, "WINDOW", (m) => `learned — ${m[1]!}`],
 	// the main-sync round: a background task's delivery (ADR-0058, main's
