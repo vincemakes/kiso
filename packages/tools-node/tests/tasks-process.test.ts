@@ -170,7 +170,9 @@ describe("ADR-0058 — the caller's death, a stop, the ready signal, the rotatio
 		expect(left.trim()).toBe("");
 		expect(await manager.stopAll()).toEqual([]);
 		manager.close();
-	});
+		// the budget covers its own waits: running (until's 8 s), then ended
+		// (8 s) — vitest's default 5 s was shorter than the waits it holds
+	}, 20_000);
 
 	it("a stop gives the task its grace: a service that traps TERM cleans up and ends stopped", async () => {
 		const { cwd, manager } = setup();
@@ -189,13 +191,15 @@ describe("ADR-0058 — the caller's death, a stop, the ready signal, the rotatio
 		const t = await manager.start({ command: "sleep 30", cwd, env: { ...process.env, KISO_TASK_RUNNER_STOP_UNCONFIRMED: "1" } });
 		await until(() => manager.get(t.id)!, (i) => i.state.kind === "running");
 		expect(manager.stop(t.id, "person")).toBe(true);
+		// wait for the FACT this case is about, the runner's stop_unconfirmed
+		// record, then for the reading it leads to (as #244 does for task_stop)
+		await until(() => journalTypes(root, t.id), (types) => types.includes("stop_unconfirmed"));
 		const info = await until(() => manager.get(t.id)!, (i) => i.state.kind !== "running");
 		expect(info.state.kind).toBe("unknown");
-		const types = journalTypes(root, t.id);
-		expect(types).toContain("stop_unconfirmed");
-		expect(types).not.toContain("terminal");
+		expect(journalTypes(root, t.id)).not.toContain("terminal");
 		manager.close();
-	});
+		// running, the record, the reading: three 8 s waits at most
+	}, 30_000);
 
 	it("a stop the moment the task reads running is a stop, never a lost runner: the runner holds TERM from its first act", async () => {
 		// the runner pauses right after command_started: the task already
