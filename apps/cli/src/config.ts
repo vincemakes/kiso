@@ -135,7 +135,7 @@ export interface KisoConfig {
 	/** ADR-0058 §8.4: false turns every task wake into a notice that waits
 	 *  for your next message. Default on. */
 	readonly taskWake?: boolean;
-	/** ADR-0059 §3.3: autonomous wakes allowed after one message of yours
+	/** ADR-0058 Amendment 9: autonomous wakes allowed after one message of yours
 	 *  before a task's end only notifies. Default 20. */
 	readonly maxWakes?: number;
 	readonly projectTrust?: "ask" | "never";
