@@ -45,6 +45,10 @@
  *   emptyPromises       runs whose assistant text promises a future action ("I'll let you
  *                       know", "once CI …") while the run registered no wait and started no
  *                       background task — INFORMATIONAL, a text heuristic (frozen phrase list)
+ *   waitOnWait          waits whose source is {kind:"task"} naming a task that is itself a
+ *                       wait (W-F1; the 0.47.0 kit gates it at 0)
+ *   subSecondTimers     timer waits under 1,000 ms (W-F1; gated at 0)
+ *   ghShellCalls        shell calls whose command runs `gh` (W2 forbids it; gated at 0)
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -141,6 +145,9 @@ export function counters(work) {
 		chainLen: 0,
 		wakeColdPrefix: [],
 		emptyPromises: 0,
+		waitOnWait: 0,
+		subSecondTimers: 0,
+		ghShellCalls: 0,
 	};
 	let input = 0;
 	let cache = 0;
@@ -228,6 +235,7 @@ export function counters(work) {
 				if (e.name === "shell" && input.timeoutMs !== undefined && aliasCounted !== false) out.aliasHits += 1;
 				if ((e.name === "shell" || e.name === "delegate") && input.background === true) out.backgroundStarts += 1;
 				if (e.name === "wait" || ((e.name === "shell" || e.name === "delegate") && input.background === true)) runRegistered = true;
+				if (e.name === "shell" && /(^|[\s;&|(`])gh\s/.test(String(input.command ?? ""))) out.ghShellCalls += 1;
 				if (typeof e.seq === "number") segmentOf.set(e.seq, segment);
 			}
 			if (e.type === "tool_execution_started") {
@@ -258,11 +266,14 @@ export function counters(work) {
 		if (!existsSync(tasksDir)) continue;
 		const journals = new Map(readdirSync(tasksDir).map((id) => [id, lines(join(tasksDir, id, "journal.jsonl"))]));
 		// ADR-0059: the waits, by how they ended
+		const isWait = (id) => journals.get(id)?.find((r) => r.type === "planned")?.profile === "wait";
 		for (const records of journals.values()) {
 			const planned = records.find((r) => r.type === "planned");
 			if (planned?.profile !== "wait") continue;
 			out.waits.count += 1;
 			const kind = planned.wait?.source?.kind ?? "?";
+			if (kind === "task" && isWait(String(planned.wait?.source?.id ?? ""))) out.waitOnWait += 1;
+			if (kind === "timer" && typeof planned.wait?.source?.ms === "number" && planned.wait.source.ms < 1000) out.subSecondTimers += 1;
 			out.waits.byKind[kind] = (out.waits.byKind[kind] ?? 0) + 1;
 			if (records.some((r) => r.type === "wait_fired")) out.waits.fired += 1;
 			else if (records.some((r) => r.type === "wait_expired")) out.waits.expired += 1;

@@ -3,7 +3,7 @@ bench-plan-wait-release-1-2026-10-06): the feeder keeps a leg alive while a
 wait is pending and treats a wait's end like any task end; the counters
 read the waits, the chain, each wake's cold prefix and the empty-promise
 heuristic from a leg's own records; the W2 fake `gh` answers pending, then
-a conclusion that follows the repo's own tests; run-task.sh wires W1/W2.
+a conclusion that follows the repo's own tests (seven pending polls since the 0.47.0 kit); run-task.sh wires W1/W2.
 
 Run: python3 tests/test_eval_wait.py   (from bench/; npm run check runs it)
 """
@@ -121,7 +121,7 @@ class CountersWait(unittest.TestCase):
 
 
 class FakeGh(unittest.TestCase):
-    """The W2 fake: pending for two polls, then a conclusion that follows
+    """The W2 fake: pending for seven polls, then a conclusion that follows
     the repo's own tests; a served conclusion restarts the pending count."""
 
     def setUp(self):
@@ -139,11 +139,11 @@ class FakeGh(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads(r.stdout)
 
-    def test_pending_twice_then_fail_on_the_buggy_tree_then_pass_once_fixed(self):
+    def test_pending_seven_times_then_fail_on_the_buggy_tree_then_pass_once_fixed(self):
         self.assertEqual(self.gh("pr", "view", "207", "--json", "headRefOid"), {"headRefOid": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"})
         checks = lambda: {c["name"]: c["bucket"] for c in self.gh("pr", "checks", "207", "--json", "name,state,bucket,link,workflow")}
-        self.assertEqual(checks()["test"], "pending")
-        self.assertEqual(checks()["test"], "pending")
+        for _ in range(7):
+            self.assertEqual(checks()["test"], "pending")
         self.assertEqual(checks(), {"test": "fail", "lint": "pass"})  # the fixture's clamp bug
         # a re-armed wait sees pending again, then the conclusion follows the fix
         self.assertEqual(checks()["test"], "pending")
@@ -152,7 +152,8 @@ class FakeGh(unittest.TestCase):
             fixed = f.read().replace("if (n >= max) return max - 1;", "if (n > max) return max;")
         with open(src, "w") as f:
             f.write(fixed)
-        self.assertEqual(checks()["test"], "pending")
+        for _ in range(6):
+            self.assertEqual(checks()["test"], "pending")
         self.assertEqual(checks(), {"test": "pass", "lint": "pass"})
 
 
