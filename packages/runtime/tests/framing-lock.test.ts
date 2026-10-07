@@ -227,13 +227,16 @@ try {
   await store.append("s", "r-" + process.pid, { seq: 0, type: "stop", reason: "end_turn" });
   console.log("WINNER");
 } catch (e) {
-  console.log("LOSER");
+  console.log("LOSER " + (e && e.name) + ": " + (e && e.message));
 } finally {
   store.closeAll();
 }
 `;
 		const { spawn } = await import("node:child_process");
 		const results: string[] = [];
+		/** Every contender's exit and output tail: the failure message, so a
+		 *  wrong winner count in CI says what each process actually did. */
+		const detail: string[] = [];
 		const kids: import("node:child_process").ChildProcess[] = [];
 		const run = (name: string) =>
 			new Promise<void>((resolve) => {
@@ -244,8 +247,9 @@ try {
 				let out = "";
 				child.stdout.on("data", (d: Buffer) => (out += d.toString()));
 				child.stderr.on("data", (d: Buffer) => (out += d.toString()));
-				child.on("close", () => {
+				child.on("close", (code, signal) => {
 					results.push(`${name}: ${out.trim().split("\n").at(-1)}`);
+					detail.push(`${name} exit=${code ?? signal} :: ${out.trim().slice(-600).replace(/\n/g, " | ")}`);
 					resolve();
 				});
 			});
@@ -270,8 +274,8 @@ try {
 		await releaseBarrier({ dir, barrier, expected: 3, kids, pending: [p1, p2, p3], boundMs: BARRIER_WAIT_MS });
 		await Promise.all([p1, p2, p3]);
 
-		expect(results.filter((r) => r.endsWith("WINNER"))).toHaveLength(1); // exactly one writer
-		expect(results.filter((r) => r.endsWith("LOSER"))).toHaveLength(2);
+		expect(results.filter((r) => r.endsWith("WINNER")), detail.join("\n")).toHaveLength(1); // exactly one writer
+		expect(results.filter((r) => /^[ABC]: LOSER\b/.test(r)), detail.join("\n")).toHaveLength(2);
 		// The winner's write is the only record.
 		const store = new SessionStore(dir);
 		expect(store.load("s")).toHaveLength(1);
@@ -309,6 +313,9 @@ try {
 `;
 		const { spawn } = await import("node:child_process");
 		const results: string[] = [];
+		/** Every contender's exit and output tail: the failure message, so a
+		 *  wrong winner count in CI says what each process actually did. */
+		const detail: string[] = [];
 		const kids: import("node:child_process").ChildProcess[] = [];
 		const run = (name: string) =>
 			new Promise<void>((resolve) => {
@@ -319,8 +326,9 @@ try {
 				let out = "";
 				child.stdout.on("data", (d: Buffer) => (out += d.toString()));
 				child.stderr.on("data", (d: Buffer) => (out += d.toString()));
-				child.on("close", () => {
+				child.on("close", (code, signal) => {
 					results.push(`${name}: ${out.trim().split("\n").at(-1)}`);
+					detail.push(`${name} exit=${code ?? signal} :: ${out.trim().slice(-600).replace(/\n/g, " | ")}`);
 					resolve();
 				});
 			});
@@ -337,8 +345,8 @@ try {
 
 		const winners = results.filter((r) => r.endsWith("WINNER"));
 		const losers = results.filter((r) => r.startsWith("A: LOSER") || r.startsWith("B: LOSER"));
-		expect(winners).toHaveLength(1); // exactly one writer
-		expect(losers).toHaveLength(1);
+		expect(winners, detail.join("\n")).toHaveLength(1); // exactly one writer
+		expect(losers, detail.join("\n")).toHaveLength(1);
 		// The live lock survives and holds the winner's token.
 		const lock = JSON.parse(readFileSync(join(dir, "s.lock"), "utf8"));
 		expect(typeof lock.token).toBe("string");
