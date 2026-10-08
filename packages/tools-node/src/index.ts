@@ -23,7 +23,7 @@ import { promisify } from "node:util";
 import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, linkSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
-import type { SearchReply, SearchRequest } from "./search-worker.js";
+import type { GlobReply, GlobRequest, SearchReply, SearchRequest } from "./search-worker.js";
 import { killTree, NO_BASH, processStartTime, RotatingOutput, startCommand } from "./process.js";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -33,7 +33,7 @@ import { defineTool, type AbortSignalLike, type Tool, type ToolResult } from "@v
 import { strippedShellEnv } from "./secret-env.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
 import { isProtectedPath, protectedIdentity, protectedRefusalText, readUnlessProtected } from "./protected.js";
-import { CORPUS_MAX_DEPTH, globToRegExp, walkCorpus } from "./corpus.js";
+import { CORPUS_MAX_DEPTH, globToRegExp } from "./corpus.js";
 import { describeSearchMiss, regionForSearch } from "./search-miss.js";
 
 /**
@@ -629,7 +629,7 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 		effects: { precommitSafe: true, concurrency: "shared" },
 		promptSnippet: "list_dir — directory entries (the workspace ls)",
 		promptGuidelines: ["narrow to a subdirectory when the listing caps at 200 entries"],
-		execute: async ({ path, glob }) => {
+		execute: async ({ path, glob }, ctx) => {
 			try {
 				const dir = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
 				// ACI-8: with a pattern this is a recursive search over the
@@ -637,23 +637,53 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 				// cannot drift the way they had.
 				if (glob !== undefined) {
 					const re = globToRegExp(glob);
-					const walk = walkCorpus({
-						workspaceRoot: opts.workspaceRoot,
-						walkFrom: dir,
-						maxEntries: MAX_DIR_ENTRIES,
-						accept: (rel) => re.test(rel),
-						isExcluded: (full) => {
-							const r = relative(opts.workspaceRoot, full).split(sep).join("/");
-							return (opts.excludeRoots ?? []).some((ex) => r === ex || r.startsWith(`${ex}/`));
+					// 0.47.2 (the owner's trace, 2026-10-08): the walk ran HERE,
+					// synchronously — `**\/flowpix*` from a home directory held the
+					// main thread for 11.02 s, and no frame, timer or esc reached
+					// kiso until it returned. It runs on the search worker now
+					// (CX-1 F4's thread), under `search_text`'s budget: a cap on the
+					// files it visits, a deadline, and the abort.
+					const realOrSelf = (p: string): string => {
+						try {
+							return realpathSync(p);
+						} catch {
+							return p;
+						}
+					};
+					const deadline = Date.now() + (opts.limits?.searchMaxMs ?? SEARCH_MAX_MS);
+					const outcome = await runSearchWorker<GlobReply>(
+						{
+							kind: "glob",
+							token: 0,
+							// both realpath'd: a root and a start resolved differently
+							// named every file `../../…` under a symlinked workspace
+							workspaceRoot: realOrSelf(opts.workspaceRoot),
+							walkFrom: realOrSelf(dir),
+							source: re.source,
+							flags: re.flags,
+							excluded: opts.excludeRoots ?? [],
+							maxEntries: MAX_DIR_ENTRIES,
+							maxVisited: opts.limits?.searchMaxFiles ?? SEARCH_MAX_FILES,
+							deadline,
 						},
-					});
-					const body = walk.files.length ? cap(walk.files.join("\n")) : `(no match for ${glob})`;
+						deadline,
+						ctx.signal,
+					);
+					if (outcome.kind === "aborted") return { content: "list_dir aborted", isError: true, errorKind: "fatal" };
+					if (outcome.kind === "error") return { content: `list_dir failed: ${outcome.message}`, isError: true, errorKind: "fatal" };
+					const walk = outcome.reply;
+					if (walk?.error !== undefined) return { content: `list_dir failed: ${walk.error}`, isError: true, errorKind: "fatal" };
+					const files = walk?.files ?? [];
+					const body = files.length ? cap(files.join("\n")) : `(no match for ${glob})`;
 					// TWO truncations, different remedies, and neither claimed
 					// when it did not happen: a walk that silently returns less
-					// is the defect a note exists to prevent.
+					// is the defect a note exists to prevent. 0.47.2 adds the
+					// walk's own two stops, each said as itself.
 					const notes: string[] = [];
-					if (walk.cutByCap) notes.push(`${MAX_DIR_ENTRIES} shown (narrow the pattern for more)`);
-					if (walk.cutByDepth) notes.push(`the walk stopped at depth ${CORPUS_MAX_DEPTH} — anything deeper is not listed`);
+					if (walk?.cutByCap === true) notes.push(`${MAX_DIR_ENTRIES} shown (narrow the pattern for more)`);
+					if (walk?.cutByDepth === true) notes.push(`the walk stopped at depth ${CORPUS_MAX_DEPTH} — anything deeper is not listed`);
+					if (walk?.cutByVisits === true) notes.push(`the walk stopped after ${walk.visited} files — narrow the path`);
+					if (outcome.kind === "timeout" || walk?.cutByDeadline === true) notes.push("the walk stopped — its budget elapsed before it finished (narrow the path or the pattern)");
 					return { content: notes.length ? `${body}\n… ${notes.join("; ")}` : body, isError: false };
 				}
 				// DC-54 — TRUNCATED BEFORE IT BUILDS. It was a `.map` over
@@ -719,9 +749,12 @@ function searchWorkerUrl(): URL {
 	return new URL("../dist/search-worker.js", import.meta.url);
 }
 
-type SearchOutcome = { kind: "done"; reply: SearchReply } | { kind: "timeout"; reply?: undefined } | { kind: "aborted" } | { kind: "error"; message: string };
+type WorkerOutcome<R> = { kind: "done"; reply: R } | { kind: "timeout"; reply?: undefined } | { kind: "aborted" } | { kind: "error"; message: string };
+type SearchOutcome = WorkerOutcome<SearchReply>;
 
-async function runSearchWorker(req: Omit<SearchRequest, "token"> & { token: number }, deadline: number, signal: { readonly aborted: boolean; addEventListener?: (t: "abort", cb: () => void, o?: { once: boolean }) => void; removeEventListener?: (t: "abort", cb: () => void) => void }): Promise<SearchOutcome> {
+/** One call on the search worker: `search_text`'s walk-and-match, or (0.47.2)
+ *  `list_dir`'s glob walk — the same thread, slots, deadline and abort. */
+async function runSearchWorker<R extends { readonly token: number } = SearchReply>(req: SearchRequest | GlobRequest, deadline: number, signal: { readonly aborted: boolean; addEventListener?: (t: "abort", cb: () => void, o?: { once: boolean }) => void; removeEventListener?: (t: "abort", cb: () => void) => void }): Promise<WorkerOutcome<R>> {
 	if (signal.aborted) return { kind: "aborted" };
 	// the slot — queue time is inside the budget
 	if (searchInFlight >= SEARCH_WORKERS) {
@@ -756,9 +789,9 @@ async function runSearchWorker(req: Omit<SearchRequest, "token"> & { token: numb
 		searchInFlight -= 1;
 		searchQueue.shift()?.();
 	};
-	return new Promise<SearchOutcome>((resolve) => {
+	return new Promise<WorkerOutcome<R>>((resolve) => {
 		let done = false;
-		const finish = (outcome: SearchOutcome): void => {
+		const finish = (outcome: WorkerOutcome<R>): void => {
 			if (done) return;
 			done = true;
 			clearTimeout(timer);
@@ -777,7 +810,7 @@ async function runSearchWorker(req: Omit<SearchRequest, "token"> & { token: numb
 		const onAbort = (): void => finish({ kind: "aborted" });
 		const timer = setTimeout(() => finish({ kind: "timeout" }), Math.max(0, deadline + SEARCH_KILL_GRACE_MS - Date.now()));
 		signal.addEventListener?.("abort", onAbort, { once: true });
-		worker.on("message", (m: SearchReply) => {
+		worker.on("message", (m: R) => {
 			if (m.token === token) finish({ kind: "done", reply: m });
 		});
 		worker.on("error", (err) => finish({ kind: "error", message: (err as Error).message }));
