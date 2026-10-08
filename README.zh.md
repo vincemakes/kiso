@@ -1,6 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso"></picture></p>
 
-<p align="center"><b>v0.47.2</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
+<p align="center"><b>v0.47.3</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
 
 **kiso 是一个在终端里用的 AI 编程助手。** 它建在自己的 agent 运行时之上，这套运行时也可以用 [SDK](#作为-sdk-使用) 嵌进你自己的程序。
 
