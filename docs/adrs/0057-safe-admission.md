@@ -1,6 +1,6 @@
 # ADR-0057: Safe Admission — new input enters a running run only at a quiescent boundary
 
-- **Status:** **Accepted** (§8 "no autonomous runs" overturned in part by ADR-0059, 2026-10-06 — see the amendment at the end) — ratified by the owner on 2026-09-28, in
+- **Status:** **Accepted** (§8 "no autonomous runs" overturned in part by the chain budget, 2026-10-06 — see the amendment at the end) — ratified by the owner on 2026-09-28, in
   their own words, together with Appendix A (the estimator leaving core,
   approved explicitly). Rev 2: rev 1 went through one external review and
   its four findings are applied (ingress sealing, the `maxTurns`
@@ -343,12 +343,13 @@ estimator, which the kernel never called, left core for the runtime
 The seam landed at +24 counted lines (2,161 → 2,185), the top of the
 18–24 estimate.
 
-## Amendment 1 (2026-10-06, ADR-0059) — §8's "no autonomous runs" is overturned in part
+## Amendment 1 (2026-10-06; trimmed 2026-10-07) — §8's "no autonomous runs" is overturned in part
 
-ADR-0059 lets an idle session wake on a wait's terminal — a timer, a
-task's end, or a host-registered event — many times in a row, under a
-budget derived from the log (`maxWakes` autonomous wakes since the last
-run a person started, default 20) and a deadline on every wait. §8's
-other clauses stand: no stream injection, no cancellation of started
-effects, no durable inbox, no turn-end continuation hook. The crash
-rows above are unchanged; ADR-0059 adds its own.
+An idle session may wake on a task's terminal many times in a row, under
+a budget derived from the log (`maxWakes` autonomous wakes since the last
+run a person started, default 20; ADR-0058 Amendment 9). §8's other
+clauses stand: no stream injection, no cancellation of started effects,
+no durable inbox, no turn-end continuation hook. The crash rows above are
+unchanged. (As first written this amendment named ADR-0059's waits — a
+timer, a host-registered event — as wake sources; ADR-0059 is withdrawn,
+and a task's end is the only one.)
