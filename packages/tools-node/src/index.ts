@@ -338,6 +338,10 @@ export interface WorkspaceToolsOptions {
 		readonly searchMaxMs?: number;
 		/** read_file: refuse a file larger than this (default 64 MiB). */
 		readonly readMaxFileBytes?: number;
+		/** shell, with tasks wired: the least foreground wait (default 60s,
+		 *  the default wait). A shorter `foregroundMs` is raised to it; 0
+		 *  keeps the model's value as asked (ADR-0058 Amendment 10). */
+		readonly minForegroundMs?: number;
 	};
 }
 
