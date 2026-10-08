@@ -160,24 +160,29 @@ describe("WR-1-F2 — the citation format must not teach ambiguity (found by the
 		}
 	});
 
-	it("the stale refusal TEACHES the fix: it names the [rev:...] line to cite", async () => {
+	it("the stale refusal TEACHES the fix: it names the stale revision and says read it again", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-wr1f2-"));
 		writeFileSync(join(dir, "f.ts"), "v1\n");
 		const { writeFileTool } = await import("../src/index.js");
 		const write = writeFileTool({ workspaceRoot: dir });
 		const r = await write.execute({ path: "f.ts", content: "v2\n", expectedRevision: rev("OTHER") }, undefined as never);
 		expect(r.isError).toBe(true);
-		expect(r.content).toContain("[rev:");
+		// 2026-10-08: no citation to teach any more (kiso binds the next
+		// revision from the next read); the refusal names what went stale
+		expect(r.content).toContain(`changed since ${rev("OTHER")}`);
+		expect(r.content).toContain("read it again");
 	});
 });
 
 describe("WR-1E — the protocol is ENCODED, not taught (the encoding pass after rel-0140c)", () => {
-	it("expectedRevision is REQUIRED in both model-facing schemas — structure, not prose", async () => {
+	it("expectedRevision is OPTIONAL in both model-facing schemas and both tools BIND it — structure, not prose (the committed revision witness, 2026-10-08)", async () => {
 		const { editFileTool, writeFileTool } = await import("../src/index.js");
 		const opts = { workspaceRoot: "/" };
 		const req = (t: { parameters: Readonly<Record<string, unknown>> }): string[] => (t.parameters as { required: string[] }).required;
-		expect(req(editFileTool(opts))).toContain("expectedRevision");
-		expect(req(writeFileTool(opts))).toContain("expectedRevision");
+		expect(req(editFileTool(opts))).not.toContain("expectedRevision");
+		expect(req(writeFileTool(opts))).not.toContain("expectedRevision");
+		expect(typeof editFileTool(opts).bindInput).toBe("function");
+		expect(typeof writeFileTool(opts).bindInput).toBe("function");
 	});
 
 	it("a successful result is TERSE — the token line, no teaching sentence (a result line is re-read by every later request)", async () => {
@@ -200,15 +205,13 @@ describe("WR-1E — the protocol is ENCODED, not taught (the encoding pass after
 		expect(w.content.trimEnd()).toMatch(/\[rev:[0-9a-f]{16}\]$/);
 	});
 
-	it("ONE shared guideline carries the whole revision protocol (identical on write+edit — the registry dedupes)", async () => {
+	it("NO guideline carries a revision protocol any more — the binder does (2026-10-08; it was one shared line printed per tool)", async () => {
 		const { editFileTool, writeFileTool } = await import("../src/index.js");
 		const opts = { workspaceRoot: "/" };
 		const eg = editFileTool(opts).promptGuidelines ?? [];
 		const wg = writeFileTool(opts).promptGuidelines ?? [];
 		const revLines = [...eg, ...wg].filter((l) => l.includes("revision"));
-		expect(revLines.length).toBe(2); // one per tool…
-		expect(revLines[0]).toBe(revLines[1]); // …IDENTICAL, so the table dedupes to one
-		expect(revLines[0]).toContain("absent");
+		expect(revLines.length).toBe(0);
 	});
 
 	it("the descriptions are terse: no approval-policy prose, no decision-lattice essay", async () => {

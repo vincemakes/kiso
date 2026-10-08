@@ -105,7 +105,7 @@ export function revalidateBeforeRename(full: string, expectedRevision: string, t
 		return precondition(`${tool}: ${path} no longer exists — it changed after validation; read it again`);
 	}
 	if (current !== expectedRevision) {
-		return precondition(`${tool}: ${path} changed since ${expectedRevision} — read it again and cite its [rev:…] line, then re-apply the change`);
+		return precondition(`${tool}: ${path} changed since ${expectedRevision} — read it again, then re-apply the change`);
 	}
 	return null;
 }

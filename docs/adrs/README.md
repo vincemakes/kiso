@@ -148,6 +148,9 @@ not another recalibration)
 - 0059 — `wait` — a run may end on a future event and resume on it —
   **Withdrawn** (Amendment 1, 2026-10-07: the tool removed before it
   shipped; its chain budget lives on as 0058 Amendment 9)
+- 0060 — The committed revision witness: the runtime binds the revision
+  a mutation is based on, from the committed trajectory, before the
+  durable start (amends WR-1 v2's citation clause; three kernel lines)
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's

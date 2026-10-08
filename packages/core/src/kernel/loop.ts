@@ -595,7 +595,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							call,
 							table,
 							hooks,
-							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}), ...(rawInput !== undefined ? { rawInput } : {}) },
+							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}), ...(rawInput !== undefined ? { rawInput } : {}), committed: derive },
 							signal,
 							pushExec,
 						);
@@ -1423,6 +1423,10 @@ async function runLedgered(
 	// an abort that landed in any permission path must not let the side
 	// effect begin.
 	if (signal?.aborted) throw ABORTED;
+	// The committed revision witness: a tool may complete its input from the
+	// committed trajectory BEFORE the start; the start persists, and the
+	// handler and onPostTool receive, the BOUND input — the record is what ran.
+	const input = tool.bindInput !== undefined ? await tool.bindInput(call.input!, ctx) : call.input!;
 	// The started event is durable BEFORE the side effect; a crash between
 	// it and the result leaves "uncertain". The ack resolves when the
 	// drain yields the event and the consumer persisted it — the handler
@@ -1437,7 +1441,7 @@ async function runLedgered(
 				callId: call.callId,
 				invocationSeq: call.seq,
 				name: call.name,
-				input: call.input!, // non-null: decideCall denied a null input before this ran
+				input, // non-null: decideCall denied a null input before this ran
 			} as EventInput,
 			(id) => res(id ?? ""), // the drain always passes the allocated id for a started event
 		);
@@ -1450,7 +1454,7 @@ async function runLedgered(
 		// a cancel.
 		result = signal?.aborted
 			? { content: "aborted before execution", isError: true, errorKind: "precondition" }
-			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId });
+			: await tool.execute(input, { ...ctx, callId: call.callId, executionId });
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),
@@ -1460,7 +1464,7 @@ async function runLedgered(
 	}
 
 	if (hooks.onPostTool) {
-		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
+		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
 	}
 
 	// ruling #12 correction one: a non-idempotent failure's side effects may have
@@ -1508,7 +1512,10 @@ async function runLedgered(
 		});
 	}
 
-	push(resultEvent(call, result, executionId));
+	// The committed revision witness: the result is acked (appended) before
+	// the slot releases, so the NEXT exclusive call's binder sees it — two
+	// same-turn edits of one file chain through the first's receipt.
+	await new Promise<void>((res) => push(resultEvent(call, result, executionId), () => res()));
 }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */

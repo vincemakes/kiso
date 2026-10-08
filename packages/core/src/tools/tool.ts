@@ -50,6 +50,12 @@ export interface ToolContext {
 	 *  callId, rawInput), and executionId is the id of the durable
 	 *  execution each path writes. */
 	readonly rawInput?: string;
+	/** The committed revision witness (plan-revision-witness, 2026-10-08):
+	 *  the committed trajectory as the model sees it — the projection, so a
+	 *  voided draft's observation is absent by construction (WR-1 v2's
+	 *  invariant). Present where an invocation is about to START; a tool's
+	 *  `bindInput` reads it, nothing else does. */
+	readonly committed?: () => readonly import("../protocol/messages.js").Message[];
 }
 
 /**
@@ -137,6 +143,11 @@ export interface Tool<I = unknown> {
 	/** R-C: bullets injected into the system prompt only while this tool is
 	 *  ACTIVE (the registry's active set — deduped by the registry). */
 	readonly promptGuidelines?: readonly string[];
+	/** Completes the model's input BEFORE the durable start (e.g. the file
+	 *  tools bind the revision the committed trajectory last showed). The
+	 *  bound input is what `tool_execution_started` persists and what
+	 *  `execute` receives: the record is exactly what ran. */
+	readonly bindInput?: (input: I, ctx: ToolContext) => I | Promise<I>;
 	readonly execute: (input: I, ctx: ToolContext) => Promise<ToolResult>;
 }
 

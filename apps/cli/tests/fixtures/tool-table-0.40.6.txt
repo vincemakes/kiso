@@ -15,6 +15,4 @@ Active tool guidelines:
 - read_file: read only the range you need — offset/limit beat whole-file reads
 - list_dir: narrow to a subdirectory when the listing caps at 200 entries
 - search_text: narrow the pattern when the result caps — never re-run a broad search
-- write_file: write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use "absent" only to create
-- edit_file: write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use "absent" only to create
 - shell: commands run in the workspace root; on failure read the error and adjust — never repeat blindly

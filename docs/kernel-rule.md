@@ -30,7 +30,7 @@ core:
   packages/core/src/protocol/events.ts  487
   packages/core/src/kernel/project.ts   363
   ...
-  total                                2194  / 2200
+  total                                2197  / 2200
   ✓ 6 lines of headroom remaining.
 
 cli:

@@ -103,7 +103,9 @@ describe("WR-1 ② — the mutation lattice (write_file)", () => {
 		expect(refused.isError).toBe(true);
 		expect(kindOf(refused)).toBe("precondition");
 		expect(refused.content).toContain("already exists");
-		expect(refused.content).toContain("expectedRevision");
+		// the committed revision witness (2026-10-08): with no read in the
+		// session's context there is nothing to bind — the refusal says read
+		expect(refused.content).toContain("read it first");
 		expect(readFileSync(join(root, "f.ts"), "utf8")).toBe("old\n"); // nothing was written
 
 		const { rev } = await readRev(read, "f.ts");
@@ -198,7 +200,7 @@ describe("WR-1 ③ — edit_file: same lattice, single snapshot, stale before pa
 		const refused = await edit.execute({ path: "f.ts", search: "alpha", replace: "beta" }, undefined as never);
 		expect(refused.isError).toBe(true);
 		expect(kindOf(refused)).toBe("precondition");
-		expect(refused.content).toContain("expectedRevision");
+		expect(refused.content).toContain("read it first"); // nothing to bind: no read is in the context
 		expect(readFileSync(join(root, "f.ts"), "utf8")).toBe("alpha\n");
 	});
 

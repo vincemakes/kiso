@@ -4,7 +4,7 @@
  * verbatim from session.ts.
  */
 
-import { denialResult, loop, validateArgs, type AbortSignalLike, type AdmissionInput, type TaskDeliveryItem, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
+import { denialResult, loop, projectMessages, validateArgs, type AbortSignalLike, type AdmissionInput, type TaskDeliveryItem, type Adapter, type ApprovalChain, type ChainVerdict, type ContentBlock, type Event, type EventLog, type HookHost, type PermissionDecision, type ToolCallPayload, type ToolResult } from "@vincemakes/kiso-core";
 import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
@@ -992,18 +992,30 @@ export class Run implements AsyncIterable<Event> {
 		// sessionId, callId, executionId and lexical arguments the fresh path
 		// hands the handler, the last derived from THIS invocation's deltas.
 		const rawInput = rawInputOf(log.all, callId, invocationSeq);
-		const ctx = { signal, sessionId: this.#session.id, callId, executionId, ...(rawInput !== undefined ? { rawInput } : {}) };
+		const ctx = { signal, sessionId: this.#session.id, callId, executionId, ...(rawInput !== undefined ? { rawInput } : {}), committed: () => projectMessages(log.all) };
 
 		// An abort that landed while the decision was being applied must
 		// not start the side effect (finding 3).
 		if (signal.aborted) return;
+		// The committed revision witness, on the recovery path as on the
+		// fresh one: an invocation that already STARTED (an uncertain
+		// execution the person chose to run again) reuses the input its
+		// start persisted — never re-derived, so a resume never moves to a
+		// newer revision; one that never started is bound now.
+		const priorStart = [...log.all].reverse().find((e) => e.type === "tool_execution_started" && e.callId === callId);
+		const bound: Readonly<Record<string, unknown>> =
+			priorStart !== undefined && priorStart.type === "tool_execution_started"
+				? priorStart.input
+				: tool?.bindInput !== undefined
+					? await tool.bindInput(input, ctx)
+					: input;
 		yield log.append({
 			type: "tool_execution_started",
 			executionId,
 			callId,
 			...(invocationSeq !== undefined ? { invocationSeq } : {}),
 			name,
-			input,
+			input: bound,
 		});
 
 		let result: ToolResult;
@@ -1014,7 +1026,7 @@ export class Run implements AsyncIterable<Event> {
 				if (signal.aborted) {
 					result = { content: "aborted before execution", isError: true, errorKind: "fatal" };
 				} else {
-					result = await tool.execute(input, ctx);
+					result = await tool.execute(bound, ctx);
 				}
 			} catch (err) {
 				result = {
@@ -1024,7 +1036,7 @@ export class Run implements AsyncIterable<Event> {
 				};
 			}
 			if (this.#config.hooks?.onPostTool) {
-				result = await this.#config.hooks.onPostTool({ callId, name, input, ...(rawInput !== undefined ? { rawInput } : {}) }, result, { sessionId: this.#session.id });
+				result = await this.#config.hooks.onPostTool({ callId, name, input: bound, ...(rawInput !== undefined ? { rawInput } : {}) }, result, { sessionId: this.#session.id });
 			}
 		}
 

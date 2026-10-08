@@ -95,11 +95,17 @@ describe("the committed revision witness", () => {
 
 	it("a VOIDED draft's read is never a witness, even when its revision equals the disk's", async () => {
 		const w = world({ "f.ts": "A\n" });
+		// The WR-1 gate's shape: text, then the call, then its receipt, and no
+		// stop. Recovery VOIDS this draft (model_output_abandoned) and its
+		// revision leaves the projection. (A draft that is ONLY a complete
+		// call is a committed prefix — ADR-0047 — and its read IS a witness:
+		// the witness follows the projection exactly.)
 		const seed: readonly Event[] = [
 			{ seq: 0, type: "user_input", content: "look at f.ts" },
-			{ seq: 1, type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "f.ts" } },
-			{ seq: 2, type: "tool_execution_started", executionId: "ex1", callId: "c1", name: "read_file", input: { path: "f.ts" } },
-			{ seq: 3, type: "tool_execution_succeeded", executionId: "ex1", callId: "c1", result: { content: `A\n\n[${rev("A\n")}]`, isError: false } },
+			{ seq: 1, type: "text_delta", text: "let me read it" },
+			{ seq: 2, type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "f.ts" } },
+			{ seq: 3, type: "tool_execution_started", executionId: "ex1", callId: "c1", name: "read_file", input: { path: "f.ts" } },
+			{ seq: 4, type: "tool_execution_succeeded", executionId: "ex1", callId: "c1", result: { content: `A\n\n[${rev("A\n")}]`, isError: false } },
 			// no stop: the draft never committed
 		] as unknown as readonly Event[];
 		const store = new SessionStore(w.dir);

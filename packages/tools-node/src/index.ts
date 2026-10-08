@@ -31,6 +31,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { defineTool, type AbortSignalLike, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 // WR-1/WR-1A — the revision-guard primitives (unit-tested in wr1a-coda):
 import { strippedShellEnv } from "./secret-env.js";
+import { bindRevision } from "./witness.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
 import { isProtectedPath, protectedIdentity, protectedRefusalText, readUnlessProtected } from "./protected.js";
 import { CORPUS_MAX_DEPTH, globToRegExp, walkCorpus } from "./corpus.js";
@@ -892,7 +893,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 	return defineTool<{ path: string; content: string; expectedRevision?: string }>({
 		name: "write_file",
 		description:
-			"Create or replace a whole workspace file. expectedRevision is the file's latest revision token, or \"absent\" to create a new file.",
+			"Create a workspace file, or replace a whole file you have read; kiso refuses it if the file changed since your last read or edit of it.",
 		parameters: {
 			type: "object",
 			properties: {
@@ -900,14 +901,14 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				content: { type: "string", description: "Full new content" },
 				expectedRevision: {
 					type: "string",
-					description: 'The latest revision token, or "absent" to create',
+					description: 'Optional: omit it. "absent" re-creates a deleted file',
 				},
 			},
-			required: ["path", "content", "expectedRevision"],
+			required: ["path", "content"],
 			additionalProperties: false,
 		},
 		promptSnippet: "write_file — create or replace a whole file",
-		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
+		bindInput: (input, ctx) => bindRevision(input, ctx, (p) => withinRoot(opts.workspaceRoot, p)),
 		execute: async ({ path, content, expectedRevision: citedRevision }) => {
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize every plausible copy of the token FIRST —
@@ -933,7 +934,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			const exists = existsSync(full);
 			if (expectedRevision === undefined) {
 				if (exists) {
-					return precondition(`write_file: ${path} already exists — read it and pass expectedRevision from the read`);
+					return precondition(`write_file: ${path} already exists — read it first (no read or edit of it is in this session's context), then write`);
 				}
 			} else if (expectedRevision === "absent") {
 				if (exists) {
@@ -962,7 +963,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				if (held === null) return precondition(protectedRefusalText("write_file", path));
 				const current = contentRevision(held);
 				if (current !== expectedRevision) {
-					return precondition(`write_file: ${path} changed since ${expectedRevision} — read it again and cite its [rev:…] line, then re-apply the change`);
+					return precondition(`write_file: ${path} changed since ${expectedRevision} — read it again, then re-apply the change`);
 				}
 			}
 			const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
@@ -1115,7 +1116,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 	return defineTool<{ path: string; search?: string; replace?: string; edits?: readonly { search: string; replace: string }[]; expectedRevision?: string }>({
 		name: "edit_file",
 		description:
-			"Edit a file at its latest revision (expectedRevision): search+replace (must match once) OR edits (1-32 hunks, applied in order, all or nothing). A refusal shows the current text and ends on its [rev:X].",
+			"Edit a file you have read: search+replace (must match once) OR edits (1-32 hunks, applied in order, all or nothing). Refused if it changed since your last read or edit; a refusal shows it as it is.",
 		parameters: {
 			type: "object",
 			properties: {
@@ -1137,13 +1138,13 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					minItems: 1,
 					maxItems: 32,
 				},
-				expectedRevision: { type: "string", description: "The file's latest revision token" },
+				expectedRevision: { type: "string", description: "Optional: omit it" },
 			},
-			required: ["path", "expectedRevision"],
+			required: ["path"],
 			additionalProperties: false,
 		},
 		promptSnippet: "edit_file — replace an exact old_string block (never rewrite whole files)",
-		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
+		bindInput: (input, ctx) => bindRevision(input, ctx, (p) => withinRoot(opts.workspaceRoot, p)),
 		execute: async ({ path, search, replace, edits, expectedRevision: citedRevision }) => {
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize the citation (see write_file).
@@ -1173,10 +1174,16 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 			}
 			const guard = protectedIdentity(opts.protectedFiles);
 			if (isProtectedPath(full, guard)) return precondition(protectedRefusalText("edit_file", path));
-			// WR-1: edits always target an existing file — the revision is
-			// not optional here, and the refusal teaches the protocol.
+			// WR-1: edits always target an existing file. The revision is
+			// bound from the committed trajectory when the model omits it
+			// (bindInput); still undefined here means no read or edit of the
+			// file is in the session's context — the refusal says what to do.
 			if (expectedRevision === undefined) {
-				return precondition(`edit_file: ${path} — pass expectedRevision from your last read (its final [rev:…] line)`);
+				return precondition(
+					existsSync(full)
+						? `edit_file: ${path} — read it first (no read or edit of it is in this session's context)`
+						: `edit_file: ${path} does not exist — to create it, use write_file`,
+				);
 			}
 			if (expectedRevision === "absent") {
 				return precondition(`edit_file cannot create files — use write_file with expectedRevision:"absent"`);
@@ -1216,7 +1223,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					// should land, and its current revision last — the retry needs
 					// no read. The headline is unchanged (bench parsers read it).
 					return precondition(
-						`edit_file: ${path} changed since ${expectedRevision} — the file as it is now is below; re-apply the change against it, citing the [rev:…] on the last line\n${staleReport(text, hunks, edits === undefined)}\n[${current}]`,
+						`edit_file: ${path} changed since ${expectedRevision} — the file as it is now is below; re-apply the change against it\n${staleReport(text, hunks, edits === undefined)}\n[${current}]`,
 					);
 				}
 				// ACI-3 (superseding WR-1E2's one-snapshot rule): the hunks apply
@@ -1784,6 +1791,16 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
 	});
 }
 
+/** The witness binder's path key: the same resolution the tools use, or
+ *  undefined for a path that escapes the workspace (never a witness). */
+function withinRoot(root: string, path: string): string | undefined {
+	try {
+		return resolveWithinRoot(root, path);
+	} catch {
+		return undefined;
+	}
+}
+
 /** The full coding toolset, bound to one workspace root (Area 5). */
 export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<any>[] {
 	return [
@@ -1796,3 +1813,4 @@ export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<an
 		...(opts.tasks !== undefined ? [taskStopTool(opts)] : []),
 	];
 }
+export { bindRevision, revisionWitness } from "./witness.js";
