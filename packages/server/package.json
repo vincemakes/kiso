@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-server",
-	"version": "0.47.0",
+	"version": "0.47.1",
 	"description": "kiso server — the hosted-session service: many durable sessions in one process, observers with exact replay from a sequence number, approve / abort / resume routed to the right run, drain and close. No transport; a product supplies the agent factory.",
 	"type": "module",
 	"license": "MIT",
@@ -25,12 +25,12 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-core": "0.47.0",
-		"@vincemakes/kiso-protocol": "0.47.0",
-		"@vincemakes/kiso-runtime": "0.47.0"
+		"@vincemakes/kiso-core": "0.47.1",
+		"@vincemakes/kiso-protocol": "0.47.1",
+		"@vincemakes/kiso-runtime": "0.47.1"
 	},
 	"devDependencies": {
-		"@vincemakes/kiso-evals": "0.47.0",
+		"@vincemakes/kiso-evals": "0.47.1",
 		"@types/node": "^26.1.2",
 		"typescript": "^5.7.2",
 		"vitest": "^3.0.0"

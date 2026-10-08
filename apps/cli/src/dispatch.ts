@@ -1299,8 +1299,12 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 					// here: the line a resumed or replayed view would draw is
 					// the line drawn now, by construction, and the row cannot
 					// drift into two spellings of one fact.
+					//
+					// 0.47.1 (finding 0470-F2, owner 2026-10-07): on a dock the
+					// COMPACTED row above already says it, as the in-run path's
+					// does (§7.12) — the raw row under it is drawn on a pipe only.
 					const boundary = renderEvent({ type: "summarized", coversToSeq: result.coversToSeq });
-					if (boundary.text !== "") body.raw(boundary.text.replace(/\n$/, "").split("\n"));
+					if (boundary.text !== "" && !dock.active) body.raw(boundary.text.replace(/\n$/, "").split("\n"));
 				}
 			} catch (err) {
 				// Honest failure: nothing was persisted, the session
