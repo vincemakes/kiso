@@ -9,7 +9,7 @@ import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
-import { appendOf, composeApprovalChain, joinPrompt, promptPerAttempt, runBasePrompt } from "./compose.js";
+import { appendOf, composeApprovalChain, composeToolTable, joinPrompt, promptPerAttempt, runBasePrompt } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { overflowBelt } from "./overflow-belt.js";
 import { DEFAULT_STREAM_IDLE_MS, idleGuard } from "./idle-guard.js";
@@ -241,7 +241,11 @@ export class Run implements AsyncIterable<Event> {
 			// that layer, records the bytes the model was sent. The in-band
 			// summary reads the last attempt's snapshot (the prefix the run
 			// last sent) or takes one if no attempt has happened yet.
-			const rentParts: RentParts = { ...(this.#config.systemPrompt !== undefined ? { base: this.#config.systemPrompt } : {}), appends: [] };
+			// RG-F2: the generated table is a ledger line of its own — the
+			// same text runBasePrompt placed between the base and the appends
+			// (one registry read at the same instant, so it cannot differ).
+			const table = (this.#config.toolTable ?? "on") === "on" ? composeToolTable(this.#config.registry, this.#config.toolRules ?? []) : "";
+			const rentParts: RentParts = { ...(this.#config.systemPrompt !== undefined ? { base: this.#config.systemPrompt } : {}), ...(table !== "" ? { table } : {}), appends: [] };
 			let lastPrompt: string | undefined;
 			let taken = false;
 			const snapshot = (): string | undefined => {

@@ -11,10 +11,17 @@
  *
  *   - system:base       the session's own prompt as the CLI handed it
  *                       (built-in constant + project instructions — the
- *                       runtime cannot split those, R3). The runtime's
- *                       generated tool table is machinery BETWEEN base and
- *                       appends; it stays out of the ledger (counts live
- *                       in tool:<name> lines and the base's own line).
+ *                       runtime cannot split those, R3).
+ *   - system:tools      the runtime's generated tool table (compose.ts,
+ *                       composeToolTable): the routing rows, the fixed
+ *                       directives, each tool's snippet and guidelines,
+ *                       between the base and the appends. OVERTURNS the
+ *                       E3 note that it "stays out of the ledger (counts
+ *                       live in tool:<name> lines)": the table is prose
+ *                       the tool specs do not contain (1,686 chars at
+ *                       f42a0edc), so the ledger was short by that much
+ *                       on every request (finding RG-F2, kiso-doc
+ *                       plan-rent-gate rev 2).
  *   - system:ext:<name> one line per extension with a non-empty
  *                       systemPrompt.append, measured on the append
  *                       string, in load order.
@@ -46,7 +53,7 @@
 import type { ToolSpec } from "@vincemakes/kiso-core";
 
 export interface RentLine {
-	/** "system:base" | "system:ext:<name>" | "tool:<name>" | "envelope" */
+	/** "system:base" | "system:tools" | "system:ext:<name>" | "tool:<name>" | "envelope" */
 	surface: string;
 	/** length of the serialized surface, measured, never a copy */
 	chars: number;
@@ -62,6 +69,9 @@ export const RENT_LINE_FIELDS = ["surface", "chars", "estTokens"] as const;
  *  systemPrompt is the result — the parts are the ledger's inputs). */
 export interface RentParts {
 	base?: string;
+	/** RG-F2: the generated tool table's text, as composed for the run
+	 *  (absent when the table is off or the registry is empty). */
+	table?: string;
 	appends?: readonly { name: string; text: string }[];
 }
 
@@ -76,12 +86,13 @@ const line = (surface: string, text: string): RentLine => ({
 	estTokens: Math.ceil(text.length / 4),
 });
 
-/** The one ledger: system:base, then system:ext:* (load order), then
+/** The one ledger: system:base, then system:tools, then system:ext:* (load order), then
  *  tool:* (the array's order — the registry's toSpecs() order), then the
  *  envelope. Absent surfaces contribute no lines (R9). */
 export function buildRentLedger(input: RentInput): RentLine[] {
 	const lines: RentLine[] = [];
 	if (input.base !== undefined) lines.push(line("system:base", input.base));
+	if (input.table !== undefined && input.table !== "") lines.push(line("system:tools", input.table));
 	for (const append of input.appends ?? []) lines.push(line(`system:ext:${append.name}`, append.text));
 	for (const tool of input.tools ?? []) {
 		lines.push(line(`tool:${tool.name}`, JSON.stringify({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })));
