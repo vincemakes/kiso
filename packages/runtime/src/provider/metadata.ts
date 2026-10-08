@@ -286,6 +286,14 @@ const chatgptRow = (model: string, opts: RowOpts & { readonly default?: NativeEf
 const OPENAI_MODELS_ASOF_2 = "2026-09-09";
 const CHATGPT_PRESETS_SOURCE_2 = "https://github.com/openai/codex/blob/634ebc1865c6ac840ed3ba118f040d527bf4b55d/codex-rs/models-manager/models.json";
 const ULTRA_LADDER: readonly NativeEffort[] = ["low", "medium", "high", "xhigh", "max", "ultra"];
+/** 0.48.0 (finding 0473-F2): the presets at a later commit, read 2026-10-09.
+ *  The owner's `sol` profile moved to `gpt-6.1-sol` on 2026-10-08, and with
+ *  no row kiso sent it no effort: the remembered `high` never reached the
+ *  wire and no reasoning summary came back. The id answered on the
+ *  subscription backend that night (the 0.47.3 live sessions). No
+ *  first-party row: no model page was read for it. */
+const OPENAI_MODELS_ASOF_3 = "2026-10-09";
+const CHATGPT_PRESETS_SOURCE_3 = "https://github.com/openai/codex/blob/d63a9b8344cfe58bc78bbe319b560378fc8756ef/codex-rs/models-manager/models.json";
 
 /** The v1 table. Nulls outnumber numbers ON PURPOSE: only values with a
  *  named source enter; everything else waits for one. */
@@ -529,6 +537,7 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 	openaiRow("gpt-5.6-sol", "medium", { inputPerM: 4, outputPerM: 20, cacheReadPerM: 0.4 }, "https://developers.openai.com/api/docs/models/gpt-5.6-sol", { levels: ["none", "low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_2 }),
 	chatgptRow("gpt-6-astra", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
 	chatgptRow("gpt-5.6-sol", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
+	chatgptRow("gpt-6.1-sol", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_3, asOf: OPENAI_MODELS_ASOF_3 }),
 	// The compat table's SECOND row (roadmap R3.2 §1a step 1): GLM 5.3 Flash
 	// through OpenRouter, read from OpenRouter's models API on 2026-09-09. The
 	// id is OpenRouter's, so the row is keyed to that origin; the
