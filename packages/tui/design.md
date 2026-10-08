@@ -180,7 +180,7 @@ ground; §3.4 derives the surfaces from the ground actually resolved.
 | ink2 | `#444444` | `#c2c2c2` | tool output, secondary facts |
 | dim | `#646464` | `#a4a4a4` | labels, thinking, keys, metadata |
 | rail | `#8c8c8c` | `#6b6b6b` | the mark column's quiet glyphs, cut notes, table lines |
-| line | `#e6e6e6` | `#3a3a3a` | hairlines |
+| line | `#e6e6e6` | `#656565` | hairlines |
 | wash-run | `#edf2fb` | `#2b3854` | a running call's card |
 | wash-done | `#f1f1f1` | `#333333` | a settled call's card; a code block |
 | wash-fail | `#fbecea` | `#4d2b28` | a failed or refused call's card |
@@ -202,7 +202,9 @@ levels above `#0b0b0b` (`wash-run #141b28`, `wash-ask #211d13`, `line
 nearly black. They rise a step; `dim` and `ink2` rise with them to keep the
 floor, and `wash-ask` and `code` sit just under the page's values
 (`#524222`, `#30406a`) so every pair clears 4.5 in both tiers. The white
-column is unchanged.
+column is unchanged. The hairlines (`line`) rose again, to `#656565`
+(owner, 2026-10-08): the composer's rules read too grey on Apple Terminal's
+Pro profile, whose transparency lightens the black behind them.
 
 A card's bar takes its state's edge colour: `blue`, `rail`, `fail`, or
 `gold-mark`.
