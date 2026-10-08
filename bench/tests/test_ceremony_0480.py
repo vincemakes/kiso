@@ -181,5 +181,35 @@ class RerunPaths(unittest.TestCase):
             self.assertIn("wanted exactly 9.9", read(os.path.join(w, "void")))  # "9.9.9" contains "9.9": substring would have passed
 
 
+class NullCalibration(unittest.TestCase):
+    """null-calibration.mjs: a null set's resolution, seeded and repeatable."""
+
+    def calibrate(self, a, b, *extra):
+        with tempfile.TemporaryDirectory() as tmp:
+            pa, pb = os.path.join(tmp, "a.json"), os.path.join(tmp, "b.json")
+            write(pa, json.dumps(a)); write(pb, json.dumps(b))
+            r = run(["node", "null-calibration.mjs", pa, pb, "--resamples=2000", *extra])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return json.loads(r.stdout)
+
+    def rows(self, deltas):
+        a = [{"task": "T5", "run": str(i), "cost_weighted": 100.0 * (1 + d), "wall": 10, "verify": "pass"} for i, d in enumerate(deltas)]
+        b = [{"task": "T5", "run": str(i), "cost_weighted": 100.0, "wall": 10, "verify": "pass"} for i, _ in enumerate(deltas)]
+        return a, b
+
+    def test_a_tight_null_resolves_and_a_wide_one_projects_the_n(self):
+        tight = self.calibrate(*self.rows([0.01, -0.02, 0.03, -0.01, 0.0, 0.02, -0.03, 0.01, -0.02, 0.02, 0.0, -0.01]), "--seed=t")
+        self.assertEqual((tight["n"], tight["resolves"]), (12, True))
+        self.assertNotIn("nFor", tight)
+        wide = self.calibrate(*self.rows([0.9, -0.6, 0.7, -0.5, 0.8, -0.7, 0.6, -0.9, 0.5, -0.8, 0.7, -0.6]), "--seed=t")
+        self.assertFalse(wide["resolves"])
+        self.assertTrue(wide["nFor"]["projected"])
+        self.assertGreater(wide["nFor"]["n"], 12)
+
+    def test_the_same_seed_gives_the_same_numbers(self):
+        a, b = self.rows([0.3, -0.2, 0.1, -0.4, 0.2, 0.0, -0.1, 0.5, -0.3, 0.2, 0.1, -0.2])
+        self.assertEqual(self.calibrate(a, b, "--seed=s")["cost"], self.calibrate(a, b, "--seed=s")["cost"])
+
+
 if __name__ == "__main__":
     unittest.main()
