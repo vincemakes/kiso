@@ -107,8 +107,11 @@ describe("§3.4 — the surfaces are derived from the reported ground", () => {
 	});
 
 	it("a lighter dark theme LIFTS dim rather than dropping under the floor on the bare ground", () => {
-		const nord = hexRgb("#2e3440");
-		expect(contrast(hexRgb(GRAPHITE.dark.dim), nord), "the table's dim fails on nord").toBeLessThan(4.5);
+		// RE-DERIVED (0.47.1, the dark table's re-adaptation): the lifted
+		// table's dim clears nord's #2e3440 (5.0:1), so the case moves to
+		// nord's lighter #3b4252, where the table's dim does not (4.0:1)
+		const nord = hexRgb("#3b4252");
+		expect(contrast(hexRgb(GRAPHITE.dark.dim), nord), "the table's dim fails on nord's #3b4252").toBeLessThan(4.5);
 		expect(contrast(graphiteColours("dark", nord).dim, nord)).toBeGreaterThanOrEqual(4.5);
 	});
 });
@@ -221,9 +224,18 @@ describe("setGround and the tier select the palette", () => {
 	it("without COLORTERM the same ground is written in the 256 tier", () => {
 		tty(true);
 		delete process.env.COLORTERM;
-		setGround("dark");
-		expect(palette()).toEqual(paletteFor("dark", null, "256"));
-		expect(palette().dim).toMatch(/^\x1b\[38;5;\d+m$/);
+		// 0.47.1: a Windows console renders 24-bit without saying so
+		// (terminalTier) — this case is a terminal that is not known to,
+		// on any machine that runs the suite
+		const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+		Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+		try {
+			setGround("dark");
+			expect(palette()).toEqual(paletteFor("dark", null, "256"));
+			expect(palette().dim).toMatch(/^\x1b\[38;5;\d+m$/);
+		} finally {
+			Object.defineProperty(process, "platform", platform);
+		}
 	});
 
 	it("a reported colour reaches the palette: the card of a #1e1e1e terminal is its own", () => {

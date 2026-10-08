@@ -239,7 +239,10 @@ describe("5 — a shell's tail never opens on a blank row", () => {
 		// the window starts at the second warning's first row; the two blank
 		// rows give way to make its room, and the height is the same five
 		expect(rows.slice(3, 8)).toEqual(["npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer suppo", "  rted", "added 14 packages, removed 25 packages, and changed 107 packages in 2m", "9 packages are looking for funding", "  run `npm fund` for details"]);
-		expect(rows[2]).toMatch(/^\u2026 4 earlier lines +ctrl\+o expands$/);
+		// RE-DERIVED (0.47.1, finding 0470-F1): the note counts output LINES.
+		// Hidden are the first warning (two rows, one line) and the two
+		// blanks — three lines; it said 4, the rows.
+		expect(rows[2]).toMatch(/^\u2026 3 earlier lines +ctrl\+o expands$/);
 		const live = render(running({ resultText: long })).map(inner);
 		expect(live.slice(3)).toEqual(rows.slice(3));
 	});

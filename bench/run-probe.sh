@@ -23,8 +23,11 @@ mkdir -p "$ROOT"
 
 VOID=0
 STOPPED=""
-I=1
-while [ "$I" -le "$LEGS" ]; do
+# PROBE_FIRST (0.48.0 kit §7): a void probe leg is re-run under the NEXT run
+# id, never its own — start the numbering there (`PROBE_FIRST=7 run-probe.sh F1b 1`)
+I=${PROBE_FIRST:-1}
+LAST=$((I + LEGS - 1))
+while [ "$I" -le "$LAST" ]; do
 	_s=$(node "$B/round-spend.mjs" "$ROOT")
 	if node -e 'process.exit(Number(process.argv[1]) > Number(process.argv[2]) ? 0 : 1)' "$_s" "$CAP"; then
 		echo "SPEND CAP: \$$_s spent, cap \$$CAP — the probe stops here"
@@ -36,11 +39,11 @@ while [ "$I" -le "$LEGS" ]; do
 	KISO_ROUND="$ROUND" KISO_BIN="$KISO_BIN_RC" KISO_VERSION="" sh "$B/run-task.sh" "$TASK" "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	W="$ROOT/kiso-$TASK-$RUN"
 	SAW=$(node -e 'try { console.log(String(JSON.parse(require("fs").readFileSync(process.argv[1] + "/meta.json", "utf8")).kisoVersion ?? "missing")); } catch { console.log("missing"); }' "$W" 2>/dev/null || echo missing)
-	case "$SAW" in
-		*"$RC_VERSION"*) : ;;
-		*) printf 'VOID: its meta records %s (wanted %s)\n' "$SAW" "$RC_VERSION" > "$W/void"
-		   echo "    VOID — wanted $RC_VERSION, the leg records $SAW"; VOID=$((VOID + 1)) ;;
-	esac
+	# EXACT (0.48.0 kit §2)
+	if [ "$SAW" != "$RC_VERSION" ]; then
+		printf 'VOID: its meta records %s (wanted exactly %s)\n' "$SAW" "$RC_VERSION" > "$W/void"
+		echo "    VOID — wanted exactly $RC_VERSION, the leg records $SAW"; VOID=$((VOID + 1))
+	fi
 	I=$((I + 1))
 done
 echo

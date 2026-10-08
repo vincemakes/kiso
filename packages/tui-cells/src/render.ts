@@ -8,7 +8,7 @@
 
 import { charWidth, displayWidth, visibleWidth, widthCut } from "./width.js";
 import type { Ground, Rgb } from "./ground.js";
-import { bg, breathRamp, colourTier, fg, graphiteColours, mix, type Tier } from "./graphite.js";
+import { bg, breathRamp, fg, graphiteColours, mix, terminalTier, type Tier } from "./graphite.js";
 
 /**
  * v2a — the palette, centralized (no hard-coded codes elsewhere); v5
@@ -388,7 +388,7 @@ export function palette(): Palette {
 	const noColor = process.env.NO_COLOR;
 	if (!((noColor === undefined || noColor === "") && process.stdout.isTTY)) return COLOR_OFF;
 	if (ground === "unknown") return COLOR_NEUTRAL;
-	const tier = colourTier(process.env.COLORTERM);
+	const tier = terminalTier(process.env, process.platform);
 	const r = groundRgb === null ? -1 : groundRgb.r;
 	const g = groundRgb === null ? -1 : groundRgb.g;
 	const b = groundRgb === null ? -1 : groundRgb.b;
