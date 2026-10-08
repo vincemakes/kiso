@@ -1,5 +1,5 @@
 #!/bin/sh
-# run-paired.sh <task: T3|T5|L1|L2|F1> <pairs> — one paired set of the
+# run-paired.sh <task: T3|T5|T6|L1|L2|F1> <pairs> — one paired set of the
 # 0.46.0 evaluation (kiso-doc plan-0460-3f-evaluation; BM-1).
 #
 # run-ceremony.sh's discipline, for any task: the rc against the PUBLISHED
@@ -38,17 +38,20 @@ run_leg() {
 	echo "--- $TASK $RUN ($ARM)"
 	if [ "$TASK" = T5 ]; then
 		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-t5.sh" kiso "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
+	elif [ "$TASK" = T6 ]; then
+		# 2026-10-08: the 24-turn long curve, paired (the edit-discipline round)
+		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-t6.sh" kiso "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	else
 		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-task.sh" "$TASK" "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	fi
 	W=$(leg_dir "$RUN")
 	SAW=$(node -e 'try { console.log(String(JSON.parse(require("fs").readFileSync(process.argv[1] + "/meta.json", "utf8")).kisoVersion ?? "missing")); } catch { console.log("missing"); }' "$W" 2>/dev/null || echo missing)
 	WANT=$(want_ver "$ARM")
-	case "$SAW" in
-		*"$WANT"*) : ;;
-		*) printf 'VOID: launched as %s, its meta records %s (wanted %s)\n' "$ARM" "$SAW" "$WANT" > "$W/void"
-		   echo "    VOID — wanted $WANT, the leg records $SAW"; VOID=$((VOID + 1)) ;;
-	esac
+	# EXACT (0.48.0 kit §2): a substring match let 0.48.0 pass for 0.48.0-rc.1
+	if [ "$SAW" != "$WANT" ]; then
+		printf 'VOID: launched as %s, its meta records %s (wanted exactly %s)\n' "$ARM" "$SAW" "$WANT" > "$W/void"
+		echo "    VOID — wanted exactly $WANT, the leg records $SAW"; VOID=$((VOID + 1))
+	fi
 }
 
 hit_of() { node -e 'import(process.argv[1]).then((m) => { const h = m.counters(process.argv[2]).cacheHit; console.log(h === null ? "-1" : String(h)); })' "$B/tasks-counters.mjs" "$1" 2>/dev/null || echo -1; }
@@ -82,13 +85,24 @@ RERUN=""
 NVOIDPAIRS=0
 I=1
 STOPPED=""
-while [ "$I" -le "$PAIRS" ]; do
+# PAIR_LIST (0.48.0 kit §7): re-run exactly these pairs, under PAIR_SUFFIX
+# (default c) — the pairs audit-legs.mjs voided after the set. A void pair in
+# this mode is reported, never run a further time.
+if [ -n "${PAIR_LIST:-}" ]; then
+	for I in $PAIR_LIST; do
+		if over_cap; then STOPPED=cap; break; fi
+		pair "$I" "${PAIR_SUFFIX:-c}" || { echo "    the re-run of pair $I is void too — reported, not run a further time"; NVOIDPAIRS=$((NVOIDPAIRS + 1)); }
+	done
+	PAIRS="list:$PAIR_LIST"
+	I=999999
+fi
+while [ -z "${PAIR_LIST:-}" ] && [ "$I" -le "$PAIRS" ]; do
 	if over_cap; then STOPPED=cap; break; fi
 	if ! pair "$I" ""; then RERUN="$RERUN $I"; NVOIDPAIRS=$((NVOIDPAIRS + 1)); fi
 	if [ "$NVOIDPAIRS" -gt 3 ]; then echo "MORE THAN THREE VOID PAIRS — the set stops; the gateway is not fit for this round"; STOPPED=voids; break; fi
 	I=$((I + 1))
 done
-if [ -z "$STOPPED" ]; then
+if [ -z "$STOPPED" ] && [ -z "${PAIR_LIST:-}" ]; then
 	for I in $RERUN; do
 		if over_cap; then STOPPED=cap; break; fi
 		pair "$I" b || echo "    the re-run of pair $I is void too — reported, not run a third time"

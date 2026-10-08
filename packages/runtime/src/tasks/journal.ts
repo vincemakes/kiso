@@ -19,31 +19,7 @@
 
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, writeSync } from "node:fs";
 
-export type TaskProfile = "oneshot" | "service" | "wait";
-
-/** ADR-0059 release 1 — what a wait awaits. The runtime knows `timer`
- *  (`{ kind: "timer", ms }`) and `task` (`{ kind: "task", id }`); a host
- *  registers every other kind as a driver. The fields are the driver's. */
-export interface WaitSource {
-	readonly kind: string;
-	readonly [field: string]: unknown;
-}
-
-/** A wait's plan: the source, the deadline (durable, so a restart re-arms
- *  it), a note the task row shows, and the goal it serves (release 2a). */
-export interface WaitSpec {
-	readonly source: WaitSource;
-	readonly deadlineAt: number;
-	readonly note?: string;
-	readonly goalId?: string;
-}
-
-/** How a wait ended: the event, or the deadline. `overdue`: it resolved at a
- *  restart because its time had passed while no kiso was alive — the
- *  restart rule delivers it as a notify, never a wake (release 1). */
-export type WaitOutcome =
-	| { readonly outcome: "fired"; readonly eventId: string; readonly payload: unknown; readonly overdue?: true }
-	| { readonly outcome: "expired"; readonly overdue?: true };
+export type TaskProfile = "oneshot" | "service";
 
 /** A launch without a shell: the file and its arguments, verbatim. */
 export interface TaskLaunch {
@@ -79,8 +55,6 @@ export type TaskRecord =
 			readonly launch?: TaskLaunch;
 			/** ADR-0058 §5: an agent task — a child kiso and its own session. */
 			readonly agent?: TaskAgent;
-			/** ADR-0059: profile `wait` — what is awaited; `command` is the label. */
-			readonly wait?: WaitSpec;
 	  }
 	| { readonly type: "runner_started"; readonly ts: number; readonly pid: number; readonly startedAt: string }
 	| { readonly type: "command_started"; readonly ts: number }
@@ -95,12 +69,7 @@ export type TaskRecord =
 	/** ADR-0058 Amendment 7: the tool execution `executionId` — the CLAIMING
 	 *  call (task_stop's own, the shell call's own), not the task's starter —
 	 *  reports `transition` in its result, so it is never noticed. */
-	| { readonly type: "result_claimed"; readonly ts: number; readonly transition: ClaimedTransition; readonly executionId: string }
-	/** ADR-0059: a wait's terminals — the event arrived (its identity dedupes a
-	 *  second observation), or the deadline passed. Durable before the task
-	 *  counts as ended, like `terminal`. */
-	| { readonly type: "wait_fired"; readonly ts: number; readonly eventId: string; readonly payload: unknown; readonly overdue?: true }
-	| { readonly type: "wait_expired"; readonly ts: number; readonly overdue?: true };
+	| { readonly type: "result_claimed"; readonly ts: number; readonly transition: ClaimedTransition; readonly executionId: string };
 
 /** A transition as the model is told it — a notice's or a result's name. */
 export type ClaimedTransition = "ready" | "exited" | "failed" | "stopped" | "unknown";
@@ -193,9 +162,7 @@ export type TaskState =
 	| { readonly kind: "not_run" }
 	| { readonly kind: "running"; readonly ready: boolean }
 	| { readonly kind: "unknown" }
-	/** ADR-0059: a wait that has neither fired nor expired nor been stopped. */
-	| { readonly kind: "waiting"; readonly source: WaitSource; readonly deadlineAt: number }
-	| { readonly kind: "ended"; readonly exitCode: number | null; readonly signal: string | null; readonly stopped: boolean; readonly error?: string; readonly wait?: WaitOutcome };
+	| { readonly kind: "ended"; readonly exitCode: number | null; readonly signal: string | null; readonly stopped: boolean; readonly error?: string };
 
 /** How long a `planned` without a runner may wait for its runner to speak
  *  before it counts as never run — the runner's first act is its record. */
@@ -212,17 +179,8 @@ export function verdictOf(records: readonly TaskRecord[], runnerAlive: boolean, 
 			stopped: has("stop_requested"),
 			...(terminal.error !== undefined ? { error: terminal.error } : {}),
 		};
-	const planned = records.find((r): r is Extract<TaskRecord, { type: "planned" }> => r.type === "planned");
+	const planned = records.find((r) => r.type === "planned");
 	if (planned === undefined) return { kind: "not_run" };
-	if (planned.profile === "wait" && planned.wait !== undefined) {
-		// a wait has no runner and no identity: the record set alone decides
-		const fired = records.find((r): r is Extract<TaskRecord, { type: "wait_fired" }> => r.type === "wait_fired");
-		if (fired !== undefined)
-			return { kind: "ended", exitCode: null, signal: null, stopped: false, wait: { outcome: "fired", eventId: fired.eventId, payload: fired.payload, ...(fired.overdue === true ? { overdue: true } : {}) } };
-		const expired = records.find((r): r is Extract<TaskRecord, { type: "wait_expired" }> => r.type === "wait_expired");
-		if (expired !== undefined) return { kind: "ended", exitCode: null, signal: null, stopped: false, wait: { outcome: "expired", ...(expired.overdue === true ? { overdue: true } : {}) } };
-		return { kind: "waiting", source: planned.wait.source, deadlineAt: planned.wait.deadlineAt };
-	}
 	if (has("command_started")) return runnerAlive ? { kind: "running", ready: has("ready") } : { kind: "unknown" };
 	if (has("runner_started")) return runnerAlive ? { kind: "starting" } : { kind: "not_run" };
 	return now - planned.ts < RUNNER_START_WINDOW_MS ? { kind: "starting" } : { kind: "not_run" };

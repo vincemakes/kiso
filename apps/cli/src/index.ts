@@ -64,7 +64,7 @@ import { clipboardImage } from "./clipboard.js";
 import { cardsFromListings } from "./session-cards.js";
 import { createCodingAgent } from "./create-coding-agent.js";
 export { contextPolicyFromEnv } from "./create-coding-agent.js";
-export { SYSTEM_PROMPT, composeSystemPrompt, readProjectInstructions } from "./coding-prompt.js";
+export { SYSTEM_PROMPT, CODING_TOOL_RULES, composeSystemPrompt, readProjectInstructions } from "./coding-prompt.js";
 
 // The moved exports stay reachable from this entry — the test imports
 // (project-trust, coding-agent) never change (B4: zero assertion changes).

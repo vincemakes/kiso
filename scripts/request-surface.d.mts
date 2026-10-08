@@ -7,6 +7,8 @@
 
 export interface RentParts {
 	base?: string;
+	/** RG-F2: the generated tool table's text */
+	table?: string;
 	appends?: readonly { name: string; text: string }[];
 }
 
@@ -19,6 +21,8 @@ export interface RentLine {
 export interface CompositionParts {
 	base: string;
 	tools: readonly import("@vincemakes/kiso-core").Tool<any>[];
+	/** the CLI's routing rows (CODING_TOOL_RULES), as the session receives them */
+	toolRules: ReadonlyArray<{ readonly tool: string; readonly line: string }>;
 	extensions: readonly { name: string; systemPrompt?: { append: string } }[];
 }
 
@@ -37,3 +41,10 @@ export function predictDefaultRentLedger(model: string, options?: { home?: strin
  *  ledger is computed from the prompt passed in, and an output ceiling
  *  is not rent. See the .mjs for the full amendment. */
 export function predictSideQueryRentLedger(model: string, systemPrompt: string): RentLine[];
+
+/** Plan A (rev 2): per-surface differences between two ledgers, both
+ *  directions — the ratchet's comparison. */
+export function diffLines(
+	before: readonly { surface: string; chars: number }[],
+	after: readonly { surface: string; chars: number }[],
+): { surface: string; from: number | null; to: number | null; kind: "appeared" | "grew" | "shrank" | "vanished" }[];

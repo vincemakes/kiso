@@ -18,7 +18,6 @@ import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 import { taskNoticeLines, taskWhat } from "./task-notice.js";
-import { cliWaitDrivers } from "./wait-drivers.js";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
@@ -102,9 +101,7 @@ export function tasksFor(sessionId: string | undefined): TaskManager | undefined
 	let manager = taskManagers.get(sessionId);
 	if (manager === undefined) {
 		taskBackend ??= processTaskBackend();
-		// ADR-0059: the CLI's wait drivers (GitHub over `gh`) ride the manager;
-		// `timer` and `task` are the runtime's own
-		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend, drivers: cliWaitDrivers({ cwd: () => workspaceRoot() }) });
+		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend });
 		manager.observe();
 		taskManagers.set(sessionId, manager);
 	}
@@ -289,7 +286,10 @@ export function readContextLedger(sessionId: string, window: number): import("@v
 	const turnSegments = manifest.filter((s) => s.role === "turn" || s.role === "current_turn");
 	return {
 		window,
-		systemPrompt: sum((s) => s === "system:base" || (s.startsWith("system:ext:") && !isSkills(s))),
+		// RG-F2: the generated tool table (system:tools) is system-prompt
+		// text the model reads on every request; it had no ledger line, so
+		// this row was short by it
+		systemPrompt: sum((s) => s === "system:base" || s === "system:tools" || (s.startsWith("system:ext:") && !isSkills(s))),
 		systemBase: sum((s) => s === "system:base"),
 		appends: count((s) => s.startsWith("system:ext:") && !isSkills(s)),
 		toolTable: sum((s) => s.startsWith("tool:")),
