@@ -162,8 +162,14 @@ columns 0–1.
 ## 2. The palette
 
 kiso emits 24-bit colour where the terminal says it renders it
-(`COLORTERM` is `truecolor` or `24bit`) and the nearest xterm-256 index
-otherwise; `/status` names the tier (§8.8). The owner's daily terminal
+(`COLORTERM` is `truecolor` or `24bit`) or is known to (0.47.1, owner
+2026-10-07: Windows Terminal by `WT_SESSION`, iTerm2, WezTerm, Ghostty,
+kitty, VS Code, Warp, Alacritty, JetBrains, and any Windows console; inside
+tmux or screen only `COLORTERM` counts), and the nearest xterm-256 index
+otherwise; `/status` names the tier (§8.8). DECLARED REVERSAL: only
+`COLORTERM` counted, so Windows Terminal, which renders 24-bit and does not
+set it, was drawn in the 256 tier — the person's cream block pink (224),
+its gold edge olive (186). The owner's daily terminal
 reports `truecolor` and renders it (Apple Terminal 470.2 on macOS 26,
 measured 2026-09-28). The table is Graphite on a white and on a black
 ground; §3.4 derives the surfaces from the ground actually resolved.
@@ -171,23 +177,34 @@ ground; §3.4 derives the surfaces from the ground actually resolved.
 | token | white | black | role |
 |---|---|---|---|
 | ink | `#111111` | `#ededed` | answers, targets, the person's words |
-| ink2 | `#444444` | `#b5b5b5` | tool output, secondary facts |
-| dim | `#646464` | `#8e8e8e` | labels, thinking, keys, metadata |
+| ink2 | `#444444` | `#c2c2c2` | tool output, secondary facts |
+| dim | `#646464` | `#a4a4a4` | labels, thinking, keys, metadata |
 | rail | `#8c8c8c` | `#6b6b6b` | the mark column's quiet glyphs, cut notes, table lines |
-| line | `#e6e6e6` | `#212121` | hairlines |
-| wash-run | `#edf2fb` | `#141b28` | a running call's card |
-| wash-done | `#f1f1f1` | `#1b1b1b` | a settled call's card; a code block |
-| wash-fail | `#fbecea` | `#2a1716` | a failed or refused call's card |
-| wash-ask | `#f7f1e3` | `#211d13` | a call waiting for the person; a band's selected row |
-| human | `#f7efdc` | `#efe6cf` | the person's block |
+| line | `#e6e6e6` | `#656565` | hairlines |
+| wash-run | `#edf2fb` | `#2b3854` | a running call's card |
+| wash-done | `#f1f1f1` | `#333333` | a settled call's card; a code block |
+| wash-fail | `#fbecea` | `#4d2b28` | a failed or refused call's card |
+| wash-ask | `#f7f1e3` | `#483818` | a call waiting for the person; a band's selected row |
+| human | `#f7efdc` | `#e8dfc6` | the person's block |
 | human-ink | `#171923` | `#141620` | text on the person's block |
 | gold | `#8a5a00` | `#e3b04b` | edge text |
 | gold-mark | `#c9921f` | `#e3b04b` | edge graphics: bars, the caret, `✦`, the fade |
 | blue | `#2456b5` | `#82a8f5` | the machine's accent |
-| code | `#e4ebf8` | `#1a2438` | the inline-code ground |
+| code | `#e4ebf8` | `#283658` | the inline-code ground |
 | ok / fail | `#2f7a3a` / `#b3261e` | `#8fd19e` / `#f2877a` | outcome words |
-| add / del | `#dff0e2` / `#fadfdc` | `#16301f` / `#3a1b1a` | diff rows |
-| track | `#e2e2e2` | `#2a2a2a` | the ctx meter's empty cells, and the compaction progress's |
+| add / del | `#dff0e2` / `#fadfdc` | `#2a5034` / `#5e302d` | diff rows |
+| track | `#e2e2e2` | `#474747` | the ctx meter's empty cells, and the compaction progress's |
+
+The black column was re-adapted in 0.47.1 (owner, 2026-10-07: preset D
+of the dark palette page). DECLARED REVERSAL: the surfaces sat a few
+levels above `#0b0b0b` (`wash-run #141b28`, `wash-ask #211d13`, `line
+#212121`) and read as heavy on a black terminal, with a band's selected row
+nearly black. They rise a step; `dim` and `ink2` rise with them to keep the
+floor, and `wash-ask` and `code` sit just under the page's values
+(`#524222`, `#30406a`) so every pair clears 4.5 in both tiers. The white
+column is unchanged. The hairlines (`line`) rose again, to `#656565`
+(owner, 2026-10-08): the composer's rules read too grey on Apple Terminal's
+Pro profile, whose transparency lightens the black behind them.
 
 A card's bar takes its state's edge colour: `blue`, `rail`, `fail`, or
 `gold-mark`.
@@ -283,10 +300,13 @@ terminal that reports nothing.
 
 **3.4 Surfaces are derived from the resolved ground.** §2's table is
 Graphite evaluated on `#ffffff` and `#0b0b0b`. When OSC 11 reports any other
-ground of the same kind, each surface is computed from it — per channel, an
-affine map fitted so that the two reference grounds give the table exactly —
-so a terminal whose black is `#1e1e1e` still separates its cards from its
-ground. A text token that would then fall under the floor, on the ground or
+ground of the same kind, each surface is computed from it — on a dark
+ground, per channel, an affine map fitted so that the two reference grounds
+give the table exactly; on a light ground, the white column moved by the
+ground's distance from white — so a terminal whose black is `#1e1e1e` still
+separates its cards from its ground. DECLARED REVERSAL (0.47.1): the one
+affine map served the light grounds too, and tied them to the black column —
+when that column rose, a card on `#eeeeee` came within 1.09:1 of its ground. A text token that would then fall under the floor, on the ground or
 on a surface, as shown (§2.1), moves toward the kind's extreme — lighter on
 a dark ground, darker on a light one — just far enough to clear it; on the
 reference grounds nothing moves. If a pair still fails, the table is used.
@@ -530,7 +550,15 @@ rows inside it give way to make the room, the top-most first, so it keeps
 its height (§5) and the note counts what it hides. It reaches only while a
 row above it stays cut, and only a dozen rows back; past that the window
 is the plain tail. An output line too long for the row continues two cells
-in, so one line reads as one. **A read shows nothing at all**: its result is the
+in, so one line reads as one. The note counts output LINES, the unit it
+names (0.47.1, finding 0470-F1): a line hidden whole is one however many
+rows it wrapped to, and a line the cut passes through is not counted but
+said — `… the start of this line` above a tail that opens inside one, `…
+3 earlier lines and the start of this one`, and `the rest of this one`
+under a head. Narrower, that clause gives way before the count's word
+does. DECLARED REVERSAL: the note counted rows — a one-line result that
+wrapped to six rows at 80 columns read `… 1 earlier line` over the end of
+that same line. **A read shows nothing at all**: its result is the
 file, five lines of it tell a reader less than the head row already does,
 and the key opens the whole thing. Its continuation note, when the tool
 itself capped the result, is not a preview and stays. When the preview
@@ -609,7 +637,15 @@ A failure's outcome word is short and its text is the body: a shell's
 `exit N`, any other tool's `failed`. A refusal reads `denied by you ·
 <reason>` when the person refused and `denied · <reason>` when a policy
 did (VD-11: the person's answer is worth recording; the ambient default is
-not). A call still open when the person stopped the turn reads
+not). A person's refusal with no words of their own (esc at the panel, which
+the runtime records as "denied by user") reads `denied by you` alone, and
+its body — `[Permission denied] denied by user`, what the model was
+handed — is not drawn (0.47.1, finding 0470-F4). A refusal with a reason
+keeps its body: the head gives the reason way on a narrow row, and the
+body still says it. DECLARED REVERSAL: that refusal said itself three
+times — `denied by you · denied by user` on the head, the body, and a row
+`approval cancelled — treated as a denial` under the card, which a dock no
+longer prints (a pipe does). A call still open when the person stopped the turn reads
 `interrupted`, on the machine's ground, with its output so far — no one
 denied it (R3b; it read `denied · interrupted` on the failure ground).
 
@@ -870,6 +906,13 @@ call, its clock running while nothing arrived, and the row after it was
 the sentence `mid-run — the conversation before this point is a summary
 now · ctx now ~11% used`, with the raw `[summarized up to seq N]` under
 it. A pipe prints the sentence and the line as it did.
+
+`/compact` (the manual path) does the same (0.47.1, findings 0470-F2 and
+F3): its `COMPACTED` row is the last word, and `1 round` is singular.
+DECLARED REVERSAL of 0.39.1's boundary row on a dock: the raw `[summarized
+up to seq N]` stood under the row, a fact the durable record keeps and the
+row already says; and the row read `1 rounds`. A pipe prints both as it
+did.
 
 `/think` and `/last` bring back what they find as ONE cell (the last
 sweep): a meta row — `THINKING the last block · 3 lines`, `LAST CALL LIST
