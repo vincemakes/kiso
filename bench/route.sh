@@ -30,8 +30,22 @@ case "$BENCH_ROUTE" in
 		ROUTE_CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kiso-commandcode/credentials.env"
 		ROUTE_CRED_KEY="COMMANDCODE_API_KEY"
 		;;
+	op)
+		# 2026-10-08 (the owner's word, the co credits exhausted): DeepSeek
+		# V4.1 Flash through OpenCode Go. The gateway REQUIRES a per-session
+		# `x-opencode-session` header (400 MissingSessionID without it) and
+		# routes — and so caches — by it; the owner's own `op` profile
+		# carries it as {session}. The OPENAI_* environment binding cannot
+		# carry a header, so the kiso arm binds the profile with --model.
+		ROUTE_BASE_URL="https://opencode.ai/zen/go/v1"
+		ROUTE_MODEL="deepseek-v4.1-flash"
+		ROUTE_WINDOW="1048576"
+		ROUTE_CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kiso-opencode/credentials.env"
+		ROUTE_CRED_KEY="OPENCODE_API_KEY"
+		ROUTE_SESSION_HEADER="x-opencode-session"
+		;;
 	*)
-		echo "route.sh: unknown BENCH_ROUTE '$BENCH_ROUTE' (ds | co)" >&2
+		echo "route.sh: unknown BENCH_ROUTE '$BENCH_ROUTE' (ds | co | op)" >&2
 		exit 1
 		;;
 esac
@@ -42,7 +56,9 @@ grep -q "^$ROUTE_CRED_KEY=\|^export $ROUTE_CRED_KEY=" "$ROUTE_CRED_FILE" 2>/dev/
 # the profile the arm binds: a NAMED profile, because `/model` only knows
 # profiles (run-t5.sh's note). Written into the leg's KISO_HOME.
 route_profile_json() {
-	if [ -n "$ROUTE_WINDOW" ]; then
+	if [ -n "${ROUTE_SESSION_HEADER:-}" ]; then
+		printf '{ "models": { "ds": { "kind": "openai-compat", "model": "%s",\n  "baseUrl": "%s", "apiKeyEnv": "OPENAI_API_KEY", "contextWindow": %s,\n  "headers": { "%s": "{session}" } } } }\n' "$ROUTE_MODEL" "$ROUTE_BASE_URL" "${ROUTE_WINDOW:-1000000}" "$ROUTE_SESSION_HEADER"
+	elif [ -n "$ROUTE_WINDOW" ]; then
 		printf '{ "models": { "ds": { "kind": "openai-compat", "model": "%s",\n  "baseUrl": "%s", "apiKeyEnv": "OPENAI_API_KEY", "contextWindow": %s } } }\n' "$ROUTE_MODEL" "$ROUTE_BASE_URL" "$ROUTE_WINDOW"
 	else
 		printf '{ "models": { "ds": { "kind": "openai-compat", "model": "%s",\n  "baseUrl": "%s", "apiKeyEnv": "OPENAI_API_KEY" } } }\n' "$ROUTE_MODEL" "$ROUTE_BASE_URL"
@@ -59,10 +75,14 @@ route_profile_json() {
 # `reasoning: true` lets `--thinking` bind; `--thinking off` sends no
 # effort field at all, which is what kiso sends when no effort is set
 # (both measured against a local sink, 2026-10-07).
-# route_ref_models_json <baseUrl> <cred-print path>
+# route_ref_models_json <baseUrl> <cred-print path> [session id]
+# On a route with a session header the store names it, one value per leg
+# (the arm's -p turns share one session file, so one leg = one session).
 route_ref_models_json() {
-	printf '{ "providers": { "route": { "baseUrl": "%s", "api": "openai-completions",\n  "apiKey": "!sh %s %s %s",\n  "models": [ { "id": "%s", "reasoning": true, "contextWindow": %s, "maxTokens": 384000 } ] } } }\n' \
-		"$1" "$2" "$ROUTE_CRED_FILE" "$ROUTE_CRED_KEY" "$ROUTE_MODEL" "${ROUTE_WINDOW:-1000000}"
+	_hdr=""
+	[ -n "${ROUTE_SESSION_HEADER:-}" ] && _hdr=$(printf ',\n  "headers": { "%s": "%s" }' "$ROUTE_SESSION_HEADER" "${3:-ref-session}")
+	printf '{ "providers": { "route": { "baseUrl": "%s", "api": "openai-completions",\n  "apiKey": "!sh %s %s %s"%s,\n  "models": [ { "id": "%s", "reasoning": true, "contextWindow": %s, "maxTokens": 384000 } ] } } }\n' \
+		"$1" "$2" "$ROUTE_CRED_FILE" "$ROUTE_CRED_KEY" "$_hdr" "$ROUTE_MODEL" "${ROUTE_WINDOW:-1000000}"
 }
 # The route's upstream host and path, for the capture proxy: the proxy
 # forwards the request path unchanged, so the store names the path.
@@ -77,3 +97,8 @@ esac
 # The reference binary: an absolute path pins the version under test (the
 # kit records it); bare `pi` is whatever PATH resolves.
 REF_BIN=${REF_BIN:-pi}
+# A route whose gateway needs a session header binds the kiso arm's profile
+# by flag (the profile carries the header; the env binding cannot).
+if [ -n "${ROUTE_SESSION_HEADER:-}" ] && [ -n "${KISO_BIN:-}" ]; then
+	case "$KISO_BIN" in *"--model ds"*) : ;; *) KISO_BIN="$KISO_BIN --model ds" ;; esac
+fi

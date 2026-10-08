@@ -388,7 +388,7 @@ fs.writeFileSync('$WORK/meta.json', JSON.stringify({
         sleep 2
         REF_BASE="http://127.0.0.1:$CAP_PORT$ROUTE_PATH"
       fi
-      route_ref_models_json "$REF_BASE" "$B/cred-print.sh" > "$BARE_HOME/.pi/agent/models.json"
+      route_ref_models_json "$REF_BASE" "$B/cred-print.sh" "ref-$RUN-$$" > "$BARE_HOME/.pi/agent/models.json"
       CAPTURE_DECL=".pi/agent/models.json"
     fi
     assert_bare pi "$BARE_HOME" $CAPTURE_DECL || exit 1
