@@ -51,7 +51,10 @@ export const GRAPHITE = {
 		ink2: "#c2c2c2",
 		dim: "#a4a4a4",
 		rail: "#6b6b6b",
-		line: "#3a3a3a",
+		// the owner, 2026-10-08: the composer's rules read too grey on Apple
+		// Terminal's Pro profile (its transparency lightens the black) — the
+		// hairlines rise to #656565
+		line: "#656565",
 		washRun: "#2b3854",
 		washDone: "#333333",
 		washFail: "#4d2b28",
