@@ -103,7 +103,8 @@ describe("0.48.0 — a budgeted walk never starves a shallow file", () => {
 		put(root, "Desktop/notes.md", "the only line naming a starling\n");
 		const r = await searchTextTool({ workspaceRoot: root, limits: { searchMaxFiles: 100 } }).execute({ pattern: "starling" }, ctx());
 		expect(r.isError).toBe(false);
-		expect(r.content).toContain("Desktop/notes.md:1:");
+		// search_text prints the platform's separator; read it as POSIX
+		expect(r.content.replace(/\\/g, "/")).toContain("Desktop/notes.md:1:");
 	});
 
 	it("a budget of the files down to depth d returns exactly those files: 40 seeded trees", () => {
@@ -131,7 +132,7 @@ describe("0.48.0 — a budgeted walk never starves a shallow file", () => {
 		put(root, "a/x.ts", "kestrel one\nnothing\nkestrel two\n");
 		put(root, "a-b.ts", "kestrel\n");
 		const r = await searchTextTool({ workspaceRoot: root }).execute({ pattern: "kestrel" }, ctx());
-		const paths = r.content.split("\n").map((l) => l.slice(0, l.indexOf(": ")));
+		const paths = r.content.split("\n").map((l) => l.slice(0, l.indexOf(": ")).replace(/\\/g, "/"));
 		expect(paths).toEqual(["a/x.ts:1", "a/x.ts:3", "a-b.ts:1", "z.ts:1"]);
 	});
 });
