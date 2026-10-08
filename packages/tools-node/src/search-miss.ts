@@ -82,13 +82,13 @@ export function describeSearchMiss(text: string, search: string): string {
 	if (endOfMatch >= text.length) {
 		return [
 			head,
-			`  the file ENDS there — your search continues for ${rest.length} more characters: "${fragment(rest)}"`,
+			`  the file ENDS there — your oldText continues for ${rest.length} more characters: "${fragment(rest)}"`,
 		].join("\n");
 	}
 	return [
 		head,
 		`  the file then has:  "${fragment(text.slice(endOfMatch))}"`,
-		`  your search wanted: "${fragment(rest)}"`,
+		`  your oldText wanted: "${fragment(rest)}"`,
 	].join("\n");
 }
 

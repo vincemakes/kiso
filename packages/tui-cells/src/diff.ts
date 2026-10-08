@@ -201,20 +201,27 @@ export function writeFileDiff(oldContent: string | null, newContent: string): Di
 	return { lines, ...stats(lines), outcome: "diff" };
 }
 
-/** The hunks an edit_file call carries: its `edits`, or its one
- *  `search`/`replace` pair. Null when the input has neither (the tool
- *  refuses such a call, so there is nothing to draw). */
+/** The hunks an edit_file call carries, in either vocabulary the tool
+ *  takes (ADR-0061): `edits` of `{oldText, newText}` or of legacy
+ *  `{search, replace}`, or the legacy top-level pair. A log written before
+ *  the rename keeps the old names, so a reader must take both. Null when
+ *  the tool would refuse the shape (nothing, or a hunk mixing the two) —
+ *  there is nothing to draw. */
 export function hunksOf(input: Record<string, unknown>): Hunk[] | null {
-	const pair = (x: unknown): Hunk | null => {
+	const pair = (x: unknown, current: boolean): Hunk | null => {
 		if (typeof x !== "object" || x === null) return null;
-		const { search, replace } = x as { search?: unknown; replace?: unknown };
+		const { oldText, newText, search, replace } = x as { oldText?: unknown; newText?: unknown; search?: unknown; replace?: unknown };
+		const hasCurrent = oldText !== undefined || newText !== undefined;
+		const hasLegacy = search !== undefined || replace !== undefined;
+		if (hasCurrent && (hasLegacy || !current)) return null;
+		if (hasCurrent) return typeof oldText === "string" && typeof newText === "string" ? { search: oldText, replace: newText } : null;
 		return typeof search === "string" && typeof replace === "string" ? { search, replace } : null;
 	};
 	if (Array.isArray(input.edits)) {
-		const hunks = input.edits.map(pair);
+		const hunks = input.edits.map((h) => pair(h, true));
 		return hunks.length > 0 && hunks.every((h) => h !== null) ? (hunks as Hunk[]) : null;
 	}
-	const one = pair(input);
+	const one = pair(input, false);
 	return one === null ? null : [one];
 }
 

@@ -53,7 +53,7 @@ describe("describeSearchMiss — the three shapes a miss takes", () => {
 		// the caller searched for the FIXED line; the file still has the bug
 		const out = describeSearchMiss(FILE, "\tif (n >= max) return max;\n");
 		expect(out).toContain("the file then has:");
-		expect(out).toContain("your search wanted:");
+		expect(out).toContain("your oldText wanted:");
 		// Both sides are shown FROM THE DIVERGENCE ON, so the matched prefix
 		// is not repeated: the file continues " - 1;" where the search
 		// continues ";". Asserting the whole line "max - 1" was my error —

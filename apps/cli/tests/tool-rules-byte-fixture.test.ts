@@ -28,7 +28,8 @@ describe("R1: the coding tool table is byte-identical to its pre-R1 capture", ()
 		for (const ext of await builtInLayer([], [])) registry.registerLive(() => ext.tools ?? [], ext.name);
 		// the file carries ONE trailing newline for the whitespace gate; the table ends without one
 		const fixture = readFileSync(join(import.meta.dirname, "fixtures", "tool-table-0.40.6.txt"), "utf8").replace(/\n$/, "");
-		expect(Buffer.byteLength(fixture, "utf8")).toBe(1435); // bytes, not UTF-16 units: the em-dashes are three bytes each
+		// ADR-0061: 1435 → 1430 — the edit_file snippet names oldText/newText, not old_string
+		expect(Buffer.byteLength(fixture, "utf8")).toBe(1430); // bytes, not UTF-16 units: the em-dashes are three bytes each
 		expect(composeToolTable(registry, CODING_TOOL_RULES)).toBe(fixture);
 	});
 });
