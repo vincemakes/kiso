@@ -134,6 +134,23 @@ class Audit(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn("the arms are not what the round compares", out["instrument"][0])
 
+    def test_a_round_that_expects_the_same_tool_table_flips_the_rule(self):
+        # 0.48.0: the kit expects the request prefix unchanged against the control
+        with tempfile.TemporaryDirectory() as root:
+            leg(root, "T5", "rc1", "0.48.0-rc.1", RC_H); leg(root, "T5", "ctl1", "0.47.0", RC_H)
+            code, out = self.audit(root, self.pmset(root), "--tool-tables=same")
+            self.assertEqual((code, out["instrument"]), (0, []))  # identical tables: expected, clean
+        with tempfile.TemporaryDirectory() as root:
+            leg(root, "T5", "rc1", "0.48.0-rc.1", RC_H); leg(root, "T5", "ctl1", "0.47.0", CTL_H)
+            code, out = self.audit(root, self.pmset(root), "--tool-tables=same")
+            self.assertEqual(code, 2)
+            self.assertIn("the kit expects them the same", out["instrument"][0])
+            self.assertFalse(os.path.exists(os.path.join(root, "kiso-T5-rc1", "void")))  # never a void: a re-run cannot change it
+        with tempfile.TemporaryDirectory() as root:
+            leg(root, "T5", "rc1", "0.48.0-rc.1", RC_H); leg(root, "T5", "ctl1", "0.47.0", RC_H)
+            r = run(["node", "audit-legs.mjs", root, "T5", "--rc=0.48.0-rc.1", "--ctl=0.47.0", "--tool-tables=maybe", self.pmset(root)])
+            self.assertEqual(r.returncode, 2)
+
     def test_an_rc_only_probe_lists_legs_to_replace_not_pairs(self):
         with tempfile.TemporaryDirectory() as root:
             leg(root, "F1b", "rc1", "0.48.0-rc.1", RC_H); leg(root, "F1b", "rc2", "0.48.0-rc", RC_H)

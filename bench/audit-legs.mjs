@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * audit-legs.mjs <round-dir> <task> --rc=<version> [--ctl=<version>] [--pmset=<file>]
+ * audit-legs.mjs <round-dir> <task> --rc=<version> [--ctl=<version>] [--tool-tables=differ|same] [--pmset=<file>]
  * — the release kit (0.48.0 on)'s void audit (§7), read-only over a set's records.
  *
  * The runners void two causes live (the version, a cache collapse) because
@@ -11,9 +11,15 @@
  *   version        meta.json's kisoVersion is not EXACTLY its arm's version
  *   tool_hash      the leg's requests carry more than one tool-table hash, or
  *                  not its arm's hash (each arm's hash is the one its legs
- *                  agree on); rc and ctl carrying the SAME hash is not a void
- *                  but an instrument failure — the arms are not what the
- *                  round compares (exit 2)
+ *                  agree on). What the two arms' hashes must be is the
+ *                  kit's: `--tool-tables=differ` (the default — a round
+ *                  that changes the tool table) makes rc == ctl an
+ *                  instrument failure, the arms are not what the round
+ *                  compares; `--tool-tables=same` (a round whose kit
+ *                  expects the request prefix unchanged) makes rc != ctl
+ *                  the failure — the expectation the rent gate rests on is
+ *                  false, investigate before reading any verdict (exit 2
+ *                  either way; never a void: re-running does not change it)
  *   effort         the two legs of a pair recorded different efforts
  *                  (`effort_bound`, what the runner read back from the
  *                  durable profile)
@@ -92,7 +98,7 @@ export function legWindow(work) {
 const armOf = (run) => (/^rc/.test(run) ? "rc" : /^ctl/.test(run) ? "ctl" : null);
 const pairOf = (run) => run.replace(/^(rc|ctl)/, "");
 
-export function audit(root, task, { rc, ctl, pmsetText } = {}) {
+export function audit(root, task, { rc, ctl, pmsetText, toolTables = "differ" } = {}) {
 	const legs = existsSync(root)
 		? readdirSync(root)
 				.filter((d) => d.startsWith(`kiso-${task}-`) && existsSync(join(root, d, "wall_seconds")))
@@ -122,7 +128,9 @@ export function audit(root, task, { rc, ctl, pmsetText } = {}) {
 		for (const r of rows.filter((x) => x.arm === arm)) for (const h of hashOf.get(r.run) ?? []) tally.set(h, (tally.get(h) ?? 0) + 1);
 		armHash[arm] = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 	}
-	if (armHash.rc !== null && armHash.rc === armHash.ctl) out.instrument.push(`rc and ctl carry the same tool-table hash ${armHash.rc.slice(0, 8)} — the arms are not what the round compares`);
+	if (toolTables === "differ" && armHash.rc !== null && armHash.rc === armHash.ctl) out.instrument.push(`rc and ctl carry the same tool-table hash ${armHash.rc.slice(0, 8)} — the arms are not what the round compares`);
+	if (toolTables === "same" && armHash.rc !== null && armHash.ctl !== null && armHash.rc !== armHash.ctl)
+		out.instrument.push(`rc ${armHash.rc.slice(0, 8)} and ctl ${armHash.ctl.slice(0, 8)} carry different tool tables, but the kit expects them the same — investigate before reading any verdict`);
 	out.armHash = { rc: armHash.rc?.slice(0, 8) ?? null, ctl: armHash.ctl?.slice(0, 8) ?? null };
 	for (const r of rows) {
 		if (r.arm === null) continue;
@@ -173,7 +181,12 @@ function main(argv) {
 	const [root, task, ...rest] = argv;
 	const opt = (k) => rest.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3);
 	if (!root || !task || opt("rc") === undefined) {
-		console.error("usage: audit-legs.mjs <round-dir> <task> --rc=<version> [--ctl=<version>] [--pmset=<file>]");
+		console.error("usage: audit-legs.mjs <round-dir> <task> --rc=<version> [--ctl=<version>] [--tool-tables=differ|same] [--pmset=<file>]");
+		process.exit(2);
+	}
+	const toolTables = opt("tool-tables") ?? "differ";
+	if (toolTables !== "differ" && toolTables !== "same") {
+		console.error(`audit-legs: --tool-tables is differ or same, got ${toolTables}`);
 		process.exit(2);
 	}
 	let pmsetText = null;
@@ -186,7 +199,7 @@ function main(argv) {
 			pmsetText = null;
 		}
 	}
-	const out = audit(root, task, { rc: opt("rc"), ctl: opt("ctl"), pmsetText });
+	const out = audit(root, task, { rc: opt("rc"), ctl: opt("ctl"), pmsetText, toolTables });
 	console.log(JSON.stringify(out, null, 1));
 	process.exit(out.instrument.length > 0 ? 2 : out.legs.some((l) => l.voidedNow) ? 1 : 0);
 }
