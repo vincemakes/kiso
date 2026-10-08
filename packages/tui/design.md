@@ -162,8 +162,14 @@ columns 0–1.
 ## 2. The palette
 
 kiso emits 24-bit colour where the terminal says it renders it
-(`COLORTERM` is `truecolor` or `24bit`) and the nearest xterm-256 index
-otherwise; `/status` names the tier (§8.8). The owner's daily terminal
+(`COLORTERM` is `truecolor` or `24bit`) or is known to (0.47.1, owner
+2026-10-07: Windows Terminal by `WT_SESSION`, iTerm2, WezTerm, Ghostty,
+kitty, VS Code, Warp, Alacritty, JetBrains, and any Windows console; inside
+tmux or screen only `COLORTERM` counts), and the nearest xterm-256 index
+otherwise; `/status` names the tier (§8.8). DECLARED REVERSAL: only
+`COLORTERM` counted, so Windows Terminal, which renders 24-bit and does not
+set it, was drawn in the 256 tier — the person's cream block pink (224),
+its gold edge olive (186). The owner's daily terminal
 reports `truecolor` and renders it (Apple Terminal 470.2 on macOS 26,
 measured 2026-09-28). The table is Graphite on a white and on a black
 ground; §3.4 derives the surfaces from the ground actually resolved.

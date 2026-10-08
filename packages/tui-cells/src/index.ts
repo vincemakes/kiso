@@ -123,4 +123,4 @@ export {
 export { groundFrom, parseOscColor, relativeLuminance, resolveGround, type Ground, type GroundInputs, type Rgb } from "./ground.js";
 /** Graphite (design.md §2, §3.4) — the tokens, the tier and the derived
  *  surfaces, as colours. Pure; `render.ts` writes them as SGR. */
-export { GRAPHITE, breathRamp, colourTier, contrast, deriveSurface, graphiteColours, hexRgb, nearest256, rgbHex, weakestPair, type Colours, type Kind, type Tier, type Token } from "./graphite.js";
+export { GRAPHITE, breathRamp, colourTier, terminalTier, contrast, deriveSurface, graphiteColours, hexRgb, nearest256, rgbHex, weakestPair, type Colours, type Kind, type Tier, type Token } from "./graphite.js";

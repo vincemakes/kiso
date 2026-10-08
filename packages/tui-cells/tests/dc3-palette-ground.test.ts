@@ -224,9 +224,18 @@ describe("setGround and the tier select the palette", () => {
 	it("without COLORTERM the same ground is written in the 256 tier", () => {
 		tty(true);
 		delete process.env.COLORTERM;
-		setGround("dark");
-		expect(palette()).toEqual(paletteFor("dark", null, "256"));
-		expect(palette().dim).toMatch(/^\x1b\[38;5;\d+m$/);
+		// 0.47.1: a Windows console renders 24-bit without saying so
+		// (terminalTier) — this case is a terminal that is not known to,
+		// on any machine that runs the suite
+		const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+		Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+		try {
+			setGround("dark");
+			expect(palette()).toEqual(paletteFor("dark", null, "256"));
+			expect(palette().dim).toMatch(/^\x1b\[38;5;\d+m$/);
+		} finally {
+			Object.defineProperty(process, "platform", platform);
+		}
 	});
 
 	it("a reported colour reaches the palette: the card of a #1e1e1e terminal is its own", () => {
