@@ -49,7 +49,7 @@
  */
 
 import { createRequire } from "node:module";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -59,11 +59,13 @@ const require = createRequire(fileURLToPath(new URL(".", import.meta.url)));
 
 // The CLI dist — importing it is safe: main() is guarded by the argv[1]
 // comparison (index.ts tail). The export exists for this script.
-const { SYSTEM_PROMPT } = require("../apps/cli/dist/index.js");
+const { SYSTEM_PROMPT, CODING_TOOL_RULES } = require("../apps/cli/dist/index.js");
 const { createCodingTools } = require("@vincemakes/kiso-tools-node");
 // The runtime's SINGLE source — the script predicts with the real built
 // module, never a copy (the same dist the release publishes).
 const { buildRentLedger } = await import("../packages/runtime/dist/trace/rent.js");
+// RG-F2: the generated table, by the runtime's own function
+const { composeToolTable } = await import("../packages/runtime/dist/compose.js");
 const { ToolRegistry } = await import("@vincemakes/kiso-core");
 
 /** The default bench composition — exactly what the CLI builds for an
@@ -82,11 +84,20 @@ export async function defaultCompositionParts({ home } = {}) {
 		const [mcp, skills, subagent] = await Promise.all([
 			import("@vincemakes/kiso-mcp-ext").then((m) => m.default()),
 			import("@vincemakes/kiso-skills-ext").then((m) => m.default()),
-			import("@vincemakes/kiso-subagent-ext").then((m) => m.default()),
+			// RG-F1, the same defect one package over: the CLI hands the subagent
+			// extension the session's tasks (builtin.ts), which adds `background`
+			// to delegate's schema (271 chars the prediction missed)
+			import("@vincemakes/kiso-subagent-ext").then((m) => m.default({ tasks: () => undefined })),
 		]);
 		return {
 			base: SYSTEM_PROMPT,
-			tools: createCodingTools({ workspaceRoot: process.cwd() }),
+			// RG-F1: the CLI hands the coding tools a session's tasks
+			// (apps/cli/src/state.ts codingToolOptions, `tasks: tasksFor`), and
+			// their PRESENCE is what shapes the table: the shell gains its task
+			// parameters, task_stop and wait join (tools-node createCodingTools).
+			// The stub answers no task question — only the shape is read here.
+			tools: createCodingTools({ workspaceRoot: process.cwd(), tasks: () => undefined }),
+			toolRules: CODING_TOOL_RULES,
 			extensions: [mcp, skills, subagent],
 		};
 	} finally {
@@ -108,9 +119,11 @@ export async function predictDefaultRentLedger(model, { home } = {}) {
 		for (const tool of ext.tools ?? []) registry.register(tool);
 		registry.registerLive(() => ext.tools ?? []);
 	}
+	const table = composeToolTable(registry, parts.toolRules);
 	return buildRentLedger({
 		model,
 		base: parts.base,
+		...(table !== "" ? { table } : {}),
 		appends: parts.extensions.flatMap((e) =>
 			e.systemPrompt?.append === undefined ? [] : [{ name: e.name, text: e.systemPrompt.append }],
 		),
@@ -228,10 +241,115 @@ async function printRentLedger(model) {
 	console.log(`  ${"total".padEnd(24)} ${String(totalChars).padStart(5)} chars / ${String(totalTokens).padStart(4)} est. tokens`);
 }
 
+/**
+ * Plan A (rev 2) — the static-surface RATCHET. The snapshot is the
+ * committed truth of the default composition's static rent, line by line;
+ * `--check` fails on ANY difference, either way:
+ *
+ *   - a line grew or appeared: growth needs `--snapshot --ruling <file>`,
+ *     which records the ruling in the snapshot's history (the owner's
+ *     approval, by name, in the diff a reviewer reads);
+ *   - a line shrank or vanished: `--snapshot` records the ratchet step,
+ *     so the snapshot is never a stale ceiling that would let the next
+ *     PR grow back into the room a diet freed.
+ *
+ * No absolute target (the owner's ruling, 2026-10-07): the number only
+ * moves down, or up by a named ruling. POSIX composition (the shell's
+ * description names its shell); `npm run check` is POSIX-only.
+ */
+const SNAPSHOT = new URL("./rent-snapshot.json", import.meta.url);
+const SNAPSHOT_MODEL = "deepseek-chat";
+
+async function currentLines() {
+	const home = mkdtempSync(join(tmpdir(), "kiso-rent-gate-"));
+	return (await predictDefaultRentLedger(SNAPSHOT_MODEL, { home })).map((l) => ({ surface: l.surface, chars: l.chars }));
+}
+
+/** Per-surface differences between two line lists (both directions). */
+export function diffLines(before, after) {
+	const was = new Map(before.map((l) => [l.surface, l.chars]));
+	const now = new Map(after.map((l) => [l.surface, l.chars]));
+	const out = [];
+	for (const [surface, chars] of now) {
+		const prior = was.get(surface);
+		if (prior === undefined) out.push({ surface, from: null, to: chars, kind: "appeared" });
+		else if (chars > prior) out.push({ surface, from: prior, to: chars, kind: "grew" });
+		else if (chars < prior) out.push({ surface, from: prior, to: chars, kind: "shrank" });
+	}
+	for (const [surface, chars] of was) if (!now.has(surface)) out.push({ surface, from: chars, to: null, kind: "vanished" });
+	return out;
+}
+
+const totalOf = (lines) => ({ chars: lines.reduce((a, l) => a + l.chars, 0), estTokens: lines.reduce((a, l) => a + Math.ceil(l.chars / 4), 0) });
+
+async function checkSnapshot() {
+	let snap;
+	try {
+		snap = JSON.parse(readFileSync(SNAPSHOT, "utf8"));
+	} catch (err) {
+		console.error(`[rent-gate] cannot read ${fileURLToPath(SNAPSHOT)}: ${err.message}`);
+		process.exit(1);
+	}
+	const lines = await currentLines();
+	const diffs = diffLines(snap.lines, lines);
+	const total = totalOf(lines);
+	if (diffs.length === 0) {
+		console.log(`[rent-gate] the default composition's static rent: ${total.chars} chars / ${total.estTokens} est. tokens — equal to the snapshot, line for line`);
+		return;
+	}
+	console.error(`[rent-gate] the static rent differs from scripts/rent-snapshot.json:`);
+	for (const d of diffs) console.error(`  ${d.kind.padEnd(8)} ${d.surface.padEnd(24)} ${d.from ?? "-"} -> ${d.to ?? "-"} chars`);
+	const grown = diffs.some((d) => d.kind === "grew" || d.kind === "appeared");
+	console.error(
+		grown
+			? `  a growth is recorded only with a ruling: node scripts/request-surface.mjs --snapshot --ruling <kiso-doc file>`
+			: `  a shrink is a ratchet step: record it with node scripts/request-surface.mjs --snapshot`,
+	);
+	process.exit(1);
+}
+
+async function writeSnapshot(ruling) {
+	let prior = null;
+	try {
+		prior = JSON.parse(readFileSync(SNAPSHOT, "utf8"));
+	} catch {
+		/* the first snapshot */
+	}
+	const lines = await currentLines();
+	const diffs = prior === null ? [] : diffLines(prior.lines, lines);
+	const grown = diffs.filter((d) => d.kind === "grew" || d.kind === "appeared");
+	if (grown.length > 0 && ruling === undefined) {
+		console.error(`[rent-gate] refused: these lines grew, and a growth needs --ruling <kiso-doc file>:`);
+		for (const d of grown) console.error(`  ${d.surface}: ${d.from ?? "-"} -> ${d.to}`);
+		process.exit(1);
+	}
+	const total = totalOf(lines);
+	const step = {
+		date: new Date().toISOString().slice(0, 10),
+		chars: total.chars,
+		estTokens: total.estTokens,
+		why: ruling ?? (prior === null ? "the first snapshot" : diffs.length === 0 ? "unchanged" : "a ratchet step (shrink only)"),
+	};
+	const out = {
+		model: SNAPSHOT_MODEL,
+		composition: "the default composition: built-in prompt, coding tools with tasks, the three default extensions, bare home, no project instructions; POSIX",
+		lines,
+		total,
+		history: [...(prior?.history ?? []), step],
+	};
+	writeFileSync(SNAPSHOT, JSON.stringify(out, null, "\t") + "\n");
+	console.log(`[rent-gate] snapshot written: ${total.chars} chars / ${total.estTokens} est. tokens (${step.why})`);
+}
+
 async function main() {
 	if (process.argv[2] === "--rent-ledger") {
 		await printRentLedger(process.argv[3] ?? "deepseek-chat");
 		return;
+	}
+	if (process.argv[2] === "--check") return checkSnapshot();
+	if (process.argv[2] === "--snapshot") {
+		const i = process.argv.indexOf("--ruling");
+		return writeSnapshot(i > 0 ? process.argv[i + 1] : undefined);
 	}
 	printDietA();
 }

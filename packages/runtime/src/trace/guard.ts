@@ -203,6 +203,7 @@ export class RequestTracer {
 		const rent = buildRentLedger({
 			model: options.model,
 			...(rentParts?.base !== undefined ? { base: rentParts.base } : {}),
+			...(rentParts?.table !== undefined ? { table: rentParts.table } : {}),
 			...(rentParts?.appends !== undefined ? { appends: rentParts.appends } : {}),
 			...(tools !== undefined ? { tools } : {}),
 		});
