@@ -192,6 +192,7 @@
   "packages/tools-node/tests/dc54-search-budget.test.ts",
   "packages/tools-node/tests/edit-fields.test.ts",
   "packages/tools-node/tests/hardening.test.ts",
+  "packages/tools-node/tests/list-dir-glob-0472.test.ts",
   "packages/tools-node/tests/process.test.ts",
   "packages/tools-node/tests/protected-credential-store.test.ts",
   "packages/tools-node/tests/r3-search-yields.test.ts",

@@ -110,6 +110,14 @@ export interface CorpusOptions {
 	/** Start the walk here instead of at the root. The DECLARATION is still
 	 *  read at `workspaceRoot` and paths are still relative to it. */
 	walkFrom?: string;
+	/** 0.47.2: stop after VISITING this many files, accepted or not — the
+	 *  walk's own budget, beside `maxEntries`, which bounds what it returns.
+	 *  A glob that matches little walked the whole tree under it: 11 s from
+	 *  a home directory. Default: no cap. */
+	maxVisited?: number;
+	/** 0.47.2: the call's wall-clock deadline (epoch ms); the walk stops
+	 *  between entries once it has passed. Default: none. */
+	deadline?: number;
 }
 
 export interface CorpusWalk {
@@ -123,6 +131,12 @@ export interface CorpusWalk {
 	cutByDepth: boolean;
 	/** The entry cap was reached. */
 	cutByCap: boolean;
+	/** 0.47.2: the walk stopped at `maxVisited` files. */
+	cutByVisits: boolean;
+	/** 0.47.2: the walk stopped at its deadline. */
+	cutByDeadline: boolean;
+	/** The files visited, accepted or not. */
+	visited: number;
 }
 
 /** One directory's `.gitignore`, and the directory it is relative to. */
@@ -174,6 +188,8 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 	const root = opts.workspaceRoot;
 	const maxDepth = opts.maxDepth ?? CORPUS_MAX_DEPTH;
 	const maxEntries = opts.maxEntries ?? Number.POSITIVE_INFINITY;
+	const maxVisited = opts.maxVisited ?? Number.POSITIVE_INFINITY;
+	const deadline = opts.deadline ?? Number.POSITIVE_INFINITY;
 	const rootLayer = readLayer(root);
 	/** No declaration, nothing to trust: the pre-corpus rule, unchanged. */
 	const declared = rootLayer !== null;
@@ -181,9 +197,17 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 	const files: string[] = [];
 	let cutByDepth = false;
 	let cutByCap = false;
+	let cutByVisits = false;
+	let cutByDeadline = false;
+	let visited = 0;
+	const stopped = (): boolean => cutByCap || cutByVisits || cutByDeadline;
 
 	const walk = (dir: string, depth: number, layers: readonly Layer[]): void => {
-		if (cutByCap) return;
+		if (stopped()) return;
+		if (Date.now() > deadline) {
+			cutByDeadline = true;
+			return;
+		}
 		let entries;
 		try {
 			entries = readdirSync(dir, { withFileTypes: true });
@@ -192,7 +216,7 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 		}
 		const here = depth === 0 ? layers : layersEntering(dir, layers);
 		for (const entry of entries) {
-			if (cutByCap) return;
+			if (stopped()) return;
 			const name = entry.name;
 			const full = join(dir, name);
 			const isDir = entry.isDirectory();
@@ -205,6 +229,16 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 				}
 				walk(full, depth + 1, here);
 				continue;
+			}
+			if (visited >= maxVisited) {
+				cutByVisits = true;
+				return;
+			}
+			visited += 1;
+			// the clock is read every 256 files, not per file
+			if ((visited & 255) === 0 && Date.now() > deadline) {
+				cutByDeadline = true;
+				return;
 			}
 			const rel = relative(root, full).split(sep).join("/");
 			if (opts.accept !== undefined && !opts.accept(rel)) continue;
@@ -227,7 +261,7 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 		}
 	}
 	walk(start, 0, startLayers);
-	return { files, cutByDepth, cutByCap };
+	return { files, cutByDepth, cutByCap, cutByVisits, cutByDeadline, visited };
 }
 
 /** A minimal glob → RegExp, anchored, over workspace-relative POSIX paths.

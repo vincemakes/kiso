@@ -132,7 +132,14 @@ export function reconcile(recs, expected) {
 	const efforts = calls.map((r) => effortOf(r.body));
 	const missingEffort = efforts.filter((e) => e === null).length;
 	const distinct = [...new Set(efforts.filter(Boolean))];
-	if (expected.effort) {
+	// `none` is the PROVIDER'S DEFAULT, declared for both arms (a route where
+	// the effort switch cannot bind — the 0.46.0 evaluation): it is verified
+	// as ABSENCE, every body carrying no effort field at all.
+	const atDefault = expected.effort === "none";
+	if (atDefault) {
+		const carrying = calls.length - missingEffort;
+		if (carrying > 0) problems.push(`${carrying} of ${calls.length} bodies carry an effort field, the leg declares none`);
+	} else if (expected.effort) {
 		if (missingEffort > 0) problems.push(`${missingEffort} of ${calls.length} bodies carry no effort field`);
 		else if (distinct.length !== 1 || distinct[0] !== expected.effort) {
 			problems.push(`bodies carry effort ${JSON.stringify(distinct)}, the leg declares ${JSON.stringify(expected.effort)}`);
@@ -149,7 +156,7 @@ export function reconcile(recs, expected) {
 		problems,
 		checked: calls.length,
 		nonCallRecords: recs.length - calls.length,
-		effortObserved: distinct.length === 1 ? distinct[0] : distinct,
+		effortObserved: atDefault && calls.length > 0 && missingEffort === calls.length ? "none" : distinct.length === 1 ? distinct[0] : distinct,
 		bytesFirst: sizes[0] ?? null,
 		bytesLast: sizes[sizes.length - 1] ?? null,
 		shrinks,

@@ -17,8 +17,8 @@
  */
 
 import { open, readdir } from "node:fs/promises";
-import { basename, join, relative } from "node:path";
-import { corpusSkips, layersEntering, readLayer, type Layer } from "./corpus.js";
+import { basename, join, relative, sep } from "node:path";
+import { corpusSkips, layersEntering, readLayer, walkCorpus, type Layer } from "./corpus.js";
 import { isMainThread, parentPort } from "node:worker_threads";
 import { diskPath, isProtectedDiskPath, type ProtectedIdentity } from "./protected.js";
 
@@ -60,6 +60,7 @@ function excerptAround(line: string, regex: RegExp): string {
 }
 
 export interface SearchRequest {
+	readonly kind?: "search";
 	readonly token: number;
 	readonly root: string;
 	/** The WORKSPACE root, which is not always the search root: a search under
@@ -100,6 +101,57 @@ export interface SearchReply {
 	readonly stopped: boolean;
 	readonly stoppedAt: number;
 	readonly error?: string;
+}
+
+/** 0.47.2 — `list_dir`'s glob walk, on this thread. It walked on the main
+ *  thread, synchronously: a project's name sought from a home directory held kiso
+ *  for 11 s — no frame, no timer, no esc. The walk is the SAME
+ *  `walkCorpus` it always was; it runs here, under the call's budget. */
+export interface GlobRequest {
+	readonly kind: "glob";
+	readonly token: number;
+	/** Both realpath'd by the caller, for the reason `SearchRequest`'s
+	 *  workspace root is: a path made relative between a resolved and an
+	 *  unresolved base is `../..` the moment a symlink sits between them. */
+	readonly workspaceRoot: string;
+	readonly walkFrom: string;
+	/** the compiled glob (`globToRegExp`), as source and flags */
+	readonly source: string;
+	readonly flags: string;
+	/** DC-49 exclude roots, workspace-relative */
+	readonly excluded: readonly string[];
+	readonly maxEntries: number;
+	readonly maxVisited: number;
+	readonly deadline: number;
+}
+
+export interface GlobReply {
+	readonly kind: "glob";
+	readonly token: number;
+	readonly files: string[];
+	readonly cutByDepth: boolean;
+	readonly cutByCap: boolean;
+	readonly cutByVisits: boolean;
+	readonly cutByDeadline: boolean;
+	readonly visited: number;
+	readonly error?: string;
+}
+
+export function runGlob(req: GlobRequest): GlobReply {
+	const re = new RegExp(req.source, req.flags);
+	const walk = walkCorpus({
+		workspaceRoot: req.workspaceRoot,
+		walkFrom: req.walkFrom,
+		maxEntries: req.maxEntries,
+		maxVisited: req.maxVisited,
+		deadline: req.deadline,
+		accept: (rel) => re.test(rel),
+		isExcluded: (full) => {
+			const r = relative(req.workspaceRoot, full).split(sep).join("/");
+			return req.excluded.some((ex) => r === ex || r.startsWith(`${ex}/`));
+		},
+	});
+	return { kind: "glob", token: req.token, ...walk };
 }
 
 export async function runSearch(req: SearchRequest): Promise<SearchReply> {
@@ -212,7 +264,15 @@ export async function runSearch(req: SearchRequest): Promise<SearchReply> {
 }
 
 if (!isMainThread && parentPort !== null) {
-	parentPort.once("message", (req: SearchRequest) => {
+	parentPort.once("message", (req: SearchRequest | GlobRequest) => {
+		if (req.kind === "glob") {
+			try {
+				parentPort!.postMessage(runGlob(req));
+			} catch (err) {
+				parentPort!.postMessage({ kind: "glob", token: req.token, files: [], cutByDepth: false, cutByCap: false, cutByVisits: false, cutByDeadline: false, visited: 0, error: (err as Error).message } satisfies GlobReply);
+			}
+			return;
+		}
 		void runSearch(req).then(
 			(reply) => parentPort!.postMessage(reply),
 			(err: unknown) => parentPort!.postMessage({ token: req.token, matches: [], totalMatches: 0, filesSeen: 0, skippedFiles: 0, multiLink: 0, unreadableDirs: 0, excludedDirs: 0, stopped: false, stoppedAt: 0, error: (err as Error).message } satisfies SearchReply),
