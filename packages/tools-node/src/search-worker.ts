@@ -104,7 +104,7 @@ export interface SearchReply {
 }
 
 /** 0.47.2 — `list_dir`'s glob walk, on this thread. It walked on the main
- *  thread, synchronously: `**\/flowpix*` from a home directory held kiso
+ *  thread, synchronously: a project's name sought from a home directory held kiso
  *  for 11 s — no frame, no timer, no esc. The walk is the SAME
  *  `walkCorpus` it always was; it runs here, under the call's budget. */
 export interface GlobRequest {

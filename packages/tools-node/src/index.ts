@@ -638,7 +638,7 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 				if (glob !== undefined) {
 					const re = globToRegExp(glob);
 					// 0.47.2 (the owner's trace, 2026-10-08): the walk ran HERE,
-					// synchronously — `**\/flowpix*` from a home directory held the
+					// synchronously — a project's name sought from a home directory held the
 					// main thread for 11.02 s, and no frame, timer or esc reached
 					// kiso until it returned. It runs on the search worker now
 					// (CX-1 F4's thread), under `search_text`'s budget: a cap on the

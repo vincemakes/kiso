@@ -2,7 +2,7 @@
  * 0.47.2 — `list_dir` with a glob walks off the main thread (the owner's
  * trace, 2026-10-08).
  *
- * `list_dir {"path": ".", "glob": "**\/flowpix*"}` from a home directory
+ * `list_dir {"path": ".", "glob": "**\/<project>*"}` from a home directory
  * walked synchronously on the main thread for 11.02 s: no frame, no timer,
  * no esc reached kiso until it returned, and the working row's mark stood
  * still. `search_text` had moved its walk into the search worker (CX-1 F4)
@@ -24,7 +24,7 @@ function tree(dirs: number, filesPerDir: number): string {
 		mkdirSync(sub, { recursive: true });
 		for (let f = 0; f < filesPerDir; f += 1) writeFileSync(join(sub, `file${String(f).padStart(3, "0")}.ts`), "export {};\n");
 	}
-	writeFileSync(join(root, "proj000", "flowpix-notes.md"), "# notes\n");
+	writeFileSync(join(root, "proj000", "project-notes.md"), "# notes\n");
 	return root;
 }
 
@@ -34,17 +34,19 @@ describe("0.47.2 — list_dir's glob walk runs off the main thread", () => {
 	it("the call hands the walk to the search worker: one in flight while it runs", async () => {
 		const tool = listDirTool({ workspaceRoot: tree(4, 5) });
 		const before = searchWorkerStats().inFlight;
-		const pending = tool.execute({ glob: "**/flowpix*" }, ctx());
+		const pending = tool.execute({ glob: "**/project-notes*" }, ctx());
 		// a synchronous walk has finished by the time execute returns its
 		// promise; a walk on the worker is still in flight here
 		expect(searchWorkerStats().inFlight).toBe(before + 1);
 		const r = await pending;
-		expect(r.content).toContain("proj000/flowpix-notes.md");
+		expect(r.content).toContain("proj000/project-notes.md");
 		expect(searchWorkerStats().inFlight).toBe(before);
 	});
 
 	it("the main thread stays live: a timer fires before the call returns", async () => {
-		const tool = listDirTool({ workspaceRoot: tree(30, 100) });
+		// small on purpose: the worker's own start outlasts a 1 ms tick, and
+		// a large tree only adds disk work under load (one 20 s stall seen)
+		const tool = listDirTool({ workspaceRoot: tree(5, 20) });
 		let ticks = 0;
 		const timer = setInterval(() => (ticks += 1), 1);
 		let atReturn = -1;
@@ -64,7 +66,7 @@ describe("0.47.2 — list_dir's glob walk runs off the main thread", () => {
 	});
 
 	it("a walk past its budget returns within searchMaxMs + 250 ms, with the budget note", async () => {
-		const tool = listDirTool({ workspaceRoot: tree(40, 100), limits: { searchMaxMs: 1 } });
+		const tool = listDirTool({ workspaceRoot: tree(5, 20), limits: { searchMaxMs: 1 } });
 		const t0 = Date.now();
 		const r = await tool.execute({ glob: "**/nothing-matches-this*" }, ctx());
 		expect(Date.now() - t0).toBeLessThan(1 + 250);
