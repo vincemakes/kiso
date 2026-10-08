@@ -1,10 +1,11 @@
 # ADR-0059: `wait` — a run may end on a future event and resume on it
 
-- **Status:** **Accepted** — the direction, "a wait is a task", the three
-  overturns below and the chain bound were ruled by the owner on
-  2026-10-05 and 2026-10-06, in their own words in chat. This ADR lands
-  with the implementation (release 1 of the primitive it opens); the
-  releases that follow amend it.
+- **Status:** **Withdrawn** (2026-10-07, Amendment 1 at the end) — the
+  `wait` tool, the wait profile and the GitHub drivers are removed before
+  any release shipped them; **the chain budget stays**, now recorded as
+  ADR-0058 Amendment 9. Originally accepted: the direction, "a wait is a
+  task", the three overturns below and the chain bound were ruled by the
+  owner on 2026-10-05 and 2026-10-06, in their own words in chat.
 - **Date:** 2026-10-06
 - **Layer:** `packages/runtime` (the task journal, the TaskManager, the
   delivery), `packages/tools-node` (the `wait` tool), `apps/cli` (two
@@ -188,3 +189,51 @@ left open, or a session hosted by kiso-server); no webhooks; no `any`/
 - `ShellTasks.wait` / `waitKinds` are optional: a host that wires neither
   gets a `wait` tool that answers "waits are not available".
 - `TaskState` gains `waiting`; `ended` may carry `wait: { outcome }`.
+
+## Amendment 1 (2026-10-07) — withdrawn; the chain budget stays
+
+**The owner's ruling (2026-10-07, in chat):** the `wait` tool is
+withdrawn before it ships. Removed: the model-facing `wait` tool, the
+`wait` task profile (its records, verdict, notice line and re-arm), the
+`timer` / `task` drivers, the CLI's `gh-checks` / `gh-review` drivers,
+`ShellTasks.wait` / `waitKinds`, `TaskManager({ drivers })`. Kept: the
+chain budget (`maxWakes`, the setting and the host option) — ADR-0058
+Amendment 9.
+
+**Why.** Every case `wait` served is already a task. A foreground command
+that outlives its wait becomes a background task and wakes the session
+when it ends (ADR-0058 ruling 2): `gh pr checks <pr> --watch` waits for
+CI and exits with its verdict; `sleep 1200` is a timer; a polling script
+waits for a review; `timeout` gives any of them a deadline. With the
+chain budget those wakes chain. What the tool added beyond that — no
+process held while waiting, a structured payload, a deadline in the
+record — did not pay for its rent: +150 tokens on EVERY request of a
+session with tasks (measured, round wait-r1), whether or not it ever
+waited, against a cost-weighted gain no round measured.
+
+**The reason, in its order.** Not the rent first: the tool did not add a
+capability the task model lacks, so no standing rent was worth paying for
+it — had `wait` changed what an agent can do, +150 tokens would have been
+cheap. Round wait-r1 also showed the abstraction leaking into the model:
+in one leg the model waited on its own wait and registered a 1 ms timer
+"to yield the turn" (finding W-F1), and the fix was more rules telling
+the model how to hold the concept. A task needs none: start it, end the
+message, its end wakes you.
+
+**What this does NOT rule.** It does not rule that every wait is a task.
+The scenarios evaluated (a long command, CI, a timer, a review) map onto
+tasks well enough; others — a webhook, a database state, an email, a
+person's approval from another client — may not, and wrapping each in an
+OS process is not the end design. When a product needs one, event waiting
+is designed again from that need, under whatever name fits; this ADR's
+text is a record of one attempt, not a constraint on the next.
+
+**What round wait-r1 still taught, kept:** the paired bench's noise on
+the Command Code route (two runs of one comparison: +43.6% and −3.3%),
+which is why the 0.48.0 gate runs at least 12 pairs per set and treats
+any other count as INVALID; and "a discriminating run must prove its
+premise before it is frozen".
+
+This ADR keeps its number and its text above, as every withdrawn ADR
+does (the immutability rule); the README's count of ADR files is
+unchanged.

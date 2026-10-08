@@ -14,7 +14,10 @@ import type { ValidateFunction } from "ajv";
 const ajv = new Ajv({ strict: false });
 const cache = new WeakMap<object, ValidateFunction>();
 
-/** Returns a human-readable failure reason, or null when the input is valid. */
+/** Returns a human-readable failure reason, or null when the input is valid.
+ *  K15a: a refused undeclared argument is named — the model's own field,
+ *  JSON-quoted and cut at 96 characters — so the call is fixable; no other
+ *  validator detail reaches the model (an enum's values stay unlisted). */
 export function validateArgs(schema: Readonly<Record<string, unknown>>, input: unknown): string | null {
 	let validate = cache.get(schema);
 	if (!validate) {
@@ -25,7 +28,9 @@ export function validateArgs(schema: Readonly<Record<string, unknown>>, input: u
 	const first = validate.errors?.[0];
 	if (first) {
 		const where = first.instancePath || "/";
-		return `${where} ${first.message ?? "is invalid"}`;
+		const extra = first.keyword === "additionalProperties" ? String(first.params.additionalProperty) : undefined;
+		const named = extra === undefined ? "" : `: ${JSON.stringify(extra.length > 96 ? `${extra.slice(0, 96)}…` : extra)}`;
+		return `${where} ${first.message ?? "is invalid"}${named}`;
 	}
 	return "arguments failed schema validation";
 }

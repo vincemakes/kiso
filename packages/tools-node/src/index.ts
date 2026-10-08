@@ -1347,17 +1347,6 @@ export interface ShellTasks {
 	};
 	stop(id: string, by: "model"): boolean;
 	get(id: string): { readonly state: { readonly kind: string } } | undefined;
-	/** ADR-0059 release 1: register a wait — a task whose terminal is the
-	 *  event. Absent, the `wait` tool reports that waits are unavailable. */
-	wait?(spec: {
-		readonly source: { readonly kind: string; readonly [field: string]: unknown };
-		readonly deadlineMs?: number;
-		readonly note?: string;
-		readonly goalId?: string;
-		readonly executionId?: string;
-	}): Promise<{ readonly id: string; readonly command: string; readonly wait?: { readonly deadlineAt: number } }>;
-	/** The wait kinds this session can register. */
-	waitKinds?(): readonly string[];
 	/** ADR-0058 Amendment 7: wait for a task's end (or ready line) that this
 	 *  call's result will report; what it sees is claimed for `executionId`,
 	 *  so it is never noticed. Without it the calls return at once (today's
@@ -1795,59 +1784,6 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
 	});
 }
 
-/** ADR-0059 release 1 — `wait`: end this turn on a future event and be
- *  woken by it. The call registers the wait and returns at once; the model
- *  finishes its message; the event comes back as a runtime notice (a wake
- *  run in an idle session, the next safe point in a live one). */
-export function waitTool(opts: WorkspaceToolsOptions): Tool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number; note?: string; goalId?: string }> {
-	return defineTool<{ for: { kind: string; [field: string]: unknown }; deadlineMs?: number; note?: string; goalId?: string }>({
-		name: "wait",
-		description:
-			"Wait for a future event without polling: a timer ({kind:\"timer\", ms}), a background task's end ({kind:\"task\", id}), or an event source this session registered. Returns at once; then finish your message and stop — the event comes back as a runtime notice.",
-		parameters: {
-			type: "object",
-			properties: {
-				for: {
-					type: "object",
-					description: "What to wait for: kind plus that kind's fields",
-					properties: { kind: { type: "string", description: "timer | task | a registered source kind" } },
-					required: ["kind"],
-					additionalProperties: true,
-				},
-				deadlineMs: { type: "integer", minimum: 1, description: "Give up after this long (default 24 h, at most 7 d); an expiry is reported like any end" },
-				note: { type: "string", maxLength: 200, description: "Shown beside the wait while it waits" },
-				goalId: { type: "string", description: "The goal this wait serves, when one is open" },
-			},
-			required: ["for"],
-			additionalProperties: false,
-		},
-		promptSnippet: "wait — end this turn and be woken by a timer, a task's end, or a registered event",
-		promptGuidelines: ["After `wait`, finish your message and stop: the event comes back as a runtime notice. Never poll in a loop for something you can wait on."],
-		execute: async ({ for: source, deadlineMs, note, goalId }, ctx) => {
-			const tasks = opts.tasks?.(ctx.sessionId);
-			if (tasks?.wait === undefined) return { content: "waits are not available in this session", isError: true, errorKind: "precondition" };
-			const kinds = tasks.waitKinds?.() ?? [];
-			if (!kinds.includes(source.kind)) return { content: `no such wait kind "${source.kind}" (available: ${kinds.join(", ") || "none"})`, isError: true, errorKind: "precondition" };
-			if (source.kind === "timer" && !(typeof source.ms === "number" && Number.isFinite(source.ms) && source.ms > 0)) return { content: 'a timer wait needs { kind: "timer", ms: <positive integer> }', isError: true, errorKind: "precondition" };
-			if (source.kind === "task") {
-				const id = typeof source.id === "string" ? source.id : "";
-				const info = tasks.get(id);
-				if (info === undefined) return { content: `no task ${id || "(none given)"} in this session`, isError: true, errorKind: "precondition" };
-				if (info.state.kind === "ended") return { content: `task ${id} has already ended — nothing to wait for`, isError: true, errorKind: "precondition" };
-			}
-			const w = await tasks.wait({
-				source,
-				...(deadlineMs !== undefined ? { deadlineMs } : {}),
-				...(note !== undefined ? { note } : {}),
-				...(goalId !== undefined ? { goalId } : {}),
-				...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
-			});
-			const until = w.wait !== undefined ? `, until ${new Date(w.wait.deadlineAt).toISOString()}` : "";
-			return { content: `waiting as ${w.id} (${w.command}${until}). Finish your message and stop; you will be woken when it fires. task_stop ${w.id} cancels it.`, isError: false };
-		},
-	});
-}
-
 /** The full coding toolset, bound to one workspace root (Area 5). */
 export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<any>[] {
 	return [
@@ -1857,6 +1793,6 @@ export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<an
 		writeFileTool(opts),
 		editFileTool(opts),
 		shellTool(opts),
-		...(opts.tasks !== undefined ? [taskStopTool(opts), waitTool(opts)] : []),
+		...(opts.tasks !== undefined ? [taskStopTool(opts)] : []),
 	];
 }
