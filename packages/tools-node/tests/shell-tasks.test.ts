@@ -198,7 +198,10 @@ describe("ADR-0058 Amendment 7 — task_stop waits for the end and says how it e
 		expect(s.content).toMatch(/^stopped task t1 \(SIGTERM; it ran \d+(\.\d+)?s\)/);
 		expect(manager.get("t1")!.state).toMatchObject({ kind: "ended", stopped: true });
 		expect(claimsOf(manager, "t1")).toEqual([expect.objectContaining({ transition: "stopped", executionId: "ex-stop" })]);
-	});
+		// the budget is task_stop's own wait (8 s, Amendment 7) plus the
+		// background start; vitest's default 5 s was shorter than the call
+		// under test may legitimately take on a loaded runner
+	}, 20_000);
 
 	it("Esc during the wait returns at once, claims nothing, and says the end is not confirmed", async () => {
 		const { manager, shell, stop } = setup();

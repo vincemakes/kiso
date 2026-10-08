@@ -273,14 +273,13 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 		expect(ctxs.length).toBeGreaterThanOrEqual(2);
 		expect(ctxs.at(-1)!).toBeLessThan(ctxs[0]!);
 
-		// 0.39.1 — the boundary row is ON SCREEN, under the recap, and says
-		// the SAME seq the durable record does. Before this it was written
-		// by nothing: `summarized` is appended off-loop, so the one `case`
-		// that could draw it had no caller and the log's boundary had no
-		// rendering anywhere.
-		expect(plain).toContain("[summarized up to seq 14]");
-		// …and it is BELOW the recap, not somewhere above it.
-		expect(plain.indexOf("[summarized up to seq 14]")).toBeGreaterThan(plain.indexOf("COMPACTED"));
+		// RE-DERIVED (0.47.1, finding 0470-F2, owner 2026-10-07): on a dock
+		// the COMPACTED row above already says the compaction happened, and
+		// the raw `[summarized up to seq 14]` under it is gone — as the
+		// in-run path's went in the compaction round (§7.12). It was 0.39.1's
+		// boundary row; the pipe still prints it (the pipe case below), and
+		// the durable record still carries the seq (asserted next).
+		expect(plain).not.toContain("[summarized up to seq");
 
 		// The summarized event is on disk, keyed to the covered boundary:
 		// 9 rounds total (8 seed inputs at 0..21 + the go turn at 22) →
@@ -426,6 +425,8 @@ describe("ADR-0044 cli: /compact through a pipe", () => {
 		expect(run.status).toBe(0);
 		// W18 re-baseline: the recap (8 seed rounds − 4 kept = 4 covered).
 		expect(run.stdout).toContain("[/compact] ✦ compacted · 4 rounds → 1 summary · saved ~");
+		// 0.39.1's boundary row, kept on the pipe (0.47.1 drops it on a dock)
+		expect(run.stdout).toMatch(/\[summarized up to seq \d+\]/);
 		expect(run.stdout).not.toContain("\u001b["); // the pipe is byte-clean
 		const durable = readFileSync(join(home, "sessions", "kp.jsonl"), "utf8");
 		expect(durable).toContain('"type":"summarized"');

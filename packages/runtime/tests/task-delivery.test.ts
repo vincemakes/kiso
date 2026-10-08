@@ -112,7 +112,7 @@ describe("ADR-0058 §8 — an idle session: wake, notify, the switch, lineage", 
 		manager.close();
 	});
 
-	it("the chain (ADR-0059 §3.3, overturning guard 3): a task started inside a wake run wakes again — until the budget is spent", async () => {
+	it("the chain (ADR-0058 Amendment 9, overturning guard 3): a task started inside a wake run wakes again — until the budget is spent", async () => {
 		let started = "";
 		const { session, manager } = await setup([TOOL, END], async (ctx, m) => {
 			started = (await m.start({ command: "b", cwd: "/", ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}) })).id;

@@ -1,6 +1,6 @@
 # ADR-0058: Tasks — execution that outlives the tool call that started it
 
-- **Status:** **Accepted** (§8 guard 3 and §10's "no scheduled tasks" overturned by ADR-0059, 2026-10-06 — see Amendment 9) — ratified by the owner on 2026-09-28, in
+- **Status:** **Accepted** (§8 guard 3 overturned by the chain budget, 2026-10-06 — see Amendment 9) — ratified by the owner on 2026-09-28, in
   their own words, with the group rule as written in §8 (a failure never
   wakes on its own). Rev 2: rev 1 went through one external review and
   its findings are applied (a visible one-release alias, `background` vs
@@ -883,7 +883,7 @@ is how the person meets it, and when kiso concludes it.
    terminal appears, `ended` is announced, so a model told "unknown"
    learns how it ended.
 
-## Amendment 9 (2026-10-06, ADR-0059) — the chain budget replaces lineage depth 1; one-shot timers
+## Amendment 9 (2026-10-06; trimmed 2026-10-07) — the chain budget replaces lineage depth 1
 
 - **§8 guard 3 ("lineage depth 1") is overturned.** A task that ends
   inside a wake run may wake again. The bound is the chain budget:
@@ -892,12 +892,9 @@ is how the person meets it, and when kiso concludes it.
   a wake run is one whose first input is a runtime notice. Past the
   budget a terminal delivers as a notify whose line says "chain budget
   spent". The switch (guard 4) stands.
-- **§10's "no scheduled or recurring tasks" is overturned for one-shot
-  timers.** A wait with `{ kind: "timer", ms }` is a task whose terminal
-  is the fire time. No recurrence.
-- **A fourth profile, `wait`.** Its records (`wait_fired`,
-  `wait_expired`), its verdict (`waiting`), and its notice line
-  (`<kiso-wait …/>`) are ADR-0059's. The restart rule of §6/§8 — a
-  terminal missed while nobody listened is a notify, never a wake at
-  startup — applies to a wait that resolves at re-arm because its time
-  had passed (`overdue`).
+- *Trimmed 2026-10-07 (ADR-0059 Amendment 1, the `wait` tool
+  withdrawn):* the two further bullets this amendment carried — §10's
+  "no scheduled tasks" overturned for one-shot timers, and a fourth
+  profile `wait` — are void. §10 stands as written. The chain budget
+  above is what remains, for every task: a background subagent group or
+  command started inside a wake run now wakes again, up to the budget.
