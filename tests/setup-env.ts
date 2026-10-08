@@ -26,6 +26,9 @@ delete process.env.TERM_PROGRAM;
 process.env.COLORTERM = "truecolor";
 delete process.env.KISO_THEME;
 delete process.env.COLORFGBG;
+// 0.47.1: without COLORTERM the tier also reads which terminal this is
+// (graphite.ts terminalTier) — the host's own terminal must not decide it
+for (const k of ["WT_SESSION", "ITERM_SESSION_ID", "WEZTERM_PANE", "KITTY_WINDOW_ID", "GHOSTTY_RESOURCES_DIR", "TERMINAL_EMULATOR"]) delete process.env[k];
 
 // DC-48 — INVARIANT ① THROWS UNDER TEST.
 //
