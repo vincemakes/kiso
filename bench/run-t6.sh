@@ -339,6 +339,15 @@ case "$TOOL" in
       note_exit "bucket $P" "$_rc" "$_left"
       P=$((P + 1))
     done
+    # the leg's own record of the binary it ran, as run-t5.sh writes it: the
+    # paired runner voids a leg whose meta does not name its arm's version
+    node -e "
+const fs = require('fs');
+fs.writeFileSync('$WORK/meta.json', JSON.stringify({
+  tool: 'kiso', task: '$LABEL', run: '$RUN', round: process.env.KISO_ROUND || null,
+  model: '$ROUTE_MODEL', route: '$BENCH_ROUTE', kisoVersion: '$KISO_VERSION', createdAt: Date.now(),
+}, null, 1) + '\\n');
+"
     ;;
   pi)
     # THE ROUTE, as run-t5.sh: ds uses the arm's built-in provider with its
@@ -379,7 +388,7 @@ case "$TOOL" in
         sleep 2
         REF_BASE="http://127.0.0.1:$CAP_PORT$ROUTE_PATH"
       fi
-      route_ref_models_json "$REF_BASE" "$B/cred-print.sh" > "$BARE_HOME/.pi/agent/models.json"
+      route_ref_models_json "$REF_BASE" "$B/cred-print.sh" "ref-$RUN-$$" > "$BARE_HOME/.pi/agent/models.json"
       CAPTURE_DECL=".pi/agent/models.json"
     fi
     assert_bare pi "$BARE_HOME" $CAPTURE_DECL || exit 1
