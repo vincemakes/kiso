@@ -51,7 +51,14 @@ const MARGINS = {
 	"bm1-frozen": { medianCost: 0.06, maxPairBlocks: true, medianWall: 0.25, method: "BM-1 paired (frozen margins, provisional until 0.13.0)" },
 };
 
-export function pairedVerdict(rcRows, ctlRows, marginSet = "bm1-a1") {
+/**
+ * expectPairs (0.48.0 kit §4): the pre-registered sample size is a MACHINE
+ * gate. When given, any count of usable pairs other than it is INVALID — no
+ * verdict, neither PASS nor FAIL: the product did not fail, the experiment
+ * did not reach its registered n. Without it the old behaviour stands (the
+ * historical records are re-read with it absent).
+ */
+export function pairedVerdict(rcRows, ctlRows, marginSet = "bm1-a1", expectPairs = undefined) {
 	const m = MARGINS[marginSet];
 	if (m === undefined) throw new Error(`unknown margin set: ${marginSet}`);
 	const key = (r) => `${r.task}-${r.run}`;
@@ -78,6 +85,9 @@ export function pairedVerdict(rcRows, ctlRows, marginSet = "bm1-a1") {
 		medianWallOk: median(dWall) <= m.medianWall,
 	};
 	const pass = criteria.verifyAllPass && criteria.medianCostOk && (!m.maxPairBlocks || criteria.maxPairOk) && criteria.medianWallOk;
+	criteria.usablePairs = pairs.length;
+	if (expectPairs !== undefined) criteria.expectedPairs = expectPairs;
+	const invalid = expectPairs !== undefined && pairs.length !== expectPairs;
 	return {
 		method: m.method,
 		pairs: pairs.map((p, i) => ({
@@ -89,7 +99,7 @@ export function pairedVerdict(rcRows, ctlRows, marginSet = "bm1-a1") {
 			verify: `${p.rc.verify}/${p.ctl.verify}`,
 		})),
 		criteria,
-		verdict: pass ? "PASS" : "FAIL",
+		verdict: invalid ? "INVALID" : pass ? "PASS" : "FAIL",
 	};
 }
 
@@ -98,17 +108,25 @@ const CAUSAL_BLOCKING = { ui: false, request: true, execution: false, provider: 
 function main() {
 	const [rcPath, ctlPath, ...rest] = process.argv.slice(2);
 	if (!rcPath || !ctlPath) {
-		process.stderr.write("usage: paired-compare.mjs <rc.json> <ctl.json> [--causal=tier]\n");
+		process.stderr.write("usage: paired-compare.mjs <rc.json> <ctl.json> [--causal=tier] [--margins=set] [--expect-pairs=N]\n");
 		process.exit(1);
 	}
 	const causal = (rest.find((a) => a.startsWith("--causal=")) ?? "--causal=request").slice(9);
 	const marginSet = (rest.find((a) => a.startsWith("--margins=")) ?? "--margins=bm1-a1").slice(10);
+	const expectArg = rest.find((a) => a.startsWith("--expect-pairs="));
+	const expectPairs = expectArg === undefined ? undefined : Number(expectArg.slice(15));
+	if (expectPairs !== undefined && !(Number.isInteger(expectPairs) && expectPairs > 0)) {
+		process.stderr.write(`paired-compare: --expect-pairs needs a positive integer, got ${expectArg}\n`);
+		process.exit(1);
+	}
 	const rows = (x) => (Array.isArray(x) ? x : (x.runs ?? []));
-	const v = pairedVerdict(rows(JSON.parse(readFileSync(rcPath, "utf8"))), rows(JSON.parse(readFileSync(ctlPath, "utf8"))), marginSet);
+	const v = pairedVerdict(rows(JSON.parse(readFileSync(rcPath, "utf8"))), rows(JSON.parse(readFileSync(ctlPath, "utf8"))), marginSet, expectPairs);
 	v.causalTier = causal;
 	v.blocking = CAUSAL_BLOCKING[causal] ?? true;
 	v.disposition =
-		v.verdict === "PASS"
+		v.verdict === "INVALID"
+			? `INVALID — ${v.criteria.usablePairs} usable pairs of ${v.criteria.expectedPairs} registered; no verdict (complete the set under the kit's void rules, never re-judge it with fewer)`
+			: v.verdict === "PASS"
 			? "PASS — ships (proposed, for the reviewer)"
 			: v.blocking
 				? "FAIL — BLOCKS the release (the causal tier makes the paired bench a blocker)"
