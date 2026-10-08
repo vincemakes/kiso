@@ -115,10 +115,11 @@ describe("E3 — R7 star: the script's prediction equals a real session's record
 		expect(predicted.some((l) => l.surface === "system:base")).toBe(true);
 		// RG-F2: the generated table is its own line, right after the base
 		expect(predicted[1]!.surface).toBe("system:tools");
-		// RG-F1/F3: the product's composition — the shell with its task
-		// parameters, task_stop and wait — not the task-less one
+		// RG-F1: the product's composition — the shell with its task
+		// parameters and task_stop — not the task-less one (wait was
+		// withdrawn by #271 before it shipped; RG-F3 no longer applies)
 		expect(predicted.some((l) => l.surface === "tool:task_stop")).toBe(true);
-		expect(predicted.some((l) => l.surface === "tool:wait")).toBe(true);
+		expect(predicted.some((l) => l.surface === "tool:wait")).toBe(false);
 		// E5: the task extension left the default — against a bare home the
 		// composition carries NO extension appends (its only former append
 		// was the task guidance, system:ext:task 394c). The empty class is

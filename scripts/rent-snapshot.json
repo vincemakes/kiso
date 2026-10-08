@@ -8,7 +8,7 @@
 		},
 		{
 			"surface": "system:tools",
-			"chars": 1686
+			"chars": 1456
 		},
 		{
 			"surface": "tool:read_file",
@@ -39,10 +39,6 @@
 			"chars": 294
 		},
 		{
-			"surface": "tool:wait",
-			"chars": 945
-		},
-		{
 			"surface": "tool:delegate",
 			"chars": 1896
 		},
@@ -52,8 +48,8 @@
 		}
 	],
 	"total": {
-		"chars": 11267,
-		"estTokens": 2823
+		"chars": 10092,
+		"estTokens": 2528
 	},
 	"history": [
 		{
@@ -61,6 +57,12 @@
 			"chars": 11267,
 			"estTokens": 2823,
 			"why": "kiso-doc plan-rent-gate-2026-10-06.md rev 2: the first snapshot (owner, 2026-10-07)"
+		},
+		{
+			"date": "2026-10-08",
+			"chars": 10092,
+			"estTokens": 2528,
+			"why": "a ratchet step (shrink only)"
 		}
 	]
 }
