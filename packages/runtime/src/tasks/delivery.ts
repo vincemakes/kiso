@@ -15,8 +15,8 @@
  * Exactly once, from the log: a transition counts as delivered when a
  * `user_input` whose `via.items` names it is in the session's log (ADR-0051
  * Amendment 8). The set is a cache rebuilt from the log, never a second
- * truth. The chain budget from the log too (ADR-0059 §3.3): the wake runs
- * since the last run a person started are counted, never kept.
+ * truth. The chain budget from the log too (ADR-0058 Amendment 9): the wake
+ * runs since the last run a person started are counted, never kept.
  *
  * The summary snapshot is what the MODEL was told, never the live journal:
  * a compaction must not reveal a transition that has not been delivered.
@@ -55,7 +55,7 @@ export interface TaskDeliveryOptions {
 	readonly liveRun: () => Run | undefined;
 	/** False turns every wake into a notify (the switch, ADR-0058 §8.4). */
 	readonly wake?: boolean;
-	/** ADR-0059 §3.3 — the chain budget: how many autonomous wakes may follow
+	/** ADR-0058 Amendment 9 — the chain budget: how many autonomous wakes may follow
 	 *  one person's input before a terminal delivers as a notify instead.
 	 *  Replaces ADR-0058 §8 guard 3 (lineage depth 1). Default 20. */
 	readonly maxWakes?: number;
@@ -256,17 +256,15 @@ export class TaskDelivery {
 	}
 
 	/** The transition could wake, budget aside: the switch, a terminal, an
-	 *  execution's task, not a service — and not a wait that resolved at a
-	 *  restart because its time had passed (the restart rule, release 1). */
+	 *  execution's task, not a service. */
 	#eligible(task: TaskInfo, item: TaskDeliveryItem): boolean {
 		if (this.#o.wake === false) return false;
 		if (item.transition !== "exited" && item.transition !== "failed") return false;
 		if (task.executionId === undefined || task.profile === "service") return false;
-		if (task.state.kind === "ended" && task.state.wait?.overdue === true) return false;
 		return true;
 	}
 
-	/** ADR-0059 §3.3: the chain budget, derived from the log — never a
+	/** ADR-0058 Amendment 9: the chain budget, derived from the log — never a
 	 *  counter. The count is the wake runs (first input a runtime notice)
 	 *  since the last run a person started. */
 	#underBudget(): boolean {
@@ -417,7 +415,6 @@ export class TaskDelivery {
 	}
 
 	#line(task: TaskInfo, item: TaskDeliveryItem): string {
-		if (task.profile === "wait" && task.wait !== undefined) return waitLine(task, item);
 		const attrs = [`id="${task.id}"`, `status="${item.transition}"`];
 		if (task.state.kind === "ended" && task.state.exitCode !== null) attrs.push(`code="${task.state.exitCode}"`);
 		if (task.state.kind === "ended" && task.state.signal !== null) attrs.push(`signal="${task.state.signal}"`);
@@ -498,23 +495,3 @@ function readTail(task: TaskInfo, bytes: number): string {
 		return "";
 	}
 }
-
-/** ADR-0059 §4 — a wait's notice line: what it awaited and how it ended,
- *  then the event's payload verbatim (the facts the driver observed, never
- *  a summary of them), capped. */
-function waitLine(task: TaskInfo, item: TaskDeliveryItem): string {
-	const w = task.wait!;
-	const s = task.state;
-	const status = s.kind === "ended" ? (s.stopped ? "stopped" : (s.wait?.outcome ?? "failed")) : item.transition;
-	const attrs = [`id="${task.id}"`, `status="${status}"`, `kind="${w.source.kind}"`];
-	for (const [k, v] of Object.entries(w.source)) if (k !== "kind" && (typeof v === "string" || typeof v === "number")) attrs.push(`${k}="${String(v).replace(/"/g, "&quot;")}"`);
-	if (w.note !== undefined) attrs.push(`note="${w.note.replace(/"/g, "&quot;")}"`);
-	if (task.endedAt !== undefined) attrs.push(`duration="${duration(task.endedAt - task.startedAt)}"`);
-	const tag = `<kiso-wait ${attrs.join(" ")}/>`;
-	if (s.kind !== "ended") return tag;
-	if (s.error !== undefined) return `${tag}\nerror: ${s.error}`;
-	if (s.wait?.outcome !== "fired" || s.wait.payload === undefined || s.wait.payload === null) return tag;
-	const payload = JSON.stringify(s.wait.payload);
-	return payload === "{}" ? tag : `${tag}\n${payload.length > WAIT_PAYLOAD_CAP ? `${payload.slice(0, WAIT_PAYLOAD_CAP)}…[truncated]` : payload}`;
-}
-const WAIT_PAYLOAD_CAP = 4_096;

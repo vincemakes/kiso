@@ -24,7 +24,7 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AbortSignalLike } from "@vincemakes/kiso-core";
-import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type ClaimedTransition, type TaskAgent, type TaskProfile, type WaitSource, type WaitSpec, type TaskRecord, type TaskState } from "./journal.js";
+import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type ClaimedTransition, type TaskAgent, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
 
 /** Whether a recorded runner is still that process (ADR-0058 §6):
  *  "verified" — the pid is live AND its OS start time is the recorded one;
@@ -65,40 +65,6 @@ export interface TaskStartOptions {
 	readonly agent?: TaskAgent;
 }
 
-/** ADR-0059 release 1 — a wait's start: the source, how long at most
- *  (default a day, cap a week; a timer's deadline IS its fire time), a note
- *  for the task row, the goal it serves (release 2a), the execution that
- *  registered it. */
-export interface WaitStartOptions {
-	readonly source: WaitSource;
-	readonly deadlineMs?: number;
-	readonly note?: string;
-	readonly goalId?: string;
-	readonly executionId?: string;
-}
-
-export const WAIT_DEFAULT_DEADLINE_MS = 24 * 60 * 60 * 1_000;
-export const WAIT_MAX_DEADLINE_MS = 7 * 24 * 60 * 60 * 1_000;
-
-/** What a driver is handed: the wait as planned. */
-export interface WaitInfo {
-	readonly id: string;
-	readonly source: WaitSource;
-	readonly deadlineAt: number;
-	readonly plannedAt: number;
-}
-
-/** A source of events a wait can await. `arm` observes until the event or
- *  the abort; it resolves with the event's identity (a second observation
- *  of the same identity is a no-op — W5) and a payload the notice carries
- *  verbatim. A rejection that is not the abort ends the wait as failed,
- *  with the message. Polling costs no tokens. The runtime registers
- *  `timer` and `task`; a host registers the rest through `drivers`. */
-export interface WaitDriver {
-	readonly kind: string;
-	arm(wait: WaitInfo, signal: AbortSignal): Promise<{ readonly eventId: string; readonly payload: unknown }>;
-}
-
 export interface TaskInfo {
 	readonly id: string;
 	readonly command: string;
@@ -111,8 +77,6 @@ export interface TaskInfo {
 	readonly stoppedBy?: "person" | "model" | "exit";
 	/** An agent task's role and child session (ADR-0058 §5). */
 	readonly agent?: TaskAgent;
-	/** ADR-0059: a wait's plan (profile `wait`). */
-	readonly wait?: WaitSpec;
 	readonly state: TaskState;
 	readonly outputPath: string;
 	readonly startedAt: number;
@@ -128,9 +92,6 @@ export function endTransitionOf(task: TaskInfo): Exclude<ClaimedTransition, "rea
 	const s = task.state;
 	if (s.kind === "ended") {
 		if (task.stoppedBy !== undefined) return "stopped";
-		// ADR-0059: core's union has no fired/expired — a fired wait rides as
-		// exited, an expired one as failed; the notice line says which
-		if (s.wait !== undefined) return s.wait.outcome === "fired" ? "exited" : "failed";
 		return s.exitCode === 0 && s.error === undefined ? "exited" : "failed";
 	}
 	if (s.kind === "unknown") return "unknown";
@@ -205,9 +166,6 @@ export interface TaskManagerOptions {
 	 *  terminal keeps reading as `running` for up to this long after it
 	 *  died (its cached verdict is still "verified"), then `unknown`. */
 	readonly identifyEveryMs?: number;
-	/** ADR-0059: the host's wait drivers, by kind. `timer` and `task` are
-	 *  the runtime's; a host driver with either name is a loud error. */
-	readonly drivers?: readonly WaitDriver[];
 }
 
 const JOURNAL = "journal.jsonl";
@@ -231,10 +189,6 @@ export class TaskManager {
 	readonly #detachable = new Map<string, Detachable>();
 	/** id → how many `awaitSettled` calls wait on it: the watcher skips it */
 	readonly #waiting = new Map<string, number>();
-	/** ADR-0059: kind → driver */
-	readonly #drivers = new Map<string, WaitDriver>();
-	/** id → the armed wait this process observes (its abort, its deadline) */
-	readonly #armed = new Map<string, { readonly controller: AbortController; deadline: ReturnType<typeof setTimeout> | null }>();
 
 	constructor(options: TaskManagerOptions) {
 		this.root = options.root;
@@ -242,177 +196,6 @@ export class TaskManager {
 		if (options.onTransition !== undefined) this.#listeners.add(options.onTransition);
 		this.#pollMs = options.pollMs ?? 500;
 		this.#identifyEveryMs = options.identifyEveryMs ?? 5_000;
-		this.#drivers.set("timer", this.#timerDriver());
-		this.#drivers.set("task", this.#taskDriver());
-		for (const d of options.drivers ?? []) {
-			if (this.#drivers.has(d.kind)) throw new Error(`[tasks] a wait driver for "${d.kind}" is already registered`);
-			this.#drivers.set(d.kind, d);
-		}
-		// a restart: the waits planned by a kiso that is gone are this
-		// process's to observe now — re-armed from their journals (W2)
-		this.#rearm();
-	}
-
-	/** The wait kinds this session can register (the tool's vocabulary). */
-	waitKinds(): readonly string[] {
-		return [...this.#drivers.keys()];
-	}
-
-	/** ADR-0059 — register a wait: a task whose terminal is the event.
-	 *  `planned` (with the wait) is durable before the driver is armed; the
-	 *  deadline is in the record, so a restart re-arms it. */
-	async wait(options: WaitStartOptions): Promise<TaskInfo> {
-		const driver = this.#drivers.get(options.source.kind);
-		if (driver === undefined) throw new Error(`no wait driver for "${options.source.kind}" (registered: ${this.waitKinds().join(", ")})`);
-		const timerMs = options.source.kind === "timer" ? timerMsOf(options.source) : undefined;
-		if (options.source.kind === "timer" && timerMs === undefined) throw new Error('a timer wait needs { kind: "timer", ms: <positive number> }');
-		const { id, dir } = this.#newTaskDir();
-		const ts = Date.now();
-		const deadlineAt = timerMs !== undefined ? ts + Math.min(timerMs, WAIT_MAX_DEADLINE_MS) : ts + Math.min(Math.max(options.deadlineMs ?? WAIT_DEFAULT_DEADLINE_MS, 1), WAIT_MAX_DEADLINE_MS);
-		const spec: WaitSpec = {
-			source: options.source,
-			deadlineAt,
-			...(options.note !== undefined ? { note: options.note } : {}),
-			...(options.goalId !== undefined ? { goalId: options.goalId } : {}),
-		};
-		appendRecord(join(dir, JOURNAL), {
-			type: "planned",
-			ts,
-			taskId: id,
-			backend: "process",
-			command: waitLabel(options.source),
-			cwd: "",
-			profile: "wait",
-			...(options.executionId !== undefined ? { executionId: options.executionId } : {}),
-			wait: spec,
-		});
-		fsyncDir(dir);
-		this.#seen.set(id, "waiting");
-		this.#arm(id, { id, source: spec.source, deadlineAt, plannedAt: ts }, false);
-		this.observe();
-		return this.get(id)!;
-	}
-
-	/** A restart: every wait still waiting is armed again. One whose time
-	 *  had already passed resolves at once, marked overdue — the delivery's
-	 *  restart rule turns that into a notify (release 1). */
-	#rearm(): void {
-		let armed = false;
-		for (const id of this.#ids()) {
-			if (this.#armed.has(id)) continue;
-			let info: TaskInfo;
-			try {
-				info = this.#info(id)!;
-			} catch {
-				continue; // a corrupt journal: reported where it is read
-			}
-			if (info.state.kind !== "waiting" || info.wait === undefined) continue;
-			this.#seen.set(id, "waiting");
-			this.#arm(id, { id, source: info.wait.source, deadlineAt: info.wait.deadlineAt, plannedAt: info.startedAt }, info.wait.deadlineAt <= Date.now());
-			armed = true;
-		}
-		if (armed) this.observe();
-	}
-
-	#arm(id: string, wait: WaitInfo, overdue: boolean): void {
-		const driver = this.#drivers.get(wait.source.kind);
-		const controller = new AbortController();
-		const entry: { readonly controller: AbortController; deadline: ReturnType<typeof setTimeout> | null } = { controller, deadline: null };
-		this.#armed.set(id, entry);
-		if (driver === undefined) {
-			// a host no longer registers this kind: the wait cannot be observed
-			this.#end(id, { type: "terminal", ts: Date.now(), exitCode: null, signal: null, error: `no wait driver for "${wait.source.kind}"` });
-			return;
-		}
-		// a timer's deadline is its fire time: the driver alone decides it
-		if (wait.source.kind !== "timer") {
-			if (overdue) {
-				this.#end(id, { type: "wait_expired", ts: Date.now(), overdue: true });
-				return;
-			}
-			entry.deadline = setTimeout(() => this.#end(id, { type: "wait_expired", ts: Date.now() }), Math.max(0, wait.deadlineAt - Date.now()));
-			(entry.deadline as { unref?: () => void }).unref?.();
-		}
-		driver.arm(wait, controller.signal).then(
-			(ev) => this.#end(id, { type: "wait_fired", ts: Date.now(), eventId: ev.eventId, payload: ev.payload, ...(overdue ? { overdue: true as const } : {}) }),
-			(err: unknown) => {
-				if (controller.signal.aborted) return;
-				this.#end(id, { type: "terminal", ts: Date.now(), exitCode: null, signal: null, error: `wait driver failed: ${(err as Error)?.message ?? String(err)}` });
-			},
-		);
-	}
-
-	/** A wait's terminal, exactly one: whatever landed first wins, and the
-	 *  driver and the deadline are disarmed. */
-	#end(id: string, record: Extract<TaskRecord, { type: "wait_fired" | "wait_expired" | "terminal" }>): void {
-		const file = join(this.root, id, JOURNAL);
-		let records: TaskRecord[];
-		try {
-			records = readRecords(file);
-		} catch {
-			return;
-		}
-		if (records.some((r) => r.type === "wait_fired" || r.type === "wait_expired" || r.type === "terminal")) return;
-		appendRecord(file, record);
-		this.#disarm(id);
-		this.#poll();
-	}
-
-	#disarm(id: string): void {
-		const entry = this.#armed.get(id);
-		if (entry === undefined) return;
-		this.#armed.delete(id);
-		if (entry.deadline !== null) clearTimeout(entry.deadline);
-		entry.controller.abort();
-	}
-
-	#timerDriver(): WaitDriver {
-		return {
-			kind: "timer",
-			arm: (wait, signal) =>
-				new Promise((resolve, reject) => {
-					const ms = timerMsOf(wait.source) ?? 0;
-					const fireAt = wait.plannedAt + ms;
-					const timer = setTimeout(() => resolve({ eventId: `timer:${fireAt}`, payload: { firedAt: Date.now(), scheduledAt: fireAt } }), Math.max(0, fireAt - Date.now()));
-					(timer as { unref?: () => void }).unref?.();
-					signal.addEventListener(
-						"abort",
-						() => {
-							clearTimeout(timer);
-							reject(new Error("aborted"));
-						},
-						{ once: true },
-					);
-				}),
-		};
-	}
-
-	#taskDriver(): WaitDriver {
-		return {
-			kind: "task",
-			arm: (wait, signal) =>
-				new Promise((resolve, reject) => {
-					const target = typeof wait.source.id === "string" ? wait.source.id : "";
-					const done = (info: TaskInfo, transition: string): void => resolve({ eventId: `task:${info.id}:${transition}`, payload: { taskId: info.id, transition, ...(info.state.kind === "ended" ? { exitCode: info.state.exitCode } : {}) } });
-					const now = this.get(target);
-					if (now === undefined) return reject(new Error(`no task ${target} in this session`));
-					const already = endTransitionOf(now);
-					if (already !== null) return done(now, already);
-					const off = this.subscribe((info, transition) => {
-						if (info.id !== target || transition === "ready") return;
-						off();
-						done(info, endTransitionOf(info) ?? transition);
-					});
-					signal.addEventListener(
-						"abort",
-						() => {
-							off();
-							reject(new Error("aborted"));
-						},
-						{ once: true },
-					);
-				}),
-		};
 	}
 
 	/** A runner's identity (Windows P6): "gone" is final — that pid and
@@ -554,13 +337,6 @@ export class TaskManager {
 		const records = readRecords(join(this.root, id, JOURNAL));
 		if (records.some((r) => r.type === "terminal")) return false;
 		const planned = records.find((r): r is Extract<TaskRecord, { type: "planned" }> => r.type === "planned");
-		if (planned?.profile === "wait") {
-			// ADR-0059: nothing runs — the stop is the record, then the terminal
-			if (records.some((r) => r.type === "wait_fired" || r.type === "wait_expired")) return false;
-			appendRecord(join(this.root, id, JOURNAL), { type: "stop_requested", ts: Date.now(), by });
-			this.#end(id, { type: "terminal", ts: Date.now(), exitCode: null, signal: null });
-			return true;
-		}
 		if (planned?.backend === "foreground") {
 			// its runner is a kiso process: never signalled — the owner stops
 			// the command, and only the owner can
@@ -716,12 +492,10 @@ export class TaskManager {
 		(this.#timer as { unref?: () => void }).unref?.();
 	}
 
-	/** Stop watching. Tasks keep running; the waits this process observed
-	 *  are disarmed (a restart re-arms them from their journals). */
+	/** Stop watching. Tasks keep running. */
 	close(): void {
 		if (this.#timer !== null) clearInterval(this.#timer);
 		this.#timer = null;
-		for (const id of [...this.#armed.keys()]) this.#disarm(id);
 	}
 
 	#poll(): void {
@@ -755,7 +529,7 @@ export class TaskManager {
 		const records = readRecords(join(this.root, id, JOURNAL));
 		const planned = records.find((r): r is Extract<TaskRecord, { type: "planned" }> => r.type === "planned");
 		const runner = runnerOf(records);
-		const terminal = records.find((r) => r.type === "terminal" || r.type === "wait_fired" || r.type === "wait_expired");
+		const terminal = records.find((r) => r.type === "terminal");
 		// an adopted task this very process still owns needs no identity
 		// check: the owner is here, holding the child; and an ended task's
 		// verdict is its terminal — identity cannot change it (Windows P6)
@@ -773,7 +547,6 @@ export class TaskManager {
 			...(planned?.executionId !== undefined ? { executionId: planned.executionId } : {}),
 			...(stop !== undefined ? { stoppedBy: stop.by } : {}),
 			...(planned?.agent !== undefined ? { agent: planned.agent } : {}),
-			...(planned?.wait !== undefined ? { wait: planned.wait } : {}),
 			state: verdictOf(records, verified),
 			outputPath: join(this.root, id, OUTPUT),
 			startedAt: planned?.ts ?? 0,
@@ -794,18 +567,4 @@ export class TaskManager {
 		const last = ids.length === 0 ? 0 : Number(ids.at(-1)!.slice(1));
 		return `t${last + 1}`;
 	}
-}
-
-/** A timer source's delay, when it is one. */
-function timerMsOf(source: WaitSource): number | undefined {
-	const ms = source.ms;
-	return typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : undefined;
-}
-
-/** The task row's label for a wait: the kind and its fields, in one line. */
-function waitLabel(source: WaitSource): string {
-	const fields = Object.entries(source)
-		.filter(([k, v]) => k !== "kind" && v !== undefined)
-		.map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`);
-	return [source.kind, ...fields].join(" ");
 }
