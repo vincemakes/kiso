@@ -73,6 +73,18 @@ describe("ADR-0058 Amendment 10 — a short wait is raised to the floor", () => 
 		await manager.stopAll();
 		manager.close();
 	}, 20_000);
+	it("under the floor the person is never held: ctrl+b moves the command at once (the floor is what keeps it in the foreground past 300 ms)", async () => {
+		const { manager, shell } = setup(10_000);
+		const t0 = Date.now();
+		const pending = shell.execute({ command: "sleep 30", foregroundMs: 300 }, ctx({ executionId: "ex-cb" } as Partial<ToolContext>));
+		await new Promise((r) => setTimeout(r, 500));
+		expect(manager.detach("ex-cb", "person")).toBe(true);
+		const r = await pending;
+		expect(Date.now() - t0).toBeLessThan(5_000);
+		expect(String(r.content)).toMatch(/^moved to the background by the person; continued as background task t1/);
+		await manager.stopAll();
+		manager.close();
+	}, 20_000);
 });
 
 describe("ADR-0058 Amendment 10 — what the floor does not touch", () => {
@@ -88,19 +100,6 @@ describe("ADR-0058 Amendment 10 — what the floor does not touch", () => {
 		const { manager, shell } = setup(0);
 		const r = await shell.execute({ command: "sleep 30", foregroundMs: 300 }, ctx());
 		expect(String(r.content)).toMatch(/^still running after 300 ?ms; continued as background task t1/);
-		await manager.stopAll();
-		manager.close();
-	}, 20_000);
-
-	it("the person is never held: ctrl+b moves the command at once, under any floor", async () => {
-		const { manager, shell } = setup(10_000);
-		const t0 = Date.now();
-		const pending = shell.execute({ command: "sleep 30", foregroundMs: 300 }, ctx({ executionId: "ex-cb" } as Partial<ToolContext>));
-		await new Promise((r) => setTimeout(r, 500));
-		expect(manager.detach("ex-cb", "person")).toBe(true);
-		const r = await pending;
-		expect(Date.now() - t0).toBeLessThan(5_000);
-		expect(String(r.content)).toMatch(/^moved to the background by the person; continued as background task t1/);
 		await manager.stopAll();
 		manager.close();
 	}, 20_000);
