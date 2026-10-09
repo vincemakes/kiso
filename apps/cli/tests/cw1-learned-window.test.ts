@@ -97,16 +97,16 @@ describe("the chain: what you set, then what this endpoint refused at, then the 
 		expect(contextWindowTokens()).toBe(1_048_576);
 	});
 
-	it("faux keeps its own 200,000 in the policy value — the fallback moving to 128K does not move it", () => {
+	it("faux keeps its own 200,000 in the policy value — its own figure, whatever the fallback is", () => {
 		setAgentModel("faux");
 		expect(contextWindowTokens()).toBe(200_000);
 		expect(knownContextWindow()).toBe(200_000);
 	});
 
-	it("an unknown model falls back to 128K, and says so", () => {
+	it("an unknown model falls back to 200K, and says so", () => {
 		setAgentModel("unregistered-model-nobody-publishes-a-window-for", FORWARDER);
-		expect(contextWindowTokens()).toBe(128_000);
-		expect(windowSourceNote(statedContextWindow())).toBe("window unknown — compaction assumes 128K; set contextWindow on the profile to state it");
+		expect(contextWindowTokens()).toBe(200_000);
+		expect(windowSourceNote(statedContextWindow())).toBe("window unknown — compaction assumes 200K; set contextWindow on the profile to state it");
 	});
 });
 

@@ -31,16 +31,16 @@ describe("CTX-1: the window is asked for a NAMED model, not for whatever is live
 	});
 
 	it("a model the registry does not know keeps the fallback — the registry never guesses", () => {
-		// CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
-		expect(contextWindowTokens({ model: "no-such-model-ever" })).toBe(128_000);
-		expect(microcompactThresholdFor({ model: "no-such-model-ever" })).toBe(64_000); // half the 128K fallback (was 100,000)
+		// declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
+		expect(contextWindowTokens({ model: "no-such-model-ever" })).toBe(200_000);
+		expect(microcompactThresholdFor({ model: "no-such-model-ever" })).toBe(100_000); // half the 200K fallback (64,000 under CW-1 batch 2's 128K)
 	});
 
 	it("a row with a null window is UNKNOWN, not zero — deepseek falls back, it does not compact at 0", () => {
 		// The row exists and declares contextWindow: null. That is the case
 		// that produced the 100,000 threshold the diagnostic is about.
-		expect(contextWindowTokens({ model: "deepseek-chat", baseUrl: "https://api.deepseek.com" })).toBe(128_000); // CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
-		expect(microcompactThresholdFor({ model: "deepseek-chat", baseUrl: "https://api.deepseek.com" })).toBe(64_000); // half the 128K fallback (was 100,000)
+		expect(contextWindowTokens({ model: "deepseek-chat", baseUrl: "https://api.deepseek.com" })).toBe(200_000); // declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
+		expect(microcompactThresholdFor({ model: "deepseek-chat", baseUrl: "https://api.deepseek.com" })).toBe(100_000); // half the 200K fallback (64,000 under CW-1 batch 2's 128K)
 	});
 
 	it("the ENDPOINT narrows the row — the same id is two different windows", () => {

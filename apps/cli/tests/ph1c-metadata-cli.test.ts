@@ -34,9 +34,9 @@ describe("PH-F15 — the window follows the live model", () => {
 		setAgentModel("claude-haiku-4-5");
 		expect(contextWindowTokens()).toBe(200_000); // the alias row resolves too
 		setAgentModel("gpt-4o");
-		expect(contextWindowTokens()).toBe(128_000);
+		expect(contextWindowTokens()).toBe(128_000); // gpt-4o's own registry row, not the fallback
 		setAgentModel("some-unregistered-model");
-		expect(contextWindowTokens()).toBe(128_000); // the default, not a guess — CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
+		expect(contextWindowTokens()).toBe(200_000); // the default, not a guess — declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
 	});
 
 	it("OR-1: the window follows the live ENDPOINT too — gpt-5.5 is 1,050,000 at the first-party API and 272,000 at the subscription backend", () => {
