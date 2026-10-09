@@ -202,10 +202,17 @@ function buildBody(options: StreamOptions, target: Target, scopeProviderId: stri
 }
 
 function toResponsesTool(tool: ToolSpec): Record<string, unknown> {
-	// No `strict`: the flag changes the PROVIDER's validation semantics,
-	// and kiso's schemas are already closed worlds validated by the kernel
-	// (PH-1a.1). Sending it would claim a second, disagreeing validator.
-	return { type: "function", name: tool.name, description: tool.description, parameters: tool.inputSchema };
+	// `strict: false`, said explicitly. kiso's schemas are closed worlds the
+	// kernel validates (PH-1a.1), so no provider-side validator is wanted —
+	// but on the Responses API an ABSENT flag is not "off": the ChatGPT
+	// backend then forces every declared property into the call, and the
+	// model fills the optional ones with placeholders (`readyWhen: ""`
+	// detached a one-shot command; an empty second edit form refused every
+	// edit). One request per arm on gpt-6.1-sol, 2026-10-08: absent → all
+	// four optional shell fields sent; false → only `command`. The vendor's
+	// own client sends `strict: false` too. Reverses this adapter's earlier
+	// "no `strict`" note, which read absent as off.
+	return { type: "function", name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: false };
 }
 
 function toInputContent(content: string | readonly ContentBlock[]): Record<string, unknown>[] {
