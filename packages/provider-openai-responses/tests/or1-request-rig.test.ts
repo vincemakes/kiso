@@ -94,12 +94,11 @@ describe("OR-1 request rig — the frozen shapes", () => {
 				'{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will use the tool.","annotations":[]}],"status":"completed"},' +
 				'{"type":"function_call","call_id":"c1","name":"web_search","arguments":"{\\"q\\":\\"k\\"}"},' +
 				'{"type":"function_call_output","call_id":"c1","output":"results"}' +
-				'],"tools":[{"type":"function","name":"web_search","description":"search the web","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"],"additionalProperties":false}}]}',
+				'],"tools":[{"type":"function","name":"web_search","description":"search the web","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"],"additionalProperties":false},"strict":false}]}',
 		);
-		// `strict` is not sent: the kernel's schemas are already closed
-		// worlds (PH-1a.1) and the flag changes the provider's own
-		// validation semantics — a claim this adapter does not make.
-		expect(rig.requests[0]!.body).not.toContain('"strict"');
+		// `strict: false` is said explicitly: an ABSENT flag is not "off" on
+		// the Responses API — the ChatGPT backend then forces every declared
+		// property into the call (0.47.3, the owner's gpt-sol sessions).
 	});
 
 	it("shape 3: a reasoning level and an output cap — an effort also asks for the reasoning summary", async () => {
