@@ -162,10 +162,36 @@ def main():
 		os.kill(pid, signal.SIGKILL)
 	except ProcessLookupError:
 		pass
-	try:
-		os.waitpid(pid, 0)
-	except ChildProcessError:
-		pass
+	# reap with a bound, reading the master meanwhile: an unbounded waitpid
+	# turned a killed node that stayed in E (seen once, 2026-10-08) into a
+	# hung release step. A stuck child now FAILS with its ps state, which
+	# is the evidence the next occurrence needs.
+	end = time.time() + 15
+	while True:
+		try:
+			done, _ = os.waitpid(pid, os.WNOHANG)
+		except ChildProcessError:
+			break
+		if done:
+			break
+		if time.time() > end:
+			sys.stdout.write(full.decode(errors="replace"))
+			try:
+				state = subprocess.check_output(["ps", "-o", "pid=,stat=,wchan=,command=", "-p", str(pid)]).decode(errors="replace").strip()
+			except Exception:
+				state = "?"
+			print("\nFAIL: the killed agent was not reaped within 15s: " + state)
+			sys.exit(1)
+		r, _, _ = select.select([fd], [], [], 0.2)
+		if r:
+			try:
+				data = os.read(fd, 4096)
+			except OSError:
+				data = b""
+			if data:
+				full += data
+			else:
+				time.sleep(0.05)
 	sys.stdout.write(full.decode(errors="replace"))
 	sys.exit(0)
 
@@ -260,7 +286,7 @@ run_once() {
 	sid="k9"
 	printf 'OLD' > "$workdir/f1.txt"
 	printf 'OLD' > "$workdir/f3.txt"
-	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","search":"OLD","replace":"NEW","expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","search":"OLD","replace":"NEW","expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
+	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","edits":[{"oldText":"OLD","newText":"NEW"}],"expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","edits":[{"oldText":"OLD","newText":"NEW"}],"expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
 
 	printf '\n=== demo-kill9: run %s (a fresh KISO_HOME) ===\n' "$n"
 	printf '  [%s/2] phase 1 — a real chat, two approvals, SIGKILL mid-execution\n' "$n"

@@ -30,8 +30,8 @@ What you can reach:
 Tool discipline:
 - READ BEFORE YOU EDIT. For any file you are about to change, read it
   first — never guess its content.
-- Use edit_file for targeted changes and write_file for full rewrites.
-  Prefer many small edits over one large write.
+- Use edit_file for targeted changes and write_file for new files or
+  full rewrites.
 - Be careful — shell has side effects and may take time.
 - search_text and list_dir are cheap — locate first, then read ranges
   with read_file offset/limit; never read a whole large file in one call.
