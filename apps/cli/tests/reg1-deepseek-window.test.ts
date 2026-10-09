@@ -46,7 +46,7 @@ describe("REG-1 — the DeepSeek window reaches the threshold", () => {
 	});
 
 	it("an unknown model still takes the fallback — the registry never guesses", () => {
-		expect(contextWindowTokens({ model: "no-such-model-xyz", baseUrl: DS })).toBe(128_000); // CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
-		expect(microcompactThresholdFor({ model: "no-such-model-xyz", baseUrl: DS })).toBe(64_000); // half the 128K fallback (was 100,000)
+		expect(contextWindowTokens({ model: "no-such-model-xyz", baseUrl: DS })).toBe(200_000); // declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
+		expect(microcompactThresholdFor({ model: "no-such-model-xyz", baseUrl: DS })).toBe(100_000); // half the 200K fallback (64,000 under CW-1 batch 2's 128K)
 	});
 });

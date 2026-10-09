@@ -133,10 +133,11 @@ a broken config file fails loudly with the file named.
      time the endpoint refuses.
 
   Nothing after step 5: an unknown model shows `ctx ?`, and compaction
-  assumes a conservative **128,000 tokens** (said once at startup). For a
-  model with a larger real window, relief fires earlier than it needs to;
-  for a smaller one the provider can refuse a request while the meter still
-  looks comfortable. Set the true number when you know it. Price, effort
+  assumes **200,000 tokens** (said once at startup). For a model with a
+  larger real window, relief fires earlier than it needs to; for a smaller
+  one the provider can refuse a request while the meter still looks
+  comfortable, and step 2 then learns its cap, once. Set the true number
+  when you know it. Price, effort
   levels and max output are facts about a route and are never inferred
   this way.
 

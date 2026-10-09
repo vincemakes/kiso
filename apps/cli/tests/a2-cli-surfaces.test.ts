@@ -21,8 +21,8 @@ describe("the discarded-checkpoint notice", () => {
 describe("the unknown-window notice", () => {
 	it("names the model and the assumed window, and how to state the real one", () => {
 		expect(unknownWindowNotice("deepseek-v4.1-flash")).toBe(
-			// CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
-			"[kiso] context window unknown for deepseek-v4.1-flash at this endpoint — compaction assumes 128K; set contextWindow on the profile to state it",
+			// declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
+			"[kiso] context window unknown for deepseek-v4.1-flash at this endpoint — compaction assumes 200K; set contextWindow on the profile to state it",
 		);
 	});
 });

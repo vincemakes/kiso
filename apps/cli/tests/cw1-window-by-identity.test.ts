@@ -80,8 +80,8 @@ describe("unknown stays unknown — and says what it assumes", () => {
 	it("no row, no figure: ? on the row, the fallback for the tiers, said in words", () => {
 		setAgentModel("unregistered-model-nobody-publishes-a-window-for", FORWARDER);
 		expect(knownContextWindow()).toBeNull();
-		expect(contextWindowTokens()).toBe(128_000); // CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
-		expect(windowSourceNote(statedContextWindow())).toBe("window unknown — compaction assumes 128K; set contextWindow on the profile to state it");
+		expect(contextWindowTokens()).toBe(200_000); // declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
+		expect(windowSourceNote(statedContextWindow())).toBe("window unknown — compaction assumes 200K; set contextWindow on the profile to state it");
 	});
 
 	it("the route's own row is named as the registry's", () => {

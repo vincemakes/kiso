@@ -54,11 +54,18 @@ import { FauxExhaustionError, failOnFauxExhaustion } from "./faux-glue.js";
 import { MODE_LABEL, OFFERED_MODES, getDontAsk, getMode, modeDisplay, setMode } from "./mode.js";
 
 /** B area: default context window for the ~ctx estimate (config overridable).
- *  CW-1 batch 2: 128,000, down from 200,000 — the figure a model nobody
- *  states a window for is assumed to hold (the reference implementation's
- *  default too). Too small costs an early compaction; too large costs a
- *  refused request on a 128K model. Registered models never reach it. */
-const DEFAULT_CONTEXT_WINDOW = 128_000;
+ *  The figure a model nobody states a window for is assumed to hold.
+ *  Registered models never reach it.
+ *
+ *  200,000 again since the owner's ruling of 2026-10-09, which reverses CW-1
+ *  batch 2's 128,000. The same batch made an endpoint's refusal teach its
+ *  real cap, kept across sessions and only ever lowered. So a figure too
+ *  large costs one refused request per endpoint and model, once, while a
+ *  figure too small compacts every session early and never corrects
+ *  itself (gpt-6.1-sol, 272K and unregistered in 0.47.3, compacted from
+ *  64K). 200K, not more: a 128K model's soft tier (100K) still usually
+ *  compacts it before its wall. */
+const DEFAULT_CONTEXT_WINDOW = 200_000;
 
 /** The in-process fake provider's id, and the window we declare for it.
  *  Ours to state: faux is not a vendor's model, so "nobody published a
@@ -287,8 +294,8 @@ export function statusModelLabel(session: { readonly reasoning?: { readonly effo
 }
 
 /** ADR-0055 Amendment 2 (decision 5): with no stated window the status row
- *  shows `ctx ?`, yet the compaction tiers still assume the fallback (128K
- *  since CW-1 batch 2)
+ *  shows `ctx ?`, yet the compaction tiers still assume the fallback (200K;
+ *  128K from CW-1 batch 2 until the owner's 2026-10-09 ruling)
  *  — the assumption is said out loud once, at agent build. */
 export function unknownWindowNotice(model: string): string {
 	return `[kiso] context window unknown for ${model} at this endpoint — compaction assumes ${DEFAULT_CONTEXT_WINDOW / 1000}K; set contextWindow on the profile to state it`;

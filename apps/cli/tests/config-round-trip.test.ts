@@ -149,7 +149,7 @@ describe("the parsed window REACHES the running program", () => {
 		// window, so `ctx ?` is the honest answer and must survive.
 		const out = statusRow({ p: profile({}) });
 		expect(out).toContain("ctx ~?");
-		expect(out).toContain("window unknown — compaction assumes 128K"); // CW-1 batch 2 (declared re-pin): the fallback is 128K, down from 200K
+		expect(out).toContain("window unknown — compaction assumes 200K"); // declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
 	});
 
 	it("CW-1: a registered model at an unregistered endpoint gets the MODEL's window, said as inferred", () => {
