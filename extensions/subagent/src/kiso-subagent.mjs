@@ -59,60 +59,57 @@ const ROLES = ["explorer", "implementer", "reviewer", "verifier"];
 // check and profile names are written into the schema when the extension
 // loads (the tool table is snapshotted per request — F7b — so this is the
 // table the model reads).
-const delegateParameters = (cfg, background) => ({
-	type: "object",
-	properties: {
-		tasks: {
-			type: "array",
-			minItems: 1,
-			maxItems: 8,
-			items: {
-				type: "object",
-				properties: {
-					role: { type: "string", enum: ROLES },
-					task: { type: "string", minLength: 1 },
-					// DT-1a: the contract's inputs. scope = allowed WRITE paths (globs,
-					// relative to the worktree) — a scoped task has NO shell tool;
-					// acceptance names a configured check ({ check }) or a parent-held
-					// evaluator ({ evaluator: absolute path outside the project }) —
-					// never a command; model names a configured profile; after names
-					// a completed implementer's childId (verifier only): the verifier
-					// runs in a copy of that worktree.
-					scope: {
-						type: "array",
-						items: { type: "string", minLength: 1 },
-						maxItems: 32,
-						description: "implementer and verifier tasks ONLY (an explorer or reviewer task with scope is refused): path globs the child may write; a scoped child has no shell and a write outside the scope is refused",
+// Plan B (the prefix diet): every field the model can use is listed, and
+// none it cannot — `acceptance` only when the user configured a check or an
+// evaluator, `model` only when a profile exists (an unconfigured field was a
+// paragraph saying "omit this"). The descriptions name the contract once; the
+// refusals in validateTask carry the detail when a call gets it wrong.
+const delegateParameters = (cfg, background) => {
+	const checks = Object.keys(cfg.checks);
+	const profiles = cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x)));
+	const acceptanceForms = [
+		...(checks.length > 0 ? [`{ check: ${checks.join(" | ")} }`] : []),
+		...(cfg.evaluators.length > 0 ? ["{ evaluator: a configured evaluator path }"] : []),
+	];
+	return {
+		type: "object",
+		properties: {
+			tasks: {
+				type: "array",
+				minItems: 1,
+				maxItems: 8,
+				items: {
+					type: "object",
+					properties: {
+						role: { type: "string", enum: ROLES },
+						task: { type: "string", minLength: 1 },
+						scope: { type: "array", items: { type: "string", minLength: 1 }, maxItems: 32, description: "implementer/verifier only: globs the child may write (a scoped child has no shell)" },
+						...(acceptanceForms.length > 0
+							? {
+									acceptance: {
+										type: "object",
+										properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } },
+										additionalProperties: false,
+										description: `implementer/verifier only, one of ${acceptanceForms.join(" or ")} — never a command; run after the child completes`,
+									},
+								}
+							: {}),
+						...(profiles.length > 0 ? { model: { type: "string", minLength: 1, description: `a model profile: ${profiles.join(", ")}` } } : {}),
+						after: { type: "string", minLength: 1, description: "verifier only: the 1-based index of the task whose worktree it checks" },
+						timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget, ms" },
 					},
-					acceptance: {
-						type: "object",
-						properties: { check: { type: "string", minLength: 1 }, evaluator: { type: "string", minLength: 1 } },
-						additionalProperties: false,
-						description: `optional; implementer and verifier only. Exactly one of: { check } naming a check configured by the user (configured now: ${Object.keys(cfg.checks).length ? Object.keys(cfg.checks).join(", ") : "none configured — omit acceptance"}), or { evaluator } — an absolute path to an evaluator script OUTSIDE the project. Never a command: the parent runs the acceptance after the child completes`,
-					},
-					model: { type: "string", minLength: 1, description: `a model profile configured by the user (configured now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
-					after: { type: "string", minLength: 1, description: "verifier only: the earlier task (by its index, 1-based) whose worktree this verifier runs in a copy of" },
-					timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" },
+					required: ["role", "task"],
+					additionalProperties: false,
 				},
-				required: ["role", "task"],
-				additionalProperties: false,
 			},
+			// ADR-0058 3d: present only when the host wired tasks — without them
+			// the schema is byte-for-byte the foreground one
+			...(background ? { background: { type: "boolean", description: "explorer/reviewer only: run in the background; you are told when all have ended; task_stop stops one" } } : {}),
 		},
-		// ADR-0058 3d: present only when the host wired tasks — without them
-		// the schema is byte-for-byte the foreground one
-		...(background
-			? {
-					background: {
-						type: "boolean",
-						description:
-							"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
-					},
-				}
-			: {}),
-	},
-	required: ["tasks"],
-	additionalProperties: false,
-});
+		required: ["tasks"],
+		additionalProperties: false,
+	};
+};
 
 /**
  * @param {{ tasks?: (sessionId: string | undefined) => any, backgroundMax?: number, backgroundMaxTurns?: number }} [host]
@@ -125,13 +122,19 @@ export default async function createSubagentExtension(host = {}) {
 	if (depth >= 1) return { name: "subagent", tools: [] }; // depth guard — no nesting
 	const tasksOf = typeof host.tasks === "function" ? host.tasks : undefined;
 	const background = tasksOf === undefined ? undefined : { tasksOf, max: host.backgroundMax ?? BACKGROUND_MAX, maxTurns: host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS, reserved: new Map() };
+	// Plan B: ONE configuration snapshot per extension instance — the schema
+	// the model is shown and the executor that validates its call read the
+	// same values, so a session has one delegate contract (a config change
+	// takes effect in the next session).
+	const cfg = delegationConfig();
 	return {
 		name: "subagent",
 		tools: [
 			{
 				name: "delegate",
 				description: "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
-				parameters: delegateParameters(delegationConfig(), background !== undefined),
+				parameters: delegateParameters(cfg, background !== undefined),
+				promptSnippet: "delegate — run subagent tasks",
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
 					if (tasks.length === 0) return { content: "delegate: no tasks", isError: true, errorKind: "precondition" };
@@ -140,7 +143,7 @@ export default async function createSubagentExtension(host = {}) {
 					// 0.40.0: the parent's own folder (one per project), handed over
 					// by the CLI; a pinned KISO_SESSIONS_DIR, or the legacy folder,
 					// when no CLI said (a direct load)
-					const sessionsDir = delegationConfig().sessionsDir ?? (process.env.KISO_SESSIONS_DIR || join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions"));
+					const sessionsDir = cfg.sessionsDir ?? (process.env.KISO_SESSIONS_DIR || join(process.env.KISO_HOME ?? join(homedir(), ".kiso"), "sessions"));
 					// P3: the loop now threads the session id through
 					// ToolContext.sessionId — the discovery heuristic below is
 					// kept ONLY as a fallback for direct tool use / tests.
@@ -159,7 +162,6 @@ export default async function createSubagentExtension(host = {}) {
 					mkdirSync(manifestDir, { recursive: true });
 					// DT-1a: every task is validated BEFORE any child runs — a refusal
 					// spawns nothing (acceptance never carries a model-supplied command).
-					const cfg = delegationConfig();
 					const parentCwd = process.cwd();
 					for (let i = 0; i < tasks.length; i += 1) {
 						const why = validateTask(tasks[i], cfg, parentCwd, manifestDir);

@@ -8,7 +8,7 @@
 		},
 		{
 			"surface": "system:tools",
-			"chars": 1451
+			"chars": 1218
 		},
 		{
 			"surface": "tool:read_file",
@@ -32,7 +32,7 @@
 		},
 		{
 			"surface": "tool:shell",
-			"chars": 1293
+			"chars": 1218
 		},
 		{
 			"surface": "tool:task_stop",
@@ -40,7 +40,7 @@
 		},
 		{
 			"surface": "tool:delegate",
-			"chars": 1896
+			"chars": 1033
 		},
 		{
 			"surface": "envelope",
@@ -48,8 +48,8 @@
 		}
 	],
 	"total": {
-		"chars": 9977,
-		"estTokens": 2500
+		"chars": 8806,
+		"estTokens": 2208
 	},
 	"history": [
 		{
@@ -68,6 +68,12 @@
 			"date": "2026-10-08",
 			"chars": 9977,
 			"estTokens": 2500,
+			"why": "a ratchet step (shrink only)"
+		},
+		{
+			"date": "2026-10-09",
+			"chars": 8806,
+			"estTokens": 2208,
 			"why": "a ratchet step (shrink only)"
 		}
 	]

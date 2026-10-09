@@ -898,3 +898,20 @@ is how the person meets it, and when kiso concludes it.
   profile `wait` — are void. §10 stands as written. The chain budget
   above is what remains, for every task: a background subagent group or
   command started inside a wake run now wakes again, up to the budget.
+
+## Amendment 10 — `timeoutMs` leaves the task-aware schema (2026-10-09, owner-approved, Plan B)
+
+**Ruling 4 completed.** It said the alias `timeoutMs` would be removed at
+0.46.0, but it stayed in the model-facing schema, marked "Deprecated".
+The prefix diet (kiso-doc `plan-prefix-diet-2026-10-06.md`, rev 4 + A1–A6)
+removes it.
+
+- **The task-aware shell schema** is `command`, `foregroundMs`,
+  `background`, `readyWhen`. A model that still sends `timeoutMs` gets an
+  ordinary schema refusal.
+- **The executor keeps reading `timeoutMs`** as the wait, for every
+  caller that skips validation: a call persisted before the upgrade, a
+  host, a test. This is ADR-0061's principle: compatibility in the
+  executor, vocabulary in the schema.
+- **The shell WITHOUT tasks is unchanged:** `command`, `timeoutMs`. There
+  `timeoutMs` is the only timeout, never an alias, and it stays.

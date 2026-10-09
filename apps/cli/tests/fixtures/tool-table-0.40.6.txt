@@ -5,16 +5,16 @@ Tool use:
 - shell for what the file tools cannot do: commands, git, the network, the system
 - batch independent tool calls into one reply — they run in parallel
 - end your turn with your findings — never end on a bare tool result
-- read_file — whole files or offset/limit ranges, workspace-relative paths
-- list_dir — directory entries (the workspace ls)
-- search_text — regex search over workspace files
-- write_file — create or replace a whole file
-- edit_file — replace oldText with newText (never rewrite whole files)
+- read_file — read a file or a line range
+- list_dir — list a directory
+- search_text — regex search in files
+- write_file — write a whole file
+- edit_file — replace oldText with newText
 - shell — any command the task needs (builds, tests, git, curl, system queries)
+- delegate — run subagent tasks
 Active tool guidelines:
 - read_file: read only the range you need — offset/limit beat whole-file reads
 - list_dir: narrow to a subdirectory when the listing caps at 200 entries
 - search_text: narrow the pattern when the result caps — never re-run a broad search
-- write_file: write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use "absent" only to create
-- edit_file: write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use "absent" only to create
+- write_file, edit_file: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use "absent" only to create
 - shell: commands run in the workspace root; on failure read the error and adjust — never repeat blindly

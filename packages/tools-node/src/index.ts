@@ -472,7 +472,7 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 		// safety claim: the kernel enforces both, and had this line been
 		// omitted the tool would simply have been slower, never less correct.
 		effects: { precommitSafe: true, concurrency: "shared" },
-		promptSnippet: "read_file — whole files or offset/limit ranges, workspace-relative paths",
+		promptSnippet: "read_file — read a file or a line range",
 		promptGuidelines: ["read only the range you need — offset/limit beat whole-file reads"],
 		execute: async ({ path, offset, limit }, ctx) => {
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
@@ -627,7 +627,7 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 		idempotent: true,
 		// EC-1 ②: read-only, free, local — see read_file above.
 		effects: { precommitSafe: true, concurrency: "shared" },
-		promptSnippet: "list_dir — directory entries (the workspace ls)",
+		promptSnippet: "list_dir — list a directory",
 		promptGuidelines: ["narrow to a subdirectory when the listing caps at 200 entries"],
 		execute: async ({ path, glob }, ctx) => {
 			try {
@@ -842,7 +842,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 		// commit-required and exclusive, which is what closes the same-path
 		// write race without asking their authors to remember anything.
 		effects: { precommitSafe: true, concurrency: "shared" },
-		promptSnippet: "search_text — regex search over workspace files",
+		promptSnippet: "search_text — regex search in files",
 		promptGuidelines: ["narrow the pattern when the result caps — never re-run a broad search"],
 		execute: async ({ pattern, path, caseSensitive }, ctx) => {
 			let root: string;
@@ -939,8 +939,8 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			required: ["path", "content", "expectedRevision"],
 			additionalProperties: false,
 		},
-		promptSnippet: "write_file — create or replace a whole file",
-		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
+		promptSnippet: "write_file — write a whole file",
+		promptGuidelines: ["cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
 		execute: async ({ path, content, expectedRevision: citedRevision }) => {
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize every plausible copy of the token FIRST —
@@ -1213,8 +1213,8 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 			required: ["path", "edits", "expectedRevision"],
 			additionalProperties: false,
 		},
-		promptSnippet: "edit_file — replace oldText with newText (never rewrite whole files)",
-		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
+		promptSnippet: "edit_file — replace oldText with newText",
+		promptGuidelines: ["cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
 		execute: async (input) => {
 			const { path, expectedRevision: citedRevision } = input;
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
@@ -1501,7 +1501,10 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 								"Run independently as a task. Use for services/watchers or work whose exit result is not needed next. If you need the result, keep it foreground and raise foregroundMs. You are notified when it ends; do not sleep/poll.",
 						},
 						readyWhen: { type: "string", description: "For a continuing service, wait up to foregroundMs for this literal output before returning; the task keeps running afterward." },
-						timeoutMs: { type: "number", description: "Deprecated: use foregroundMs" },
+						// Plan B: timeoutMs (deprecated here since ADR-0058) leaves the
+						// model-facing schema; the executor still reads it from a caller
+						// that skips validation. The schema WITHOUT tasks keeps it — there
+						// it is the shell's only timeout.
 					},
 					required: ["command"],
 					additionalProperties: false,
@@ -1515,6 +1518,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					required: ["command"],
 					additionalProperties: false,
 				},
+		// PR-1d row 3: this exact snippet is part of a MEASURED combination (weather 1/5 -> 5/5); Plan B leaves it as pinned
 		promptSnippet: "shell — any command the task needs (builds, tests, git, curl, system queries)",
 		promptGuidelines: ["commands run in the workspace root; on failure read the error and adjust — never repeat blindly"],
 		execute: async ({ command, timeoutMs, foregroundMs, background, readyWhen }, ctx) => {
@@ -1832,7 +1836,7 @@ export function taskStopTool(opts: WorkspaceToolsOptions): Tool<{ id: string }> 
 			required: ["id"],
 			additionalProperties: false,
 		},
-		promptSnippet: "task_stop — stop a background task by id",
+		promptSnippet: "task_stop — stop a background task",
 		execute: async ({ id }, ctx) => {
 			const tasks = opts.tasks?.(ctx.sessionId);
 			const info = tasks?.get(id);

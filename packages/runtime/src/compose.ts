@@ -59,7 +59,20 @@ export function composeToolTable(registry: ToolRegistry, rules: ToolRules = []):
 		"- end your turn with your findings — never end on a bare tool result",
 		...tools.flatMap((t) => (t.promptSnippet === undefined ? [] : [`- ${t.promptSnippet}`])),
 	];
-	const guidelines = tools.flatMap((t) => (t.promptGuidelines ?? []).map((g) => `- ${t.name}: ${g}`));
+	// Plan B: one statement per fact — a guideline body several tools carry
+	// prints ONCE, naming every tool that carries it, in first-seen order.
+	// The names stay: a host's or an extension's guideline may need its
+	// tool's name to read unambiguously.
+	const byBody = new Map<string, string[]>();
+	for (const t of tools) {
+		for (const g of t.promptGuidelines ?? []) {
+			const body = g.trim();
+			const names = byBody.get(body);
+			if (names === undefined) byBody.set(body, [t.name]);
+			else if (!names.includes(t.name)) names.push(t.name);
+		}
+	}
+	const guidelines = [...byBody].map(([body, names]) => `- ${names.join(", ")}: ${body}`);
 	if (guidelines.length > 0) lines.push("Active tool guidelines:", ...guidelines);
 	return lines.join("\n");
 }
