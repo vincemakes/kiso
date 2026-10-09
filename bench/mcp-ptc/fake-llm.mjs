@@ -10,13 +10,14 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 
-export function startFakeLlm(outDir, { reply = "done" } = {}) {
+export function startFakeLlm(outDir, { reply = "done", delayMs = Number(process.env.FAKE_LLM_DELAY_MS ?? 0) } = {}) {
 	mkdirSync(outDir, { recursive: true });
 	let n = 0;
-	const srv = createServer((req, res) => {
+	const srv = createServer((req, res0) => {
 		let body = "";
 		req.on("data", (c) => { body += c; });
-		req.on("end", () => {
+		req.on("end", () => setTimeout(() => {
+			const res = res0;
 			if (!/chat\/completions/.test(req.url)) { res.writeHead(404); res.end("{}"); return; }
 			n += 1;
 			writeFileSync(join(outDir, `req-${n}.json`), body);
@@ -29,7 +30,7 @@ export function startFakeLlm(outDir, { reply = "done" } = {}) {
 			send({ ...base, choices: [{ index: 0, delta: { role: "assistant", content: reply }, finish_reason: null }] });
 			send({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage });
 			res.write("data: [DONE]\n\n"); res.end();
-		});
+		}, delayMs));
 	});
 	return new Promise((resolve) => srv.listen(0, "127.0.0.1", () => resolve({ url: `http://127.0.0.1:${srv.address().port}/v1`, count: () => n, close: () => new Promise((r) => srv.close(r)) })));
 }
