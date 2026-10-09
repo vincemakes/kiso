@@ -204,6 +204,7 @@
   "packages/tools-node/tests/tui2-r1-progress-probe.test.ts",
   "packages/tools-node/tests/tui2-r1-shell-progress.test.ts",
   "packages/tools-node/tests/wait-withdrawn.test.ts",
+  "packages/tools-node/tests/walk-order-0480.test.ts",
   "packages/tools-node/tests/wr1-revision.test.ts",
   "packages/tools-node/tests/wr1a-coda.test.ts",
   "packages/tools-node/tests/wr1e2-batch.test.ts",
