@@ -1,6 +1,6 @@
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso"></picture></p>
 
-<p align="center"><b>v0.47.3</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
+<p align="center"><b>v0.48.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English edition</a></p>
 
 **kiso 是一个在终端里用的 AI 编程助手。** 它建在自己的 agent 运行时之上，这套运行时也可以用 [SDK](#作为-sdk-使用) 嵌进你自己的程序。
 
@@ -9,7 +9,7 @@
 - **你说了算，底线也兜得住。** 四种审批模式加一个"不问人"开关；"不再询问"存成一个可以删掉的规则文件；就算在全部放行的模式下，删了就回不来的命令也会被拒绝。
 - **哪家的模型都能接。** DeepSeek、Claude、GPT、ChatGPT 订阅，以及任何 OpenAI 兼容的端点和网关。密钥从不写进配置文件。
 - **花在哪里一目了然。** 每轮结束显示这一轮的新输入、输出和缓存命中；`/context` 看上下文被什么占着；`/status` 说清窗口大小是从哪来的。
-- **小而透明。** 内核上限 2,200 行（现在 2,194 行），超了就不合并；会话就是一份可以直接读的 JSONL 日志；每个设计决定都记在 45 份 ADR 里，写明为什么这样做、什么情况下该推翻它。
+- **小而透明。** 内核上限 2,200 行（现在 2,194 行），超了就不合并；会话就是一份可以直接读的 JSONL 日志；每个设计决定都记在 46 份 ADR 里，写明为什么这样做、什么情况下该推翻它。
 
 ## 安装
 

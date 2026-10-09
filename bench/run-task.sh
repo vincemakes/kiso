@@ -1,5 +1,5 @@
 #!/bin/sh
-# run-task.sh <task: T3|L1|L2|F1|F1b|S2> <run-id> — one kiso leg of the 0.46.0
+# run-task.sh <task: T3|L1|L2|F1|F1b|S2|F1j|W1> <run-id> — one kiso leg of the 0.46.0
 # evaluation (kiso-doc plan-0460-3f-evaluation; ADR-0058 §11). F1b is F1's
 # fixture and questions with the fan-out asked for: the eval-0460b
 # mechanism probe (kiso-doc plan-0460-fix-b1-b2 §4), run by run-probe.sh.
@@ -25,7 +25,11 @@ case "$TASK" in
 	L1|L2|F1|F1b) FIXTURE=fixture-$(printf '%s' "$TASK" | tr 'LF' 'lf' | sed 's/b$//'); PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-0460.json','utf8'))['$TASK'])") ;;
 	# 0.48.0 kit (S-chain): F1's fixture and questions in two rounds of background subagents
 	S2) FIXTURE=fixture-f1; PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-0460.json','utf8')).S2)") ;;
-	*) echo "run-task.sh: unknown task $TASK (T3 | L1 | L2 | F1 | F1b | S2)" >&2; exit 1 ;;
+	# 0.49.0 subagents kit: F1j — F1's questions, one explorer each, no word
+	# about foreground or background (the join's measure); W1 — one
+	# implementer whose patch the parent adopts (the writers' probe)
+	F1j|W1) FIXTURE=fixture-f1; PROMPT=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$B/tasks-0460.json','utf8'))['$TASK'])") ;;
+	*) echo "run-task.sh: unknown task $TASK (T3 | L1 | L2 | F1 | F1b | S2 | F1j | W1)" >&2; exit 1 ;;
 esac
 
 # The version the arm WILL run, asked of the binary itself (run-t5.sh's
@@ -88,6 +92,10 @@ EXTDIR="$WORK/ext"; mkdir -p "$EXTDIR"; cp "$B/bench-allow.mjs" "$EXTDIR/"
 SKILLDIR="$WORK/skills"; mkdir -p "$SKILLDIR"
 mkdir -p "$WORK/kiso-home/sessions"
 route_profile_json > "$WORK/kiso-home/config.json"
+# W1: the acceptance its implementer names — the fixture's own test suite
+if [ "$TASK" = W1 ]; then
+	node -e 'const f=process.argv[1],fs=require("fs");const c=JSON.parse(fs.readFileSync(f,"utf8"));c.checks={test:"node --test tests/*.test.js"};fs.writeFileSync(f,JSON.stringify(c,null,1)+"\n")' "$WORK/kiso-home/config.json"
+fi
 assert_bare kiso "$BARE_HOME" || exit 1
 SID="bench-$TASK-$RUN"
 
@@ -140,8 +148,11 @@ case "$TASK" in
 	T3) VERIFY=fail; (cd "$WORK/repo" && node tests/user.test.js >/dev/null 2>&1 && node src/cli.js >/dev/null 2>&1) && VERIFY=pass ;;
 	L1) VERIFY=$(sh "$B/l1-verify.sh" "$WORK/repo") ;;
 	L2) VERIFY=$(sh "$B/l2-verify.sh" "$WORK/repo" "$WORK" 2>/dev/null) ;;
-	F1|F1b|S2) VERIFY=$(node "$B/f1-verify.mjs" "$WORK") ;;
+	F1|F1b|S2|F1j) VERIFY=$(node "$B/f1-verify.mjs" "$WORK") ;;
+	W1) VERIFY=$(node "$B/w1-verify.mjs" "$WORK") ;;
 esac
 echo "$VERIFY" > "$WORK/verify"
 node "$B/tasks-counters.mjs" "$WORK" > "$WORK/counters.json" 2>/dev/null || echo '{"error":"the counters did not run"}' > "$WORK/counters.json"
+# 0.49.0 subagents kit: the join's outcomes, wakes, and the writers' records
+node "$B/subagents-counters.mjs" "$WORK" > "$WORK/subagents.json" 2>/dev/null || echo '{"error":"the subagent counters did not run"}' > "$WORK/subagents.json"
 echo "DONE $TASK run=$RUN wall=$(cat "$WORK/wall_seconds")s verify=$VERIFY status=$(cat "$WORK/status")"

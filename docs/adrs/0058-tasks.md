@@ -938,7 +938,27 @@ with no paid runs.
    - Across the 40 newest bench archives (5,912 shell calls), there were
      none. The floor is inert on T5/T6.
 
-## Amendment 11 — the child contract, as built (0.49.0 C, 2026-10-09, owner-approved)
+## Amendment 11 — `timeoutMs` leaves the task-aware schema (2026-10-09, owner-approved, Plan B)
+
+Numbered 11: Amendment 10 (the foreground floor, #290) reached main first.
+
+**Ruling 4 completed.** It said the alias `timeoutMs` would be removed at
+0.46.0, but it stayed in the model-facing schema, marked "Deprecated".
+The prefix diet (kiso-doc `plan-prefix-diet-2026-10-06.md`, rev 4 + A1–A10)
+removes it.
+
+- **The task-aware shell schema** is `command`, `foregroundMs`,
+  `background`, `readyWhen`. A model that still sends `timeoutMs` gets an
+  ordinary schema refusal.
+- **The executor keeps reading `timeoutMs`** as the wait, for every
+  caller that skips validation: a call persisted before the upgrade, a
+  host, a test. This is ADR-0061's principle: compatibility in the
+  executor, vocabulary in the schema. Amendment 10's floor applies to
+  it as to `foregroundMs`.
+- **The shell WITHOUT tasks is unchanged:** `command`, `timeoutMs`. There
+  `timeoutMs` is the only timeout, never an alias, and it stays.
+
+## Amendment 12 — the child contract, as built (0.49.0 C, 2026-10-09, owner-approved)
 
 Part C of the 0.49.0 subagent plan (rev 3.2, invariants I1–I7). A child
 owns its trajectory; the parent receives only its handoff.

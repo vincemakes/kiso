@@ -148,6 +148,10 @@ not another recalibration)
 - 0059 — `wait` — a run may end on a future event and resume on it —
   **Withdrawn** (Amendment 1, 2026-10-07: the tool removed before it
   shipped; its chain budget lives on as 0058 Amendment 9)
+- 0061 — `edit_file` speaks `oldText`/`newText`: one advertised form
+  (`edits` of `{oldText, newText}`), the old vocabulary taken only by the
+  executor; a replay found 80 of 86 failed edits had `search`/`replace`
+  swapped (0060 was the revision witness, not adopted)
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's

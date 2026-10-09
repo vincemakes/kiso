@@ -4,11 +4,11 @@
 	"lines": [
 		{
 			"surface": "system:base",
-			"chars": 1723
+			"chars": 1690
 		},
 		{
 			"surface": "system:tools",
-			"chars": 1456
+			"chars": 1218
 		},
 		{
 			"surface": "tool:read_file",
@@ -28,11 +28,11 @@
 		},
 		{
 			"surface": "tool:edit_file",
-			"chars": 995
+			"chars": 918
 		},
 		{
 			"surface": "tool:shell",
-			"chars": 1293
+			"chars": 1218
 		},
 		{
 			"surface": "tool:task_stop",
@@ -40,7 +40,7 @@
 		},
 		{
 			"surface": "tool:delegate",
-			"chars": 1896
+			"chars": 1125
 		},
 		{
 			"surface": "envelope",
@@ -48,8 +48,8 @@
 		}
 	],
 	"total": {
-		"chars": 10092,
-		"estTokens": 2528
+		"chars": 8898,
+		"estTokens": 2231
 	},
 	"history": [
 		{
@@ -62,6 +62,18 @@
 			"date": "2026-10-08",
 			"chars": 10092,
 			"estTokens": 2528,
+			"why": "a ratchet step (shrink only)"
+		},
+		{
+			"date": "2026-10-08",
+			"chars": 9977,
+			"estTokens": 2500,
+			"why": "a ratchet step (shrink only)"
+		},
+		{
+			"date": "2026-10-09",
+			"chars": 8898,
+			"estTokens": 2231,
 			"why": "a ratchet step (shrink only)"
 		}
 	]

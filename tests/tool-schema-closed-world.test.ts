@@ -78,7 +78,7 @@ const VALID_INPUTS: Readonly<Record<string, Record<string, unknown>>> = {
 	list_dir: {},
 	search_text: { pattern: "x" },
 	write_file: { path: "a.txt", content: "hi", expectedRevision: "absent" },
-	edit_file: { path: "a.txt", search: "a", replace: "b", expectedRevision: "rev:x" },
+	edit_file: { path: "a.txt", edits: [{ oldText: "a", newText: "b" }], expectedRevision: "rev:x" },
 	shell: { command: "true" },
 	mcp__status: {},
 	delegate: { tasks: [{ role: "explorer", task: "look around" }] },
@@ -88,7 +88,7 @@ const VALID_INPUTS: Readonly<Record<string, Record<string, unknown>>> = {
 
 /** Nested probes: the invented field sits INSIDE an array-item object. */
 const NESTED_PROBES: Readonly<Record<string, Record<string, unknown>>> = {
-	edit_file: { path: "a.txt", expectedRevision: "rev:x", edits: [{ search: "a", replace: "b", __invented: 1 }] },
+	edit_file: { path: "a.txt", expectedRevision: "rev:x", edits: [{ oldText: "a", newText: "b", __invented: 1 }] },
 	delegate: { tasks: [{ role: "explorer", task: "x", __invented: 1 }] },
 };
 

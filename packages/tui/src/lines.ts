@@ -1,4 +1,5 @@
 import { elapsedLabel } from "@vincemakes/kiso-tui-cells";
+import { hunksOf } from "@vincemakes/kiso-tui-cells/diff";
 /**
  * Event rendering for the terminal. Pure (testable): given the render
  * input, produce the lines a human sees. Colors are raw ANSI — no
@@ -174,7 +175,11 @@ function approvalDetail(name: string, input: Record<string, unknown>, resolvePat
 		return `\n  ${escapeTerminal(resolvePath(String(input.path ?? "?")))}\n  ${escapeTerminal(content)}`;
 	}
 	if (name === "edit_file") {
-		return `\n  ${escapeTerminal(resolvePath(String(input.path ?? "?")))}\n  replace: ${escapeTerminal(String(input.search ?? ""))}\n  with:    ${escapeTerminal(String(input.replace ?? ""))}`;
+		// ADR-0061: either vocabulary, every hunk — the labels say what the
+		// panel always meant (replace THIS with THAT)
+		const hunks = hunksOf(input) ?? [];
+		const pairs = hunks.map((h) => `\n  replace: ${escapeTerminal(h.search)}\n  with:    ${escapeTerminal(h.replace)}`).join("");
+		return `\n  ${escapeTerminal(resolvePath(String(input.path ?? "?")))}${pairs}`;
 	}
 	return `\n  ${escapeTerminal(JSON.stringify(input))}`;
 }

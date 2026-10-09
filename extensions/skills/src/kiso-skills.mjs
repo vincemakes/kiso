@@ -277,6 +277,8 @@ function readSkillTool(index, broken) {
 		name: "read_skill",
 		description: "load a skill's SKILL.md (the available-skills list is in the system prompt)",
 		parameters: { type: "object", properties: { name: { type: "string", minLength: 1 } }, required: ["name"], additionalProperties: false },
+		// Plan B: every active tool contributes one inventory line
+		promptSnippet: "read_skill — load an installed skill",
 		execute: async (input) => {
 			const name = String((input ?? {}).name ?? "");
 			const skill = index.find((s) => s.name === name);

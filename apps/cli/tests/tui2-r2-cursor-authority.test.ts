@@ -120,7 +120,7 @@ beforeAll(() => {
 		type: "tool_call_end",
 		callId: "e1",
 		name: "edit_file",
-		input: { path: "src/parser.ts", search: "// OLD", replace: "if (t == null) throw new Error('null token');", expectedRevision: "rev:fb218fcdf7981cd6" },
+		input: { path: "src/parser.ts", edits: [{ oldText: "// OLD", newText: "if (t == null) throw new Error('null token');" }], expectedRevision: "rev:fb218fcdf7981cd6" },
 	};
 	// R13 — the fixture gains a READ, because ctrl+o needs something that
 	// HIDES rows to have a target at all. Before this round a settled

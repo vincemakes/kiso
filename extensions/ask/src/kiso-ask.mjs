@@ -74,20 +74,14 @@ const ASK_PARAMETERS = {
 // ask; it never said what to do INSTEAD, never named "may I proceed" or an
 // authorization already given, and gave no shape for a good question. Each
 // sentence below closes one of those.
+// Plan B (the prefix diet): every rule above, once, in this description
+// alone — the two prompt guidelines that restated it are gone.
 const DESCRIPTION = [
-	"Ask the human a question and wait for the answer.",
-	"Use it only when you are blocked on a choice that is the human's to make",
-	"(a direction, a trade-off, a preference) and the answer changes what you do next.",
-	"Do not ask to confirm work you can verify, whether to proceed, for permission",
-	"the human already gave (an authorization stands for the rest of the session",
-	"unless its scope changes), or before an action the approval panel already gates.",
-	"When a sensible default exists, take it, say which in your reply, and go on.",
-	"Put every question in one call: 1-4 questions, each specific and ending in \"?\";",
-	"2-4 mutually exclusive options, each a short label and a one-line trade-off;",
-	"the option you recommend goes first, with \"(recommended)\" in its label.",
-	"Set multiSelect when several options can be picked together.",
-	"The human can always type their own answer or decline (the result then names",
-	"the questions that went unanswered), so never add an \"Other\" option.",
+	"Ask the human and wait, only when blocked on a choice that is theirs (direction, trade-off, preference) that changes your next step.",
+	"Never ask to confirm what you can verify, whether to proceed, for an authorization already given (it stands until its scope changes), or before an action the approval panel gates.",
+	"With a sensible default, take it and say so.",
+	'One call: 1-4 questions ending in "?", each with 2-4 exclusive options (short label, one-line trade-off), the recommended first, marked "(recommended)"; multiSelect when several fit.',
+	'No "Other" option: the human can always type an answer.',
 ].join(" ");
 
 /** The result the model reads — the answers, or the honest decline. The
@@ -136,11 +130,7 @@ export default async function createAskExtension(ui) {
 				parameters: ASK_PARAMETERS,
 				// asking again is safe — a question has no side effect
 				idempotent: true,
-				promptSnippet: "ask_user — put a real choice to the human (1-4 questions, 2-4 options each)",
-				promptGuidelines: [
-					"ask only when the human's answer changes what you do next; never ask what you can check, whether to proceed, or for permission already given",
-					"with a sensible default, take it and say so; one call carries every question, the recommended option first",
-				],
+				promptSnippet: "ask_user — put a real choice to the human",
 				execute: async (input, ctx) => {
 					const questions = (input ?? {}).questions ?? [];
 					// The schema already refused an empty list; this guard is
