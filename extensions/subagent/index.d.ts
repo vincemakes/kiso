@@ -26,8 +26,20 @@ export interface SubagentHost {
 	readonly tasks?: (sessionId: string | undefined) => SubagentTasks | undefined;
 	/** Live background children per session (default 20). */
 	readonly backgroundMax?: number;
-	/** A background child's model requests before its wrap-up (default 32). */
+	/** A reader child's model requests before its wrap-up (default 32) —
+	 *  in the background, and (0.49.0) in the foreground too. */
 	readonly backgroundMaxTurns?: number;
+	/** 0.49.0: the conversation's live binding — the configured profile its
+	 *  session is bound to (null when none can be named) and the effort it
+	 *  runs at. A child whose task names no model, with no subagents.model
+	 *  configured, runs on this profile at this effort. */
+	readonly currentBinding?: (sessionId: string | undefined) => SubagentBinding | null;
+}
+
+export interface SubagentBinding {
+	readonly profile: string | null;
+	readonly model?: string;
+	readonly reasoning?: { readonly thinking: string; readonly effort: string };
 }
 
 declare const createSubagentExtension: (host?: SubagentHost) => KisoExtension | Promise<KisoExtension>;

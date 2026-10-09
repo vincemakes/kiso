@@ -1,0 +1,8 @@
+{
+	"record": null,
+	"answer": "",
+	"tail": "last lines",
+	"tailCut": true,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

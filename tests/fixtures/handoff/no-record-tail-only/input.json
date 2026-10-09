@@ -1,0 +1,8 @@
+{
+	"record": null,
+	"answer": "an answer no record committed must never show",
+	"tail": "Error: spawn failed\n    at child\n",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

@@ -226,7 +226,11 @@ describe("DT-1a — the result file's honest fields", () => {
 		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script });
 		process.chdir(dir);
 		const listed = await delegateWith([{ role: "explorer", task: "look" }], home);
-		expect(listed.content).toContain("unresolved:\n  - the second file was unreadable");
+		// 0.49.0 C3: UNRESOLVED reaches the model ONCE — in the answer the
+		// child wrote; the parsed list is the result file's, not a repeat
+		expect(listed.content).toContain("looked\n\nUNRESOLVED\n- the second file was unreadable");
+		expect(listed.content.match(/the second file was unreadable/g)).toHaveLength(1);
+		expect(listed.content).not.toContain("unresolved:");
 		writeFileSync(script, JSON.stringify([finish("looked, nothing more")]), "utf8");
 		const silent = await delegateWith([{ role: "explorer", task: "look again" }], home);
 		expect(silent.content).toContain("unresolved: not reported");

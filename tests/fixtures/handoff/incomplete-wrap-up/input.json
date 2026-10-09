@@ -1,0 +1,10 @@
+{
+	"record": {
+		"outcome": "incomplete"
+	},
+	"answer": "Mapped three of five modules before the budget.\n\nUNRESOLVED\n- the db layer\n- the cli\n",
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

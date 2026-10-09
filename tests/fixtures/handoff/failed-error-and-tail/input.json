@@ -1,0 +1,16 @@
+{
+	"record": {
+		"outcome": "failed",
+		"error": "402: [deepseek] request failed: 402 Insufficient Balance"
+	},
+	"answer": "",
+	"tail": {
+		"$repeat": [
+			"x",
+			3000
+		]
+	},
+	"tailCut": true,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

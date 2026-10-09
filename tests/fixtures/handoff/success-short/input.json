@@ -1,0 +1,10 @@
+{
+	"record": {
+		"outcome": "completed"
+	},
+	"answer": "The entry point is src/main.ts.\n\nUNRESOLVED\nnone\n",
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

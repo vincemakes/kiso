@@ -1,0 +1,10 @@
+{
+	"record": {
+		"outcome": "completed"
+	},
+	"answer": "",
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

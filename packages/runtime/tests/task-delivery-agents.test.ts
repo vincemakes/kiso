@@ -238,3 +238,41 @@ describe("ADR-0058 3d — a restart", () => {
 		restarted.close();
 	});
 });
+
+describe("0.49.0 I5 — the result record commits a child's answer", () => {
+	it("an answer the child wrote without its record is not shown as its result: the notice names the output and shows the tail", async () => {
+		const { session, manager, wakes } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => void (await startAgents(m, ctx, ["explorer"])),
+		});
+		await drain(session.run("go"));
+		const dir = dirname(manager.get("t1")!.outputPath);
+		// the child died between its two writes: result.md, never result.json
+		writeFileSync(join(dir, "result.md"), "an answer nothing committed\n");
+		writeFileSync(manager.get("t1")!.outputPath, "the child's last printed line\n");
+		appendRecord(join(dir, "journal.jsonl"), { type: "terminal", ts: Date.now(), exitCode: 1, signal: null });
+		await sleep(150);
+		const all = [...notices(session.log.all as Event[]).map((e) => String(e.content)), ...wakes.map((w) => w.content)].join("\n");
+		expect(all).toContain("the child's last printed line");
+		expect(all).not.toContain("an answer nothing committed");
+		expect(all).not.toMatch(/result="[^"]*t1\/result\.md"/);
+		expect(all).toMatch(/<kiso-task id="t1"[^>]*output="[^"]*"\/>/);
+		manager.close();
+	});
+
+	it("a failed child's record leads its excerpt with the error, then its tail", async () => {
+		const { session, manager, wakes } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => void (await startAgents(m, ctx, ["explorer"])),
+		});
+		await drain(session.run("go"));
+		const dir = dirname(manager.get("t1")!.outputPath);
+		writeFileSync(join(dir, "result.md"), "");
+		writeFileSync(join(dir, "result.json"), JSON.stringify({ outcome: "failed", endedBy: "error", error: "402: request failed: 402 Insufficient Balance" }));
+		writeFileSync(manager.get("t1")!.outputPath, `${"x".repeat(100_000)}\nthe last line\n`);
+		appendRecord(join(dir, "journal.jsonl"), { type: "terminal", ts: Date.now(), exitCode: 1, signal: null });
+		await sleep(150);
+		const all = [...notices(session.log.all as Event[]).map((e) => String(e.content)), ...wakes.map((w) => w.content)].join("\n");
+		expect(all).toMatch(/\/>\nerror: 402: request failed: 402 Insufficient Balance\n…x+\nthe last line/);
+		expect(all.length).toBeLessThan(6_000); // never the 100 KB the child printed
+		manager.close();
+	});
+});

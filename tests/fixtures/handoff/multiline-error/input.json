@@ -1,0 +1,11 @@
+{
+	"record": {
+		"outcome": "failed",
+		"error": "first line\n   second line\n\nthird"
+	},
+	"answer": "",
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

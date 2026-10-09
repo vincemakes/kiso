@@ -794,6 +794,13 @@ export class AgentSession {
 		return this.#model;
 	}
 
+	/** 0.49.0 C1: the config profile that named the live binding — null for
+	 *  a direct provider/model or an SDK caller. Moves with every binding,
+	 *  so a delegated child can run on the conversation's own profile. */
+	get profileName(): string | null {
+		return this.#profileName;
+	}
+
 	/** A1a: the parts of the NEXT request as the kernel would assemble them —
 	 *  the system prompt, the tool table (the same snapshot the loop sends:
 	 *  live extension tools included), the projected messages with their

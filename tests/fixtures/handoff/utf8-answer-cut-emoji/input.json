@@ -1,0 +1,20 @@
+{
+	"record": {
+		"outcome": "completed"
+	},
+	"answer": {
+		"$concat": [
+			"a",
+			{
+				"$repeat": [
+					"\ud83d\ude42",
+					1100
+				]
+			}
+		]
+	},
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

@@ -72,6 +72,7 @@ const CONFIG_SAMPLE: Record<string, unknown> = {
 	protectedPaths: ["/kiso-round-trip-absent/secret.md"], // user-level only, like floor; absent, so no home is read
 	checks: { test: "npm test" },
 	evaluators: ["/kiso-round-trip-absent/evaluate.sh"], // CS-1 (0.40.7)
+	subagents: { model: "p" }, // 0.49.0 C1 — names the profile above
 };
 
 describe("every declared config field survives a parse", () => {

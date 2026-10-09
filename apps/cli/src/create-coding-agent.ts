@@ -188,7 +188,14 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	// channel and not an exported KISO_SESSIONS_DIR: a variable in
 	// process.env would reach every shell child, and a kiso started from a
 	// shell tool would then write into this project's folder.
-	process.env.KISO_DELEGATION_CONFIG_JSON = JSON.stringify({ checks: merged.checks ?? {}, evaluators: merged.evaluators ?? [], profiles: Object.keys(merged.models ?? {}), sessionsDir: sessionsDir() });
+	process.env.KISO_DELEGATION_CONFIG_JSON = JSON.stringify({
+		checks: merged.checks ?? {},
+		evaluators: merged.evaluators ?? [],
+		profiles: Object.keys(merged.models ?? {}),
+		sessionsDir: sessionsDir(),
+		// 0.49.0 C1: the profile a child runs on when its task names none
+		...(merged.subagents?.model !== undefined ? { subagentsModel: merged.subagents.model } : {}),
+	});
 	setConfigModels(merged.models ?? {});
 	// CW-1 batch 2: the windows endpoints stated by refusing — read before the
 	// first window is asked for (the unknown-window notice below).
@@ -285,6 +292,10 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		// picked for it (the picker's fallback applied); the runtime reads it
 		// for a new session only — a resumed one keeps its own
 		...(() => {
+			// 0.49.0 C1: a delegated child on its conversation's profile runs at
+			// the conversation's effort, not at the one remembered for the profile
+			const inherited = childReasoning();
+			if (inherited !== null) return { reasoning: inherited };
 			if (resolved === null || merged.models?.[resolved.name] !== resolved.profile) return {};
 			const effort = startingEffort(resolved.profile, preferences().effort?.[resolved.name]);
 			return effort === null ? {} : { reasoning: { thinking: "default", effort } as ReasoningSetting };
@@ -379,4 +390,19 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		},
 	};
 	return createAgent(definition);
+}
+
+/** 0.49.0 C1: the effort the subagent extension hands a child running on its
+ *  conversation's profile (KISO_CHILD_REASONING). Read only in a child — a
+ *  top-level kiso ignores a stray variable — and only in its known shape. */
+function childReasoning(): ReasoningSetting | null {
+	if ((Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0) < 1) return null;
+	const raw = process.env.KISO_CHILD_REASONING;
+	if (raw === undefined || raw === "") return null;
+	try {
+		const r = JSON.parse(raw) as { thinking?: unknown; effort?: unknown };
+		return typeof r.thinking === "string" && typeof r.effort === "string" ? ({ thinking: r.thinking, effort: r.effort } as ReasoningSetting) : null;
+	} catch {
+		return null;
+	}
 }

@@ -29,7 +29,7 @@
 
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +51,12 @@ const READ_ONLY = ["read_file", "list_dir", "search_text"];
 // verifier: runs checks and reports evidence; its changes are never
 // collected (ADR-0032 Amendment 1 — it was called tester until 0.46.0)
 const ROLES = ["explorer", "implementer", "reviewer", "verifier"];
+// 0.49.0 C2: a reader's turn budget, whether its parent waits or not. A
+// writer has none until B measures one; it keeps the wall clock.
+const READER_ROLES = ["explorer", "reviewer"];
+// 0.49.0 C3: what of a foreground child's printed output stays in memory —
+// the rest is in its output.log, never in a string that grows with it.
+const OUTPUT_TAIL_KEEP = 8 * 1024;
 
 // DT1a-F2 (owner dogfood 2026-09-08): the model's first delegate call was
 // refused twice — `scope` on an explorer, then an `acceptance` naming no
@@ -115,10 +121,13 @@ const delegateParameters = (cfg, background) => ({
 });
 
 /**
- * @param {{ tasks?: (sessionId: string | undefined) => any, backgroundMax?: number, backgroundMaxTurns?: number }} [host]
+ * @param {{ tasks?: (sessionId: string | undefined) => any, backgroundMax?: number, backgroundMaxTurns?: number, currentBinding?: (sessionId: string | undefined) => ({ profile: string | null, model?: string, reasoning?: unknown } | null) }} [host]
  *   ADR-0058 3d: the host's per-session task manager (the runtime's
  *   TaskManager satisfies it structurally — no dependency), the cap on live
  *   background children per session, and a background child's turn budget.
+ *   0.49.0 C1: the conversation's live binding — the profile its session is
+ *   bound to and the effort it runs at — so a child that names no model
+ *   runs on the conversation's, never on the config's default.
  */
 export default async function createSubagentExtension(host = {}) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
@@ -161,6 +170,7 @@ export default async function createSubagentExtension(host = {}) {
 					// spawns nothing (acceptance never carries a model-supplied command).
 					const cfg = delegationConfig();
 					const parentCwd = process.cwd();
+					const binding = bindingOf(host, ctx.sessionId);
 					for (let i = 0; i < tasks.length; i += 1) {
 						const why = validateTask(tasks[i], cfg, parentCwd, manifestDir);
 						// DT1a-F1 (owner dogfood 2026-09-08): a refusal BEFORE any child exists is a
@@ -169,7 +179,7 @@ export default async function createSubagentExtension(host = {}) {
 						// applied" banner (loop.ts keys that banner on errorKind !== "precondition")
 						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true, errorKind: "precondition" };
 					}
-					if (inBackground) return startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir });
+					if (inBackground) return startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({
 							childId: `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`,
@@ -179,7 +189,8 @@ export default async function createSubagentExtension(host = {}) {
 							task: task.task,
 							scope: task.scope,
 							acceptance: task.acceptance,
-							model: task.model,
+							resolved: resolveChild(task, cfg, binding),
+							maxTurns: READER_ROLES.includes(task.role) ? (host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS) : undefined,
 							after: task.after,
 							cfg,
 							sessionsDir,
@@ -196,7 +207,17 @@ export default async function createSubagentExtension(host = {}) {
 					// The per-section text below is unchanged — the model's
 					// view is preserved, the summary is additive.
 					const summary = delegateSummary(sections, new Set(tasks.map((t) => t.role)).size);
-					return { content: `${summary}\n${sections.map((s) => s.text).join("\n")}`, isError: sections.every((s) => s.failed) };
+					// C3: each child's handoff within 4 KiB, the call's within 16 KiB
+					let budget = GROUP_HANDOFF_BYTES;
+					const texts = sections.map((s) => {
+						if (s.handoff === undefined) return s.text;
+						// a failed acceptance's tail counts against its child's 4 KiB
+						const reserved = Math.min(s.reserved ?? 0, budget);
+						const body = handoffBody(s.handoff, Math.max(0, Math.min(CHILD_HANDOFF_BYTES, budget) - reserved));
+						budget -= body.bytes + reserved;
+						return `${s.text}${body.text}${s.trailer ?? ""}`;
+					});
+					return { content: `${summary}\n${texts.join("\n")}`, isError: sections.every((s) => s.failed) };
 				},
 			},
 		],
@@ -218,7 +239,7 @@ const refuse = (why) => ({ content: `delegate: refused — ${why}`, isError: tru
  * runs, launched by argv (no shell), with its turn budget and its result
  * file beside its task (D6).
  */
-async function startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir }) {
+async function startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding }) {
 	for (const task of tasks) {
 		if (!BACKGROUND_ROLES.includes(task.role)) return refuse(`background is not supported for the ${task.role} role in this release; run this delegation in the foreground`);
 		if (task.timeoutMs !== undefined) return refuse("timeoutMs applies to a foreground delegation; a background child has no wall-clock kill — task_stop stops one");
@@ -240,14 +261,15 @@ async function startBackground({ tasks, ctx, background, sessionsDir, parentId, 
 			const task = tasks[i];
 			const childId = `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`;
 			try {
-				const inputs = writeChildInputs(manifestDir, childId, task, { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now() });
+				const resolved = resolveChild(task, cfg, binding);
+				const inputs = writeChildInputs(manifestDir, childId, task, { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now(), ...modelFieldsOf(resolved) });
 				const started = await manager.start({
 					command: `${task.role}: ${task.task.split("\n")[0].slice(0, 80)}`,
 					cwd: process.cwd(),
-					env: childEnv(inputs.policyDir, sessionsDir),
+					env: childEnv(inputs.policyDir, sessionsDir, resolved.reasoning),
 					...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
 					agent: { role: task.role, session: childId },
-					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, task.model), "--max-turns", String(background.maxTurns), "--result-file", join(dir, "result.md")] }),
+					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, resolved.profile), "--max-turns", String(background.maxTurns), "--result-file", join(dir, "result.md")] }),
 				});
 				lines.push(`${started.id} ${task.role} (session ${childId})`);
 			} catch (err) {
@@ -276,7 +298,7 @@ function writeChildInputs(manifestDir, childId, task, manifest) {
 	mkdirSync(policyDir, { recursive: true });
 	writeDurable(join(policyDir, "policy.mjs"), rolePolicyContent(task.role, undefined));
 	writeDurable(taskPath, `${task.task}\n\n${UNRESOLVED_INSTRUCTION}\n`);
-	writeDurable(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task: task.task, background: true, ...(task.model !== undefined ? { model: task.model } : {}) })}\n`);
+	writeDurable(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task: task.task, background: true })}\n`);
 	fsyncPath(policyDir);
 	fsyncPath(manifestDir);
 	return { taskPath, policyDir };
@@ -341,13 +363,13 @@ function runLimited(items, limit, fn) {
 	return Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker)).then(() => results);
 }
 
-async function runChild({ childId, role, task, scope, acceptance, model, after, cfg, sessionsDir, bin, timeout, signal, parentCwd, manifestDir, manifest }) {
+async function runChild({ childId, role, task, scope, acceptance, resolved, maxTurns, after, cfg, sessionsDir, bin, timeout, signal, parentCwd, manifestDir, manifest }) {
 	// CX-1 F6: the manifest binds this invocation to its child session
 	// BEFORE anything runs — the durable record of "which run is mine".
 	// DT-1a: the contract's inputs ride in it, verbatim.
 	const startedAt = manifest?.startedAt ?? Date.now();
 	if (manifestDir !== undefined) {
-		writeFileSync(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task, ...(scope !== undefined ? { scope } : {}), ...(acceptance !== undefined ? { acceptance } : {}), ...(model !== undefined ? { model } : {}), ...(after !== undefined ? { after } : {}) })}\n`, "utf8");
+		writeFileSync(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task, ...(scope !== undefined ? { scope } : {}), ...(acceptance !== undefined ? { acceptance } : {}), ...modelFieldsOf(resolved), ...(after !== undefined ? { after } : {}) })}\n`, "utf8");
 	}
 	// Isolation (DT-1a R2.2): implementer → its own detached worktree from
 	// the parent's HEAD (the parent's UNCOMMITTED changes are not visible —
@@ -404,10 +426,17 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 		// the fixed UNRESOLVED instruction the result parser reads back.
 		const taskPath = join(manifestDir ?? policyDir, `${childId}.task`);
 		writeFileSync(taskPath, `${task}\n\n${UNRESOLVED_INSTRUCTION}\n`, "utf8");
-		const { code, stdout, killed, unconfirmed } = await runProcess(childId, bin, childCwd, policyDir, taskPath, timeout, signal, model, sessionsDir);
-		const extraction = await extractChildResult(sessionsDir, childId, `exit ${code}\n${stdout}`);
-		const status = killed === "timeout" ? "timeout" : killed === "abort" ? "killed" : code !== 0 && extraction.outcome === "missing" ? "spawn-failed" : extraction.outcome;
-		let failed = code !== 0 || killed !== null || extraction.failed;
+		// 0.49.0 C2/C3: the child's own directory — its result record, its
+		// answer and its printed output, as a background child's task has
+		const childDir = join(manifestDir ?? tmpdir(), childId);
+		mkdirSync(childDir, { recursive: true });
+		const { code, killed, unconfirmed, outputPath } = await runProcess({ childId, bin, cwd: childCwd, policyDir, taskPath, timeout, signal, resolved, sessionsDir, childDir, maxTurns });
+		// I5/I6: the result is what the child's record commits — never
+		// inferred from its printed output or from its session's runs
+		const { record, full, answer } = readChildResult(childDir);
+		const status = killed === "timeout" ? "timeout" : killed === "abort" ? "killed" : record !== null ? record.outcome : code !== 0 ? "failed" : "no-result";
+		let failed = code !== 0 || killed !== null || record === null || record.outcome === "failed";
+		const toolCalls = typeof full?.toolCalls === "number" ? full.toolCalls : 0;
 		const lines = [];
 		// Windows P6: a kill that did not take is never reported as a kill
 		const killNote = unconfirmed.length > 0 ? ` — could not confirm the child exited (pid ${unconfirmed.join(", ")}): treat its side effects as UNCERTAIN` : " (the child process group was killed)";
@@ -415,12 +444,12 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			lines.push(`  FAILED: timed out after ${timeout}ms${killNote}`);
 		} else if (killed === "abort") {
 			lines.push(`  FAILED: aborted by the parent run${killNote}`);
-		} else if (code !== 0) {
-			lines.push(`  FAILED: the child exited with code ${code}\n${stdout}`);
-		} else if (extraction.failed) {
-			lines.push(`  FAILED: ${extraction.reason}${extraction.diag !== "" ? `\n${extraction.diag}` : ""}`);
+		} else if (record === null) {
+			lines.push(`  FAILED: the child ${code !== 0 ? `exited with code ${code} and ` : ""}left no result record`);
+		} else if (record.outcome === "failed") {
+			lines.push(`  FAILED: the child's run ended with ${typeof full?.endedBy === "string" ? full.endedBy : "a failure"}`);
 		}
-		const unresolved = parseUnresolved(extraction.text);
+		const unresolved = record === null ? null : parseUnresolved(answer);
 		// the collection (implementers only — a verifier's worktree is a
 		// throwaway copy; its changes are not its result)
 		let changedFiles = null;
@@ -459,6 +488,7 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			else verification = await runAcceptance(acceptance, cfg, worktree ?? childCwd, baseRev, timeout, signal);
 			if (verification.passed === false) failed = true;
 		}
+		const tail = rawTail(outputPath, HANDOFF_TAIL_BYTES);
 		const endedAt = Date.now();
 		const result = {
 			identity: { ...manifest, childId, role, startedAt, endedAt },
@@ -466,7 +496,7 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			task,
 			...(scope !== undefined ? { scope } : {}),
 			...(acceptance !== undefined ? { acceptance } : {}),
-			...(model !== undefined ? { model } : {}),
+			...modelFieldsOf(resolved),
 			...(after !== undefined ? { after } : {}),
 			worktree,
 			baseRev,
@@ -476,39 +506,45 @@ async function runChild({ childId, role, task, scope, acceptance, model, after, 
 			verification,
 			...(unconfirmed.length > 0 ? { unconfirmed } : {}),
 			unresolved,
-			answer: extraction.text,
-			usage: extraction.usage,
-			toolCalls: extraction.toolCalls,
+			answer: record === null ? "" : answer.trimEnd(),
+			usage: full?.usage ?? NO_USAGE,
+			toolCalls,
 			failed,
-			diag: failed ? extraction.diag : "",
+			diag: failed ? tail.text : "",
+			childDir,
 		};
 		if (manifestDir !== undefined) writeFileSync(join(manifestDir, `${childId}.result.json`), `${JSON.stringify(result)}\n`, "utf8");
-		// The section (what the model reads) — rendered from the result.
+		// The section (what the model reads) — its head, then the child's
+		// handoff (C3: the shared format, within the call's budget), then
+		// what only a writer has.
 		const verdict = verification === null ? "none" : verification.skipped !== undefined ? `SKIPPED (${verification.skipped})` : verification.passed ? "PASSED" : "FAILED";
-		let text = `[subagent] ${role}: ${task}\n  status: ${status} · verification: ${verdict}${changedFiles !== null ? ` · files changed: ${changedFiles.length}` : ""} · tools: ${extraction.toolCalls}`;
+		const ranOn = typeof full?.profile === "string" ? full.profile : typeof full?.model === "string" ? full.model : (resolved.profile ?? "unknown");
+		let text = `[subagent] ${role}: ${task}\n  status: ${status} · model: ${ranOn}${resolved.source === "environment" ? " (default)" : ""} · verification: ${verdict}${changedFiles !== null ? ` · files changed: ${changedFiles.length}` : ""} · tools: ${toolCalls}`;
 		if (scope !== undefined) text += `\n  scoped: no shell · writes only under ${scope.join(", ")}`;
 		if (baseRev !== null) text += `\n  child saw HEAD ${baseRev.slice(0, 7)}; the parent's uncommitted changes were not visible`;
+		let reserved = 0;
 		if (verification !== null && verification.skipped === undefined) {
 			const exit = verification.unconfirmed !== undefined ? `killed, not confirmed (pid ${verification.unconfirmed.join(", ")} may still be running — treat its side effects as UNCERTAIN)` : verification.exitCode === null ? "killed" : verification.exitCode;
 			text += `\n  verification: ${verification.kind} ${verification.passed ? "PASSED" : "FAILED"} · exit ${exit} · ${verification.durationMs}ms · ${verification.kind === "check" ? verification.command : verification.evaluator}`;
-			if (!verification.passed && verification.tail !== "") text += `\n${verification.tail}`;
+			if (!verification.passed && verification.tail !== "") {
+				text += `\n${verification.tail}`;
+				reserved = Buffer.byteLength(verification.tail);
+			}
 		}
 		for (const l of lines) text += `\n${l}`;
-		if (extraction.text !== "") text += `\n${extraction.text}`;
-		text += unresolved === null ? "\n  unresolved: not reported" : unresolved.length === 0 ? "\n  unresolved: none" : `\n  unresolved:\n${unresolved.map((u) => `  - ${u}`).join("\n")}`;
+		let trailer = "";
+		if (unresolved === null && record !== null && answer.trim() !== "") trailer += "\n  unresolved: not reported";
 		if (collection !== null) {
 			if (collection.kind === "collected") {
-				text += `\n  diff:\n${collection.stat}\n  patch: ${patchPath}`;
-				if (collection.bytes <= INLINE_PATCH_BYTES) text += `\n${readFileSync(patchPath, "utf8")}`;
-				else text += `\n  (patch is ${collection.bytes} bytes — read it with the shell: cat ${patchPath}, or git -C ${worktree} diff ${baseRev})`;
-				text += `\n  worktree kept at: ${worktree}`;
+				trailer += `\n  diff:\n${collection.stat}\n  patch: ${patchPath}\n  worktree kept at: ${worktree}`;
 			} else if (collection.kind === "failed") {
-				text += `\n  FAILED: collecting the worktree's changes: ${collection.reason}${collection.partialPath !== undefined ? ` (partial patch at ${collection.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
+				trailer += `\n  FAILED: collecting the worktree's changes: ${collection.reason}${collection.partialPath !== undefined ? ` (partial patch at ${collection.partialPath})` : ""}\n  worktree kept at: ${worktree}`;
 			}
 		} else if (unconfirmed.length > 0 && worktree !== null) {
-			text += `\n  worktree kept at: ${worktree} — the child may still be writing to it; nothing was collected`;
+			trailer += `\n  worktree kept at: ${worktree} — the child may still be writing to it; nothing was collected`;
 		}
-		return { failed, ...(failed ? { failKind: failKindOf(status, verification) } : {}), text, toolCalls: extraction.toolCalls };
+		const handoff = { record, answer, tail: tail.text, tailCut: tail.cut, resultPath: join(childDir, "result.md") };
+		return { failed, ...(failed ? { failKind: failKindOf(status, verification) } : {}), text, handoff, reserved, trailer, toolCalls };
 	} finally {
 		rmSync(policyDir, { recursive: true, force: true });
 		if (worktree !== null && ownsWorktree && !keepWorktree) removeWorktree(parentCwd, worktree);
@@ -545,8 +581,11 @@ export function delegateSummary(sections, roles) {
 	return `summary: ${n} task${n === 1 ? "" : "s"} · ${toolCalls} tool calls · ${roles} role${roles === 1 ? "" : "s"} · ${failedSections.length} failed${kinds.length > 0 ? ` (${kinds.join(", ")})` : ""}`;
 }
 
-/** DT-1a: the fixed trailer every task file ends with — the parser reads the section back. */
-export const UNRESOLVED_INSTRUCTION = 'When you finish, end your reply with a section titled UNRESOLVED listing what you could not do or verify, one item per line starting with "- ", or the single word none.';
+/** DT-1a: the fixed trailer every task file ends with — the parser reads
+ *  the section back. 0.49.0 C3: it states the handoff contract too — the
+ *  child's final answer is all the parent reads of its run. */
+export const UNRESOLVED_INSTRUCTION =
+	'Your final answer is a handoff to the parent: the conclusion first, only the evidence needed to act on it, no raw command output or large diffs. End it with a section titled UNRESOLVED listing what you could not do or verify, one item per line starting with "- ", or the single word none.';
 
 /** DT-1a: what a delegated task may NAME — the parent CLI hands the configured
  *  checks and model profiles through the environment. Absent = nothing configured. */
@@ -559,9 +598,11 @@ function delegationConfig() {
 			evaluators: Array.isArray(parsed.evaluators) ? parsed.evaluators.filter((p) => typeof p === "string") : [],
 			profiles: parsed.profiles ?? [],
 			sessionsDir: typeof parsed.sessionsDir === "string" && parsed.sessionsDir !== "" ? parsed.sessionsDir : undefined,
+			// 0.49.0 C1: the user's subagents.model (validated by the host)
+			subagentsModel: typeof parsed.subagentsModel === "string" && parsed.subagentsModel !== "" ? parsed.subagentsModel : undefined,
 		};
 	} catch {
-		return { checks: {}, evaluators: [], profiles: [], sessionsDir: undefined };
+		return { checks: {}, evaluators: [], profiles: [], sessionsDir: undefined, subagentsModel: undefined };
 	}
 }
 
@@ -873,11 +914,16 @@ export function childArgs(bin, childId, taskPath, model) {
 }
 
 /** A child's environment — the parent's, plus the depth guard, its role
- *  policy and the sessions folder (the foreground and background share it). */
-function childEnv(policyDir, sessionsDir) {
+ *  policy and the sessions folder (the foreground and background share it).
+ *  0.49.0 C1: a child that runs on the conversation's profile runs at the
+ *  conversation's effort too (KISO_CHILD_REASONING) — and only that child:
+ *  a profile the task or subagents.model named starts at its own effort. */
+function childEnv(policyDir, sessionsDir, reasoning) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
+	const { KISO_CHILD_REASONING: _inherited, ...parent } = process.env;
 	return {
-		...process.env,
+		...(reasoning !== undefined && reasoning !== null ? { KISO_CHILD_REASONING: JSON.stringify(reasoning) } : {}),
+		...parent,
 		KISO_SUBAGENT_DEPTH: String(depth + 1),
 		KISO_EXTENSIONS_DIR: policyDir,
 		// 0.40.0: the child writes its log beside its parent's — the
@@ -893,19 +939,50 @@ function childEnv(policyDir, sessionsDir) {
 	};
 }
 
-function runProcess(childId, bin, cwd, policyDir, taskPath, timeout, signal, model, sessionsDir) {
-	const child = spawn(process.execPath, childArgs(bin, childId, taskPath, model), {
+/** A foreground child's process. 0.49.0 C3: what it prints — stdout and
+ *  stderr — streams into its output.log; nothing of it accumulates in
+ *  memory, so a child that prints without bound costs the parent nothing.
+ *  C2: a reader runs under its turn budget; every child writes its result
+ *  record (--result-file), the parent's only source for its result. */
+function runProcess({ childId, bin, cwd, policyDir, taskPath, timeout, signal, resolved, sessionsDir, childDir, maxTurns }) {
+	const args = [...childArgs(bin, childId, taskPath, resolved.profile), ...(maxTurns !== undefined ? ["--max-turns", String(maxTurns)] : []), "--result-file", join(childDir, "result.md")];
+	const child = spawn(process.execPath, args, {
 		cwd,
-		env: childEnv(policyDir, sessionsDir),
+		env: childEnv(policyDir, sessionsDir, resolved.reasoning),
 		...ownGroup(),
-		stdio: ["pipe", "pipe", "inherit"],
+		stdio: ["pipe", "pipe", "pipe"],
 	});
 	child.stdin.end(); // CX-1 F5: nothing rides stdin — the task is the file
-	let stdout = "";
-	child.stdout.on("data", (d) => {
-		stdout += String(d);
+	const outputPath = join(childDir, "output.log");
+	let fd = openSync(outputPath, "a");
+	let open = 2;
+	let drained;
+	const allClosed = new Promise((r) => {
+		drained = r;
 	});
-	return superviseExit(child, timeout, signal).then(({ code, killed, unconfirmed }) => ({ code: code ?? -1, stdout, killed, unconfirmed }));
+	for (const stream of [child.stdout, child.stderr]) {
+		stream.on("data", (d) => {
+			if (fd === -1) return;
+			try {
+				writeSync(fd, d);
+			} catch {
+				// best effort: the output is diagnostics, never the result
+			}
+		});
+		stream.on("close", () => {
+			open -= 1;
+			if (open === 0) drained();
+		});
+	}
+	return superviseExit(child, timeout, signal).then(async ({ code, killed, unconfirmed }) => {
+		// the pipes drain after the exit; a child let go (unconfirmed) has
+		// had them destroyed — the wait is bounded either way
+		await Promise.race([allClosed, new Promise((r) => setTimeout(r, 1_000))]);
+		const closing = fd;
+		fd = -1;
+		closeSync(closing);
+		return { code: code ?? -1, killed, unconfirmed, outputPath };
+	});
 }
 
 /** The role policy: read-only for explorer/reviewer, the full six for
@@ -1045,9 +1122,6 @@ function finalText(events) {
 	return text;
 }
 
-/** CX-1 F2: a patch body this size or smaller rides inline in the section;
- *  larger ones are named by path (the parent reads them with the shell). */
-const INLINE_PATCH_BYTES = 64 * 1024;
 
 /** CX-1 F2: the implementer's changes against the BASE revision, streamed to
  *  a file — intent-to-add first so NEW files are part of the diff. Three
@@ -1109,6 +1183,142 @@ function removeWorktree(parentCwd, worktree) {
 			// nothing left to prune
 		}
 	}
+}
+
+/** 0.49.0 C1 — the conversation's live binding, as the host reports it;
+ *  null when the host gives none (an SDK caller, a test) or fails. */
+function bindingOf(host, sessionId) {
+	if (typeof host.currentBinding !== "function") return null;
+	try {
+		const b = host.currentBinding(sessionId);
+		return b !== null && typeof b === "object" ? b : null;
+	} catch {
+		return null;
+	}
+}
+
+/** 0.49.0 C1 — which profile a child runs on, and at what effort. The first
+ *  that applies wins: the task's own `model`; the user's subagents.model;
+ *  the conversation's profile, with the conversation's effort; else none —
+ *  the child inherits the environment, and its handoff says so. Resolved at
+ *  dispatch, so a /model switch between two delegations is honoured. */
+export function resolveChild(task, cfg, binding) {
+	if (task.model !== undefined) return { profile: task.model, source: "task" };
+	if (cfg.subagentsModel !== undefined) return { profile: cfg.subagentsModel, source: "subagents.model" };
+	if (binding !== null && typeof binding.profile === "string" && binding.profile !== "") {
+		return { profile: binding.profile, ...(binding.reasoning !== undefined && binding.reasoning !== null ? { reasoning: binding.reasoning } : {}), source: "conversation" };
+	}
+	return { source: "environment" };
+}
+
+/** The resolution as a manifest records it — a restart replays it. */
+function modelFieldsOf(resolved) {
+	return { modelSource: resolved.source, ...(resolved.profile !== undefined ? { model: resolved.profile } : {}), ...(resolved.reasoning !== undefined ? { reasoning: resolved.reasoning } : {}) };
+}
+
+/** I5: a child's result — its record (result.json) commits its answer
+ *  (result.md); without a valid record there is no answer to read. */
+function readChildResult(childDir) {
+	let raw = null;
+	try {
+		raw = readFileSync(join(childDir, "result.json"), "utf8");
+	} catch {
+		raw = null;
+	}
+	const record = handoffRecordOf(raw);
+	if (record === null) return { record: null, full: null, answer: "" };
+	let answer = "";
+	try {
+		answer = readFileSync(join(childDir, "result.md"), "utf8");
+	} catch {
+		answer = "";
+	}
+	return { record, full: JSON.parse(raw), answer };
+}
+
+/** The last `bytes` of a file as read, and whether it held more — the
+ *  runtime delivery's reader, the same way. */
+function rawTail(path, bytes) {
+	try {
+		const fd = openSync(path, "r");
+		try {
+			const size = statSync(path).size;
+			const n = Math.min(size, bytes);
+			const buf = Buffer.alloc(n);
+			readSync(fd, buf, 0, n, size - n);
+			return { text: buf.toString("utf8"), cut: size > n };
+		} finally {
+			closeSync(fd);
+		}
+	} catch {
+		return { text: "", cut: false };
+	}
+}
+
+// ── The handoff format (0.49.0 C3/I7) ───────────────────────────────────
+// The runtime's tasks/handoff.ts, byte for byte: this extension has no
+// runtime dependency, so it carries its own copy, and the corpus in
+// tests/fixtures/handoff holds both to the same expected bytes.
+
+export const CHILD_HANDOFF_BYTES = 4_096;
+export const GROUP_HANDOFF_BYTES = 16_384;
+export const HANDOFF_TAIL_BYTES = 2_048;
+export const HANDOFF_ERROR_BYTES = 1_024;
+
+/** The record a result.json holds, or null — the commit test (I5). */
+export function handoffRecordOf(raw) {
+	if (raw === null) return null;
+	try {
+		const parsed = JSON.parse(raw);
+		if (parsed === null || typeof parsed !== "object" || typeof parsed.outcome !== "string" || parsed.outcome === "") return null;
+		return typeof parsed.error === "string" && parsed.error !== "" ? { outcome: parsed.outcome, error: parsed.error } : { outcome: parsed.outcome };
+	} catch {
+		return null;
+	}
+}
+
+/** One child's handoff body: lines each led by "\n", and the bytes shown. */
+export function handoffBody(input, budget) {
+	let text = "";
+	let used = 0;
+	const room = () => Math.max(0, budget - used);
+	if (input.record?.error !== undefined) {
+		const line = headOf(`error: ${input.record.error.replace(/\s*\n\s*/g, " ").trim()}`, Math.min(HANDOFF_ERROR_BYTES, room()));
+		if (line.text !== "") {
+			text += `\n${line.text}${line.cut ? "…" : ""}`;
+			used += Buffer.byteLength(line.text);
+		}
+	}
+	const answer = input.record === null ? "" : input.answer.trimEnd();
+	if (answer !== "") {
+		if (Buffer.byteLength(answer) <= room()) return { text: `${text}\n${answer}`, bytes: used + Buffer.byteLength(answer) };
+		if (room() === 0) return { text: `${text}\n[the whole answer: ${input.resultPath}]`, bytes: used };
+		const cut = headOf(answer, room()).text;
+		return { text: `${text}\n${cut}\n… [truncated; the whole answer: ${input.resultPath}]`, bytes: used + Buffer.byteLength(cut) };
+	}
+	const tail = input.tail.trimEnd();
+	if (tail !== "") {
+		const kept = tailOf(tail, Math.min(HANDOFF_TAIL_BYTES, room()));
+		if (kept.text !== "") {
+			text += `\n${input.tailCut || kept.cut ? "…" : ""}${kept.text}`;
+			used += Buffer.byteLength(kept.text);
+		}
+	}
+	return { text, bytes: used };
+}
+
+/** The first `bytes` of `s`, never splitting a character. */
+function headOf(s, bytes) {
+	const buf = Buffer.from(s, "utf8");
+	if (buf.length <= bytes) return { text: s, cut: false };
+	return { text: buf.subarray(0, Math.max(0, bytes)).toString("utf8").replace(/�+$/, ""), cut: true };
+}
+
+/** The last `bytes` of `s`, never splitting a character. */
+function tailOf(s, bytes) {
+	const buf = Buffer.from(s, "utf8");
+	if (buf.length <= bytes) return { text: s, cut: false };
+	return { text: buf.subarray(buf.length - Math.max(0, bytes)).toString("utf8").replace(/^�+/, ""), cut: true };
 }
 
 function failSection(childId, role, task, reason) {
