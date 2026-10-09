@@ -13,7 +13,7 @@ import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool, type Event, type ToolContext, type UserInputVia } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore, type AgentSession, type Run } from "../src/index.js";
 import { appendRecord } from "../src/tasks/journal.js";
-import { TaskDelivery } from "../src/tasks/delivery.js";
+import { DEFAULT_MAX_WAKES, TaskDelivery } from "../src/tasks/delivery.js";
 import { TaskManager, type TaskBackend } from "../src/tasks/manager.js";
 
 const TOOL = { events: [{ type: "tool_call_end" as const, callId: "c1", name: "work", input: {} }, { type: "stop" as const, reason: "tool_use" as const }] };
@@ -219,3 +219,96 @@ describe("ADR-0058 (3c) — a notice the run could not admit is handed back and 
 		manager.close();
 	});
 });
+
+/** 0480-F9: a session log with one person-started run, then `wakeRuns`
+ *  wake runs (each first input a task notice), then optionally a second
+ *  person-started run. */
+function chainLog(wakeRuns: number, personAfter = false): Event[] {
+	const out: Event[] = [];
+	let seq = 0;
+	const run = (input: Event) => {
+		out.push(input, { type: "terminal", outcome: { kind: "completed" }, seq: ++seq } as Event);
+	};
+	run({ type: "user_input", content: "go", seq: ++seq } as Event);
+	for (let i = 0; i < wakeRuns; i++) run({ type: "user_input", source: "system", content: "<kiso-task/>", via: { kind: "tasks", items: [] }, seq: ++seq } as Event);
+	if (personAfter) run({ type: "user_input", content: "go on", seq: ++seq } as Event);
+	return out;
+}
+
+/** One eligible task (an execution's one-shot, or a child agent alone in its
+ *  group) ends after `log`; what woke, what the person was told, and what a
+ *  person-started run would carry. */
+async function budgetCase(o: { log: Event[]; maxWakes?: number; agent?: boolean; ends?: number }) {
+	const dir = mkdtempSync(join(tmpdir(), "kiso-budget-"));
+	const manager = new TaskManager({ root: join(dir, "s.tasks"), backend: fakeBackend(), pollMs: 10 });
+	const wakes: { content: string; via: UserInputVia }[] = [];
+	const spent: { wakes: number; maxWakes: number; taskIds: readonly string[] }[] = [];
+	const delivery = new TaskDelivery({
+		manager,
+		events: () => o.log,
+		liveRun: () => undefined,
+		windowMs: 20,
+		...(o.maxWakes !== undefined ? { maxWakes: o.maxWakes } : {}),
+		onWake: (w) => void wakes.push(w),
+		onBudgetSpent: (info) => void spent.push(info),
+	});
+	for (let k = 0; k < (o.ends ?? 1); k++) {
+		const t = await manager.start({ command: "b", cwd: "/", executionId: `ex-${k}`, ...(o.agent === true ? { agent: { role: "explorer", session: `sub-${k}` } } : {}) });
+		end(manager, t.id);
+		await sleep(150);
+	}
+	const carried: string[] = [];
+	delivery.takeForRun({ notify: (n: { lines: readonly string[] }) => (carried.push(...n.lines), true), unadmittedNotices: () => [] } as unknown as Run);
+	delivery.close();
+	manager.close();
+	return { wakes, spent, carried: carried.join("\n") };
+}
+
+const SPENT = /chain budget spent: (\d+) autonomous wakes since the person's last message — continue when they speak/;
+
+describe("ADR-0058 Amendment 9 — the chain budget, pinned (finding 0480-F9)", () => {
+	it("the default is 20, at its boundary: the 20th wake is allowed, the 21st end notifies and says why", async () => {
+		expect(DEFAULT_MAX_WAKES).toBe(20);
+		const under = await budgetCase({ log: chainLog(19) });
+		expect(under.wakes).toHaveLength(1);
+		expect(under.spent).toEqual([]);
+		const over = await budgetCase({ log: chainLog(20) });
+		expect(over.wakes).toEqual([]);
+		expect(over.carried).toMatch(SPENT);
+		expect(over.carried.match(SPENT)![1]).toBe("20");
+	});
+
+	it("a child agent's group ending over budget says why too (0.48.0 delivered it silently)", async () => {
+		const r = await budgetCase({ log: chainLog(20), agent: true });
+		expect(r.wakes).toEqual([]);
+		expect(r.carried).toMatch(SPENT);
+		expect(r.spent).toEqual([{ wakes: 20, maxWakes: 20, taskIds: ["t1"] }]);
+	});
+
+	it("maxWakes 0: the first eligible end already notifies, with the sentence", async () => {
+		const r = await budgetCase({ log: chainLog(0), maxWakes: 0 });
+		expect(r.wakes).toEqual([]);
+		expect(r.carried.match(SPENT)?.[1]).toBe("0");
+	});
+
+	it("the reset: a person-started run after a spent budget lets the next end wake again", async () => {
+		const r = await budgetCase({ log: chainLog(20, true) });
+		expect(r.wakes).toHaveLength(1);
+		expect(r.carried).not.toMatch(SPENT);
+		expect(r.spent).toEqual([]);
+	});
+
+	it("the person is told once per exhaustion — not per task, and not again by a resume whose log already says it", async () => {
+		const twice = await budgetCase({ log: chainLog(20), ends: 2 });
+		expect(twice.spent).toHaveLength(1);
+		expect(twice.spent[0]).toEqual({ wakes: 20, maxWakes: 20, taskIds: ["t1"] });
+		// where the sentence really lands: handed into the live 20th wake run
+		// (mid-run, so it starts no run and resets nothing)
+		const told = chainLog(20);
+		told.splice(told.length - 1, 0, { type: "user_input", source: "system", content: "<kiso-task/>\nchain budget spent: 20 autonomous wakes since the person's last message — continue when they speak", via: { kind: "tasks", items: [] }, seq: 999 } as Event);
+		const resumed = await budgetCase({ log: told });
+		expect(resumed.spent).toEqual([]);
+		expect(resumed.carried).toMatch(SPENT); // the model is still told, with its notice
+	});
+});
+
