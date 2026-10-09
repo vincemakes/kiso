@@ -17,6 +17,7 @@ import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
+import { collectWriter } from "@vincemakes/kiso-subagent-ext";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 import { taskNoticeLines, taskWhat } from "./task-notice.js";
 
@@ -148,7 +149,10 @@ export function tasksFor(sessionId: string | undefined): TaskManager | undefined
 	let manager = taskManagers.get(sessionId);
 	if (manager === undefined) {
 		taskBackend ??= processTaskBackend();
-		manager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend });
+		// 0.49.0 B: a writer's end is its collection — the subagent
+		// extension's collector, called once its process has ended
+		const created: TaskManager = new TaskManager({ root: join(activeStoreDir, `${sessionId}.tasks`), backend: taskBackend, collect: (info) => collectWriter(info, created) });
+		manager = created;
 		manager.observe();
 		taskManagers.set(sessionId, manager);
 	}

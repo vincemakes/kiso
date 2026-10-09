@@ -1280,6 +1280,13 @@ async function main(): Promise<void> {
 	// first createCodingAgent (the tier extensions read `current` live). The flag
 	// is stripped from the positional args, so it works in any position.
 	const args = process.argv.slice(2);
+	// 0.49.0 B6.2: `kiso apply-patch <taskDir>` adopts a writer's collected
+	// patch into the workspace — a one-shot effect, no session, no model
+	if (args[0] === "apply-patch") {
+		const { applyPatch } = await import("./apply-patch.js");
+		process.exitCode = await applyPatch(args.slice(1));
+		return;
+	}
 	// XP-1: --accept-drift (a flag, never an env var) authorizes opening a
 	// session whose recorded profile materially drifted — the
 	// acknowledgement is recorded as a new revision by the runtime.
@@ -1843,6 +1850,7 @@ async function main(): Promise<void> {
 						"  kiso resume              pick a session to continue (TTY picker)\n" +
 						"  kiso resume <id> [prompt]   continue a session (one-shot)\n" +
 						"  kiso sessions [--all|--current]   list durable sessions (a terminal shows this workspace's by default)\n" +
+						"  kiso apply-patch <dir>   adopt a subagent's collected patch (its handoff prints the command)\n" +
 						"  kiso login <provider>    anthropic|openai|deepseek|zai: store an API key (hidden prompt, or stdin when piped);\n" +
 						"                           chatgpt: sign in with a ChatGPT subscription (browser; unofficial third-party flow)\n" +
 						"  kiso login --endpoint <url>    a gateway: store its API key for that URL's origin only\n" +

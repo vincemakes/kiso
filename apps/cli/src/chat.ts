@@ -1847,6 +1847,10 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 	// the same chain a person's turn takes (taskWake: false keeps it for
 	// the next message). Released when this chat ends.
 	const taskManager = tasksFor(session.id);
+	// 0.49.0 B: writers that ended while nobody listened are collected
+	// BEFORE the delivery is built — so they arrive as anything that ended
+	// meanwhile does, as a notify, never a wake
+	if (taskManager !== undefined) await taskManager.collectPending();
 	// KISO_AUTO_DETACH_MS — the test rigs' knob (like KISO_STREAM_IDLE_MS):
 	// how old a command must be before a steer detaches it (3e D1). The
 	// rigs that hold a steer pending behind a long command raise it.

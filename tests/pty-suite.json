@@ -1,6 +1,7 @@
 {
  "pty": [
   "apps/cli/tests/aci6-one-routing-policy.test.ts",
+  "apps/cli/tests/apply-patch-0490.test.ts",
   "apps/cli/tests/astra-f1-endpoint-e2e.test.ts",
   "apps/cli/tests/astra-f10-readme-facts.test.ts",
   "apps/cli/tests/astra-f3-login-next-step.test.ts",
@@ -152,6 +153,8 @@
   "apps/cli/tests/v0407-picker-opens-current-pty.test.ts",
   "apps/cli/tests/v0407-signin-source.test.ts",
   "apps/cli/tests/v0407-temp-sweep.test.ts",
+  "apps/cli/tests/writer-adopt-pty.test.ts",
+  "apps/cli/tests/writers-0490.test.ts",
   "apps/cli/tests/xp1-binding-change.test.ts",
   "apps/cli/tests/xp1-status-truth-pty.test.ts",
   "apps/cli/tests/zombie-resume-gate.test.ts",
@@ -180,6 +183,7 @@
   "packages/runtime/tests/task-delivery-claims.test.ts",
   "packages/runtime/tests/task-delivery.test.ts",
   "packages/runtime/tests/tasks-claims.test.ts",
+  "packages/runtime/tests/tasks-collect-0490.test.ts",
   "packages/runtime/tests/tasks-detach.test.ts",
   "packages/runtime/tests/tasks-identity-cache.test.ts",
   "packages/runtime/tests/tasks-journal.test.ts",

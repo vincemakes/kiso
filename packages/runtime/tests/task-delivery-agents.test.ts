@@ -370,3 +370,24 @@ describe("0.49.0 A — the join: a delegate call waits for its children and clai
 		restarted.close();
 	});
 });
+
+describe("0.49.0 B — a writer's group waits for its collection", () => {
+	it("a writer whose process ended is not ended for its group until `collected` is recorded", async () => {
+		const { session, manager, wakes } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => {
+				await m.start({ command: "explorer: look", cwd: "/", ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), agent: { role: "explorer", session: "sub-r" } });
+				await m.start({ command: "implementer: change", cwd: "/", ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), agent: { role: "implementer", session: "sub-w", collect: true } });
+			},
+		});
+		await drain(session.run("go"));
+		endAgent(manager, "t1", { answer: "looked" });
+		endAgent(manager, "t2", { answer: "changed a.ts" });
+		await sleep(200);
+		expect(wakes).toEqual([]); // the implementer is still being collected
+		appendRecord(join(dirname(manager.get("t2")!.outputPath), "journal.jsonl"), { type: "collected", ts: Date.now(), outcome: "collected" });
+		await sleep(200);
+		expect(wakes).toHaveLength(1);
+		expect(wakes[0]!.via).toEqual({ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }, { taskId: "t2", transition: "exited" }] });
+		manager.close();
+	});
+});

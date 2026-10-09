@@ -24,7 +24,7 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { AbortSignalLike } from "@vincemakes/kiso-core";
-import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type ClaimedTransition, type TaskAgent, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
+import { appendRecord, fsyncDir, readRecords, runnerOf, verdictOf, type ClaimedTransition, type CollectionOutcome, type TaskAgent, type TaskProfile, type TaskRecord, type TaskState } from "./journal.js";
 
 /** Whether a recorded runner is still that process (ADR-0058 §6):
  *  "verified" — the pid is live AND its OS start time is the recorded one;
@@ -84,12 +84,21 @@ export interface TaskInfo {
 	/** ADR-0058 Amendment 7: the transitions a tool execution took over —
 	 *  its result reports them, so they are never noticed. */
 	readonly claims?: readonly { readonly transition: ClaimedTransition; readonly executionId: string }[];
+	/** 0.49.0 B: a writer's collection, once recorded (absent until then). */
+	readonly collection?: { readonly outcome: CollectionOutcome; readonly reason?: string };
+}
+
+/** 0.49.0 B: a writer whose process ended and whose collection is not yet
+ *  recorded — not ended: never announced, never settled, never complete. */
+export function isCollecting(task: TaskInfo): boolean {
+	return task.agent?.collect === true && task.state.kind === "ended" && task.collection === undefined;
 }
 
 /** The name a task's end (or its runner's vanishing, or a start that never
  *  ran) has for the model — as a notice says it, and as a claim records it. */
 export function endTransitionOf(task: TaskInfo): Exclude<ClaimedTransition, "ready"> | null {
 	const s = task.state;
+	if (isCollecting(task)) return null;
 	if (s.kind === "ended") {
 		if (task.stoppedBy !== undefined) return "stopped";
 		return s.exitCode === 0 && s.error === undefined ? "exited" : "failed";
@@ -157,6 +166,12 @@ export interface TaskManagerOptions {
 	readonly backend: TaskBackend;
 	/** A first listener — the same as `subscribe` right after construction. */
 	readonly onTransition?: TaskListener;
+	/** 0.49.0 B: the host's collector for a writer that ended — called once
+	 *  per collecting task (by the watcher, a wait, or `collectPending`). It
+	 *  records `collected` itself, last; a collector that throws leaves the
+	 *  record to the manager (`failed`, with the reason), so a writer's end
+	 *  is never stuck. */
+	readonly collect?: (task: TaskInfo) => Promise<void>;
 	/** How often live tasks are re-read. Default 500 ms. */
 	readonly pollMs?: number;
 	/** How long a live runner's identity is reused before it is checked
@@ -189,10 +204,14 @@ export class TaskManager {
 	readonly #detachable = new Map<string, Detachable>();
 	/** id → how many `awaitSettled` calls wait on it: the watcher skips it */
 	readonly #waiting = new Map<string, number>();
+	/** 0.49.0 B: the host's collector, and the writers being collected now */
+	readonly #collect: ((task: TaskInfo) => Promise<void>) | undefined;
+	readonly #collecting = new Map<string, Promise<void>>();
 
 	constructor(options: TaskManagerOptions) {
 		this.root = options.root;
 		this.#backend = options.backend;
+		this.#collect = options.collect;
 		if (options.onTransition !== undefined) this.#listeners.add(options.onTransition);
 		this.#pollMs = options.pollMs ?? 500;
 		this.#identifyEveryMs = options.identifyEveryMs ?? 5_000;
@@ -383,6 +402,7 @@ export class TaskManager {
 			const deadline = Date.now() + ms;
 			for (;;) {
 				const info = this.#info(id)!;
+				this.#maybeCollect(info); // a writer it waits for ends only once collected
 				const reached = endTransitionOf(info) ?? (until === "ready" && info.state.kind === "running" && info.state.ready ? "ready" : null);
 				if (reached !== null) return { info, settled: true, claimed: this.#claim(info, reached, opts.executionId, opts.agentJoin === true) };
 				const left = deadline - Date.now();
@@ -505,8 +525,18 @@ export class TaskManager {
 
 	#poll(): void {
 		for (const id of this.#ids()) {
-			// a tool call is waiting on it: what it sees, its result reports
-			if (this.#waiting.has(id)) continue;
+			// a tool call is waiting on it: what it sees, its result reports —
+			// but a writer it waits for is still collected (0.49.0 B)
+			if (this.#waiting.has(id)) {
+				if (this.#collect !== undefined) {
+					try {
+						this.#maybeCollect(this.#info(id)!);
+					} catch {
+						// a corrupt journal: read loudly where it is read on purpose
+					}
+				}
+				continue;
+			}
 			const before = this.#seen.get(id);
 			// a lost (`unknown`) task is still read: if its end is recorded
 			// later, that end is announced (Amendment 8)
@@ -517,6 +547,7 @@ export class TaskManager {
 			} catch {
 				continue; // a corrupt journal: reported where it is read, never here in the background
 			}
+			this.#maybeCollect(info);
 			const now = this.#kindOf(info);
 			if (now === before) continue;
 			this.#seen.set(id, now);
@@ -527,7 +558,47 @@ export class TaskManager {
 	}
 
 	#kindOf(info: TaskInfo): string {
+		if (isCollecting(info)) return "collecting";
 		return info.state.kind === "running" && info.state.ready ? "ready" : info.state.kind;
+	}
+
+	/** 0.49.0 B: start a writer's collection once — never twice at a time. A
+	 *  collector that throws (or ends without its record) is recorded as a
+	 *  failed collection, so the writer's end is never stuck. */
+	#maybeCollect(info: TaskInfo): void {
+		if (this.#collect === undefined || !isCollecting(info) || this.#collecting.has(info.id)) return;
+		const collect = this.#collect;
+		const journal = join(this.root, info.id, JOURNAL);
+		const done = (async () => {
+			let why: string | undefined;
+			try {
+				await collect(info);
+			} catch (err) {
+				why = err instanceof Error ? err.message : String(err);
+			}
+			if (!readRecords(journal).some((r) => r.type === "collected")) {
+				appendRecord(journal, { type: "collected", ts: Date.now(), outcome: "failed", reason: why ?? "the collector recorded nothing" });
+			}
+		})().finally(() => this.#collecting.delete(info.id));
+		this.#collecting.set(info.id, done);
+	}
+
+	/** 0.49.0 B: collect every writer that ended uncollected — at a session's
+	 *  open, BEFORE its delivery is built, so a restart delivers a writer as
+	 *  it delivers anything that ended while nobody listened (never a wake). */
+	async collectPending(): Promise<void> {
+		for (const id of this.#ids()) {
+			let info: TaskInfo | undefined;
+			try {
+				info = this.#info(id);
+			} catch {
+				continue;
+			}
+			if (info === undefined) continue;
+			this.#maybeCollect(info);
+			const pending = this.#collecting.get(id);
+			if (pending !== undefined) await pending;
+		}
 	}
 
 	#info(id: string): TaskInfo | undefined {
@@ -544,6 +615,7 @@ export class TaskManager {
 		const claims = records
 			.filter((r): r is Extract<TaskRecord, { type: "result_claimed" }> => r.type === "result_claimed")
 			.map((r) => ({ transition: r.transition, executionId: r.executionId }));
+		const collected = records.find((r): r is Extract<TaskRecord, { type: "collected" }> => r.type === "collected");
 		return {
 			id,
 			command: planned?.command ?? "",
@@ -557,6 +629,7 @@ export class TaskManager {
 			startedAt: planned?.ts ?? 0,
 			...(terminal !== undefined ? { endedAt: terminal.ts } : {}),
 			...(claims.length > 0 ? { claims } : {}),
+			...(collected !== undefined ? { collection: { outcome: collected.outcome, ...(collected.reason !== undefined ? { reason: collected.reason } : {}) } } : {}),
 		};
 	}
 
