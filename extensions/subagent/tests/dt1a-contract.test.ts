@@ -139,6 +139,15 @@ describe("DT1a-F1/F2 (owner dogfood 2026-09-08): a refusal before any child is a
 		expect(desc).not.toContain("other");
 		delete process.env.KISO_DELEGATION_CONFIG_JSON;
 	});
+
+	it("Plan B A10 (measured): background's description stays verbatim — a shorter one was put inside tasks[] in 4 of 5 smoke legs", async () => {
+		const d = (await createSubagentExtension({ tasks: () => undefined })).tools!.find((t) => t.name === "delegate")!;
+		const p = d.parameters as { properties: { background?: { description?: string }; tasks: { items: { properties: Record<string, unknown> } } } };
+		expect(p.properties.background!.description).toBe(
+			"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+		);
+		expect(p.properties.tasks.items.properties).not.toHaveProperty("background");
+	});
 });
 
 describe("DT-1a — scope: no shell, normalized path checks", () => {

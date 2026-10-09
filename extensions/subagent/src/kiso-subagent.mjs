@@ -103,8 +103,19 @@ const delegateParameters = (cfg, background) => {
 				},
 			},
 			// ADR-0058 3d: present only when the host wired tasks — without them
-			// the schema is byte-for-byte the foreground one
-			...(background ? { background: { type: "boolean", description: "explorer/reviewer only: run in the background; you are told when all have ended; task_stop stops one" } } : {}),
+			// the schema is byte-for-byte the foreground one. The description is
+			// kept verbatim: "start the tasks" marks it as the CALL's flag. The
+			// diet's shorter "run in the background" put it inside tasks[] in 4
+			// of 5 smoke legs (0 of 5 with this text; plan-prefix-diet A10).
+			...(background
+				? {
+						background: {
+							type: "boolean",
+							description:
+								"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+						},
+					}
+				: {}),
 		},
 		required: ["tasks"],
 		additionalProperties: false,
