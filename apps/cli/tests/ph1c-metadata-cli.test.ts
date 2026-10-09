@@ -34,7 +34,7 @@ describe("PH-F15 — the window follows the live model", () => {
 		setAgentModel("claude-haiku-4-5");
 		expect(contextWindowTokens()).toBe(200_000); // the alias row resolves too
 		setAgentModel("gpt-4o");
-		expect(contextWindowTokens()).toBe(200_000);
+		expect(contextWindowTokens()).toBe(128_000); // gpt-4o's own registry row, not the fallback
 		setAgentModel("some-unregistered-model");
 		expect(contextWindowTokens()).toBe(200_000); // the default, not a guess — declared re-pin (the owner, 2026-10-09): the fallback is 200K again, reversing CW-1 batch 2's 128K
 	});
