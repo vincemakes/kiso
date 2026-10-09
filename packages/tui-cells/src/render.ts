@@ -7,6 +7,7 @@
  */
 
 import { charWidth, displayWidth, visibleWidth, widthCut } from "./width.js";
+import { hunksOf } from "./diff.js";
 import type { Ground, Rgb } from "./ground.js";
 import { bg, breathRamp, fg, graphiteColours, mix, terminalTier, type Tier } from "./graphite.js";
 
@@ -546,8 +547,9 @@ function toolSummaryDetail(name: string, input: Record<string, unknown>, result:
 		}
 		case "edit_file": {
 			const path = String(input.path ?? "?");
-			const removed = lines(String(input.search ?? ""));
-			const added = lines(String(input.replace ?? ""));
+			const hunks = hunksOf(input) ?? [];
+			const removed = hunks.reduce((n, h) => n + lines(h.search), 0);
+			const added = hunks.reduce((n, h) => n + lines(h.replace), 0);
 			return `${path} (+${added} -${removed})`;
 		}
 		case "shell": {
