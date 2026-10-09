@@ -1,0 +1,10 @@
+{
+	"base":   { "tools": 13,  "volume": "small",  "task": "MID",   "axis": "base" },
+	"s40":    { "tools": 40,  "volume": "small",  "task": "MID",   "axis": "S" },
+	"s120":   { "tools": 120, "volume": "small",  "task": "MID",   "axis": "S" },
+	"vmed":   { "tools": 13,  "volume": "medium", "task": "MID",   "axis": "V" },
+	"vlarge": { "tools": 13,  "volume": "large",  "task": "MID",   "axis": "V" },
+	"dshort": { "tools": 13,  "volume": "small",  "task": "SHORT", "axis": "D" },
+	"ddeep":  { "tools": 13,  "volume": "small",  "task": "DEEP",  "axis": "D" },
+	"host":   { "tools": 27,  "volume": "small",  "task": "DEEP",  "axis": "host", "note": "27 tools / ~30 KB of declarations, JSON results of 1-5 KB, chain 12-14, loop x12: the shape of the closest real host" }
+}
