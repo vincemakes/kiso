@@ -245,7 +245,7 @@
 			"type": "function",
 			"function": {
 				"name": "delegate",
-				"description": "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
+				"description": "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes. Use background when the next step does not need the result; a foreground wait is bounded and continues in the background on its own.",
 				"parameters": {
 					"type": "object",
 					"properties": {
@@ -302,11 +302,6 @@
 										"type": "string",
 										"minLength": 1,
 										"description": "verifier only: the earlier task (by its index, 1-based) whose worktree this verifier runs in a copy of"
-									},
-									"timeoutMs": {
-										"type": "integer",
-										"minimum": 1000,
-										"description": "the child's wall-clock budget in milliseconds"
 									}
 								},
 								"required": [
