@@ -1,0 +1,14 @@
+{
+	"SHORT": {
+		"prompt": "In the Harbor project, add a subject named Wind Cartographer and generate one noir asset for it. Then tell me how many credits Harbor has left.",
+		"note": "2-3 dependent calls on the seeded world; Harbor starts with 285 left, the new asset costs 5."
+	},
+	"MID": {
+		"prompt": "Create a project named Atlas with a budget of 200 credits and add these six subjects: Brass Heron, Quiet Engine, Glass Orchard, Salt Lantern, Hollow Drum, Night Ferry. Generate one noir asset for each subject, check the quality of every asset, and revise any that do not pass until they all pass. Finish by listing the project's assets with their status, and tell me which assets needed a revision.",
+		"note": "chain of about 6 dependent steps, fan-out of 6, ends with a list_assets call whose size follows the volume knob."
+	},
+	"DEEP": {
+		"prompt": "Produce a finished board for a new project named Meridian with a budget of 250 credits. Its twelve subjects are: Copper Gull, Tide Clerk, Ash Piano, Velvet Lamp, Stone Violin, Reed Cartographer, Marrow Clock, Pale Harbor, Iron Orchid, Dust Archive, Lantern Fox, Kelp Bishop. Each needs one noir asset and every asset must pass quality review. When all twelve pass, arrange them on a grid board, get the project approved, and finalize it. Tell me the total credits spent.",
+		"note": "chain of 12-14 dependent steps, fan-out of 12, a gate (request_approval then finalize_project), writes and spends throughout."
+	}
+}
