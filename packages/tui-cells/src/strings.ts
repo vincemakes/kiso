@@ -323,9 +323,14 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
  * list — and the drift was visible on a single screen: a card head
  * reading `read` directly above one reading `list_dir`.
  *
- * An unmapped tool (an extension's, an MCP server's) renders its own
- * name. Inventing a verb for a tool this package has never heard of
- * would be a worse lie than printing what the model actually calls.
+ * An unmapped tool (a third party's extension, an MCP server's) renders
+ * its own name. Inventing a verb for a tool this package has never heard
+ * of would be a worse lie than printing what the model actually calls.
+ *
+ * kiso's OWN tools are not unknown, wherever they ship (owner, 2026-10-08):
+ * the task runner's `task_stop` and the first-party extensions' `delegate`,
+ * `read_skill` and `ask_user` are named here too. This narrows the rule
+ * above, which had read "an extension's" as any extension's.
  */
 const DISPLAY_VERB: Readonly<Record<string, string>> = {
 	read_file: "read",
@@ -334,6 +339,10 @@ const DISPLAY_VERB: Readonly<Record<string, string>> = {
 	write_file: "write",
 	edit_file: "edit",
 	shell: "shell",
+	task_stop: "stop task",
+	delegate: "subagents",
+	read_skill: "read skill",
+	ask_user: "ask user",
 };
 
 /** A tool's name as the SCREEN says it. Display-only: the raw name stays

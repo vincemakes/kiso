@@ -162,10 +162,36 @@ def main():
 		os.kill(pid, signal.SIGKILL)
 	except ProcessLookupError:
 		pass
-	try:
-		os.waitpid(pid, 0)
-	except ChildProcessError:
-		pass
+	# reap with a bound, reading the master meanwhile: an unbounded waitpid
+	# turned a killed node that stayed in E (seen once, 2026-10-08) into a
+	# hung release step. A stuck child now FAILS with its ps state, which
+	# is the evidence the next occurrence needs.
+	end = time.time() + 15
+	while True:
+		try:
+			done, _ = os.waitpid(pid, os.WNOHANG)
+		except ChildProcessError:
+			break
+		if done:
+			break
+		if time.time() > end:
+			sys.stdout.write(full.decode(errors="replace"))
+			try:
+				state = subprocess.check_output(["ps", "-o", "pid=,stat=,wchan=,command=", "-p", str(pid)]).decode(errors="replace").strip()
+			except Exception:
+				state = "?"
+			print("\nFAIL: the killed agent was not reaped within 15s: " + state)
+			sys.exit(1)
+		r, _, _ = select.select([fd], [], [], 0.2)
+		if r:
+			try:
+				data = os.read(fd, 4096)
+			except OSError:
+				data = b""
+			if data:
+				full += data
+			else:
+				time.sleep(0.05)
 	sys.stdout.write(full.decode(errors="replace"))
 	sys.exit(0)
 

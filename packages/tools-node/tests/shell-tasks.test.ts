@@ -33,7 +33,9 @@ function setup(shellEnv?: Record<string, string>) {
 	const cwd = join(base, "ws");
 	mkdirSync(cwd);
 	const manager = new TaskManager({ root: join(base, "s1.tasks"), backend, pollMs: 50 });
-	const opts = { workspaceRoot: cwd, tasks: (sid: string | undefined) => (sid === "s1" ? manager : undefined), ...(shellEnv !== undefined ? { shellEnv } : {}) };
+	// these cases promote by a short wait on purpose: the floor (Amendment 10)
+	// is opted out here, and shell-foreground-floor.test.ts pins its default
+	const opts = { workspaceRoot: cwd, tasks: (sid: string | undefined) => (sid === "s1" ? manager : undefined), limits: { minForegroundMs: 0 }, ...(shellEnv !== undefined ? { shellEnv } : {}) };
 	return { base, cwd, manager, opts, shell: shellTool(opts), stop: taskStopTool(opts) };
 }
 

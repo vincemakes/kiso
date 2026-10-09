@@ -55,8 +55,20 @@ export function codingToolOptions(): {
 	readonly secretEnvNames: readonly string[];
 	readonly protectedFiles: readonly string[];
 	readonly tasks: (sessionId: string | undefined) => ShellTasks | undefined;
+	readonly limits?: { readonly minForegroundMs: number };
 } {
-	return { workspaceRoot: process.cwd(), excludeRoots: [kisoHome()], secretEnvNames: secretEnvNamesOf(configModels), protectedFiles: protectedFiles(), tasks: tasksFor };
+	// KISO_MIN_FOREGROUND_MS — the test rigs' knob (like KISO_AUTO_DETACH_MS):
+	// the least foreground wait (ADR-0058 Amendment 10, default 60 s). The
+	// rigs that promote a command by a short wait lower it; nothing else does.
+	const minForeground = Number.parseInt(process.env.KISO_MIN_FOREGROUND_MS ?? "", 10);
+	return {
+		workspaceRoot: process.cwd(),
+		excludeRoots: [kisoHome()],
+		secretEnvNames: secretEnvNamesOf(configModels),
+		protectedFiles: protectedFiles(),
+		tasks: tasksFor,
+		...(Number.isFinite(minForeground) && minForeground >= 0 ? { limits: { minForegroundMs: minForeground } } : {}),
+	};
 }
 
 /** ADR-0058 (3b): one TaskManager per session, its directory beside the

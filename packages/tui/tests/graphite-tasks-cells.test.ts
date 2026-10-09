@@ -52,7 +52,7 @@ describe("the background delegate card", () => {
 	it("the roles on the head, `2 in the background`, a row per child with its task id", () => {
 		setGround("light");
 		const rows = cellComponent(delegate()).render(100, CTX).map((r) => plain(r).slice(2).trimEnd());
-		expect(rows[1]).toMatch(/^DELEGATE explorer · reviewer +2 in the background · 0\.1s$/);
+		expect(rows[1]).toMatch(/^SUBAGENTS explorer · reviewer +2 in the background · 0\.1s$/);
 		expect(rows.slice(2, 4)).toEqual(["t1  explorer  map the auth flow", "t2  reviewer  review the plan"]);
 		expect(rows).toHaveLength(5); // pad · head · two children · pad
 	});
@@ -63,7 +63,7 @@ describe("the background delegate card", () => {
 		expect(cellComponent(delegate()).render(100, CTX)[2]).toContain(`${p.ink2}explorer`);
 		setGround("unknown");
 		const flat = cellComponent(delegate()).render(100, CTX).map(plain);
-		expect(flat[0]).toMatch(/^ {2}DELEGATE explorer · reviewer +2 in the background · 0\.1s$/);
+		expect(flat[0]).toMatch(/^ {2}SUBAGENTS explorer · reviewer +2 in the background · 0\.1s$/);
 		expect(flat[1]).toBe("  └ t1  explorer  map the auth flow");
 	});
 

@@ -477,6 +477,16 @@ DECLARED REVERSAL (owner, 2026-09-29) of R1's `THINK <seconds>` label in
 blue, which read as strange; R1 also folded thinking by character, which
 broke words mid-way.
 
+Inside a paragraph, inline markdown is drawn as the answer draws it
+(0.47.3, owner, 2026-10-08): `**bold**`, code spans, links and escapes,
+each closing back to the grey italic; a marker with no closer yet stays
+literal. A reasoning summary opens on a `**title**`, and its asterisks
+read as noise. The paragraph rule above is unchanged — lists, headings
+and fences inside thinking still read as their source — and an italic
+span adds nothing inside text that is already italic. Which text is
+thinking is the provider's channel, never its content: a dialect's
+reasoning field is thinking, its message text is the answer.
+
 A PIPE never sees a thinking paragraph: the inactive path writes one
 folded summary line (`foldThinking`).
 
