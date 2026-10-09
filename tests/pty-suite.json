@@ -201,6 +201,7 @@
   "packages/tools-node/tests/safety.test.ts",
   "packages/tools-node/tests/scoped-reads.test.ts",
   "packages/tools-node/tests/search-miss.test.ts",
+  "packages/tools-node/tests/shell-foreground-floor.test.ts",
   "packages/tools-node/tests/shell-tasks.test.ts",
   "packages/tools-node/tests/tasks-process.test.ts",
   "packages/tools-node/tests/tools.test.ts",

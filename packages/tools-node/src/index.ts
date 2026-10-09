@@ -338,6 +338,10 @@ export interface WorkspaceToolsOptions {
 		readonly searchMaxMs?: number;
 		/** read_file: refuse a file larger than this (default 64 MiB). */
 		readonly readMaxFileBytes?: number;
+		/** shell, with tasks wired: the least foreground wait (default 60s,
+		 *  the default wait). A shorter `foregroundMs` is raised to it; 0
+		 *  keeps the model's value as asked (ADR-0058 Amendment 10). */
+		readonly minForegroundMs?: number;
 	};
 }
 
@@ -1486,7 +1490,15 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 		execute: async ({ command, timeoutMs, foregroundMs, background, readyWhen }, ctx) => {
 			// the session's tasks, when wired and this call has a session
 			const tasks = opts.tasks?.(ctx.sessionId);
-			const timeout = foregroundMs ?? timeoutMs ?? (tasks !== undefined ? DEFAULT_FOREGROUND_MS : DEFAULT_SHELL_TIMEOUT_MS);
+			// ADR-0058 Amendment 10: with tasks wired a wait shorter than the
+			// floor only moves the command to the background sooner, so the
+			// model may lengthen the wait, never shorten it. Without tasks the
+			// wait is a kill timeout and is kept as asked.
+			const asked = [foregroundMs, timeoutMs].find((v): v is number => typeof v === "number" && Number.isFinite(v));
+			const timeout =
+				tasks !== undefined
+					? Math.max(asked ?? DEFAULT_FOREGROUND_MS, opts.limits?.minForegroundMs ?? DEFAULT_FOREGROUND_MS)
+					: (asked ?? DEFAULT_SHELL_TIMEOUT_MS);
 			// E group: a PRE-aborted signal never spawns the command.
 			if (ctx.signal.aborted) {
 				return { content: "shell aborted before start", isError: true, errorKind: "fatal" };
