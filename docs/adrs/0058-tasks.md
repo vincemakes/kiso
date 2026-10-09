@@ -898,3 +898,42 @@ is how the person meets it, and when kiso concludes it.
   profile `wait` — are void. §10 stands as written. The chain budget
   above is what remains, for every task: a background subagent group or
   command started inside a wake run now wakes again, up to the budget.
+
+## Amendment 10 — the foreground wait has a floor (2026-10-09, owner-approved)
+
+On 0.47.3 a simple edit request produced a background task. The model
+(gpt-6.1-sol) fell back to `find` and passed `foregroundMs: 10000`
+itself, below the 60 s default. The `find` outlived it, was promoted to a
+task, and the model then stopped it. The owner asked why the wait was
+10 s when the default is 60 s, then approved a floor at 60 s for 0.48.0,
+with no paid runs.
+
+1. **With tasks wired, the foreground wait is `max(foregroundMs, floor)`.**
+   The floor defaults to the default wait, 60 s: a model may lengthen the
+   wait, never shorten it.
+   - **Applies to:** a foreground command (with or without `readyWhen`),
+     the `background` + `readyWhen` wait (Amendment 7: "up to the
+     foreground wait"), and the deprecated `timeoutMs`, the same way.
+   - **Does not apply to:** a host without tasks wired, where the wait is
+     a kill timeout and is kept as asked; and `background` without
+     `readyWhen`, which does not wait.
+   - **The person is never held by it:** ctrl+b, a steer and Esc move or
+     end the call at once (Amendment 6, ADR-0057 §5).
+2. **DECLARED NARROWING of §3** ("why 60 s and why the model's value
+   wins").
+   - That ruling's evidence was about long waits: the model passes a long
+     wait exactly when it expects a long run. A long value still wins.
+   - What narrows is a short value. Below the floor it no longer shortens
+     the wait, because a shorter wait only ever promotes sooner. Work
+     meant to run on its own already has `background: true`.
+3. **Hosts:** `WorkspaceToolsOptions.limits.minForegroundMs` (default
+   60,000). 0 keeps the model's value as asked, which is the behaviour
+   before this amendment.
+4. **Unchanged:** the schema and every description, so the request bytes
+   are identical. A promotion's result still states the wait that
+   happened ("still running after 60000 ms").
+5. **Evidence, so no paid run** (the owner's ruling):
+   - Across the owner's logs (9,559 shell calls), the only wait-promotions
+     ever were from explicit short waits (2 of 2).
+   - Across the 40 newest bench archives (5,912 shell calls), there were
+     none. The floor is inert on T5/T6.
