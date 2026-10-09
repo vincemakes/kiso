@@ -59,10 +59,18 @@ describe("a host that wires no tasks keeps today's shell", () => {
 });
 
 describe("ADR-0058 §3 — the wait, with tasks", () => {
-	it("the schema offers foregroundMs, background, readyWhen and the deprecated timeoutMs; task_stop joins the tools", () => {
+	it("the schema offers foregroundMs, background and readyWhen — Plan B: the deprecated timeoutMs left it; task_stop joins the tools", () => {
 		const { opts, shell } = setup();
-		expect(Object.keys((shell.parameters as { properties: object }).properties)).toEqual(["command", "foregroundMs", "background", "readyWhen", "timeoutMs"]);
+		expect(Object.keys((shell.parameters as { properties: object }).properties)).toEqual(["command", "foregroundMs", "background", "readyWhen"]);
 		expect(createCodingTools(opts).map((t) => t.name)).toContain("task_stop");
+	});
+
+	it("Plan B: a caller that skips validation may still pass timeoutMs — the executor honours it as the wait", async () => {
+		const { shell } = setup();
+		const t0 = Date.now();
+		const r = await shell.execute({ command: "sleep 5", timeoutMs: 300 } as never, ctx());
+		expect(Date.now() - t0).toBeLessThan(4000);
+		expect(r.content).toMatch(/background task|task_stop/);
 	});
 
 	it("a process that exits within the wait gives the ordinary result, and no task", async () => {

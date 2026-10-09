@@ -103,15 +103,50 @@ describe("DT1a-F1/F2 (owner dogfood 2026-09-08): a refusal before any child is a
 		const ext = await createSubagentExtension();
 		const delegate = ext.tools!.find((t) => t.name === "delegate")!;
 		const props = (delegate.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties;
-		expect(props.scope!.description).toMatch(/implementer and verifier/);
-		expect(props.scope!.description).toMatch(/explorer|reviewer/);
+		expect(props.scope!.description).toMatch(/implementer\/verifier only/);
 		expect(props.acceptance!.description).toContain("test");
 		expect(props.acceptance!.description).toContain("lint");
 		expect(props.acceptance!.description).toMatch(/never a command/i);
+		expect(props.model).toBeUndefined(); // no profile configured
+		delete process.env.KISO_DELEGATION_CONFIG_JSON;
+	});
+
+	it("Plan B: a field the user has not configured is not in the schema at all", async () => {
 		delete process.env.KISO_DELEGATION_CONFIG_JSON;
 		const bare = (await createSubagentExtension()).tools!.find((t) => t.name === "delegate")!;
-		const bareProps = (bare.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties;
-		expect(bareProps.acceptance!.description).toMatch(/none configured/i);
+		const props = (bare.parameters as { properties: { tasks: { items: { properties: Record<string, unknown> } } } }).properties.tasks.items.properties;
+		expect(Object.keys(props).sort()).toEqual(["after", "role", "scope", "task", "timeoutMs"]);
+		expect(JSON.stringify(bare.parameters)).not.toMatch(/configured now|none configured|omit/);
+	});
+
+	it("Plan B: a configured profile or evaluator brings its field back, naming what is configured", async () => {
+		fauxEnv({ KISO_DELEGATION_CONFIG_JSON: JSON.stringify({ profiles: ["fast"], evaluators: ["/opt/eval.sh"] }) });
+		const d = (await createSubagentExtension()).tools!.find((t) => t.name === "delegate")!;
+		const props = (d.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties;
+		expect(props.model!.description).toContain("fast");
+		expect(props.acceptance!.description).toMatch(/evaluator/);
+		expect(props.acceptance!.description).not.toMatch(/check:/);
+		delete process.env.KISO_DELEGATION_CONFIG_JSON;
+	});
+
+	it("Plan B: one config snapshot per extension instance — a later change does not move a live session's schema", async () => {
+		fauxEnv({ KISO_DELEGATION_CONFIG_JSON: JSON.stringify({ checks: { test: "npm test" } }) });
+		const ext = await createSubagentExtension();
+		process.env.KISO_DELEGATION_CONFIG_JSON = JSON.stringify({ checks: { other: "make other" } });
+		const d = ext.tools!.find((t) => t.name === "delegate")!;
+		const desc = (d.parameters as { properties: { tasks: { items: { properties: Record<string, { description?: string }> } } } }).properties.tasks.items.properties.acceptance!.description!;
+		expect(desc).toContain("test");
+		expect(desc).not.toContain("other");
+		delete process.env.KISO_DELEGATION_CONFIG_JSON;
+	});
+
+	it("Plan B A10 (measured): background's description stays verbatim — a shorter one was put inside tasks[] in 4 of 5 smoke legs", async () => {
+		const d = (await createSubagentExtension({ tasks: () => undefined })).tools!.find((t) => t.name === "delegate")!;
+		const p = d.parameters as { properties: { background?: { description?: string }; tasks: { items: { properties: Record<string, unknown> } } } };
+		expect(p.properties.background!.description).toBe(
+			"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+		);
+		expect(p.properties.tasks.items.properties).not.toHaveProperty("background");
 	});
 });
 

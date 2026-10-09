@@ -222,7 +222,10 @@ Configuration: `$KISO_MCP_CONFIG` (default `~/.kiso/mcp.json`):
   proves the command ran on the tree as the child left it, only an
   evaluator proves correctness; `model` — a configured profile name;
   `after` — a completed implementer's child id (verifier only; the
-  verifier runs in a copy of that worktree); `timeoutMs`. Every child sees the parent's
+  verifier runs in a copy of that worktree); `timeoutMs`. `acceptance` and
+  `model` are in the schema only when the user configured a check or an
+  evaluator, or a profile; the configuration is read once per session, so
+  the schema and the executor agree (Plan B). Every child sees the parent's
   `HEAD` — uncommitted parent changes are not visible, and the section
   says so. Each task writes `<sessions>/subagent/<childId>.result.json`
   (status, changed files from `git diff --numstat` / `--name-status`,
