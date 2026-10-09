@@ -56,7 +56,7 @@ import {
 // module (the tui's components shim re-exports it) — one import edge,
 // and it points one way: md.ts measures with the width authority, never
 // back through here.
-import { headingLevel, renderBlock, renderMarkdown, type MdBlock } from "./md.js";
+import { headingLevel, inlineSpans, renderBlock, renderMarkdown, type MdBlock } from "./md.js";
 import { hunksDiff, hunksOf, type DiffLine } from "./diff.js";
 export { MdStream, renderBlock, renderMarkdown, type MdBlock, type MdKind } from "./md.js";
 
@@ -577,6 +577,16 @@ export function pendingQueueRows(lines: readonly string[], W: number, waiting: "
  * one dim row that says so. With colour off there is no grey and no
  * italic to tell it by, so there — and only there — its first row opens
  * with the plain word `thinking:`.
+ *
+ * 0.47.3 — a paragraph's INLINE markdown is drawn, as the answer's is
+ * (`inlineSpans`, with the grey italic as the style every span closes
+ * back to): a reasoning summary opens on a `**title**`, and its asterisks
+ * read as noise. `**bold**`, code spans, links and escapes render; a
+ * marker with no closer yet stays literal (the stream's half-written
+ * `**`). Blocks do not: a paragraph is still one folded run, so lists,
+ * headings and fences read as their source. An italic span inside
+ * thinking is already italic, so its closing SGR 23 is dropped — kept,
+ * it would end the paragraph's own italic halfway through.
  */
 class ThinkingBlock implements Component {
 	constructor(private readonly cell: { text: string; done: boolean; folded?: boolean }) {}
@@ -589,13 +599,16 @@ class ThinkingBlock implements Component {
 		if (c.folded) return [cutLine(`${mark}${p.dim}${p.italic}thinking \u00b7 hidden \u00b7 ctrl+t${p.italicEnd}${p.reset}`, W)];
 		const room = proseRoom(W);
 		const plainWord = p.italic === "" && p.dim === "" ? "thinking: " : "";
+		const base = `${p.dim}${p.italic}`;
 		const rows: string[] = [];
 		for (const para of text.split(/\n\s*\n/)) {
 			const flat = para.replace(/\s+/g, " ").trim();
 			if (flat === "") continue;
 			if (rows.length > 0) rows.push("");
-			const lead = rows.length === 0 ? `${plainWord}${flat}` : flat;
-			for (const line of foldWords(lead, room)) rows.push(`${rows.length === 0 ? mark : THINK_COL}${p.dim}${p.italic}${line}${p.italicEnd}${p.reset}`);
+			const spans = inlineSpans(flat, base);
+			const styled = p.italicEnd === "" ? spans : spans.split(p.italicEnd).join("");
+			const lead = rows.length === 0 ? `${plainWord}${styled}` : styled;
+			for (const line of foldWords(lead, room)) rows.push(`${rows.length === 0 ? mark : THINK_COL}${base}${line}${p.italicEnd}${p.reset}`);
 		}
 		return rows;
 	}

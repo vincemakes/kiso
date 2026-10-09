@@ -202,54 +202,6 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 	let visited = 0;
 	const stopped = (): boolean => cutByCap || cutByVisits || cutByDeadline;
 
-	const walk = (dir: string, depth: number, layers: readonly Layer[]): void => {
-		if (stopped()) return;
-		if (Date.now() > deadline) {
-			cutByDeadline = true;
-			return;
-		}
-		let entries;
-		try {
-			entries = readdirSync(dir, { withFileTypes: true });
-		} catch {
-			return; // unreadable directory: skipped, as before
-		}
-		const here = depth === 0 ? layers : layersEntering(dir, layers);
-		for (const entry of entries) {
-			if (stopped()) return;
-			const name = entry.name;
-			const full = join(dir, name);
-			const isDir = entry.isDirectory();
-			if (corpusSkips(declared, here, full, name, isDir)) continue;
-			if (isDir) {
-				if (opts.isExcluded?.(full) === true) continue;
-				if (depth + 1 > maxDepth) {
-					cutByDepth = true;
-					continue;
-				}
-				walk(full, depth + 1, here);
-				continue;
-			}
-			if (visited >= maxVisited) {
-				cutByVisits = true;
-				return;
-			}
-			visited += 1;
-			// the clock is read every 256 files, not per file
-			if ((visited & 255) === 0 && Date.now() > deadline) {
-				cutByDeadline = true;
-				return;
-			}
-			const rel = relative(root, full).split(sep).join("/");
-			if (opts.accept !== undefined && !opts.accept(rel)) continue;
-			if (files.length >= maxEntries) {
-				cutByCap = true;
-				return;
-			}
-			files.push(rel);
-		}
-	};
-
 	const start = opts.walkFrom ?? root;
 	// entering a subtree, the layers between root and it still apply
 	let startLayers: readonly Layer[] = rootLayer === null ? [] : [rootLayer];
@@ -260,8 +212,88 @@ export function walkCorpus(opts: CorpusOptions): CorpusWalk {
 			startLayers = layersEntering(cur, startLayers);
 		}
 	}
-	walk(start, 0, startLayers);
+
+	// 0.48.0 (finding 0472-F2) — BREADTH-FIRST, files before directories.
+	// The walk was depth-first in readdir order, so under a budget a deep
+	// sibling directory spent it before a file one level up was looked at:
+	// `Desktop/devv/` sorts before `Desktop/generations.ts`, and the owner's
+	// glob for that file stopped inside devv. Level by level, each
+	// directory's entries in name order and its files first, the budget cuts
+	// the deepest part of the tree and never a file nearer the root.
+	const queue: { dir: string; depth: number; layers: readonly Layer[] }[] = [{ dir: start, depth: 0, layers: startLayers }];
+	for (let next = 0; next < queue.length && !stopped(); next += 1) {
+		const { dir, depth, layers } = queue[next]!;
+		if (Date.now() > deadline) {
+			cutByDeadline = true;
+			break;
+		}
+		let entries;
+		try {
+			entries = readdirSync(dir, { withFileTypes: true });
+		} catch {
+			continue; // unreadable directory: skipped, as before
+		}
+		entries.sort(byName);
+		const here = depth === 0 ? layers : layersEntering(dir, layers);
+		const subdirs: { dir: string; depth: number; layers: readonly Layer[] }[] = [];
+		for (const entry of entries) {
+			if (stopped()) break;
+			const name = entry.name;
+			const full = join(dir, name);
+			const isDir = entry.isDirectory();
+			if (corpusSkips(declared, here, full, name, isDir)) continue;
+			if (isDir) {
+				if (opts.isExcluded?.(full) === true) continue;
+				if (depth + 1 > maxDepth) {
+					cutByDepth = true;
+					continue;
+				}
+				subdirs.push({ dir: full, depth: depth + 1, layers: here });
+				continue;
+			}
+			if (visited >= maxVisited) {
+				cutByVisits = true;
+				break;
+			}
+			visited += 1;
+			// the clock is read every 256 files, not per file
+			if ((visited & 255) === 0 && Date.now() > deadline) {
+				cutByDeadline = true;
+				break;
+			}
+			const rel = relative(root, full).split(sep).join("/");
+			if (opts.accept !== undefined && !opts.accept(rel)) continue;
+			if (files.length >= maxEntries) {
+				cutByCap = true;
+				break;
+			}
+			files.push(rel);
+		}
+		queue.push(...subdirs);
+	}
+	// what was walked, in an order that does not depend on the filesystem's
+	// readdir: by path segments, which is a depth-first listing by name
+	files.sort(bySegments);
 	return { files, cutByDepth, cutByCap, cutByVisits, cutByDeadline, visited };
+}
+
+/** Directory entries by name, in UTF-16 code-unit order — the same on
+ *  every platform, unlike readdir's own order (name order on APFS and
+ *  NTFS, hash order on ext4). */
+export function byName(a: { name: string }, b: { name: string }): number {
+	return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+}
+
+/** Workspace-relative POSIX paths by segment, each by code unit: `a/x`
+ *  before `a-b` before `b`, which is the order a depth-first walk by name
+ *  lists them in. */
+export function bySegments(a: string, b: string): number {
+	const x = a.split("/");
+	const y = b.split("/");
+	for (let i = 0; i < Math.min(x.length, y.length); i += 1) {
+		if (x[i] !== y[i]) return x[i]! < y[i]! ? -1 : 1;
+	}
+	return x.length - y.length;
 }
 
 /** A minimal glob → RegExp, anchored, over workspace-relative POSIX paths.

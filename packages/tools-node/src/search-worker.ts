@@ -18,7 +18,7 @@
 
 import { open, readdir } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
-import { corpusSkips, layersEntering, readLayer, walkCorpus, type Layer } from "./corpus.js";
+import { byName, bySegments, corpusSkips, layersEntering, readLayer, walkCorpus, type Layer } from "./corpus.js";
 import { isMainThread, parentPort } from "node:worker_threads";
 import { diskPath, isProtectedDiskPath, type ProtectedIdentity } from "./protected.js";
 
@@ -156,7 +156,7 @@ export function runGlob(req: GlobRequest): GlobReply {
 
 export async function runSearch(req: SearchRequest): Promise<SearchReply> {
 	const regex = new RegExp(req.pattern, req.flags);
-	const matches: string[] = [];
+	const found: { path: string; line: number; text: string }[] = [];
 	let totalMatches = 0;
 	let filesSeen = 0;
 	let skippedFiles = 0;
@@ -214,8 +214,7 @@ export async function runSearch(req: SearchRequest): Promise<SearchReply> {
 					// WORKSPACE-RELATIVE, not absolute: `read_file` refuses an
 					// absolute path, so an absolute hit here is a result the
 					// model cannot feed back without rewriting it by hand.
-					if (matches.length < req.maxMatches)
-						matches.push(`${relative(req.workspaceRoot, full) || basename(full)}:${i + 1}: ${excerptAround(line, regex)}`);
+					if (found.length < req.maxMatches) found.push({ path: relative(req.workspaceRoot, full) || basename(full), line: i + 1, text: excerptAround(line, regex) });
 				}
 			}
 		} catch {
@@ -226,41 +225,58 @@ export async function runSearch(req: SearchRequest): Promise<SearchReply> {
 	// workspace root — not by `.git`, and the walk never goes up.
 	const rootLayer = readLayer(req.root);
 	const declared = rootLayer !== null;
-	const walk = async (dir: string, depth: number, layers: readonly Layer[]): Promise<void> => {
-		if (depth > 8 || outOfBudget()) return;
-		let entries;
-		try {
-			entries = await readdir(dir, { withFileTypes: true });
-		} catch (err) {
-			const code = (err as NodeJS.ErrnoException).code;
-			if (code === "EACCES" || code === "EPERM") {
-				unreadableDirs += 1;
-				return;
-			}
-			throw err;
-		}
-		const here = depth === 0 ? layers : layersEntering(dir, layers);
-		for (const entry of entries) {
+	// 0.48.0 (finding 0472-F2) — the same order as `walkCorpus`: breadth-
+	// first, each directory's entries by name and its files before any
+	// subdirectory, so the budget cuts the deepest part of the tree and
+	// never a file nearer the root. Depth-first, a deep sibling directory
+	// spent the budget before a shallow file was read.
+	const walk = async (start: string, startLayers: readonly Layer[]): Promise<void> => {
+		const queue: { dir: string; depth: number; layers: readonly Layer[] }[] = [{ dir: start, depth: 0, layers: startLayers }];
+		for (let next = 0; next < queue.length; next += 1) {
 			if (outOfBudget()) return;
-			const full = join(dir, entry.name);
-			const isDir = entry.isDirectory();
-			if (corpusSkips(declared, here, full, entry.name, isDir)) continue;
-			if (isDir) {
-				if (isExcluded(full)) {
-					excludedDirs += 1;
+			const { dir, depth, layers } = queue[next]!;
+			let entries;
+			try {
+				entries = await readdir(dir, { withFileTypes: true });
+			} catch (err) {
+				const code = (err as NodeJS.ErrnoException).code;
+				if (code === "EACCES" || code === "EPERM") {
+					unreadableDirs += 1;
 					continue;
 				}
-				await walk(full, depth + 1, here);
-			} else if (entry.isFile()) await scanFile(full);
+				throw err;
+			}
+			entries.sort(byName);
+			const here = depth === 0 ? layers : layersEntering(dir, layers);
+			for (const entry of entries) {
+				if (outOfBudget()) return;
+				const full = join(dir, entry.name);
+				const isDir = entry.isDirectory();
+				if (corpusSkips(declared, here, full, entry.name, isDir)) continue;
+				if (isDir) {
+					if (isExcluded(full)) {
+						excludedDirs += 1;
+						continue;
+					}
+					if (depth + 1 <= 8) queue.push({ dir: full, depth: depth + 1, layers: here });
+				} else if (entry.isFile()) await scanFile(full);
+			}
 		}
 	};
 	try {
 		if (req.single !== null) await scanFile(req.single);
-		else await walk(req.root, 0, rootLayer === null ? [] : [rootLayer]);
+		else await walk(req.root, rootLayer === null ? [] : [rootLayer]);
 	} catch (err) {
-		return { token: req.token, matches, totalMatches, filesSeen, skippedFiles, multiLink, unreadableDirs, excludedDirs, stopped, stoppedAt, error: (err as Error).message };
+		return { token: req.token, matches: listed(found), totalMatches, filesSeen, skippedFiles, multiLink, unreadableDirs, excludedDirs, stopped, stoppedAt, error: (err as Error).message };
 	}
-	return { token: req.token, matches, totalMatches, filesSeen, skippedFiles, multiLink, unreadableDirs, excludedDirs, stopped, stoppedAt };
+	return { token: req.token, matches: listed(found), totalMatches, filesSeen, skippedFiles, multiLink, unreadableDirs, excludedDirs, stopped, stoppedAt };
+}
+
+/** The matches as the tool prints them: by path segments, then by line —
+ *  a listing that does not depend on the order the walk read them in. */
+function listed(found: readonly { path: string; line: number; text: string }[]): string[] {
+	const key = (path: string): string => path.split(sep).join("/");
+	return [...found].sort((a, b) => bySegments(key(a.path), key(b.path)) || a.line - b.line).map((m) => `${m.path}:${m.line}: ${m.text}`);
 }
 
 if (!isMainThread && parentPort !== null) {
