@@ -286,6 +286,9 @@ case "$TOOL" in
     # the gate working and the round wasted.
     mkdir -p "$WORK/kiso-home"
     route_profile_json > "$WORK/kiso-home/config.json"
+    # BENCH_OVERLAY (opt-in): a directory whose mcp.json is this leg's MCP server
+    # configuration, placed where the arm reads its user-level one. Unset = no change.
+    if [ -n "${BENCH_OVERLAY:-}" ]; then cp "$BENCH_OVERLAY"/mcp.json "$WORK/kiso-home/mcp.json"; [ ! -f "$BENCH_OVERLAY/mcp-tools.json" ] || cp "$BENCH_OVERLAY/mcp-tools.json" "$WORK/kiso-home/mcp-tools.json"; fi
     set -- "OPENAI_BASE_URL=$ROUTE_BASE_URL" "BENCH_CRED_FILE=$CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" "BENCH_CRED_KEY=$ROUTE_CRED_KEY" \
       "OPENAI_MODEL=$ROUTE_MODEL" "KISO_EXTENSIONS_DIR=$EXTDIR" \
       "KISO_HOME=$WORK/kiso-home" "KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1"
@@ -390,6 +393,12 @@ fs.writeFileSync('$WORK/meta.json', JSON.stringify({
       fi
       route_ref_models_json "$REF_BASE" "$B/cred-print.sh" "ref-$RUN-$$" > "$BARE_HOME/.pi/agent/models.json"
       CAPTURE_DECL=".pi/agent/models.json"
+    fi
+    # BENCH_OVERLAY (opt-in): this leg's MCP configuration, declared to the bareness gate
+    if [ -n "${BENCH_OVERLAY:-}" ]; then
+      mkdir -p "$BARE_HOME/.pi/agent"
+      cp "$BENCH_OVERLAY/mcp.json" "$BARE_HOME/.pi/agent/mcp.json"
+      CAPTURE_DECL="$CAPTURE_DECL .pi/agent/mcp.json"
     fi
     assert_bare pi "$BARE_HOME" $CAPTURE_DECL || exit 1
     i=1; while [ "$i" -le "$NTURNS" ]; do
