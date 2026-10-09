@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-client",
-	"version": "0.47.3",
+	"version": "0.48.0",
 	"description": "kiso client — the typed client for a hosted kiso session over the wire protocol: run, resume, abort, approve, the snapshot, and a stream that reconnects with Last-Event-ID and never repeats an event. Browser and Node; depends on the protocol package only.",
 	"type": "module",
 	"license": "MIT",
@@ -21,13 +21,13 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-protocol": "0.47.3"
+		"@vincemakes/kiso-protocol": "0.48.0"
 	},
 	"devDependencies": {
-		"@vincemakes/kiso-core": "0.47.3",
-		"@vincemakes/kiso-evals": "0.47.3",
-		"@vincemakes/kiso-runtime": "0.47.3",
-		"@vincemakes/kiso-server": "0.47.3",
+		"@vincemakes/kiso-core": "0.48.0",
+		"@vincemakes/kiso-evals": "0.48.0",
+		"@vincemakes/kiso-runtime": "0.48.0",
+		"@vincemakes/kiso-server": "0.48.0",
 		"@types/node": "^26.1.2",
 		"typescript": "^5.7.2",
 		"vitest": "^3.0.0"
