@@ -36,7 +36,8 @@ describe("ADR-0058 (3b) — the CLI's shell promotes, and a clean exit stops the
 			]),
 		);
 		const t0 = Date.now();
-		const run = runCli(["chat", "st1"], { ...env, KISO_FAUX_SCRIPT: script }, { input: "go\n", cwd, timeout: 60_000 });
+		// the 300 ms wait promotes only with the floor lowered (Amendment 10)
+		const run = runCli(["chat", "st1"], { ...env, KISO_FAUX_SCRIPT: script, KISO_MIN_FOREGROUND_MS: "0" }, { input: "go\n", cwd, timeout: 60_000 });
 		expect(run.status).toBe(0);
 		expect(Date.now() - t0).toBeLessThan(30_000); // the exit stopped it; nothing waited for the sleep
 

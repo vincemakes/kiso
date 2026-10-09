@@ -50,4 +50,10 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: node scripts/windows-probe.mjs
-      - run: npx vitest run -c vitest.unit.config.ts
+      # 15 s per test on this job only (vitest's default 5 s holds on Linux and
+      # locally). The windows runner stalls for seconds at a time: on
+      # 2026-10-07, 4 of 29 windows runs went red, each a cluster of unrelated
+      # store-heavy tests timing out together (one file: median 291 ms, worst
+      # 6,265 ms). Not Defender: the image already excludes C:\ and D:\. A
+      # stall must not read as a failure; a test that truly hangs still fails.
+      - run: npx vitest run -c vitest.unit.config.ts --testTimeout=15000
