@@ -200,7 +200,8 @@ describe("0.49.0 C3 — the section is the child's handoff, never its printed ou
 	it("a call's children share 16 KiB: five long answers show 16 KiB of answer between them, and every child its path", async () => {
 		process.env.FAKE_CHILD_MODE = "long";
 		const r = await delegate(Array.from({ length: 5 }, (_, i) => ({ role: "explorer", task: `look ${i}` })));
-		const shown = (r.content.match(/L+/g) ?? []).reduce((n, s) => n + s.length, 0);
+		// whole lines of the answer only: a temp path's random suffix may hold an L too
+		const shown = (r.content.match(/^L+$/gm) ?? []).reduce((n, s) => n + s.length, 0);
 		expect(shown).toBe(16_384);
 		expect(r.content.match(/the whole answer: /g)).toHaveLength(5);
 	}, 30_000);
