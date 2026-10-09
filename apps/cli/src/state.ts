@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
 import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
+import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
@@ -106,6 +107,40 @@ export function deliveryLines(sessionId: string, items: readonly TaskDeliveryIte
 		items.filter((i) => !(i.transition === "unknown" && told.has(i.taskId))),
 		taskWhatOf(sessionId),
 	);
+}
+
+/** 0.49.0 C1: the live sessions by id — what a delegation reads its
+ *  conversation's binding from. Every entry registers its session
+ *  (index.ts bindRestoredSession: fresh, resumed, switched, -p). */
+interface LiveSession {
+	readonly id: string;
+	readonly model: string;
+	readonly baseUrl: string | undefined;
+	readonly profileName: string | null;
+	readonly reasoning: ReasoningSetting;
+}
+const liveSessions = new Map<string, LiveSession>();
+export function setLiveSession(session: LiveSession): void {
+	liveSessions.set(session.id, session);
+}
+
+/** 0.49.0 C1: the conversation's live binding, for a child that names no
+ *  model — the profile its session is bound to (the session's own record,
+ *  never the display mark, which /reload and /resume clear), else the one
+ *  configured profile with the session's (model, baseUrl), else none — and
+ *  the effort the session runs at. */
+export function bindingFor(sessionId: string | undefined): { readonly profile: string | null; readonly model: string; readonly reasoning: ReasoningSetting } | null {
+	const s = sessionId === undefined ? undefined : liveSessions.get(sessionId);
+	if (s === undefined) return null;
+	const profile = s.profileName !== null && configModels[s.profileName] !== undefined ? s.profileName : profileByIdentity(s.model, s.baseUrl);
+	return { profile, model: s.model, reasoning: s.reasoning };
+}
+
+/** The one configured profile whose model and endpoint are these — null
+ *  when none matches, or several do (a guess is never a binding). */
+export function profileByIdentity(model: string, baseUrl: string | undefined): string | null {
+	const hits = Object.entries(configModels).filter(([, p]) => p.model === model && p.baseUrl === baseUrl);
+	return hits.length === 1 ? hits[0]![0] : null;
 }
 
 export function tasksFor(sessionId: string | undefined): TaskManager | undefined {

@@ -43,7 +43,18 @@ describe("ADR-0058 3d (D6) — a background child's turn budget", () => {
 		expect(String(inputs[1]!.content)).toMatch(/turn budget of 2 model requests is spent/);
 		expect(events.filter((e) => e.type === "terminal").map((e) => e.outcome!.kind)).toEqual(["max_turns", "completed"]);
 		expect(readFileSync(result, "utf8")).toBe("found the entry point\n\nUNRESOLVED\n- the tests\n");
-		expect(JSON.parse(readFileSync(join(result, "..", "result.json"), "utf8"))).toEqual({ outcome: "incomplete", requests: 3, budget: 2 });
+		// 0.49.0 I6: the record says how the run ended — the parent never
+		// counts the session's runs to learn that the wrap-up was a second one
+		expect(JSON.parse(readFileSync(join(result, "..", "result.json"), "utf8"))).toEqual({
+			outcome: "incomplete",
+			endedBy: "max_turns",
+			requests: 3,
+			budget: 2,
+			toolCalls: 2,
+			usage: { completedResponses: 0, abandonedAttempts: 0, inputTokens: 0, outputTokens: 0, cacheRead: 0 },
+			model: "faux",
+			profile: null,
+		});
 	}, 60_000);
 
 	it("the wrap-up itself never gets a second request", () => {
@@ -56,7 +67,7 @@ describe("ADR-0058 3d (D6) — a background child's turn budget", () => {
 		const { r, result } = child([CALL("a"), TEXT("all mapped")], ["--max-turns", "5", "--result-file", "{result}"]);
 		expect(r.status).toBe(0);
 		expect(readFileSync(result, "utf8")).toBe("all mapped\n");
-		expect(JSON.parse(readFileSync(join(result, "..", "result.json"), "utf8"))).toEqual({ outcome: "completed", requests: 2, budget: 5 });
+		expect(JSON.parse(readFileSync(join(result, "..", "result.json"), "utf8"))).toMatchObject({ outcome: "completed", endedBy: "completed", requests: 2, budget: 5, toolCalls: 1 });
 	}, 60_000);
 
 	it("--max-turns and --result-file without --task-file are refused (the interactive door has no turn limit)", () => {

@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import createSubagentExtension from "../dist/kiso-subagent.mjs";
+import createSubagentExtension, { UNRESOLVED_INSTRUCTION } from "../dist/kiso-subagent.mjs";
 
 type Started = { id: string; command: string; cwd: string; executionId?: string; agent: { role: string; session: string }; env: Record<string, string | undefined>; exec: { file: string; args: string[] }; inputsDurable: boolean };
 
@@ -84,7 +84,7 @@ describe("ADR-0058 3d — a background call", () => {
 		const at = (flag: string) => s.exec.args[s.exec.args.indexOf(flag) + 1];
 		expect(at("--max-turns")).toBe("32");
 		expect(at("--result-file")).toMatch(/t1\/result\.md$/);
-		expect(readFileSync(at("--task-file")!, "utf8")).toMatch(/^map the auth flow\n\nWhen you finish, end your reply with a section titled UNRESOLVED/);
+		expect(readFileSync(at("--task-file")!, "utf8")).toBe(`map the auth flow\n\n${UNRESOLVED_INSTRUCTION}\n`);
 		expect(s.inputsDurable).toBe(true);
 		expect(s.env).toMatchObject({ KISO_SUBAGENT_DEPTH: "1", KISO_MODE: "bypass" });
 		expect(readFileSync(join(s.env.KISO_EXTENSIONS_DIR!, "policy.mjs"), "utf8")).toContain('["read_file","list_dir","search_text"]');

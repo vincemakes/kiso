@@ -43,6 +43,7 @@ import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } fr
 import { dirname, join } from "node:path";
 import { isRuntimeInput, type Event, type TaskDeliveryItem, type UserInputVia } from "@vincemakes/kiso-core";
 import { NOTICE_FOOTER as FOOTER, type Run, type TaskNotice } from "../run.js";
+import { CHILD_HANDOFF_BYTES, GROUP_HANDOFF_BYTES, handoffBody, handoffRecordOf, TAIL_BYTES, type HandoffRecord } from "./handoff.js";
 import { endTransitionOf, type TaskInfo, type TaskManager, type TaskTransition } from "./manager.js";
 
 type Mode = "silent" | "notify" | "wake";
@@ -81,9 +82,10 @@ interface Pending {
 const key = (i: TaskDeliveryItem): string => `${i.taskId}:${i.transition}`;
 export const DEFAULT_MAX_WAKES = 20;
 
-/** ADR-0058 3d (D3): a child's excerpt, and a group's excerpts together. */
-const CHILD_EXCERPT_BYTES = 4_096;
-const GROUP_EXCERPT_BYTES = 16_384;
+/** ADR-0058 3d (D3): a child's excerpt, and a group's excerpts together —
+ *  the handoff format's budgets (0.49.0 C3). */
+const CHILD_EXCERPT_BYTES = CHILD_HANDOFF_BYTES;
+const GROUP_EXCERPT_BYTES = GROUP_HANDOFF_BYTES;
 
 export class TaskDelivery {
 	readonly #o: TaskDeliveryOptions;
@@ -409,8 +411,9 @@ export class TaskDelivery {
 		if (outcome !== undefined) attrs.push(`outcome="${outcome}"`);
 		if (task.agent !== undefined) attrs.push(`session="${task.agent.session}"`);
 		if (task.endedAt !== undefined) attrs.push(`duration="${duration(task.endedAt - task.startedAt)}"`);
+		// I5: the answer is named only once the record commits it
 		const result = resultPath(task);
-		attrs.push(existsSync(result) ? `result="${result}"` : `output="${task.outputPath}"`);
+		attrs.push(recordOf(task) !== null && existsSync(result) ? `result="${result}"` : `output="${task.outputPath}"`);
 		return `<kiso-task ${attrs.join(" ")}/>`;
 	}
 
@@ -445,38 +448,61 @@ function itemOf(task: TaskInfo, transition?: TaskTransition): TaskDeliveryItem |
 
 const resultPath = (task: TaskInfo): string => join(dirname(task.outputPath), "result.md");
 
-/** The child's outcome, as it wrote it beside its answer. */
+/** The child's outcome, as its result record commits it. */
 function outcomeOf(task: TaskInfo): string | undefined {
-	try {
-		const parsed = JSON.parse(readFileSync(join(dirname(task.outputPath), "result.json"), "utf8")) as { outcome?: unknown };
-		return typeof parsed.outcome === "string" ? parsed.outcome : undefined;
-	} catch {
-		return undefined;
-	}
+	return recordOf(task)?.outcome;
 }
 
-/** A child's answer (result.md) cut to `bytes`, or — with no answer — the
- *  tail of what it printed. `bytes` counts the excerpt, never the pointer. */
-function excerptOf(task: TaskInfo, bytes: number): { readonly text: string; readonly bytes: number } {
-	const path = resultPath(task);
-	let answer: string;
+/** The child's result record (result.json) — the commit of its result (I5). */
+function recordOf(task: TaskInfo): HandoffRecord | null {
+	let raw: string | null;
 	try {
-		answer = readFileSync(path, "utf8").trimEnd();
+		raw = readFileSync(join(dirname(task.outputPath), "result.json"), "utf8");
 	} catch {
-		const tail = bytes > 0 ? readTail(task, Math.min(bytes, 2_048)) : "";
-		return tail === "" ? { text: "", bytes: 0 } : { text: `\n${tail}`, bytes: Buffer.byteLength(tail) };
+		raw = null;
 	}
-	if (answer === "") return { text: "", bytes: 0 };
-	const size = Buffer.byteLength(answer);
-	if (size <= bytes) return { text: `\n${answer}`, bytes: size };
-	if (bytes <= 0) return { text: `\n[the whole answer: ${path}]`, bytes: 0 };
-	const cut = Buffer.from(answer).subarray(0, bytes).toString("utf8").replace(/\uFFFD+$/, "");
-	return { text: `\n${cut}\n… [truncated; the whole answer: ${path}]`, bytes: Buffer.byteLength(cut) };
+	return handoffRecordOf(raw);
+}
+
+/** A child's handoff (the format in handoff.ts): its error, then its
+ *  answer (result.md, read only beside a valid result.json — I5) cut to
+ *  `bytes`, or — with no answer — the tail of what it printed. `bytes`
+ *  counts what is shown, never the pointer. */
+function excerptOf(task: TaskInfo, bytes: number): { readonly text: string; readonly bytes: number } {
+	const record = recordOf(task);
+	let answer = "";
+	if (record !== null) {
+		try {
+			answer = readFileSync(resultPath(task), "utf8");
+		} catch {
+			answer = "";
+		}
+	}
+	const tail = rawTail(task.outputPath, TAIL_BYTES);
+	return handoffBody({ record, answer, tail: tail.text, tailCut: tail.cut, resultPath: resultPath(task) }, bytes);
 }
 
 function duration(ms: number): string {
 	const s = Math.max(0, Math.round(ms / 1000));
 	return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${String(s % 60).padStart(2, "0")}s`;
+}
+
+/** The last `bytes` of a file as read, and whether it held more. */
+function rawTail(path: string, bytes: number): { readonly text: string; readonly cut: boolean } {
+	try {
+		const fd = openSync(path, "r");
+		try {
+			const size = fstatSync(fd).size;
+			const n = Math.min(size, bytes);
+			const buf = Buffer.alloc(n);
+			readSync(fd, buf, 0, n, size - n);
+			return { text: buf.toString("utf8"), cut: size > n };
+		} finally {
+			closeSync(fd);
+		}
+	} catch {
+		return { text: "", cut: false };
+	}
 }
 
 function readTail(task: TaskInfo, bytes: number): string {

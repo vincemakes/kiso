@@ -1,0 +1,15 @@
+{
+	"record": {
+		"outcome": "failed"
+	},
+	"answer": "",
+	"tail": {
+		"$repeat": [
+			"\u20ac",
+			1000
+		]
+	},
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

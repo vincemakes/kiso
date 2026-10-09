@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { basename, join } from "node:path";
 import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
-import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending } from "@vincemakes/kiso-runtime/internal";
+import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
@@ -42,7 +42,7 @@ import { browserCommand, launchCommand } from "./launch.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemakes/kiso-tools-node";
 import { OFFERED_MODES, applyModeState, envModeLayer, getDontAsk, modeDisplay, parseMode, resolveModeLayers, type ModeLayer } from "./mode.js";
-import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
+import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setLiveSession, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
@@ -843,8 +843,11 @@ function retiredAutoCompact(merged: Parameters<typeof resolveAutoCompact>[0]): u
  * threshold got stuck in the first place.
  */
 function bindRestoredSession(session: {
+	readonly id: string;
 	readonly model: string;
 	readonly baseUrl: string | undefined;
+	readonly profileName: string | null;
+	readonly reasoning: ReasoningSetting;
 	readonly driftAcknowledgement?: {
 		readonly reasons: readonly string[];
 		readonly reasoningReset: { readonly thinking: string; readonly effort: string };
@@ -863,6 +866,8 @@ function bindRestoredSession(session: {
 		bodyLog(`binding changed — now on ${session.model}: ${ack.reasons.join("; ")}; reasoning reset to defaults${prior === "" ? "" : ` (was ${prior})`}`);
 	}
 	setAgentModel(session.model, session.baseUrl);
+	// 0.49.0 C1: the session a delegation reads its conversation's binding from
+	setLiveSession(session);
 	session.setMicrocompactThreshold(
 		microcompactThresholdFor({
 			model: session.model,

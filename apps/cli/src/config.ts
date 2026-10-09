@@ -168,6 +168,12 @@ export interface KisoConfig {
 	 *  unlisted path could be an interpreter running code the child wrote.
 	 *  Same layers as `checks`. */
 	readonly evaluators?: readonly string[];
+	/** 0.49.0 C1: which profile a delegated child runs on when its task
+	 *  names none — `{ "model": "<a profile in models>" }`. Unset, a child
+	 *  runs on the conversation's own profile. USER-LEVEL ONLY, like
+	 *  `models`: a project must never choose where your children's
+	 *  requests go. */
+	readonly subagents?: { readonly model?: string };
 }
 
 /** The resolved, merged config — project wins over user, both validated. */
@@ -207,6 +213,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		protectedPaths?: readonly string[];
 		checks?: Record<string, string>;
 		evaluators?: string[];
+		subagents?: { model?: string };
 	} = {};
 	const obj = raw as Record<string, unknown>;
 	const fail = (key: string, why: string): never => {
@@ -350,6 +357,18 @@ export function parseConfig(text: string, source: string): KisoConfig {
 		if (obj.projectTrust !== "ask" && obj.projectTrust !== "never") fail("projectTrust", 'expected "ask" or "never" (there is deliberately no "always")');
 		out.projectTrust = obj.projectTrust as "ask" | "never";
 	}
+	if (obj.subagents !== undefined) {
+		if (source.startsWith("<cwd>")) fail("subagents", "belongs in the USER config — a project must never choose which model your delegated children run on");
+		if (obj.subagents === null || typeof obj.subagents !== "object" || Array.isArray(obj.subagents)) fail("subagents", 'expected an object, e.g. { "model": "<profile>" }');
+		const sub = obj.subagents as Record<string, unknown>;
+		if (sub.model !== undefined) {
+			if (typeof sub.model !== "string" || sub.model === "") fail("subagents.model", "expected the name of a profile in models");
+			// both keys are user-level only, so the profile is in this file or nowhere
+			const names = Object.keys(out.models ?? {});
+			if (!names.includes(sub.model as string)) fail("subagents.model", `"${sub.model as string}" names no profile in models (configured: ${names.length > 0 ? names.join(", ") : "none"})`);
+		}
+		out.subagents = sub.model !== undefined ? { model: sub.model as string } : {};
+	}
 	return out;
 }
 
@@ -433,6 +452,8 @@ export function mergeConfigs(user: KisoConfig | null, project: KisoConfig | null
 		...(u.checks !== undefined || p.checks !== undefined ? { checks: { ...(u.checks ?? {}), ...(p.checks ?? {}) } } : {}),
 		// CS-1: the evaluator lists join — either layer's script may be named
 		...(u.evaluators !== undefined || p.evaluators !== undefined ? { evaluators: [...(u.evaluators ?? []), ...(p.evaluators ?? [])] } : {}),
+		// 0.49.0 C1: user-level only — parseConfig refuses a project's
+		...(u.subagents !== undefined ? { subagents: u.subagents } : {}),
 	};
 }
 

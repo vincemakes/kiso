@@ -1,0 +1,15 @@
+{
+	"record": {
+		"outcome": "completed"
+	},
+	"answer": {
+		"$repeat": [
+			"\u20ac",
+			1400
+		]
+	},
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

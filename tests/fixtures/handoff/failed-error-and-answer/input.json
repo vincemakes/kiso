@@ -1,0 +1,11 @@
+{
+	"record": {
+		"outcome": "failed",
+		"error": "overloaded: try again"
+	},
+	"answer": "Partial: found the config loader.",
+	"tail": "",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/subagent/sub-x/result.md",
+	"budget": 4096
+}

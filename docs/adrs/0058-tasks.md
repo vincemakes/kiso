@@ -957,3 +957,65 @@ removes it.
   it as to `foregroundMs`.
 - **The shell WITHOUT tasks is unchanged:** `command`, `timeoutMs`. There
   `timeoutMs` is the only timeout, never an alias, and it stays.
+
+## Amendment 12 — the child contract, as built (0.49.0 C, 2026-10-09, owner-approved)
+
+Part C of the 0.49.0 subagent plan (rev 3.2, invariants I1–I7). A child
+owns its trajectory; the parent receives only its handoff.
+
+1. **Which model a child runs on.** The first that applies wins:
+   - the task's `model`;
+   - the user's `subagents.model`. It is user config only, and it must
+     name a configured profile: an unknown name is refused at load, and a
+     project may not set it;
+   - the conversation's binding, run at the conversation's live effort
+     (`KISO_CHILD_REASONING`, which only a child reads). The binding is
+     the profile the session itself records (`AgentSession.profileName`),
+     else the one configured profile whose model and endpoint are the
+     session's. The display's profile mark, which /reload and a session
+     switch clear, is not a source;
+   - otherwise the environment, and the child's section says "(default)".
+
+   The resolution happens at dispatch and is recorded in the manifest.
+2. **Budgets.**
+   - A reader (explorer, reviewer) runs under its turn budget whether the
+     parent waits or not: the host's `backgroundMaxTurns`, default 32.
+   - A writer (implementer, verifier) has none yet. The only logged real
+     writer runs were cut by the wall clock, so their natural length is
+     unknown. Part B sets the budget from measured completions.
+   - The 10-minute wall clock stays on the foreground path until part A
+     (readers) and part B (writers) replace it.
+3. **The result record.** Every child is launched with `--result-file`.
+   It writes `result.md` (its answer), then `result.json`: outcome,
+   `endedBy`, requests, budget, tool calls, usage, model, profile, and a
+   failure's error.
+   - **I5:** the record commits the result. `result.md` is read only
+     beside a valid record, by the delegate tool's section and by the
+     group notice alike.
+   - **I6:** the parent never infers a result from a child's printed
+     output, or from the number of runs in its log. The log is for audit.
+     A wrap-up is a second run, and the record says so (`endedBy:
+     max_turns`).
+4. **The handoff format (I7).** One byte-level contract, in
+   `packages/runtime/src/tasks/handoff.ts`. The subagent extension
+   carries its own copy, since it has no runtime dependency. An
+   independent golden corpus (`tests/fixtures/handoff`) holds both copies
+   to the same bytes. The format:
+   - a failure's error comes first, at most 1 KiB;
+   - then the answer, within the child's budget of 4 KiB (UTF-8 bytes),
+     with the path to the whole answer when it is cut;
+   - with no committed answer, at most 2 KiB of the output's tail;
+   - 16 KiB for a whole call or group;
+   - UNRESOLVED reaches the model once, inside the answer;
+   - a writer's patch is named by its path and never inlined. CX-1 F2's
+     64 KiB inline rule is retired.
+5. **Capture.** A foreground child's stdout and stderr stream into its
+   `output.log`. Nothing of it accumulates in the parent's memory.
+6. **The child's trailer** states the handoff contract: the conclusion
+   first, only the evidence needed, no raw output or large diffs, then
+   UNRESOLVED.
+
+Named changes:
+- DT-1a R2.4's usage numbers move into the record.
+- CX-1 F6's one-run identity rule now governs only reading a child's log
+  for audit.
