@@ -1148,27 +1148,65 @@ function staleReport(text: string, hunks: readonly { search: string; replace: st
 	return out.join("\n");
 }
 
-export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; search?: string; replace?: string; edits?: readonly { search: string; replace: string }[]; expectedRevision?: string }> {
-	return defineTool<{ path: string; search?: string; replace?: string; edits?: readonly { search: string; replace: string }[]; expectedRevision?: string }>({
+/** One hunk as a caller may send it: the current vocabulary, or the
+ *  legacy `search`/`replace` a durable log or a host may still hold. */
+type EditHunkInput = { readonly oldText?: string; readonly newText?: string; readonly search?: string; readonly replace?: string; readonly expectedRevision?: string };
+type EditFileInput = { path: string; edits?: readonly EditHunkInput[]; search?: string; replace?: string; expectedRevision?: string };
+
+/**
+ * ADR-0061 — compatibility belongs in the executor; vocabulary belongs in
+ * the schema. The model is shown one form (`edits` of `{oldText, newText}`):
+ * `search`/`replace` was written SWAPPED in 80 of 86 failed T6 edits (the
+ * 2026-10-08 replay), and old/new cannot be read backwards. Everything a
+ * caller that skips schema validation may send — an approved call persisted
+ * before the upgrade, a host, a test — is still taken here: legacy hunks,
+ * the legacy top-level pair, a hunk-level `expectedRevision` (ignored, the
+ * call's own governs). A hunk that MIXES the two vocabularies takes neither
+ * half. The schema stays in the small portable subset by choice (no
+ * `oneOf`), so the shape rules live here.
+ */
+function editHunksOf(input: EditFileInput): { hunks: readonly { search: string; replace: string }[]; single: boolean } | string {
+	const pair = input.search !== undefined || input.replace !== undefined;
+	if (pair && input.edits !== undefined) return "edit_file: pass edits — never edits and a top-level search/replace together";
+	if (pair) {
+		if (input.search === undefined || input.replace === undefined) return "edit_file: the legacy top-level form needs BOTH search and replace";
+		return { hunks: [{ search: input.search, replace: input.replace }], single: true };
+	}
+	if (input.edits === undefined) return "edit_file: pass edits \u2014 1\u201332 {oldText, newText} replacements";
+	if (input.edits.length === 0 || input.edits.length > 32) return `edit_file: edits must carry 1\u201332 replacements (got ${input.edits.length})`;
+	const hunks: { search: string; replace: string }[] = [];
+	for (let i = 0; i < input.edits.length; i += 1) {
+		const h = input.edits[i]!;
+		const current = h.oldText !== undefined || h.newText !== undefined;
+		const legacy = h.search !== undefined || h.replace !== undefined;
+		if (current && legacy) return `edit_file: hunk ${i + 1} mixes oldText/newText with search/replace \u2014 send oldText and newText`;
+		const oldText = current ? h.oldText : h.search;
+		const newText = current ? h.newText : h.replace;
+		if (typeof oldText !== "string" || typeof newText !== "string") return `edit_file: hunk ${i + 1} needs both oldText and newText`;
+		hunks.push({ search: oldText, replace: newText });
+	}
+	return { hunks, single: false };
+}
+
+export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
+	return defineTool<EditFileInput>({
 		name: "edit_file",
 		description:
-			"Edit a file at its latest revision (expectedRevision): search+replace (must match once) OR edits (1-32 hunks, applied in order, all or nothing). A refusal shows the current text and ends on its [rev:X].",
+			"Edit a file at its latest revision (expectedRevision): exact replacements, applied in order, all or nothing. Batch changes to this file that are already known into one call. A refusal ends on its [rev:X].",
 		parameters: {
 			type: "object",
 			properties: {
 				path: { type: "string", description: "Workspace-relative file" },
-				search: { type: "string", description: "Exact literal text to find (single-hunk form)" },
-				replace: { type: "string", description: "Replacement text (single-hunk form)" },
 				edits: {
 					type: "array",
-					description: "Batch form: 1-32 {search, replace} hunks, applied in order",
+					description: "1-32 replacements",
 					items: {
 						type: "object",
-						// ACI-3: `expectedRevision` inside a hunk is tolerated and ignored —
-						// the call's own governs (5 refusals on the owner's disk, every
-						// one with the top-level token present too).
-						properties: { search: { type: "string" }, replace: { type: "string" }, expectedRevision: { type: "string" } },
-						required: ["search", "replace"],
+						properties: {
+							oldText: { type: "string", description: "Exact text to replace at this step; must match exactly once after the earlier edits in this call" },
+							newText: { type: "string", description: "Replacement text for oldText" },
+						},
+						required: ["oldText", "newText"],
 						additionalProperties: false,
 					},
 					minItems: 1,
@@ -1176,31 +1214,19 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				},
 				expectedRevision: { type: "string", description: "The file's latest revision token" },
 			},
-			required: ["path", "expectedRevision"],
+			required: ["path", "edits", "expectedRevision"],
 			additionalProperties: false,
 		},
-		promptSnippet: "edit_file — replace an exact old_string block (never rewrite whole files)",
+		promptSnippet: "edit_file — replace oldText with newText (never rewrite whole files)",
 		promptGuidelines: ["write/edit: cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
-		execute: async ({ path, search, replace, edits, expectedRevision: citedRevision }) => {
+		execute: async (input) => {
+			const { path, expectedRevision: citedRevision } = input;
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize the citation (see write_file).
 			const expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
-			// WR-1E2 — the form XOR (the draft-07 subset has no oneOf; the
-			// SHAPE rule is enforced here): legacy single-hunk XOR batch.
-			const single = search !== undefined || replace !== undefined;
-			if (single && edits !== undefined) {
-				return { content: "edit_file: pass EITHER search+replace OR edits — never both", isError: true, errorKind: "invalid_input" };
-			}
-			if (!single && edits === undefined) {
-				return { content: "edit_file: pass search+replace, or edits (1\u201332 hunks)", isError: true, errorKind: "invalid_input" };
-			}
-			if (single && (search === undefined || replace === undefined)) {
-				return { content: "edit_file: the single-hunk form needs BOTH search and replace", isError: true, errorKind: "invalid_input" };
-			}
-			if (edits !== undefined && (edits.length === 0 || edits.length > 32)) {
-				return { content: `edit_file: edits must carry 1\u201332 hunks (got ${edits.length})`, isError: true, errorKind: "invalid_input" };
-			}
-			const hunks: readonly { search: string; replace: string }[] = edits ?? [{ search: search!, replace: replace! }];
+			const shape = editHunksOf(input);
+			if (typeof shape === "string") return { content: shape, isError: true, errorKind: "invalid_input" };
+			const { hunks, single } = shape;
 			let full: string;
 			try {
 				full = resolveWithinRoot(opts.workspaceRoot, path);
@@ -1253,17 +1279,19 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 					// should land, and its current revision last — the retry needs
 					// no read. The headline is unchanged (bench parsers read it).
 					return precondition(
-						`edit_file: ${path} changed since ${expectedRevision} — the file as it is now is below; re-apply the change against it, citing the [rev:…] on the last line\n${staleReport(text, hunks, edits === undefined)}\n[${current}]`,
+						`edit_file: ${path} changed since ${expectedRevision} — the file as it is now is below; re-apply the change against it, citing the [rev:…] on the last line\n${staleReport(text, hunks, single)}\n[${current}]`,
 					);
 				}
 				// ACI-3 (superseding WR-1E2's one-snapshot rule): the hunks apply
 				// IN ORDER, each against the result of the ones before it — the
-				// way a person writes a second change after the first, and the
-				// reference implementation's multi-edit. 57 refusals on the
+				// way a person writes a second change after the first. (The
+				// reference implementation does NOT do this: it matches every edit
+				// against the original and refuses overlaps.) 57 refusals on the
 				// owner's disk were "two hunks overlap": a second hunk written
-				// against the first one's output. Still all or nothing: nothing is
-				// written unless every hunk resolves, and each must match exactly
-				// once in the text it meets (ACI-2).
+				// against the first one's output. The 2026-10-08 replay found 0 of
+				// 86 failures caused by this rule (ADR-0061). Still all or nothing:
+				// nothing is written unless every hunk resolves, and each must
+				// match exactly once in the text it meets (ACI-2).
 				// Windows P3: a uniformly CRLF file is matched on its LF form and
 				// written back CRLF — the model's search text uses LF, and an edit
 				// never changes the file's endings. A file mixing the two keeps
@@ -1274,7 +1302,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 				for (let i = 0; i < hunks.length; i += 1) {
 					const h = { search: lf(hunks[i]!.search), replace: lf(hunks[i]!.replace) };
 					const { count, offsets } = occurrencesOf(edited, h.search);
-					const which = hunks.length === 1 && edits === undefined ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, after ${i === 1 ? "hunk 1" : `hunks 1–${i}`} applied)`;
+					const which = single ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, after ${i === 1 ? "hunk 1" : `hunks 1–${i}`} applied)`;
 					if (count === 0) {
 						// WR-1A ④: the WORLD lacks the pattern (the input is
 						// fine) and nothing ran — precondition; the note never
@@ -1285,7 +1313,13 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 						const region = regionForSearch(edited, h.search);
 						const seen = i === 0 ? "the file now has" : `the text hunk ${i + 1} met`;
 						const block = region === null ? "" : `\n${seen}, lines ${region.from}–${region.to}:\n${region.body}`;
-						return precondition(`edit_file: pattern not found in ${path}${which}${detail ? `\n${detail}` : ""}${block}\n[${current}]`);
+						// ADR-0061: the replay's shape — oldText nowhere, newText exactly
+						// once. Two readings fit it and the tool cannot tell them apart, so
+						// it names both and applies nothing (ACI-2: never a guess).
+						const swap = h.replace.length > 0 && occurrencesOf(edited, h.replace).count === 1
+							? "\n  newText is already in the file once and oldText is not: either this change is already applied, or oldText and newText are swapped"
+							: "";
+						return precondition(`edit_file: pattern not found in ${path}${which}${detail ? `\n${detail}` : ""}${swap}${block}\n[${current}]`);
 					}
 					// ACI-2: more than one resolution is a QUESTION, not an edit.
 					// Taking the first one wrote the wrong place and reported

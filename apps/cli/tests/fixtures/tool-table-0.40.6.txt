@@ -9,7 +9,7 @@ Tool use:
 - list_dir — directory entries (the workspace ls)
 - search_text — regex search over workspace files
 - write_file — create or replace a whole file
-- edit_file — replace an exact old_string block (never rewrite whole files)
+- edit_file — replace oldText with newText (never rewrite whole files)
 - shell — any command the task needs (builds, tests, git, curl, system queries)
 Active tool guidelines:
 - read_file: read only the range you need — offset/limit beat whole-file reads

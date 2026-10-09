@@ -793,9 +793,10 @@ function settledMeta(c: { name: string; input: string; inputFull: string; result
 		if (c.name === "write_file" && parsed !== null && typeof parsed.content === "string") {
 			return `+${countLines(parsed.content)}`;
 		}
-		if (c.name === "edit_file" && parsed !== null && typeof parsed.search === "string" && typeof parsed.replace === "string") {
-			const added = countLines(parsed.replace);
-			const removed = countLines(parsed.search);
+		const hunks = c.name === "edit_file" && parsed !== null ? hunksOf(parsed) : null;
+		if (hunks !== null) {
+			const added = hunks.reduce((n, h) => n + countLines(h.replace), 0);
+			const removed = hunks.reduce((n, h) => n + countLines(h.search), 0);
 			if (added + removed > 0) return `+${added} -${removed}`;
 		}
 	}

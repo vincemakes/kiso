@@ -286,7 +286,7 @@ run_once() {
 	sid="k9"
 	printf 'OLD' > "$workdir/f1.txt"
 	printf 'OLD' > "$workdir/f3.txt"
-	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","search":"OLD","replace":"NEW","expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","search":"OLD","replace":"NEW","expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
+	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","edits":[{"oldText":"OLD","newText":"NEW"}],"expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","edits":[{"oldText":"OLD","newText":"NEW"}],"expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
 
 	printf '\n=== demo-kill9: run %s (a fresh KISO_HOME) ===\n' "$n"
 	printf '  [%s/2] phase 1 — a real chat, two approvals, SIGKILL mid-execution\n' "$n"

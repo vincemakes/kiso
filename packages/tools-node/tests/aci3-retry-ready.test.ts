@@ -139,10 +139,13 @@ describe("ACI-3 — hunks apply IN ORDER, each against the result of the ones be
 });
 
 describe("ACI-3 — expectedRevision inside a hunk is tolerated", () => {
-	it("the hunk items accept it (the call's own expectedRevision governs)", () => {
+	// ADR-0061 reverses the SCHEMA half of this: the hunk items no longer
+	// advertise it (one protocol knob fewer for the model); the executor
+	// still ignores it on calls that skip validation (the case below).
+	it("the hunk items no longer advertise it (ADR-0061)", () => {
 		const { edit } = ws();
 		const items = (edit.parameters as { properties: { edits: { items: { properties: Record<string, unknown>; additionalProperties: boolean } } } }).properties.edits.items;
-		expect(Object.keys(items.properties).sort()).toEqual(["expectedRevision", "replace", "search"]);
+		expect(Object.keys(items.properties).sort()).toEqual(["newText", "oldText"]);
 		expect(items.additionalProperties).toBe(false);
 	});
 
