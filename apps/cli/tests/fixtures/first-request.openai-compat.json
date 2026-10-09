@@ -281,7 +281,7 @@
 						},
 						"background": {
 							"type": "boolean",
-							"description": "explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one"
+							"description": "start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one"
 						}
 					},
 					"required": [
