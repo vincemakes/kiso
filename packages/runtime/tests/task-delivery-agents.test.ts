@@ -276,3 +276,97 @@ describe("0.49.0 I5 — the result record commits a child's answer", () => {
 		manager.close();
 	});
 });
+
+describe("0.49.0 A — the join: a delegate call waits for its children and claims what ended", () => {
+	const joinAll = (m: TaskManager, ctx: ToolContext, ids: string[], ms: number) =>
+		Promise.all(ids.map((id) => m.awaitSettled(id, "end", ms, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), agentJoin: true })));
+
+	it("only the join claims an agent task: a plain wait on one claims nothing, as before", async () => {
+		const { session, manager } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => {
+				const [t1, t2] = await startAgents(m, ctx, ["explorer", "explorer"]);
+				endAgent(m, t1!, { answer: "a" });
+				endAgent(m, t2!, { answer: "b" });
+				const plain = await m.awaitSettled(t1!, "end", 200, { executionId: ctx.executionId! });
+				const joined = await m.awaitSettled(t2!, "end", 200, { executionId: ctx.executionId!, agentJoin: true });
+				expect([plain.claimed, joined.claimed]).toEqual([false, true]);
+			},
+		});
+		await drain(session.run("go"));
+		expect(manager.get("t1")!.claims).toBeUndefined();
+		expect(manager.get("t2")!.claims).toEqual([{ transition: "exited", executionId: expect.any(String) }]);
+		manager.close();
+	});
+
+	it("I1: a child that fails while the call waits is not handed to the live run on its own — the call's result reports it", async () => {
+		const { session, manager, wakes } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => {
+				const [t1] = await startAgents(m, ctx, ["explorer"]);
+				setTimeout(() => endAgent(m, t1!, { exitCode: 1 }), 60);
+				const [w] = await joinAll(m, ctx, [t1!], 1_000);
+				expect(w!.claimed).toBe(true);
+				await sleep(120); // the watcher had every chance to announce it
+			},
+		});
+		const events = await drain(session.run("go"));
+		expect(notices(events)).toEqual([]);
+		await sleep(150);
+		expect(wakes).toEqual([]);
+		manager.close();
+	});
+
+	it("race 1: a child claimed by the call is named as reported in its group's notice, and only the rest are receipted", async () => {
+		const { session, manager, wakes } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => {
+				const [t1, t2] = await startAgents(m, ctx, ["explorer", "reviewer"]);
+				setTimeout(() => endAgent(m, t1!, { answer: "the fast one" }), 40);
+				const [w1, w2] = await joinAll(m, ctx, [t1!, t2!], 300);
+				expect([w1!.claimed, w2!.settled]).toEqual([true, false]);
+			},
+		});
+		await drain(session.run("go"));
+		endAgent(manager, "t2", { answer: "the slow one" });
+		await sleep(200);
+		expect(wakes).toHaveLength(1);
+		expect(wakes[0]!.via).toEqual({ kind: "tasks", items: [{ taskId: "t2", transition: "exited" }] });
+		expect(wakes[0]!.content).toContain('<kiso-task id="t1" kind="agent" role="explorer" status="exited" reported="earlier"/>');
+		expect(wakes[0]!.content).toContain("the slow one");
+		expect(wakes[0]!.content).not.toContain("the fast one");
+		manager.close();
+	});
+
+	it("every child claimed by the call: no notice, no wake", async () => {
+		const { session, manager, wakes } = await setup([turn(call("d", "delegate")), END], {
+			delegate: async (ctx, m) => {
+				const ids = await startAgents(m, ctx, ["explorer", "reviewer"]);
+				for (const id of ids) setTimeout(() => endAgent(m, id, { answer: `answer of ${id}` }), 40);
+				const ws = await joinAll(m, ctx, ids, 1_000);
+				expect(ws.every((w) => w.claimed)).toBe(true);
+			},
+		});
+		const events = await drain(session.run("go"));
+		await sleep(200);
+		expect(notices(events)).toEqual([]);
+		expect(wakes).toEqual([]);
+		manager.close();
+	});
+
+	it("race 4: a claim whose call never returned (a crash) delivered nothing — after a restart the child rides its group's notice in full", async () => {
+		const { session, manager } = await setup([turn(call("d", "delegate")), END, END], {
+			delegate: async (ctx, m) => void (await startAgents(m, ctx, ["explorer"])),
+		});
+		await drain(session.run("go"));
+		manager.close();
+		// the crash window: the join claimed t1 for a call whose result never became durable
+		const dir = dirname(manager.get("t1")!.outputPath);
+		appendRecord(join(dir, "journal.jsonl"), { type: "result_claimed", ts: Date.now(), transition: "exited", executionId: "ex-crashed" });
+		endAgent(manager, "t1", { answer: "found it before the crash" });
+		const restarted = new TaskManager({ root: manager.root, backend: fakeBackend(), pollMs: 10 });
+		session.useTasks(restarted, { windowMs: 20, onWake: () => {} });
+		await sleep(100);
+		const landed = notices(await drain(session.run("hi")));
+		expect(landed.map((e) => e.via)).toEqual([{ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }] }]);
+		expect(String(landed[0]!.content)).toMatch(/<kiso-task id="t1"[^>]*note="its delegate call never returned"[^>]*\/>\nfound it before the crash/);
+		restarted.close();
+	});
+});

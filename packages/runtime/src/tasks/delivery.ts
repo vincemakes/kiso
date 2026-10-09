@@ -37,6 +37,15 @@
  * 16 KiB together; members already delivered are named as reported, and
  * only the rest are receipted. A failure goes into a live run at once and
  * never wakes on its own; idle, it waits for its group.
+ *
+ * 0.49.0 A: a delegate call that waits for its children (the join)
+ * CLAIMS each one that ended while it waited, and its own result carries
+ * that child's handoff. Such a member is delivered once the claiming
+ * call's result is durable — an error result included, since it carries
+ * the handoffs too — and the group's notice names it as reported. A claim
+ * whose call never returned (a crash: the kernel records no result, only
+ * an uncertain execution) delivered nothing, so the member rides its
+ * group's notice in full: never in both places, never in neither.
  */
 
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
@@ -114,8 +123,10 @@ export class TaskDelivery {
 		for (const task of this.#safeList()) {
 			const item = itemOf(task);
 			if (item === null || item.transition === "ready" || this.#receipts.has(key(item))) continue;
-			// a tool result reported it: the claim alone decides (Amendment 7)
-			if (task.claims?.some((c) => c.transition === item.transition) === true) continue;
+			// a tool result reported it: the claim alone decides (Amendment 7) —
+			// for an agent task, once its claiming call's result is durable (0.49.0 A)
+			const claim = task.claims?.find((c) => c.transition === item.transition);
+			if (claim !== undefined && (task.agent === undefined || this.#toldByResult(claim.executionId))) continue;
 			if (item.transition === "unknown") lost.push(task.id);
 			if (task.agent !== undefined) this.#ended.set(task.id, { restart: true });
 			else missed.push({ item, line: this.#line(task, item) });
@@ -368,9 +379,17 @@ export class TaskDelivery {
 		const tasks = members.map((id) => this.#o.manager.get(id)).filter((t): t is TaskInfo => t !== undefined);
 		const fresh: { task: TaskInfo; item: TaskDeliveryItem }[] = [];
 		const lines: string[] = [];
+		const unreturned = new Set<string>();
 		for (const task of tasks) {
 			const item = itemOf(task);
 			if (item === null) continue;
+			// 0.49.0 A: its delegate call's own result carried it
+			const claim = task.claims?.find((c) => c.transition === item.transition);
+			if (claim !== undefined && this.#toldByResult(claim.executionId)) {
+				lines.push(`<kiso-task id="${task.id}" kind="agent" role="${task.agent?.role ?? ""}" status="${item.transition}" reported="earlier"/>`);
+				continue;
+			}
+			if (claim !== undefined) unreturned.add(task.id);
 			if (this.#receipts.has(key(item)) || this.#inFlight.has(key(item))) {
 				lines.push(`<kiso-task id="${task.id}" kind="agent" role="${task.agent?.role ?? ""}" status="${item.transition}" reported="earlier"/>`);
 				continue;
@@ -383,7 +402,7 @@ export class TaskDelivery {
 		for (const { task, item } of fresh) {
 			const excerpt = excerptOf(task, Math.min(CHILD_EXCERPT_BYTES, budget));
 			budget -= excerpt.bytes;
-			lines.push(`${this.#agentTag(task, item)}${excerpt.text}`);
+			lines.push(`${this.#agentTag(task, item, unreturned.has(task.id))}${excerpt.text}`);
 		}
 		const items = fresh.map((f) => f.item);
 		const notice: TaskNotice = { lines, items };
@@ -392,6 +411,13 @@ export class TaskDelivery {
 		if (run !== undefined && this.#hand(run, notice, wake)) return;
 		if (run === undefined) this.#pending.push({ notice, wake });
 		this.#pump();
+	}
+
+	/** 0.49.0 A: the call that claimed a child returned — its tool_result is
+	 *  durable (error or not: it carries the handoffs either way). A crashed
+	 *  call has none: the kernel records an uncertain execution instead. */
+	#toldByResult(executionId: string): boolean {
+		return this.#o.events().some((e) => e.type === "tool_result" && (e as { executionId?: string }).executionId === executionId);
 	}
 
 	/** handed to a run, or held for one, or already in the log */
@@ -405,8 +431,9 @@ export class TaskDelivery {
 		this.#pending = this.#pending.filter((p) => !(p.notice.items.length === 1 && key(p.notice.items[0]!) === k));
 	}
 
-	#agentTag(task: TaskInfo, item: TaskDeliveryItem): string {
+	#agentTag(task: TaskInfo, item: TaskDeliveryItem, unreturned = false): string {
 		const attrs = [`id="${task.id}"`, `kind="agent"`, `role="${task.agent?.role ?? ""}"`, `status="${item.transition}"`];
+		if (unreturned) attrs.push(`note="its delegate call never returned"`);
 		const outcome = outcomeOf(task);
 		if (outcome !== undefined) attrs.push(`outcome="${outcome}"`);
 		if (task.agent !== undefined) attrs.push(`session="${task.agent.session}"`);

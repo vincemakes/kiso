@@ -999,3 +999,58 @@ Named changes:
 - DT-1a R2.4's usage numbers move into the record.
 - CX-1 F6's one-run identity rule now governs only reading a child's log
   for audit.
+
+## Amendment 12 — the join, as built (0.49.0 A, 2026-10-09, owner-approved)
+
+Part A of the 0.49.0 subagent plan (rev 3.2, invariants I1–I2): the
+foreground is a bounded join, not an execution mode.
+
+1. **A reader delegation is a group of agent tasks from its start.**
+   When the host wires tasks, `background` is not set, and every task is
+   an explorer or a reviewer:
+   - the children start as agent tasks, as background children do, with
+     the same cap, the same durable inputs and the same turn budget;
+   - the call then waits for them, at most `joinMs`. That is the host's
+     option, defaulting to the shell's foreground wait of 60 s (§3,
+     Amendment 10); the CLI passes the same limit to both.
+2. **Ending the wait.** The budget, the person's key (a detach through
+   `TaskManager.detach`, the shell's mechanism), a steer, and Esc all end
+   the WAIT and never a child.
+   - Children still running continue as the group. The call's result
+     names them and why it stopped waiting: `still running after N ms`,
+     `moved to the background by the person`, `… so the person's message
+     could land`, or `interrupted`.
+   - The group's notice later wakes the parent (Amendment 4.6).
+   - **Amendment 6.3** ("only shell commands are detachable") is
+     reversed for reader delegations.
+3. **The claim (I2).** What ended while the call waited is claimed by it
+   (`awaitSettled(…, { agentJoin: true })`), and the call's result
+   carries its handoff (Amendment 11).
+   - `TaskManager#claim` refuses agent tasks for every other caller. An
+     agent task's end belongs to its group, as before.
+   - Only a claim made durable counts. An end the call could not claim is
+     left to the group's notice, and the result says so.
+4. **The hold (I1).** While the call waits, its members are awaited, and
+   the watcher never announces them. So a child that fails during the
+   wait is not handed to the live run on its own.
+5. **Delivery.** A claimed member counts as delivered once the claiming
+   call's `tool_result` is durable. An error result counts too, because it
+   carries the handoffs.
+   - Such a member appears in its group's notice as `reported="earlier"`,
+     with no excerpt and no receipt.
+   - A claim whose call never returned (a crash leaves an uncertain
+     execution, not a result) delivered nothing. After a restart the
+     member rides its group's notice in full, with `note="its delegate
+     call never returned"`.
+   - If every member was claimed by a returned call, nothing is delivered
+     and nothing wakes.
+6. **The schema, when tasks are wired.**
+   - `timeoutMs` leaves the task item: a child's bound is its turn
+     budget, and the parent's bound is the join.
+   - The description gains one sentence: "Use background when the next
+     step does not need the result; a foreground wait is bounded and
+     continues in the background on its own."
+   - A host without tasks keeps both, byte for byte.
+7. **Not yet.** A call with an implementer or a verifier keeps the
+   foreground path (Amendment 11's budgets and the 10-minute wall clock)
+   until part B defines the writers' unattended contract.

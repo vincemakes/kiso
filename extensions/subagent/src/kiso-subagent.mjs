@@ -54,6 +54,10 @@ const ROLES = ["explorer", "implementer", "reviewer", "verifier"];
 // 0.49.0 C2: a reader's turn budget, whether its parent waits or not. A
 // writer has none until B measures one; it keeps the wall clock.
 const READER_ROLES = ["explorer", "reviewer"];
+// 0.49.0 A: how long a foreground reader delegation waits for its group —
+// the shell's foreground wait (ADR-0058 §3, Amendment 10); the host's
+// `joinMs` overrides it
+const JOIN_MS = 60_000;
 // 0.49.0 C3: what of a foreground child's printed output stays in memory —
 // the rest is in its output.log, never in a string that grows with it.
 const OUTPUT_TAIL_KEEP = 8 * 1024;
@@ -98,7 +102,9 @@ const delegateParameters = (cfg, background) => ({
 					},
 					model: { type: "string", minLength: 1, description: `a model profile configured by the user (configured now: ${cfg.profiles.length ? cfg.profiles.map((x) => (typeof x === "string" ? x : x.name ?? x.id ?? JSON.stringify(x))).join(", ") : "none — omit model"})` },
 					after: { type: "string", minLength: 1, description: "verifier only: the earlier task (by its index, 1-based) whose worktree this verifier runs in a copy of" },
-					timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" },
+					// 0.49.0 A: with tasks wired, a child's bound is its turn budget and
+					// the parent's is the join — no wall-clock kill to ask for
+					...(background ? {} : { timeoutMs: { type: "integer", minimum: 1000, description: "the child's wall-clock budget in milliseconds" } }),
 				},
 				required: ["role", "task"],
 				additionalProperties: false,
@@ -139,7 +145,10 @@ export default async function createSubagentExtension(host = {}) {
 		tools: [
 			{
 				name: "delegate",
-				description: "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
+				description:
+					background !== undefined
+						? "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes. Use background when the next step does not need the result; a foreground wait is bounded and continues in the background on its own."
+						: "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
 				parameters: delegateParameters(delegationConfig(), background !== undefined),
 				execute: async (input, ctx) => {
 					const tasks = ((input ?? {}).tasks ?? []).slice(0, 8);
@@ -180,6 +189,11 @@ export default async function createSubagentExtension(host = {}) {
 						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true, errorKind: "precondition" };
 					}
 					if (inBackground) return startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
+					// 0.49.0 A: a reader delegation joins its group for up to joinMs; a
+					// call with a writer keeps the foreground path until part B
+					if (background !== undefined && tasks.every((t) => READER_ROLES.includes(t.role))) {
+						return joinTasks({ tasks, ctx, background, joinMs: host.joinMs ?? JOIN_MS, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
+					}
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
 						runChild({
 							childId: `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`,
@@ -244,18 +258,33 @@ async function startBackground({ tasks, ctx, background, sessionsDir, parentId, 
 		if (!BACKGROUND_ROLES.includes(task.role)) return refuse(`background is not supported for the ${task.role} role in this release; run this delegation in the foreground`);
 		if (task.timeoutMs !== undefined) return refuse("timeoutMs applies to a foreground delegation; a background child has no wall-clock kill — task_stop stops one");
 	}
+	const r = await startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
+	if (r.refusal !== undefined) return r.refusal;
+	const n = r.started.length;
+	const content =
+		`started ${n} background ${n === 1 ? "child" : "children"}: ${r.lines.join(", ")}. ` +
+		"They read the workspace as it is while they run. You will be told when all of them have ended; task_stop stops one.";
+	return { content, isError: n === 0 };
+}
+
+/** ADR-0058 3d — start a batch as agent tasks: the cap and the reservation
+ *  as one step (D4), then each child's durable inputs and its launch, with
+ *  its turn budget and its result file (D6). 0.49.0 A: the background call
+ *  and the join share it. */
+async function startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding }) {
 	const manager = background.tasksOf(ctx.sessionId);
-	if (manager === undefined) return refuse("background is not available here — run the delegation in the foreground");
+	if (manager === undefined) return { refusal: refuse("background is not available here — run the delegation in the foreground") };
 	const key = ctx.sessionId ?? "";
 	const live = manager.list().filter((t) => t.agent !== undefined && t.state.kind !== "ended" && t.state.kind !== "not_run").length + (background.reserved.get(key) ?? 0);
 	if (live + tasks.length > background.max) {
-		return refuse(`${live} background children are running in this session and the cap is ${background.max}; this call asks for ${tasks.length}. Do not retry — wait for some to end, or stop one with task_stop`);
+		return { refusal: refuse(`${live} background children are running in this session and the cap is ${background.max}; this call asks for ${tasks.length}. Do not retry — wait for some to end, or stop one with task_stop`) };
 	}
 	background.reserved.set(key, (background.reserved.get(key) ?? 0) + tasks.length);
 	let unstarted = tasks.length;
 	const release = (n) => background.reserved.set(key, Math.max(0, (background.reserved.get(key) ?? 0) - n));
 	const lines = [];
-	let failures = 0;
+	const started = [];
+	const failed = [];
 	try {
 		for (let i = 0; i < tasks.length; i += 1) {
 			const task = tasks[i];
@@ -263,7 +292,7 @@ async function startBackground({ tasks, ctx, background, sessionsDir, parentId, 
 			try {
 				const resolved = resolveChild(task, cfg, binding);
 				const inputs = writeChildInputs(manifestDir, childId, task, { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now(), ...modelFieldsOf(resolved) });
-				const started = await manager.start({
+				const info = await manager.start({
 					command: `${task.role}: ${task.task.split("\n")[0].slice(0, 80)}`,
 					cwd: process.cwd(),
 					env: childEnv(inputs.policyDir, sessionsDir, resolved.reasoning),
@@ -271,10 +300,11 @@ async function startBackground({ tasks, ctx, background, sessionsDir, parentId, 
 					agent: { role: task.role, session: childId },
 					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, resolved.profile), "--max-turns", String(background.maxTurns), "--result-file", join(dir, "result.md")] }),
 				});
-				lines.push(`${started.id} ${task.role} (session ${childId})`);
+				lines.push(`${info.id} ${task.role} (session ${childId})`);
+				started.push({ id: info.id, task, childId, resolved });
 			} catch (err) {
-				failures += 1;
 				lines.push(`task ${i + 1} (${task.role}) did not start: ${msg(err)}`);
+				failed.push({ task, why: msg(err) });
 			}
 			unstarted -= 1;
 			release(1);
@@ -282,11 +312,92 @@ async function startBackground({ tasks, ctx, background, sessionsDir, parentId, 
 	} finally {
 		release(unstarted);
 	}
-	const n = tasks.length - failures;
-	const content =
-		`started ${n} background ${n === 1 ? "child" : "children"}: ${lines.join(", ")}. ` +
-		"They read the workspace as it is while they run. You will be told when all of them have ended; task_stop stops one.";
-	return { content, isError: n === 0 };
+	return { manager, started, failed, lines };
+}
+
+/** 0.49.0 A — the join: a reader delegation is a group of agent tasks
+ *  from its start, and the call waits for them up to `joinMs` — the
+ *  shell's foreground wait (ADR-0058 Amendment 10), reused. What ended
+ *  while it waited is CLAIMED by this call (its result reports it, I2);
+ *  what is still running continues as the group, whose notice wakes the
+ *  parent. Nothing is killed: the budget, the person's key (detach), a
+ *  steer and Esc all end the WAIT, never a child. */
+async function joinTasks({ tasks, ctx, background, joinMs, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding }) {
+	const r = await startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
+	if (r.refusal !== undefined) return r.refusal;
+	const { manager, started, failed } = r;
+	const release = new AbortController();
+	let reason = null;
+	const onEsc = () => {
+		reason ??= "interrupted";
+		release.abort();
+	};
+	if (ctx.signal?.aborted) onEsc();
+	else ctx.signal?.addEventListener?.("abort", onEsc);
+	const undetach =
+		typeof manager.registerDetachable === "function" && ctx.executionId !== undefined
+			? manager.registerDetachable(ctx.executionId, {
+					startedAt: Date.now(),
+					detach: (by) => {
+						reason ??= by;
+						release.abort();
+					},
+				})
+			: () => {};
+	let settled;
+	try {
+		settled = await Promise.all(started.map((s) => manager.awaitSettled(s.id, "end", joinMs, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), signal: release.signal, agentJoin: true })));
+	} finally {
+		undetach();
+		ctx.signal?.removeEventListener?.("abort", onEsc);
+	}
+	const sections = [];
+	const deferred = [];
+	const running = [];
+	started.forEach((s, i) => {
+		const w = settled[i];
+		if (w.settled && w.claimed) sections.push(memberSection(s, w.info));
+		else if (w.settled) deferred.push(s);
+		else running.push(s);
+	});
+	for (const f of failed) sections.push({ failed: true, failKind: "error", text: `[subagent] ${f.task.role}: ${f.task.task}\n  FAILED: did not start: ${f.why}`, toolCalls: 0 });
+	const summary = delegateSummary([...sections, ...[...deferred, ...running].map(() => ({ failed: false, toolCalls: 0 }))], new Set(tasks.map((t) => t.role)).size);
+	let budget = GROUP_HANDOFF_BYTES;
+	const texts = sections.map((sec) => {
+		if (sec.handoff === undefined) return sec.text;
+		const body = handoffBody(sec.handoff, Math.min(CHILD_HANDOFF_BYTES, budget));
+		budget -= body.bytes;
+		return `${sec.text}${body.text}${sec.trailer ?? ""}`;
+	});
+	// I2: an end this call could not claim is the group's to deliver
+	for (const d of deferred) texts.push(`[subagent] ${d.task.role}: ${d.task.task}\n  ended as task ${d.id} — its result follows in the group's notice`);
+	if (running.length > 0) {
+		const why = reason === null ? `still running after ${joinMs} ms` : reason === "person" ? "moved to the background by the person" : reason === "steer" ? "moved to the background so the person's message could land" : "interrupted";
+		const ids = running.map((s) => s.id);
+		texts.push(`${why}: continued as background ${ids.length === 1 ? "task" : "tasks"} ${ids.join(", ")}; you will be told when all of them have ended; task_stop stops one.`);
+	}
+	const isError = running.length === 0 && deferred.length === 0 && sections.length > 0 && sections.every((sec) => sec.failed);
+	return { content: `${summary}\n${texts.join("\n")}`, isError };
+}
+
+/** 0.49.0 A — a joined child's section, from its task directory: the
+ *  same head and handoff a foreground child's has (C3), read from its
+ *  result record (I5/I6) and its output. */
+function memberSection(s, info) {
+	const dir = dirname(info.outputPath);
+	const { record, full, answer } = readChildResult(dir);
+	const exitCode = info.state?.kind === "ended" ? info.state.exitCode : null;
+	const status = record !== null ? record.outcome : "failed";
+	const failed = record === null || record.outcome === "failed";
+	const toolCalls = typeof full?.toolCalls === "number" ? full.toolCalls : 0;
+	const ranOn = typeof full?.profile === "string" ? full.profile : typeof full?.model === "string" ? full.model : (s.resolved.profile ?? "unknown");
+	let text = `[subagent] ${s.task.role}: ${s.task.task}\n  status: ${status} · model: ${ranOn}${s.resolved.source === "environment" ? " (default)" : ""} · verification: none · tools: ${toolCalls} · task ${s.id}`;
+	if (record === null) text += `\n  FAILED: the child ${exitCode !== null && exitCode !== 0 ? `exited with code ${exitCode} and ` : ""}left no result record`;
+	else if (record.outcome === "failed") text += `\n  FAILED: the child's run ended with ${typeof full?.endedBy === "string" ? full.endedBy : "a failure"}`;
+	const tail = rawTail(info.outputPath, HANDOFF_TAIL_BYTES);
+	const unresolved = record === null ? null : parseUnresolved(answer);
+	const trailer = unresolved === null && record !== null && answer.trim() !== "" ? "\n  unresolved: not reported" : "";
+	return { failed, ...(failed ? { failKind: "error" } : {}), text, handoff: { record, answer, tail: tail.text, tailCut: tail.cut, resultPath: join(dir, "result.md") }, trailer, toolCalls };
 }
 
 /** The durable inputs of a background child: the task file (the fixed

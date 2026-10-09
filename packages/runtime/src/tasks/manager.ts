@@ -363,8 +363,13 @@ export class TaskManager {
 	 *  durable first, then the transition counts as seen, so it is never
 	 *  announced. A timeout, an abort, no execution id, an agent task (its
 	 *  end belongs to its group, 3d) or a claim that cannot be written
-	 *  claim nothing: the transition is announced as before. */
-	async awaitSettled(id: string, until: "end" | "ready", ms: number, opts: { readonly executionId?: string; readonly signal?: AbortSignalLike } = {}): Promise<TaskSettled> {
+	 *  claim nothing: the transition is announced as before.
+	 *
+	 *  0.49.0 A: `agentJoin` — the delegate call that started an agent task
+	 *  and waits for it (the join) claims its end, so its own result reports
+	 *  it and the group's notice names it as reported (I2: only a claim made
+	 *  durable counts). While it waits, the watcher never announces it (I1). */
+	async awaitSettled(id: string, until: "end" | "ready", ms: number, opts: { readonly executionId?: string; readonly signal?: AbortSignalLike; readonly agentJoin?: boolean } = {}): Promise<TaskSettled> {
 		if (this.get(id) === undefined) throw new Error(`no task ${id} in this session`);
 		this.#waiting.set(id, (this.#waiting.get(id) ?? 0) + 1);
 		let aborted = opts.signal?.aborted === true;
@@ -379,7 +384,7 @@ export class TaskManager {
 			for (;;) {
 				const info = this.#info(id)!;
 				const reached = endTransitionOf(info) ?? (until === "ready" && info.state.kind === "running" && info.state.ready ? "ready" : null);
-				if (reached !== null) return { info, settled: true, claimed: this.#claim(info, reached, opts.executionId) };
+				if (reached !== null) return { info, settled: true, claimed: this.#claim(info, reached, opts.executionId, opts.agentJoin === true) };
 				const left = deadline - Date.now();
 				if (aborted || left <= 0) return { info, settled: false, claimed: false };
 				await new Promise<void>((resolve) => {
@@ -401,8 +406,8 @@ export class TaskManager {
 	/** The frozen order: the claim durable, THEN seen — an append that fails
 	 *  leaves the transition unseen, to be announced (a duplicate is the
 	 *  lesser evil next to a lost transition). */
-	#claim(info: TaskInfo, transition: ClaimedTransition, executionId: string | undefined): boolean {
-		if (executionId === undefined || info.agent !== undefined) return false;
+	#claim(info: TaskInfo, transition: ClaimedTransition, executionId: string | undefined, agentJoin = false): boolean {
+		if (executionId === undefined || (info.agent !== undefined && !agentJoin)) return false;
 		try {
 			appendRecord(join(this.root, info.id, JOURNAL), { type: "result_claimed", ts: Date.now(), transition, executionId });
 		} catch {
