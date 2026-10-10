@@ -26,7 +26,7 @@ import createSubagent from "@vincemakes/kiso-subagent-ext";
 import createAsk, { type AskUI } from "@vincemakes/kiso-ask-ext";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { getDontAsk } from "./mode.js";
-import { bindingFor, tasksFor } from "./state.js";
+import { bindingFor, codingToolOptions, tasksFor } from "./state.js";
 
 /**
  * 0.40.0 (the owner's dogfood): dontAsk never asks, so its tool table never
@@ -68,7 +68,7 @@ export async function builtInLayer(
 	// background children (explorer/reviewer; the cap and the turn budget
 	// are the extension's defaults). 0.49.0 C1: the session's live binding
 	// is the model a child runs on when its task names none.
-	const all = await Promise.all([createMcp({ secretEnvNames }), createSkills(), createSubagent({ tasks: tasksFor, currentBinding: bindingFor }), ...(ask === undefined ? [] : [createAsk(ask).then(offInDontAsk)])]);
+	const all = await Promise.all([createMcp({ secretEnvNames }), createSkills(), createSubagent({ tasks: tasksFor, currentBinding: bindingFor, ...joinOption() }), ...(ask === undefined ? [] : [createAsk(ask).then(offInDontAsk)])]);
 	const shadowed = all.filter((b) => user.some((u) => u.name === b.name));
 	for (const s of shadowed) {
 		console.error(`[extensions] user extension "${s.name}" shadows the built-in — the built-in is not loaded`);
@@ -79,4 +79,11 @@ export async function builtInLayer(
 		}
 	}
 	return all.filter((b) => !shadowed.includes(b));
+}
+
+/** 0.49.0 A: a reader delegation waits as long as a shell command does —
+ *  one knob for "the foreground wait" (KISO_MIN_FOREGROUND_MS reaches both). */
+function joinOption(): { readonly joinMs?: number } {
+	const floor = codingToolOptions().limits?.minForegroundMs;
+	return floor !== undefined ? { joinMs: floor } : {};
 }

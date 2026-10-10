@@ -39,6 +39,8 @@
   "apps/cli/tests/dc58-model-picker-scroll-pty.test.ts",
   "apps/cli/tests/dc58-provider-display-pty.test.ts",
   "apps/cli/tests/dc60-image-chip-pty.test.ts",
+  "apps/cli/tests/delegate-join-0490.test.ts",
+  "apps/cli/tests/delegate-join-pty.test.ts",
   "apps/cli/tests/delegation-config-order-0490.test.ts",
   "apps/cli/tests/df0311-f1-meter-reset-pty.test.ts",
   "apps/cli/tests/e1-copy.test.ts",

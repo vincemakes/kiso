@@ -19,6 +19,15 @@ export interface SubagentTasks {
 		readonly agent: { readonly role: string; readonly session: string };
 		readonly exec: (dir: string) => { readonly file: string; readonly args: readonly string[] };
 	}): Promise<{ readonly id: string }>;
+	/** 0.49.0 A: the join waits for its children and claims what ended
+	 *  (`agentJoin`); the person's key and a steer reach it as a detach. */
+	awaitSettled(
+		id: string,
+		until: "end" | "ready",
+		ms: number,
+		opts?: { readonly executionId?: string; readonly signal?: AbortSignal; readonly agentJoin?: boolean },
+	): Promise<{ readonly info: { readonly outputPath: string; readonly state: { readonly kind: string; readonly exitCode?: number | null } }; readonly settled: boolean; readonly claimed: boolean }>;
+	registerDetachable?(executionId: string, detachable: { readonly startedAt: number; detach(by: "person" | "steer"): void }): () => void;
 }
 
 export interface SubagentHost {
@@ -34,6 +43,10 @@ export interface SubagentHost {
 	 *  runs at. A child whose task names no model, with no subagents.model
 	 *  configured, runs on this profile at this effort. */
 	readonly currentBinding?: (sessionId: string | undefined) => SubagentBinding | null;
+	/** 0.49.0 A: how long a foreground reader delegation waits for its
+	 *  children before they continue as a background group (default 60000,
+	 *  the shell's foreground wait). Nothing is killed when it passes. */
+	readonly joinMs?: number;
 }
 
 export interface SubagentBinding {
