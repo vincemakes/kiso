@@ -116,11 +116,13 @@ describe("SA-F1 — the executor and the child use the same configuration", () =
 		const childBin = join(work, "child.mjs");
 		writeFileSync(
 			childBin,
-			`import { writeFileSync } from "node:fs";
+			`import { appendFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 const args = process.argv.slice(2);
 const at = (f) => (args.includes(f) ? args[args.indexOf(f) + 1] : null);
 writeFileSync(${JSON.stringify(record)}, JSON.stringify({ argv: args, sessionsDir: process.env.KISO_SESSIONS_DIR ?? null }));
+// a change, so a writer has a patch and its acceptance has something to check
+appendFileSync("a.txt", "child\\n");
 const result = at("--result-file");
 writeFileSync(result, "done\\n\\nUNRESOLVED\\nnone\\n");
 writeFileSync(join(dirname(result), "result.json"), JSON.stringify({ outcome: "completed", endedBy: "completed", requests: 1, toolCalls: 0, model: "m", profile: null }));
@@ -158,8 +160,9 @@ writeFileSync(join(dirname(result), "result.json"), JSON.stringify({ outcome: "c
 					} else if (e.name.endsWith(".jsonl") && !e.name.startsWith("sub-")) {
 						for (const line of readFileSync(join(d, e.name), "utf8").split("\n")) {
 							if (line.trim() === "") continue;
-							const ev = (JSON.parse(line) as { event: { type: string; callId?: string; content?: unknown } }).event;
-							if (ev.type === "tool_result" && ev.callId === "d1") delegateResult = String(ev.content);
+							// a session file also holds records that are not events (a header)
+							const ev = (JSON.parse(line) as { event?: { type: string; callId?: string; content?: unknown } }).event;
+							if (ev?.type === "tool_result" && ev.callId === "d1") delegateResult = String(ev.content);
 						}
 					}
 				}
@@ -170,8 +173,11 @@ writeFileSync(join(dirname(result), "result.json"), JSON.stringify({ outcome: "c
 	it("a configured check can be named as acceptance — the call is not refused, and the check runs", () => {
 		expect(delegateResult, "the delegate call's result was not found in the parent's session").not.toBe("");
 		expect(delegateResult).not.toMatch(/refused|schema validation|additional properties/);
-		// the parent ran the named check after the child completed
-		expect(delegateResult).toMatch(/verification: check PASSED · exit 0/);
+		// the parent ran the named check after the child completed: the
+		// foreground handoff says "verification: check PASSED", and where
+		// writers are collected (0.49.0 B) the patch line says "child
+		// acceptance: PASSED"
+		expect(delegateResult).toMatch(/verification: check PASSED · exit 0|child acceptance: PASSED/);
 	});
 
 	it("`subagents.model` is honoured — the child starts on that profile", () => {
