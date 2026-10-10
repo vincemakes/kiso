@@ -97,7 +97,7 @@ describe("builder: the JavaScript habits the model actually has (A2, from 148 re
 
 	it("inside map, the item works in a key: call_id: 'gen-' + s", async () => {
 		const p = await plan('const out = map(["a", "b"], (s) => call("ping", { x: "gen-" + s })); output(out);');
-		const m = p.nodes[0]! as { body: { args: { obj: { x: { op: string } } } }[] };
+		const m = p.nodes[0]! as unknown as { body: { args: { obj: { x: { op: string } } } }[] };
 		expect(m.body[0]!.args.obj.x.op).toBe("concat");
 	});
 
