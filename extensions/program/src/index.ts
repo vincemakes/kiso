@@ -14,6 +14,8 @@ import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolR
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
 export { runProgram } from "./sandbox.js";
+export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
+export { buildPlan } from "./ir/builder.js";
 export type { ProgramHost, ProgramLimits, ProgramResult } from "./sandbox.js";
 
 export const PROGRAM_DESCRIPTION = [

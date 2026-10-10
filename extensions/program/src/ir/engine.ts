@@ -255,5 +255,6 @@ export async function run(program: Program, opts: RunOptions): Promise<RunResult
 		if (bad) throw new Error(`output depends on ${bad.status} node "${bad.node.id}"`);
 		output = evaluate(program.output, lookupIn(root));
 	} catch (e) { error = `${error ? `${error}; ` : ""}${e instanceof Error ? e.message : String(e)}`; }
-	return { ok: error === undefined, ...(output !== undefined ? { output } : {}), ...(error !== undefined ? { error } : {}), nodes, started, maxInFlight };
+	const errors = failedNodes.map((i) => ({ id: i.node.id, ...(i.node.kind === "call" ? { tool: i.node.tool } : {}), ...(i.args !== undefined ? { args: i.args } : {}), error: i.error ?? "failed" }));
+	return { ok: error === undefined, ...(output !== undefined ? { output } : {}), ...(error !== undefined ? { error } : {}), nodes, errors, started, maxInFlight };
 }

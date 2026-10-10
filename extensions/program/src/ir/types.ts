@@ -53,6 +53,8 @@ export interface RunResult {
 	error?: string;
 	/** every node instance, by dotted position: status and result */
 	nodes: Record<string, { id: string; status: Status; value?: Json }>;
+	/** why each failed step failed (tool errors verbatim), in program order */
+	errors: { id: string; tool?: string; args?: Json; error: string }[];
 	/** calls in the order they were STARTED */
 	started: { tool: string; args: Json }[];
 	maxInFlight: number;
