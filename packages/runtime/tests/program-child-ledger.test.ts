@@ -51,7 +51,7 @@ function tools(applied: string[], hang: Promise<void> | null): Tool[] {
 			parameters: { type: "object", properties: {} },
 			execute: async () => { await (hang ?? Promise.resolve()); return ok("late"); },
 		}),
-	];
+	] as unknown as Tool[];
 }
 
 const agentOn = (dir: string, applied: string[], hang: Promise<void> | null) =>

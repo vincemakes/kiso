@@ -1307,12 +1307,21 @@ export class AgentSession {
 	 * model-facing result — a dangling tool_use with NO result would be
 	 * rejected by real providers (review finding 1).
 	 */
-	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): Promise<void> {
+	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned", opts: { acknowledgeBindingChange?: boolean } = {}): Promise<void> {
 		// round 4: a poisoned session may not mutate the log.
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible (the append below is synchronous, so a same-tick second call sees it)
+		// A "rerun" lets the model re-issue the call against the CURRENT tool. If the attempt was bound to a contract (recorded digest) and the live
+		// tool's digest differs or the tool is gone, the human is not told "same tool": the ruling is refused unless acknowledged explicitly.
+		if (resolution === "rerun" && record.binding !== undefined && opts.acknowledgeBindingChange !== true) {
+			const live = this.#config.registry.get(record.name);
+			if (live === undefined || live.digest !== record.binding.digest) {
+				const short = (d: string | undefined): string => (d === undefined ? "none" : d.replace("sha256:", "").slice(0, 12));
+				throw new Error(`binding changed for ${record.name}: the attempt was bound to ${short(record.binding.digest)}, ${live === undefined ? "that tool is no longer registered" : `the tool is now ${short(live.digest)}`}; pass acknowledgeBindingChange to rerun anyway`);
+			}
+		}
 		// P3: rule on a program's children first — what the model is told about the program lists how each ended
 		const open = [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain" && r.callId.startsWith(`${record.callId}/`));
 		if (open.length > 0) throw new Error(`rule on the child call(s) of ${record.callId} first: ${open.map((r) => `${r.callId} (${r.name})`).join(", ")}`);

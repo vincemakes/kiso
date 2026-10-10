@@ -29,7 +29,7 @@ function tools(applied: string[]): Tool[] {
 		}),
 		defineTool({ name: "mutate", description: "a side effect", parameters: { type: "object", properties: { what: { type: "string" } }, required: ["what"] }, execute: async (i: { what: string }) => { applied.push(i.what); return ok(`applied ${i.what}`); } }),
 		defineTool({ name: "peek", description: "a read", parameters: { type: "object", properties: {} }, execute: async () => ok("seen") }),
-	];
+	] as unknown as Tool[];
 }
 const first = () => createFauxProvider([
 	{ events: [{ type: "tool_call_end", callId: "p1", name: "program", input: {} }, { type: "stop", reason: "tool_use" }] },
