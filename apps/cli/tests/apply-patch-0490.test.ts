@@ -227,4 +227,3 @@ describe("0.49.0 B6.3 — VERIFY: the acceptance always runs again in the worksp
 		expect(out.join("\n")).toMatch(/workspace acceptance: not run — the check "gone" is no longer configured/);
 	});
 });
-

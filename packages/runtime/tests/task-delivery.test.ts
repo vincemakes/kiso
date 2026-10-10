@@ -311,4 +311,3 @@ describe("ADR-0058 Amendment 9 — the chain budget, pinned (finding 0480-F9)", 
 		expect(resumed.carried).toMatch(SPENT); // the model is still told, with its notice
 	});
 });
-
