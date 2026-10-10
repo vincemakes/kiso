@@ -230,7 +230,10 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
 	return {
 		name: "mcp",
 		tools,
-		connecting,
+		// live, as the protocol and this file's header say: the value at return time stayed true forever
+		get connecting() {
+			return connecting;
+		},
 		// finding #8 (P1): the LOADER calls this on exit — closing every client
 		// terminates its transport (the stdio children end; a hung process
 		// would otherwise keep the host alive forever).

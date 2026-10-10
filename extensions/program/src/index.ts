@@ -63,4 +63,26 @@ export function hideTools<E extends KisoExtension>(ext: E): E {
 	});
 }
 
+/**
+ * A BOUNDED wait for an extension that is still connecting (the MCP bridge connects in the
+ * background, so a cache-less first request carries none of its tools — findings-mcp-bridge F1).
+ * It runs in the async `onUserMessage` hook, which the kernel awaits before the run's first
+ * request is assembled (the table is re-snapshotted per request), so the tools are in that
+ * snapshot. A kernel line is not needed: the bound is owned by the extension side, as the
+ * shell tool owns its foreground wait. It holds only while `ext.connecting` is true, for at most
+ * `maxMs`, and passes the message through untouched.
+ */
+export function connectWait(ext: { readonly name: string; readonly connecting?: boolean }, maxMs = 10_000): KisoExtension {
+	return {
+		name: `${ext.name}-connect-wait`,
+		hooks: {
+			onUserMessage: async (msg) => {
+				const deadline = Date.now() + maxMs;
+				while (ext.connecting === true && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
+				return msg;
+			},
+		},
+	};
+}
+
 export default createProgramExtension;

@@ -38,14 +38,12 @@ if (process.argv[2] === "--host") {
 	const imp = (rel) => import(pathToFileURL(join(ROOT, rel)).href);
 	const { createAgent, SessionStore } = await imp("packages/runtime/dist/index.js");
 	const mcp = (await imp("extensions/mcp/dist/kiso-mcp.mjs")).default;
-	const { createProgramExtension, hideTools } = await imp("extensions/program/dist/kiso-program.mjs");
+	const { createProgramExtension, hideTools, connectWait } = await imp("extensions/program/dist/kiso-program.mjs");
 	const bridge = await mcp({ servers: { studio: { command: process.execPath, args: [SERVER], env: { MCP_TOOLS: "13", MCP_SNAPSHOT: snap, MCP_DELAY_AFTER: "generate_asset:6000" } } } });
-	const agent = createAgent({ model: "m", provider: "openai-compat", baseUrl: url, apiKey: "x", tools: [], store: new SessionStore(store), extensions: [createProgramExtension(), hideTools(bridge)], systemPrompt: "You are a test agent." });
+	const agent = createAgent({ model: "m", provider: "openai-compat", baseUrl: url, apiKey: "x", tools: [], store: new SessionStore(store), extensions: [createProgramExtension(), hideTools(bridge), connectWait(bridge, 10_000)], systemPrompt: "You are a test agent." });
 	const session = await agent.session({ id: "s" });
 	if (mode === "run") {
-		// the bridge connects in the background and the program's catalog is the request's table
-		// snapshot: without this wait the first request has no MCP tools (findings-mcp-bridge, F1)
-		await new Promise((r) => setTimeout(r, 1000));
+		// no hand-made sleep: connectWait holds the run's first request until the bridge has connected (bounded)
 		for await (const _ of session.run("create the asset")) void _;
 	} else {
 		const rows = () => [...session.uncertainExecutions()];
@@ -75,8 +73,8 @@ const run = (mode, storeDir, killAfterMs) => new Promise((resolve) => {
 	p.on("exit", (code, sig) => { clearTimeout(t); try { process.kill(-p.pid, "SIGKILL"); } catch { /* gone */ } resolve({ code, sig, out, err }); });
 });
 
-const r1 = await run("run", store, 4500);
-console.log(`run 1: ended by ${r1.sig ?? r1.code} after 4.5 s (1 s bridge wait + 1.5 s model + the script, still waiting for generate_asset)`);
+const r1 = await run("run", store, 4000);
+console.log(`run 1: ended by ${r1.sig ?? r1.code} after 4.0 s (bridge connect + 1.5 s model + the script, still waiting for generate_asset)`);
 if (r1.code !== null) { console.log("host stderr:", r1.err.slice(0, 1200)); process.exit(1); }
 await new Promise((r) => setTimeout(r, 400));
 const world = JSON.parse(readFileSync(snap, "utf8"));
