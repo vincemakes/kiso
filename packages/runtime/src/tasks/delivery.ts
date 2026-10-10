@@ -77,6 +77,12 @@ export interface TaskDeliveryOptions {
 	 *  startup or as it is heard — the person can be told at once, while
 	 *  the model's notice keeps its own turn. A claimed loss never comes. */
 	readonly onLost?: (taskIds: readonly string[]) => void;
+	/** Finding 0480-F9: the chain budget is spent — a task's end that would
+	 *  have woken the session only notifies. Called ONCE per exhaustion (the
+	 *  first such end since the last run a person started; a resume whose log
+	 *  already carries the sentence is not told again), so the person can be
+	 *  told why the chain went quiet. The model's notice says it either way. */
+	readonly onBudgetSpent?: (info: { readonly wakes: number; readonly maxWakes: number; readonly taskIds: readonly string[] }) => void;
 	/** How much of a failed task's output rides its notice. Default 2 KB. */
 	readonly tailBytes?: number;
 	/** Read a task's output tail (injectable for tests). */
@@ -90,6 +96,9 @@ interface Pending {
 
 const key = (i: TaskDeliveryItem): string => `${i.taskId}:${i.transition}`;
 export const DEFAULT_MAX_WAKES = 20;
+
+/** The model's sentence for a spent budget (the text 0.48.0 shipped). */
+const spentSentence = (wakes: number): string => `chain budget spent: ${wakes} autonomous wakes since the person's last message — continue when they speak`;
 
 /** ADR-0058 3d (D3): a child's excerpt, and a group's excerpts together —
  *  the handoff format's budgets (0.49.0 C3). */
@@ -110,6 +119,8 @@ export class TaskDelivery {
 	/** ended agent tasks waiting for their group (restart: heard at startup) */
 	readonly #ended = new Map<string, { readonly restart: boolean }>();
 	#recheck: ReturnType<typeof setTimeout> | null = null;
+	/** the person-run the budget was last said spent in (0480-F9) */
+	#spentEpoch: number | null = null;
 	readonly #unsubscribe: () => void;
 
 	constructor(options: TaskDeliveryOptions) {
@@ -199,8 +210,8 @@ export class TaskDelivery {
 		if (task.agent !== undefined && item.transition !== "ready") return this.#agentEnded(task, item);
 		const mode = this.#modeOf(task, item);
 		if (mode === "silent") return;
-		const spent = mode === "notify" && this.#eligible(task, item) && !this.#underBudget();
-		this.#buffer.push({ item, line: spent ? `${this.#line(task, item)}\nchain budget spent: ${this.#wakesSinceLastPerson()} autonomous wakes since the person's last message — continue when they speak` : this.#line(task, item), mode });
+		const spent = mode === "notify" && this.#eligible(task, item) ? this.#spent([task.id]) : null;
+		this.#buffer.push({ item, line: spent !== null ? `${this.#line(task, item)}\n${spent}` : this.#line(task, item), mode });
 		if (this.#timer === null) this.#timer = setTimeout(() => this.#flush(), this.#o.windowMs ?? 1_000);
 	}
 
@@ -282,6 +293,42 @@ export class TaskDelivery {
 	 *  since the last run a person started. */
 	#underBudget(): boolean {
 		return this.#wakesSinceLastPerson() < (this.#o.maxWakes ?? DEFAULT_MAX_WAKES);
+	}
+
+	/** 0480-F9: the sentence when the budget is spent (null while it is not),
+	 *  and the person's hook, once per exhaustion. */
+	#spent(taskIds: readonly string[]): string | null {
+		if (this.#underBudget()) return null;
+		const wakes = this.#wakesSinceLastPerson();
+		const epoch = this.#personEpoch();
+		if (this.#spentEpoch !== epoch) {
+			this.#spentEpoch = epoch;
+			if (!this.#spentInLog(epoch)) this.#o.onBudgetSpent?.({ wakes, maxWakes: this.#o.maxWakes ?? DEFAULT_MAX_WAKES, taskIds });
+		}
+		return spentSentence(wakes);
+	}
+
+	/** The index of the last run's first input a person started (−1: none). */
+	#personEpoch(): number {
+		const events = this.#o.events();
+		let epoch = -1;
+		let firstOfRun = true;
+		for (let i = 0; i < events.length; i++) {
+			const e = events[i]!;
+			if (e.type === "terminal") {
+				firstOfRun = true;
+				continue;
+			}
+			if (e.type !== "user_input" || !firstOfRun) continue;
+			firstOfRun = false;
+			if (!isRuntimeInput(e)) epoch = i;
+		}
+		return epoch;
+	}
+
+	/** A resume: the log already carries the sentence after that run. */
+	#spentInLog(epoch: number): boolean {
+		return this.#o.events().slice(epoch + 1).some((e) => e.type === "user_input" && typeof e.content === "string" && e.content.includes("chain budget spent:"));
 	}
 
 	#wakesSinceLastPerson(): number {
@@ -409,6 +456,10 @@ export class TaskDelivery {
 		const items = fresh.map((f) => f.item);
 		const notice: TaskNotice = { lines, items };
 		const wake = !restart && items.some((i) => this.#wakes(i));
+		// 0480-F9: a group that could have woken but for the budget says why,
+		// as a single task's end does (0.48.0 delivered it silently)
+		const spent = !restart && !wake && fresh.some(({ task, item }) => this.#eligible(task, item)) ? this.#spent(fresh.map((f) => f.task.id)) : null;
+		if (spent !== null) lines.push(spent);
 		const run = this.#o.liveRun();
 		if (run !== undefined && this.#hand(run, notice, wake)) return;
 		if (run === undefined) this.#pending.push({ notice, wake });

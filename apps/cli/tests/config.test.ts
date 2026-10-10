@@ -79,6 +79,11 @@ describe("schema v1: parse + loud failure", () => {
 		expect(c.projectTrust).toBe("never");
 	});
 
+	it("maxWakes (finding 0480-F9): a whole number, 0 or more — 0 is legal (never wake); anything else is loud", () => {
+		for (const n of [0, 1, 20, 100]) expect(parseConfig(JSON.stringify({ maxWakes: n }), "test").maxWakes, String(n)).toBe(n);
+		for (const bad of [-1, 1.5, "3", null]) expect(() => parseConfig(JSON.stringify({ maxWakes: bad }), "test"), JSON.stringify(bad)).toThrow(/maxWakes — expected a whole number, 0 or more/);
+	});
+
 	it("the modes round: full-access and every old name parse as written; dontAsk is a boolean switch; the rest is loud", () => {
 		for (const mode of ["full-access", "accept-edits", "bypass", "dontAsk", "manual", "full access"]) expect(parseConfig(JSON.stringify({ mode }), "test").mode, mode).toBe(mode);
 		expect(parseConfig(JSON.stringify({ dontAsk: true }), "test").dontAsk).toBe(true);

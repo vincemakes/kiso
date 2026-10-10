@@ -38,6 +38,12 @@ export function taskNoticeLines(items: readonly TaskDeliveryItem[], what?: (task
 	return rows;
 }
 
+/** Finding 0480-F9: the chain budget is spent — said to the person once,
+ *  so a chain that went quiet on its budget does not look idle. */
+export function budgetSpentLine(info: { readonly wakes: number }): string {
+	return `✦ chain budget spent — ${info.wakes} autonomous wake${info.wakes === 1 ? "" : "s"} since your last message · finished tasks wait for you`;
+}
+
 /** A task's state in the person's words. A stop that was asked for and is
  *  not yet confirmed reads `stopping` — never `stopped` before the journal
  *  says so; a task kiso lost track of says so (Amendment 8). */

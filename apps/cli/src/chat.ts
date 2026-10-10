@@ -33,7 +33,7 @@ import {
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { deliveryLines, liveTasks, lostToldOf, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
-import { taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
+import { budgetSpentLine, taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
 import { current as inRunCompaction, takeKept as takeKeptCompaction } from "./in-run-compaction.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
@@ -1876,6 +1876,8 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 						for (const id of ids) told.add(id);
 						for (const line of taskNoticeLines(ids.map((taskId) => ({ taskId, transition: "unknown" as const })), taskWhatOf(session.id))) body.notice(line);
 					},
+					// 0480-F9: the chain went quiet on its budget — say so, once
+					onBudgetSpent: (info) => body.notice(budgetSpentLine(info)),
 					...(Number.isFinite(autoDetachFromEnv) && autoDetachFromEnv >= 0 ? { autoDetachMinAgeMs: autoDetachFromEnv } : {}),
 				});
 	// 3e: a task's change repaints the row it is counted on

@@ -898,6 +898,16 @@ is how the person meets it, and when kiso concludes it.
   profile `wait` — are void. §10 stands as written. The chain budget
   above is what remains, for every task: a background subagent group or
   command started inside a wake run now wakes again, up to the budget.
+- *Addendum 2026-10-09 (finding 0480-F9, owner-approved for 0.49):*
+  0.48.0 appended the "chain budget spent" line only on a single task's
+  path; a subagent group's end over budget was delivered as a notify
+  with no line. Both paths now carry the same sentence. The person is
+  told too: `TaskDeliveryOptions.onBudgetSpent` (host option, passed by
+  `useTasks`) fires once per exhaustion — the first spent end since the
+  last run a person started; a resume whose log already carries the
+  sentence is not told again — and the CLI shows one `✦ chain budget
+  spent` row. Tests pin the default (20, at its boundary), the sentence,
+  `maxWakes: 0`, the reset on a person's run, and the hook's once.
 
 ## Amendment 10 — the foreground wait has a floor (2026-10-09, owner-approved)
 

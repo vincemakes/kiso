@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
-import { lostReason, taskCounts, taskNoticeLines, taskOutput, taskRow, taskStateLabel } from "../src/task-notice.js";
+import { budgetSpentLine, lostReason, taskCounts, taskNoticeLines, taskOutput, taskRow, taskStateLabel } from "../src/task-notice.js";
 
 const task = (over: Partial<TaskInfo>): TaskInfo => ({ id: "t1", command: "npm test", profile: "oneshot", backend: "process", state: { kind: "running", ready: false }, outputPath: "/nope/output.log", startedAt: 1_000, ...over }) as TaskInfo;
 
@@ -86,3 +86,11 @@ describe("Amendment 8 — why kiso lost track, read from the journal", () => {
 		expect(lostReason(task({ state: { kind: "running", ready: false } }))).toBeUndefined();
 	});
 });
+
+describe("finding 0480-F9 — a spent chain budget, in the person's words", () => {
+	it("one row: how many wakes, and that finished tasks wait for the person", () => {
+		expect(budgetSpentLine({ wakes: 20 })).toBe("✦ chain budget spent — 20 autonomous wakes since your last message · finished tasks wait for you");
+		expect(budgetSpentLine({ wakes: 1 })).toBe("✦ chain budget spent — 1 autonomous wake since your last message · finished tasks wait for you");
+	});
+});
+
