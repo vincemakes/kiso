@@ -65,8 +65,9 @@ export async function builtInLayer(
 	secretEnvNames: readonly string[] = [],
 ): Promise<readonly KisoExtension[]> {
 	// ADR-0058 3d: the session's task manager makes `delegate` offer
-	// background children (explorer/reviewer; the cap and the turn budget
-	// are the extension's defaults). 0.49.0 C1: the session's live binding
+	// background children (any role; a writer works in its own snapshot and
+	// is collected; the caps and the turn budgets are the extension's
+	// defaults). 0.49.0 C1: the session's live binding
 	// is the model a child runs on when its task names none.
 	const all = await Promise.all([createMcp({ secretEnvNames }), createSkills(), createSubagent({ tasks: tasksFor, currentBinding: bindingFor, ...joinOption() }), ...(ask === undefined ? [] : [createAsk(ask).then(offInDontAsk)])]);
 	const shadowed = all.filter((b) => user.some((u) => u.name === b.name));

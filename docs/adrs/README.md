@@ -140,8 +140,9 @@ not another recalibration)
   per task and a verified runner identity decide every state after a
   crash; nothing is ever re-run. Completions reach the model through
   ADR-0057's admission seam, batched, with at most one autonomous wake.
-  `delegate` runs explorer and reviewer children in the background as
-  agent tasks, bounded by a turn budget, delivered once per group. The
+  `delegate` runs children in the background as agent tasks (a writer in
+  its own workspace, collected when it ends), bounded by a turn budget,
+  delivered once per group. The
   person moves a running command to the background with ctrl+b, a steer
   no longer waits for one, `/tasks` lists and stops them, and an exit
   with live tasks asks first.
