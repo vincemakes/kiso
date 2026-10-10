@@ -47,7 +47,24 @@ export interface SubagentHost {
 	 *  children before they continue as a background group (default 60000,
 	 *  the shell's foreground wait). Nothing is killed when it passes. */
 	readonly joinMs?: number;
+	/** 0.49.0 B: live writers (implementer, verifier) per session (default 4). */
+	readonly writerMax?: number;
+	/** 0.49.0 B: a writer's model requests before its wrap-up — unset by
+	 *  default until a measurement sets one; a writer keeps its wall clock. */
+	readonly writerMaxTurns?: number;
+	/** 0.49.0 B: the most a writer's working-tree snapshot may copy (default
+	 *  50 MiB); over it the delegation is refused, never run from HEAD. */
+	readonly snapshotMaxBytes?: number;
 }
+
+/** 0.49.0 B: collect a writer whose process ended — its patch, the
+ *  versions it changed, the child's acceptance, a verifier behind it — and
+ *  record `collected`, last. The host's TaskManager calls it (its `collect`
+ *  option) with the manager that starts a verifier behind it. */
+export function collectWriter(
+	info: { readonly id: string; readonly outputPath: string; readonly executionId?: string; readonly stoppedBy?: string; readonly agent?: { readonly role: string; readonly session: string } },
+	manager: SubagentTasks,
+): Promise<void>;
 
 export interface SubagentBinding {
 	readonly profile: string | null;
@@ -57,3 +74,10 @@ export interface SubagentBinding {
 
 declare const createSubagentExtension: (host?: SubagentHost) => KisoExtension | Promise<KisoExtension>;
 export default createSubagentExtension;
+
+/** 0.49.0 B6.1: a writer's private workspace — the person's working tree
+ *  at dispatch (uncommitted edits and untracked files, never ignored ones)
+ *  in a task-private repository that borrows the person's objects
+ *  read-only; nothing is written into the person's repository. Throws a
+ *  refusal over `maxBytes`, or when the tree would not hold still. */
+export function snapshotWorkspace(parentCwd: string, ws: string, maxBytes?: number): { readonly root: string; readonly head: string; readonly base: string; readonly cwd: string; readonly sub: string };

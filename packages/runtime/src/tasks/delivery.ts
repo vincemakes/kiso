@@ -365,9 +365,11 @@ export class TaskDelivery {
 	}
 
 	#complete(group: { readonly closed: boolean; readonly members: readonly string[] }): boolean {
+		// 0.49.0 B: a member's END, not its process's — a writer being
+		// collected has not ended, so its group is not complete yet
 		return group.closed && group.members.every((id) => {
-			const kind = this.#o.manager.get(id)?.state.kind;
-			return kind === undefined || kind === "ended" || kind === "unknown" || kind === "not_run";
+			const task = this.#o.manager.get(id);
+			return task === undefined || endTransitionOf(task) !== null;
 		});
 	}
 

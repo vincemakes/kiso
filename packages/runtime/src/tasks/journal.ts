@@ -32,7 +32,14 @@ export interface TaskLaunch {
 export interface TaskAgent {
 	readonly role: string;
 	readonly session: string;
+	/** 0.49.0 B: a writer — its end is its COLLECTION. The process ending
+	 *  is not the result: the parent collects what it left (a patch, an
+	 *  acceptance) and records `collected`, and only then has it ended. */
+	readonly collect?: true;
 }
+
+/** 0.49.0 B: how a writer's collection ended. */
+export type CollectionOutcome = "collected" | "unchanged" | "stopped" | "failed";
 
 export type TaskRecord =
 	| {
@@ -69,7 +76,10 @@ export type TaskRecord =
 	/** ADR-0058 Amendment 7: the tool execution `executionId` — the CLAIMING
 	 *  call (task_stop's own, the shell call's own), not the task's starter —
 	 *  reports `transition` in its result, so it is never noticed. */
-	| { readonly type: "result_claimed"; readonly ts: number; readonly transition: ClaimedTransition; readonly executionId: string };
+	| { readonly type: "result_claimed"; readonly ts: number; readonly transition: ClaimedTransition; readonly executionId: string }
+	/** 0.49.0 B: the parent's collection of a writer finished — the LAST
+	 *  record of its end; until it is written the writer has not ended. */
+	| { readonly type: "collected"; readonly ts: number; readonly outcome: CollectionOutcome; readonly reason?: string };
 
 /** A transition as the model is told it — a notice's or a result's name. */
 export type ClaimedTransition = "ready" | "exited" | "failed" | "stopped" | "unknown";

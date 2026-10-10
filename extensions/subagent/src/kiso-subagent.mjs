@@ -29,7 +29,7 @@
 
 import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { closeSync, existsSync, fsyncSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, cpSync, existsSync, fsyncSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,7 +44,6 @@ const BACKGROUND_MAX = 20;
  *  twice the longest real explorer measured (17); 3f tunes it. */
 const BACKGROUND_MAX_TURNS = 32;
 /** ADR-0058 3d (D1): the roles whose unattended contract is defined. */
-const BACKGROUND_ROLES = ["explorer", "reviewer"];
 
 const SIX_TOOLS = ["read_file", "list_dir", "search_text", "write_file", "edit_file", "shell"];
 const READ_ONLY = ["read_file", "list_dir", "search_text"];
@@ -119,12 +118,15 @@ const delegateParameters = (cfg, background) => {
 			// kept verbatim: "start the tasks" marks it as the CALL's flag. The
 			// diet's shorter "run in the background" put it inside tasks[] in 4
 			// of 5 smoke legs (0 of 5 with this text; plan-prefix-diet A10).
+			// 0.49.0 B drops only the role limit ("explorer and reviewer only: ")
+			// — writers run in the background too; the subagents kit counts
+			// the schema refusals this wording could move (rc ≤ ctl + 2).
 			...(background
 				? {
 						background: {
 							type: "boolean",
 							description:
-								"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+								"start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
 						},
 					}
 				: {}),
@@ -147,7 +149,20 @@ export default async function createSubagentExtension(host = {}) {
 	const depth = Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0;
 	if (depth >= 1) return { name: "subagent", tools: [] }; // depth guard — no nesting
 	const tasksOf = typeof host.tasks === "function" ? host.tasks : undefined;
-	const background = tasksOf === undefined ? undefined : { tasksOf, max: host.backgroundMax ?? BACKGROUND_MAX, maxTurns: host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS, reserved: new Map() };
+	const background =
+		tasksOf === undefined
+			? undefined
+			: {
+					tasksOf,
+					max: host.backgroundMax ?? BACKGROUND_MAX,
+					maxTurns: host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS,
+					// 0.49.0 B: writers — their cap, their turn budget (unset until the
+					// probe measures one: F1), and the snapshot's size cap
+					writerMax: host.writerMax ?? WRITER_MAX,
+					writerMaxTurns: host.writerMaxTurns,
+					snapshotMaxBytes: host.snapshotMaxBytes ?? SNAPSHOT_MAX_BYTES,
+					reserved: new Map(),
+				};
 	// Plan B: ONE configuration snapshot per extension instance — the schema
 	// the model is shown and the executor that validates its call read the
 	// same values, so a session has one delegate contract (a config change
@@ -194,7 +209,7 @@ export default async function createSubagentExtension(host = {}) {
 					const parentCwd = process.cwd();
 					const binding = bindingOf(host, ctx.sessionId);
 					for (let i = 0; i < tasks.length; i += 1) {
-						const why = validateTask(tasks[i], cfg, parentCwd, manifestDir);
+						const why = validateTask(tasks[i], cfg, parentCwd, manifestDir, { afterByIndex: background !== undefined });
 						// DT1a-F1 (owner dogfood 2026-09-08): a refusal BEFORE any child exists is a
 						// precondition — nothing ran, nothing could have partially applied — so the
 						// kernel must not append the non-idempotent "side effects may have partially
@@ -202,9 +217,9 @@ export default async function createSubagentExtension(host = {}) {
 						if (why !== null) return { content: `delegate: refused — task ${i + 1}: ${why}`, isError: true, errorKind: "precondition" };
 					}
 					if (inBackground) return startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
-					// 0.49.0 A: a reader delegation joins its group for up to joinMs; a
-					// call with a writer keeps the foreground path until part B
-					if (background !== undefined && tasks.every((t) => READER_ROLES.includes(t.role))) {
+					// 0.49.0 A/B: with tasks wired, every delegation is a group of
+					// agent tasks the call joins for up to joinMs — writers included
+					if (background !== undefined) {
 						return joinTasks({ tasks, ctx, background, joinMs: host.joinMs ?? JOIN_MS, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
 					}
 					const sections = await runLimited(tasks, CONCURRENCY, (task, i) =>
@@ -268,15 +283,16 @@ const refuse = (why) => ({ content: `delegate: refused — ${why}`, isError: tru
  */
 async function startBackground({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding }) {
 	for (const task of tasks) {
-		if (!BACKGROUND_ROLES.includes(task.role)) return refuse(`background is not supported for the ${task.role} role in this release; run this delegation in the foreground`);
 		if (task.timeoutMs !== undefined) return refuse("timeoutMs applies to a foreground delegation; a background child has no wall-clock kill — task_stop stops one");
 	}
 	const r = await startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
 	if (r.refusal !== undefined) return r.refusal;
 	const n = r.started.length;
+	const writes = tasks.some((t) => WRITER_ROLES.includes(t.role));
 	const content =
 		`started ${n} background ${n === 1 ? "child" : "children"}: ${r.lines.join(", ")}. ` +
-		"They read the workspace as it is while they run. You will be told when all of them have ended; task_stop stops one.";
+		(writes ? "Readers read the workspace as it is while they run; writers work in a snapshot of it taken now, and each one's patch is collected when it ends. " : "They read the workspace as it is while they run. ") +
+		"You will be told when all of them have ended; task_stop stops one.";
 	return { content, isError: n === 0 };
 }
 
@@ -287,10 +303,28 @@ async function startBackground({ tasks, ctx, background, sessionsDir, parentId, 
 async function startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding }) {
 	const manager = background.tasksOf(ctx.sessionId);
 	if (manager === undefined) return { refusal: refuse("background is not available here — run the delegation in the foreground") };
+	const childIdOf = (i) => `sub-${parentId}-${delegationId}-${i + 1}-${tasks[i].role}`;
+	// 0.49.0 B2: `after` names an implementer of THIS call by its 1-based
+	// index; that implementer's collection hands it its tree and starts it
+	const after = new Map();
+	for (let i = 0; i < tasks.length; i += 1) {
+		if (tasks[i].after === undefined) continue;
+		const n = Number(tasks[i].after);
+		if (tasks[i].role !== "verifier" || !Number.isInteger(n) || n < 1 || n > i || tasks[n - 1].role !== "implementer" || tasks[n - 1].after !== undefined) {
+			return { refusal: refuse(`task ${i + 1}: \`after\` must give the 1-based index of an earlier implementer in this call — its tree is collected and handed to the verifier; an earlier call's implementer has no tree left to hand over`) };
+		}
+		after.set(i, n - 1);
+	}
 	const key = ctx.sessionId ?? "";
-	const live = manager.list().filter((t) => t.agent !== undefined && t.state.kind !== "ended" && t.state.kind !== "not_run").length + (background.reserved.get(key) ?? 0);
+	const live = manager.list().filter((t) => t.agent !== undefined && t.state.kind !== "not_run" && (t.state.kind !== "ended" || (t.agent.collect === true && t.collection === undefined))).length + (background.reserved.get(key) ?? 0);
 	if (live + tasks.length > background.max) {
 		return { refusal: refuse(`${live} background children are running in this session and the cap is ${background.max}; this call asks for ${tasks.length}. Do not retry — wait for some to end, or stop one with task_stop`) };
+	}
+	// B4: a writer holds a workspace and runs commands — its own cap
+	const writers = tasks.filter((t) => WRITER_ROLES.includes(t.role)).length;
+	const liveWriters = manager.list().filter((t) => t.agent?.collect === true && t.state.kind !== "not_run" && (t.state.kind !== "ended" || t.collection === undefined)).length;
+	if (writers > 0 && liveWriters + writers > background.writerMax) {
+		return { refusal: refuse(`${liveWriters} writers (implementer or verifier) are running in this session and the writer cap is ${background.writerMax}; this call asks for ${writers}. Do not retry — wait for some to end, or stop one with task_stop`) };
 	}
 	background.reserved.set(key, (background.reserved.get(key) ?? 0) + tasks.length);
 	let unstarted = tasks.length;
@@ -298,20 +332,50 @@ async function startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, 
 	const lines = [];
 	const started = [];
 	const failed = [];
+	const pending = [];
 	try {
+		// B6.1: every writer that starts now gets its snapshot FIRST — all or
+		// nothing: a refusal (the cap, a moving tree, no repository) starts no child
+		const spaces = new Map();
+		for (let i = 0; i < tasks.length; i += 1) {
+			if (!WRITER_ROLES.includes(tasks[i].role) || after.has(i)) continue;
+			try {
+				spaces.set(i, snapshotWorkspace(process.cwd(), join(manifestDir, childIdOf(i), "ws"), background.snapshotMaxBytes));
+			} catch (err) {
+				for (const j of spaces.keys()) rmSync(join(manifestDir, childIdOf(j), "ws"), { recursive: true, force: true });
+				return { refusal: refuse(err instanceof SnapshotRefusal ? err.message : `a writer's workspace could not be built: ${msg(err)}`) };
+			}
+		}
 		for (let i = 0; i < tasks.length; i += 1) {
 			const task = tasks[i];
-			const childId = `sub-${parentId}-${delegationId}-${i + 1}-${task.role}`;
+			const childId = childIdOf(i);
+			const writer = WRITER_ROLES.includes(task.role);
+			const maxTurns = writer ? background.writerMaxTurns : background.maxTurns;
 			try {
 				const resolved = resolveChild(task, cfg, binding);
-				const inputs = writeChildInputs(manifestDir, childId, task, { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now(), ...modelFieldsOf(resolved) });
+				const manifest = { parentId, delegationId, index: i + 1, role: task.role, startedAt: Date.now(), ...modelFieldsOf(resolved), ...(maxTurns !== undefined ? { maxTurns } : {}) };
+				if (after.has(i)) {
+					// durable now, started by its implementer's collection
+					writeChildInputs(manifestDir, childId, task, { ...manifest, after: after.get(i) + 1, deferred: true });
+					pending.push({ index: i, task, childId, behind: after.get(i) });
+					continue;
+				}
+				const space = spaces.get(i);
+				const dependents = [...after].filter(([, j]) => j === i).map(([v]) => ({ childId: childIdOf(v) }));
+				const inputs = writeChildInputs(
+					manifestDir,
+					childId,
+					task,
+					{ ...manifest, ...(space !== undefined ? { workspace: join(manifestDir, childId, "ws"), base: space.base, head: space.head, sub: space.sub, dependents } : {}) },
+					space?.cwd,
+				);
 				const info = await manager.start({
 					command: `${task.role}: ${task.task.split("\n")[0].slice(0, 80)}`,
-					cwd: process.cwd(),
+					cwd: space?.cwd ?? process.cwd(),
 					env: childEnv(inputs.policyDir, sessionsDir, resolved.reasoning),
 					...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}),
-					agent: { role: task.role, session: childId },
-					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, resolved.profile), "--max-turns", String(background.maxTurns), "--result-file", join(dir, "result.md")] }),
+					agent: writer ? { role: task.role, session: childId, collect: true } : { role: task.role, session: childId },
+					exec: (dir) => ({ file: process.execPath, args: [...childArgs(bin, childId, inputs.taskPath, resolved.profile), ...(maxTurns !== undefined ? ["--max-turns", String(maxTurns)] : []), "--result-file", join(dir, "result.md")] }),
 				});
 				lines.push(`${info.id} ${task.role} (session ${childId})`);
 				started.push({ id: info.id, task, childId, resolved });
@@ -325,7 +389,11 @@ async function startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, 
 	} finally {
 		release(unstarted);
 	}
-	return { manager, started, failed, lines };
+	for (const p of pending) {
+		const host = started.find((s) => s.childId === childIdOf(p.behind));
+		lines.push(`task ${p.index + 1} verifier starts once ${host !== undefined ? host.id : `task ${p.behind + 1}`} is collected`);
+	}
+	return { manager, started, failed, pending, lines };
 }
 
 /** 0.49.0 A — the join: a reader delegation is a group of agent tasks
@@ -338,7 +406,7 @@ async function startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, 
 async function joinTasks({ tasks, ctx, background, joinMs, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding }) {
 	const r = await startTasks({ tasks, ctx, background, sessionsDir, parentId, bin, delegationId, manifestDir, cfg, binding });
 	if (r.refusal !== undefined) return r.refusal;
-	const { manager, started, failed } = r;
+	const { manager, started, failed, pending } = r;
 	const release = new AbortController();
 	let reason = null;
 	const onEsc = () => {
@@ -367,6 +435,9 @@ async function joinTasks({ tasks, ctx, background, joinMs, sessionsDir, parentId
 	const sections = [];
 	const deferred = [];
 	const running = [];
+	// B2: a verifier its implementer's collection started is in the group too
+	const known = new Set(started.map((s) => s.id));
+	const late = manager.list().filter((t) => t.agent !== undefined && t.executionId === ctx.executionId && !known.has(t.id));
 	started.forEach((s, i) => {
 		const w = settled[i];
 		if (w.settled && w.claimed) sections.push(memberSection(s, w.info));
@@ -384,12 +455,19 @@ async function joinTasks({ tasks, ctx, background, joinMs, sessionsDir, parentId
 	});
 	// I2: an end this call could not claim is the group's to deliver
 	for (const d of deferred) texts.push(`[subagent] ${d.task.role}: ${d.task.task}\n  ended as task ${d.id} — its result follows in the group's notice`);
+	const waiting = pending.filter((p) => !late.some((t) => t.agent?.session === p.childId));
 	if (running.length > 0) {
 		const why = reason === null ? `still running after ${joinMs} ms` : reason === "person" ? "moved to the background by the person" : reason === "steer" ? "moved to the background so the person's message could land" : "interrupted";
 		const ids = running.map((s) => s.id);
 		texts.push(`${why}: continued as background ${ids.length === 1 ? "task" : "tasks"} ${ids.join(", ")}; you will be told when all of them have ended; task_stop stops one.`);
 	}
-	const isError = running.length === 0 && deferred.length === 0 && sections.length > 0 && sections.every((sec) => sec.failed);
+	// B2: a verifier its implementer's collection started — not a wait cut short
+	if (late.length > 0) {
+		const ids = late.map((t) => t.id);
+		texts.push(`started by its implementer's collection: background ${ids.length === 1 ? "task" : "tasks"} ${ids.join(", ")}; you will be told when all of them have ended; task_stop stops one.`);
+	}
+	for (const p of waiting) texts.push(`[subagent] verifier: ${p.task.task}\n  starts once task ${p.behind + 1}'s implementer is collected, in its tree (base plus its patch); its result follows in the group's notice`);
+	const isError = running.length === 0 && late.length === 0 && waiting.length === 0 && deferred.length === 0 && sections.length > 0 && sections.every((sec) => sec.failed);
 	return { content: `${summary}\n${texts.join("\n")}`, isError };
 }
 
@@ -409,20 +487,66 @@ function memberSection(s, info) {
 	else if (record.outcome === "failed") text += `\n  FAILED: the child's run ended with ${typeof full?.endedBy === "string" ? full.endedBy : "a failure"}`;
 	const tail = rawTail(info.outputPath, HANDOFF_TAIL_BYTES);
 	const unresolved = record === null ? null : parseUnresolved(answer);
-	const trailer = unresolved === null && record !== null && answer.trim() !== "" ? "\n  unresolved: not reported" : "";
-	return { failed, ...(failed ? { failKind: "error" } : {}), text, handoff: { record, answer, tail: tail.text, tailCut: tail.cut, resultPath: join(dir, "result.md") }, trailer, toolCalls };
+	let trailer = unresolved === null && record !== null && answer.trim() !== "" ? "\n  unresolved: not reported" : "";
+	let writerFailed = false;
+	if (s.task.role === "implementer") {
+		const w = writerLines(dir, info);
+		trailer += w.text;
+		writerFailed = w.failed;
+	}
+	const all = failed || writerFailed;
+	return { failed: all, ...(all ? { failKind: "error" } : {}), text, handoff: { record, answer, tail: tail.text, tailCut: tail.cut, resultPath: join(dir, "result.md") }, trailer, toolCalls };
+}
+
+/** B — what an implementer's handoff adds: its patch (by path, never
+ *  inline), the base it was written against, the child's acceptance, the
+ *  command that adopts it, and what became of a verifier behind it. */
+function writerLines(dir, info) {
+	const c = info.collection;
+	if (c?.outcome === "failed") return { text: `\n  FAILED: collecting its changes: ${c.reason ?? "unknown"}`, failed: true };
+	let patch = null;
+	try {
+		patch = JSON.parse(readFileSync(join(dir, "patch.json"), "utf8"));
+	} catch {
+		return { text: "\n  FAILED: its patch record is missing", failed: true };
+	}
+	if (patch.files.length === 0) return { text: "\n  no changes", failed: false };
+	let acc = "none";
+	try {
+		const v = JSON.parse(readFileSync(join(dir, "acceptance.json"), "utf8"));
+		acc = v.passed ? "PASSED" : "FAILED";
+	} catch {
+		// no acceptance named, or the child did not complete
+	}
+	const files = patch.files.map((f) => f.path);
+	const bin = process.env.KISO_SUBAGENT_BIN ?? process.argv[1];
+	let text = `\n  patch: ${join(dir, "patch.diff")} (${files.length} ${files.length === 1 ? "file" : "files"}: ${files.slice(0, 8).join(", ")}${files.length > 8 ? ", …" : ""}) · base ${String(patch.base).slice(0, 7)} · child acceptance: ${acc}`;
+	text += patch.applyable ? `\n  apply: node ${shellQuote(bin)} apply-patch ${shellQuote(dir)}` : `\n  the child was stopped: the patch is partial — apply only with: node ${shellQuote(bin)} apply-patch ${shellQuote(dir)} --allow-partial`;
+	try {
+		const deps = JSON.parse(readFileSync(join(dir, "dependents.json"), "utf8"));
+		for (const d of Object.values(deps)) text += d.taskId !== undefined ? `\n  its verifier runs as task ${d.taskId}, in base plus this patch` : `\n  its verifier was skipped: ${d.skipped}`;
+	} catch {
+		// no verifier behind it
+	}
+	return { text, failed: acc === "FAILED" };
+}
+
+/** A path for the shell: single-quoted when it needs quoting. */
+function shellQuote(p) {
+	return /^[\w@%+=:,./-]+$/.test(p) ? p : `'${String(p).replaceAll("'", "'\\''")}'`;
 }
 
 /** The durable inputs of a background child: the task file (the fixed
  *  UNRESOLVED trailer included), its role policy, its manifest — fsynced
  *  with their directories before the task is planned. */
-function writeChildInputs(manifestDir, childId, task, manifest) {
+function writeChildInputs(manifestDir, childId, task, manifest, policyRoot) {
 	const taskPath = join(manifestDir, `${childId}.task`);
 	const policyDir = join(manifestDir, `${childId}.policy`);
 	mkdirSync(policyDir, { recursive: true });
-	writeDurable(join(policyDir, "policy.mjs"), rolePolicyContent(task.role, undefined));
+	// DT-1a R2.1: a scoped writer's policy checks every write against its globs, from its own root
+	writeDurable(join(policyDir, "policy.mjs"), rolePolicyContent(task.role, task.scope !== undefined && policyRoot !== undefined ? { root: policyRoot, globs: task.scope } : undefined));
 	writeDurable(taskPath, `${task.task}\n\n${UNRESOLVED_INSTRUCTION}\n`);
-	writeDurable(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task: task.task, background: true })}\n`);
+	writeDurable(join(manifestDir, `${childId}.json`), `${JSON.stringify({ ...manifest, childId, task: task.task, background: true, ...(task.scope !== undefined ? { scope: task.scope } : {}), ...(task.acceptance !== undefined ? { acceptance: task.acceptance } : {}) })}\n`);
 	fsyncPath(policyDir);
 	fsyncPath(manifestDir);
 	return { taskPath, policyDir };
@@ -741,7 +865,7 @@ function artifactDir(home, sessionsDir) {
 }
 
 /** DT-1a: every task's inputs are judged BEFORE any child runs; a string is the refusal. */
-export function validateTask(task, cfg, parentCwd, manifestDir) {
+export function validateTask(task, cfg, parentCwd, manifestDir, opts = {}) {
 	if (task === null || typeof task !== "object") return "a task must be an object";
 	if (task.role === "tester") return 'unknown role "tester" — it is called "verifier" since 0.46.0';
 	if (!ROLES.includes(task.role)) return `unknown role ${JSON.stringify(task.role)}`;
@@ -776,7 +900,11 @@ export function validateTask(task, cfg, parentCwd, manifestDir) {
 		}
 	}
 	if (task.model !== undefined && !cfg.profiles.includes(task.model)) return `refused: unknown model profile ${JSON.stringify(task.model)} (configured: ${cfg.profiles.join(", ") || "none"})`;
-	if (task.after !== undefined) {
+	// 0.49.0 B2: with tasks wired, `after` is an index into this call — the
+	// batch checks it (startTasks); an earlier call's tree no longer exists
+	if (task.after !== undefined && opts.afterByIndex === true) {
+		if (task.role !== "verifier") return "refused: `after` is for verifier tasks";
+	} else if (task.after !== undefined) {
 		if (task.role !== "verifier") return "refused: `after` is for verifier tasks";
 		let prior;
 		try {
@@ -1307,6 +1435,251 @@ function removeWorktree(parentCwd, worktree) {
 			// nothing left to prune
 		}
 	}
+}
+
+// ── 0.49.0 B: writers — a private snapshot, the parent's collection ──────
+// A writer owns an isolated workspace; adoption is a separate, crash-honest
+// effect (the plan's third sentence). Its end is its COLLECTION: the task
+// is started with agent.collect, and the host's TaskManager calls
+// collectWriter once its process has ended; only `collected` ends it.
+
+const WRITER_ROLES = ["implementer", "verifier"];
+const WRITER_MAX = 4;
+const SNAPSHOT_MAX_BYTES = 50 * 1024 * 1024;
+
+class SnapshotRefusal extends Error {}
+
+const gitOut = (args, opts = {}) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, ...opts }).trim();
+
+/** I3 — the dirty part of the working tree, in git's machine format
+ *  (porcelain v2, NUL-separated: names with spaces, quotes or newlines
+ *  survive): path → its type, the sha256 of its bytes and its exec bit, or
+ *  null when it is deleted. Ignored paths are never listed. --no-optional-
+ *  locks: not even the person's index stat cache is refreshed. */
+function workingManifest(root, skip = []) {
+	const raw = execFileSync("git", ["-C", root, "--no-optional-locks", "status", "--porcelain=v2", "-z", "--untracked-files=all", "--no-renames"], { maxBuffer: 256 * 1024 * 1024 }).toString("utf8");
+	const paths = [];
+	for (const e of raw.split("\0")) {
+		if (e.startsWith("? ")) paths.push(e.slice(2));
+		else if (e.startsWith("1 ")) paths.push(e.split(" ").slice(8).join(" "));
+		else if (e.startsWith("u ")) paths.push(e.split(" ").slice(10).join(" "));
+	}
+	const entries = new Map();
+	let bytes = 0;
+	for (const path of paths.sort()) {
+		const full = join(root, path);
+		// kiso's own home and the writers' workspaces are never part of a
+		// snapshot — a home inside the repository would copy itself
+		if (skip.some((r) => full === r || full.startsWith(`${r}${sep}`))) continue;
+		let st;
+		try {
+			st = lstatSync(full);
+		} catch {
+			entries.set(path, null); // deleted in the working tree
+			continue;
+		}
+		if (st.isSymbolicLink()) {
+			const target = readlinkSync(full);
+			entries.set(path, { type: "link", sha256: createHash("sha256").update(target).digest("hex"), exec: false });
+		} else if (st.isFile()) {
+			const buf = readFileSync(full);
+			bytes += buf.length;
+			entries.set(path, { type: "file", sha256: createHash("sha256").update(buf).digest("hex"), exec: (st.mode & 0o111) !== 0 });
+		}
+		// a directory here is a submodule (gitlink): not part of a snapshot,
+		// as a worktree never initialised one
+	}
+	return { entries, bytes };
+}
+
+const sameManifest = (a, b) => a.entries.size === b.entries.size && [...a.entries].every(([k, v]) => JSON.stringify(b.entries.get(k)) === JSON.stringify(v) && b.entries.has(k));
+
+/** B6.1 — a writer's workspace: a task-private repository that borrows the
+ *  person's objects read-only (`clone --shared`), checked out at HEAD, with
+ *  the working tree's dirty files copied in; the snapshot is committed in
+ *  the private repository and is the writer's base. Nothing is written into
+ *  the person's repository. I3: accepted only if HEAD and the manifest are
+ *  unchanged across the capture — else once more, then a refusal. Over the
+ *  cap: a refusal, never HEAD instead. */
+export function snapshotWorkspace(parentCwd, ws, maxBytes = SNAPSHOT_MAX_BYTES) {
+	let root;
+	let h0;
+	try {
+		root = gitOut(["-C", parentCwd, "rev-parse", "--show-toplevel"]);
+		h0 = gitOut(["-C", root, "rev-parse", "--verify", "HEAD"]);
+	} catch (err) {
+		throw new SnapshotRefusal(`a writer needs a git repository with a commit: ${msg(err)}`);
+	}
+	const sub = relative(realpathSync(root), realpathSync(parentCwd));
+	const real = (p) => {
+		try {
+			return realpathSync(p);
+		} catch {
+			return resolve(p);
+		}
+	};
+	// both sides real paths: git's top level is, and these are made so. The
+	// writers' workspaces live under kiso's home; `ws` itself is named for a
+	// caller that puts it elsewhere
+	const skip = [real(process.env.KISO_HOME ?? join(homedir(), ".kiso")), real(ws)];
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		const m0 = workingManifest(root, skip);
+		if (m0.bytes > maxBytes) {
+			const size = (n) => (n >= 1024 * 1024 ? `${Math.floor(n / (1024 * 1024))} MiB` : `${n} bytes`);
+			throw new SnapshotRefusal(`the working-tree snapshot would copy ${size(m0.bytes)}, over ${size(maxBytes)}; commit, stash or shrink the workspace, or raise the host's limit`);
+		}
+		rmSync(ws, { recursive: true, force: true });
+		mkdirSync(dirname(ws), { recursive: true });
+		execFileSync("git", ["clone", "-q", "--shared", "--no-checkout", root, ws], { stdio: "ignore" });
+		execFileSync("git", ["-C", ws, "checkout", "-q", "--detach", h0], { stdio: "ignore" });
+		let stable = true;
+		for (const [path, e] of m0.entries) {
+			const from = join(root, path);
+			const to = join(ws, path);
+			if (e === null) {
+				rmSync(to, { force: true });
+				continue;
+			}
+			mkdirSync(dirname(to), { recursive: true });
+			rmSync(to, { force: true });
+			if (e.type === "link") {
+				symlinkSync(readlinkSync(from), to);
+				continue;
+			}
+			// copy what was hashed: a file that changed since the manifest is unstable
+			const buf = readFileSync(from);
+			if (createHash("sha256").update(buf).digest("hex") !== e.sha256) stable = false;
+			writeFileSync(to, buf);
+			chmodSync(to, e.exec ? 0o755 : 0o644);
+		}
+		// test-only: a file the gate touches between the copy and the re-read
+		if (process.env.KISO_TEST_SNAPSHOT_TOUCH !== undefined && (attempt === 0 || process.env.KISO_TEST_SNAPSHOT_TOUCH_ALWAYS === "1")) appendFileSync(process.env.KISO_TEST_SNAPSHOT_TOUCH, "x");
+		const h1 = gitOut(["-C", root, "rev-parse", "--verify", "HEAD"]);
+		if (stable && h1 === h0 && sameManifest(m0, workingManifest(root, skip))) {
+			execFileSync("git", ["-C", ws, "add", "-A"], { stdio: "ignore" });
+			execFileSync("git", ["-C", ws, "-c", "user.name=kiso", "-c", "user.email=kiso@localhost", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "--no-verify", "-m", "kiso: the working tree at dispatch"], { stdio: "ignore" });
+			return { root, head: h0, base: gitOut(["-C", ws, "rev-parse", "HEAD"]), cwd: join(ws, sub), sub };
+		}
+		h0 = h1;
+	}
+	rmSync(ws, { recursive: true, force: true });
+	throw new SnapshotRefusal("the workspace changed while the snapshot was being captured (twice); let the edits settle and delegate again");
+}
+
+/** B — collect a writer that ended: called once by the host's TaskManager
+ *  (its `collect` option), live or at the next open. Each step is keyed by
+ *  its own record file and skipped when it is there, so a kill -9 resumes
+ *  where it stopped; `collected` is written LAST. An implementer's result is
+ *  its patch (and the child's acceptance); a verifier's writes are never
+ *  collected — its result is its report. */
+export async function collectWriter(info, manager) {
+	const cfg = delegationConfig();
+	const home = process.env.KISO_HOME ?? join(homedir(), ".kiso");
+	const sessionsDir = cfg.sessionsDir ?? (process.env.KISO_SESSIONS_DIR || join(home, "sessions"));
+	const manifestDir = artifactDir(home, sessionsDir);
+	const childId = info.agent?.session;
+	if (manifestDir === null || typeof childId !== "string") throw new Error("no manifest for this writer");
+	const man = JSON.parse(readFileSync(join(manifestDir, `${childId}.json`), "utf8"));
+	const taskDir = dirname(info.outputPath);
+	const journal = join(taskDir, "journal.jsonl");
+	const done = (outcome, reason) => appendFileSync(journal, `${JSON.stringify({ type: "collected", ts: Date.now(), outcome, ...(reason !== undefined ? { reason } : {}) })}\n`);
+	const ws = man.workspace;
+	const stopped = info.stoppedBy !== undefined;
+	const { record } = readChildResult(taskDir);
+	const completed = record !== null && record.outcome === "completed" && !stopped;
+	if (man.role !== "implementer") {
+		rmSync(ws, { recursive: true, force: true });
+		return done(stopped ? "stopped" : "collected");
+	}
+	// 1. the patch, its index and each changed file's two versions — the one
+	// step that needs the workspace: once it is recorded, a resume after a
+	// crash past the workspace's removal goes straight on to `collected`
+	const patchJson = join(taskDir, "patch.json");
+	if (!existsSync(patchJson)) {
+		if (typeof ws !== "string" || !existsSync(ws)) return done("failed", `the workspace is gone before its patch was collected: ${ws}`);
+		try {
+			writePatch(ws, man.base, taskDir, stopped, man.acceptance);
+		} catch (err) {
+			return done("failed", `collecting the patch: ${msg(err)}; the workspace is kept at ${ws}`);
+		}
+	}
+	const patch = JSON.parse(readFileSync(patchJson, "utf8"));
+	// 2. the child's acceptance — after a completed child only (DT-1a R2.3)
+	const accPath = join(taskDir, "acceptance.json");
+	if (man.acceptance !== undefined && completed && patch.files.length > 0 && !existsSync(accPath) && existsSync(ws)) {
+		const v = await runAcceptance(man.acceptance, cfg, ws, man.base, TIMEOUT_MS, undefined);
+		writeAtomic(accPath, `${JSON.stringify(v)}\n`);
+	}
+	// 3. a verifier `after` it: handed this tree (base + patch), started in
+	// its group BEFORE `collected`, so the group never looks complete between
+	const depsPath = join(taskDir, "dependents.json");
+	const deps = existsSync(depsPath) ? JSON.parse(readFileSync(depsPath, "utf8")) : {};
+	for (const [i, dep] of (man.dependents ?? []).entries()) {
+		if (deps[dep.childId] !== undefined) continue;
+		const accepted = existsSync(accPath) ? JSON.parse(readFileSync(accPath, "utf8")).passed !== false : true;
+		if (!completed || patch.files.length === 0 || !accepted) {
+			deps[dep.childId] = { skipped: !completed ? `the implementer did not complete (${stopped ? "stopped" : record?.outcome ?? "no result"})` : patch.files.length === 0 ? "the implementer changed nothing" : "the implementer's acceptance failed" };
+		} else if (!existsSync(ws)) {
+			deps[dep.childId] = { skipped: "the implementer's tree was already removed" };
+		} else {
+			const depWs = join(manifestDir, dep.childId, "ws");
+			mkdirSync(dirname(depWs), { recursive: true });
+			if (i === (man.dependents ?? []).length - 1 && existsSync(ws)) renameSync(ws, depWs);
+			else cpSync(ws, depWs, { recursive: true, verbatimSymlinks: true });
+			const depMan = JSON.parse(readFileSync(join(manifestDir, `${dep.childId}.json`), "utf8"));
+			const depCwd = join(depWs, man.sub ?? "");
+			writeDurable(join(manifestDir, `${dep.childId}.policy`, "policy.mjs"), rolePolicyContent("verifier", depMan.scope !== undefined ? { root: depCwd, globs: depMan.scope } : undefined));
+			writeFileSync(join(manifestDir, `${dep.childId}.json`), `${JSON.stringify({ ...depMan, workspace: depWs, base: man.base, sub: man.sub })}\n`);
+			const started = await manager.start({
+				command: `verifier: ${String(depMan.task).split("\n")[0].slice(0, 80)}`,
+				cwd: depCwd,
+				env: childEnv(join(manifestDir, `${dep.childId}.policy`), sessionsDir, depMan.reasoning),
+				...(info.executionId !== undefined ? { executionId: info.executionId } : {}),
+				agent: { role: "verifier", session: dep.childId, collect: true },
+				exec: (dir) => ({ file: process.execPath, args: [...childArgs(process.env.KISO_SUBAGENT_BIN ?? process.argv[1], dep.childId, join(manifestDir, `${dep.childId}.task`), depMan.model), ...(depMan.maxTurns !== undefined ? ["--max-turns", String(depMan.maxTurns)] : []), "--result-file", join(dir, "result.md")] }),
+			});
+			deps[dep.childId] = { taskId: started.id };
+		}
+		writeAtomic(depsPath, `${JSON.stringify(deps)}\n`);
+	}
+	// 4. the workspace goes (unless it was handed over), 5. `collected`, last
+	rmSync(ws, { recursive: true, force: true });
+	return done(stopped ? "stopped" : patch.files.length === 0 ? "unchanged" : "collected");
+}
+
+/** B — the patch against the snapshot (binary-safe, renames as a delete
+ *  plus a create), each changed file's base and child versions, and the
+ *  index that names them: patch.json, written last of the three. */
+function writePatch(ws, base, taskDir, stopped, acceptance) {
+	execFileSync("git", ["-C", ws, "add", "-A"], { stdio: "ignore" });
+	const diff = execFileSync("git", ["-C", ws, "diff", "--cached", "--binary", "--no-renames", base], { maxBuffer: 1024 * 1024 * 1024 });
+	writeAtomic(join(taskDir, "patch.diff"), diff);
+	const raw = execFileSync("git", ["-C", ws, "diff", "--cached", "--no-renames", "--raw", "-z", base], { maxBuffer: 256 * 1024 * 1024 }).toString("utf8").split("\0");
+	const files = [];
+	const vdir = join(taskDir, "versions");
+	mkdirSync(vdir, { recursive: true });
+	for (let i = 0; i + 1 < raw.length; i += 2) {
+		const [srcMode, dstMode, , , status] = raw[i].replace(/^:/, "").split(" ");
+		const path = raw[i + 1];
+		const n = files.length;
+		const entry = { path, status, baseMode: srcMode, mode: dstMode };
+		if (status !== "A") {
+			writeFileSync(join(vdir, `${n}.base`), execFileSync("git", ["-C", ws, "show", `${base}:${path}`], { maxBuffer: 256 * 1024 * 1024 }));
+		}
+		if (status !== "D") {
+			writeFileSync(join(vdir, `${n}.child`), execFileSync("git", ["-C", ws, "show", `:${path}`], { maxBuffer: 256 * 1024 * 1024 }));
+		}
+		files.push(entry);
+	}
+	const bytes = statSync(join(taskDir, "patch.diff")).size;
+	// the acceptance by its name: apply-patch re-resolves it from the configuration
+	writeAtomic(join(taskDir, "patch.json"), `${JSON.stringify({ base, bytes, files, completeness: stopped ? "partial" : "complete", applyable: !stopped, ...(acceptance !== undefined ? { acceptance } : {}) })}\n`);
+}
+
+function writeAtomic(path, content) {
+	const tmp = `${path}.tmp`;
+	writeFileSync(tmp, content);
+	renameSync(tmp, path);
 }
 
 /** 0.49.0 C1 — the conversation's live binding, as the host reports it;

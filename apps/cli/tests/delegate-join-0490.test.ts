@@ -8,7 +8,8 @@
  * reused). What ended while it waited is claimed by the call and handed
  * off in its result; what is still running continues as the group. The
  * budget, the person's key (a detach) and Esc end the WAIT, never a child.
- * A call with a writer keeps the foreground path until part B.
+ * Part B: a call with a writer joins too — the writer is a collect-task,
+ * and the call's wait covers its collection.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -16,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import createSubagent from "@vincemakes/kiso-subagent-ext";
+import createSubagent, { collectWriter } from "@vincemakes/kiso-subagent-ext";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend } from "@vincemakes/kiso-tools-node";
 
@@ -51,7 +52,8 @@ beforeEach(() => {
 	for (const k of ["KISO_SUBAGENT_DEPTH", "KISO_DELEGATION_CONFIG_JSON", "CHILD_SLEEP_MS", "CHILD_SLEEP_explorer", "CHILD_SLEEP_reviewer"]) delete process.env[k];
 	Object.assign(process.env, { KISO_HOME: home, KISO_SESSIONS_DIR: join(home, "sessions"), KISO_SUBAGENT_BIN: join(dir, "child.mjs") });
 	process.chdir(dir);
-	manager = new TaskManager({ root: join(home, "sessions", "s1.tasks"), backend: processTaskBackend({ runnerPath: RUNNER }), pollMs: 50 });
+	const created: TaskManager = new TaskManager({ root: join(home, "sessions", "s1.tasks"), backend: processTaskBackend({ runnerPath: RUNNER }), pollMs: 50, collect: (info) => collectWriter(info, created) });
+	manager = created;
 });
 
 afterEach(async () => {
@@ -129,12 +131,13 @@ describe("0.49.0 A — a reader delegation joins its group", () => {
 		expect(manager.get("t1")!.claims).toBeUndefined();
 	}, 30_000);
 
-	it("a call with a writer keeps the foreground path until part B: no tasks are started", async () => {
+	it("part B: a call with a writer joins too — the writer is collected before the call reports it", async () => {
 		execFileSync("git", ["init", "-q"], { cwd: dir });
 		execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "base"], { cwd: dir });
 		const r = await delegate({ tasks: [{ role: "explorer", task: "look" }, { role: "verifier", task: "check" }] }, { joinMs: 30_000 });
-		expect(manager.list()).toEqual([]);
-		expect(r.content).toMatch(/\[subagent\] explorer: look\n {2}status: completed · model: \S+ \(default\) · verification: none · tools: 1\n/);
+		expect(manager.list().map((t) => `${t.id} ${t.agent?.role} ${t.agent?.collect === true ? "collect" : ""}`.trim())).toEqual(["t1 explorer", "t2 verifier collect"]);
+		expect(manager.get("t2")!.collection).toEqual({ outcome: "collected" });
+		expect(r.content).toMatch(/\[subagent\] verifier: check\n[^\n]*task t2\nthe verifier found it/);
 	}, 30_000);
 });
 

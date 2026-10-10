@@ -1074,3 +1074,89 @@ foreground is a bounded join, not an execution mode.
 7. **Not yet.** A call with an implementer or a verifier keeps the
    foreground path (Amendment 12's budgets and the 10-minute wall clock)
    until part B defines the writers' unattended contract.
+
+## Amendment 14 — the writers, as built (0.49.0 B, 2026-10-09, owner-approved)
+
+Part B of the 0.49.0 subagent plan (rev 3.2, B6 with invariants I3–I4):
+a writer owns an isolated workspace; adoption is a separate,
+crash-honest effect. Amendment 4.1's deferral is lifted: implementers and
+verifiers join, or run in the background, as readers do (Amendment 13).
+
+1. **A writer's end is its collection.** A writer starts as an agent task
+   with `collect: true`. When its process ends it is *collecting*:
+   - not announced;
+   - not settled for a wait;
+   - not ended for its group.
+
+   The host's collector (`TaskManagerOptions.collect`) records what it
+   left, and writes `collected` last. Only then has the writer ended.
+   - **Who calls the collector:** the watcher, a wait (the join's own
+     path), and `collectPending()`.
+   - **At a session's open,** `collectPending()` runs before the delivery
+     is built, so a restart never wakes.
+   - **A collector that throws or records nothing** ends the writer as a
+     failed collection, with the reason.
+   - **An unknown writer** is never collected (P6).
+2. **The workspace (B6.1, I3).** A task-private repository borrows the
+   person's objects read-only (`git clone --shared`), is checked out at
+   HEAD, and holds the working tree's dirty files: uncommitted edits and
+   untracked files, never ignored ones.
+   - The snapshot is committed there and is the writer's base.
+   - Nothing is written into the person's repository: no object, ref,
+     index entry, stash or worktree record.
+   - **The stability gate.** HEAD and a machine-readable manifest
+     (`status --porcelain=v2 -z`, a sha256 per file, the executable bit)
+     must be unchanged across the capture. Otherwise it is captured once
+     more, and then refused.
+   - **The cap.** Content over the cap (default 50 MiB) refuses the
+     delegation before any child starts, never falling back to HEAD.
+   - **This reverses DT-1a R2.2's "from the parent's HEAD; the uncommitted
+     changes are not visible"** for writers on a host with tasks.
+3. **The collection,** each step keyed by its own record so a kill -9
+   resumes:
+   - the patch (`diff --cached --binary --no-renames`);
+   - each changed file's base and child versions;
+   - `patch.json`, which names the acceptance by its name;
+   - the child's acceptance, only after a completed, unstopped child;
+   - a verifier behind it;
+   - the workspace removed;
+   - `collected`.
+
+   A stopped child's patch is `partial` and not applyable. A verifier's
+   writes are never collected: its result is its report.
+4. **`after` (B2), with tasks wired, is a 1-based index into the same
+   call.**
+   - The implementer's collection hands its tree (base plus patch) to the
+     verifier, then starts the verifier in the same group, before
+     `collected`. So the group never looks complete in between.
+   - A failed, stopped, unchanged or acceptance-failed implementer gives a
+     skipped verifier, with the reason.
+   - An earlier call's implementer has no tree left, so naming one is
+     refused.
+5. **The handoff (Amendment 12)** names the patch by its path, the files,
+   the base, the child's acceptance, and the adoption command. It never
+   inlines the patch.
+6. **Adoption (B6.2, I4):** `kiso apply-patch <taskDir>`, run through the
+   shell tool, so the person's approval rules cover it.
+   - **PREPARE** merges every file three ways (`git merge-file`; the
+     index is never read). Any conflict, or an entry outside regular
+     files, writes nothing.
+   - **PUBLISH** is per file, revalidated and journaled
+     (`apply.jsonl`):
+     - a creation is no-clobber, link or refuse;
+     - a modification is revalidated before its rename;
+     - a deletion is revalidated, then unlinked.
+
+     A late change ends `partial`, and nothing retries it.
+   - **VERIFY:** the acceptance always runs again in the workspace,
+     re-resolved by its name from the configuration. Both verdicts are
+     reported. There is no rollback.
+   - **An interrupted adoption** is reported from its journal: published,
+     not completed, or unknown. It is never resumed.
+7. **Limits:**
+   - writers count against `backgroundMax` and `writerMax` (default 4);
+   - a batch that does not fit starts nothing;
+   - `writerMaxTurns` is unset until a measurement sets it. Until then a
+     writer keeps the 10-minute wall clock.
+8. **The schema:** `background`'s description drops its role limit.
+   Nothing else in it changes.
