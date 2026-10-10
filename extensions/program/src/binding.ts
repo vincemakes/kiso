@@ -4,16 +4,28 @@ export const DEFAULT_MAX_CONCURRENT_CHILDREN = 8;
 
 /**
  * The kernel's window bounds the calls the MODEL issues in one turn; children are not counted in it, so once a host
- * declares a tool `shared` a single `Promise.all` could put the whole call budget on a server at once. The program
- * bounds its own children: at most `max` run at a time, the rest wait their turn (FIFO). A wait is not a refusal.
+ * declares a tool `shared` one `Promise.all` could put the whole call budget on a server at once. A limiter bounds children
+ * AGENT-WIDE: one instance is shared by every program/plan execution of an extension (and by several extensions when the host
+ * passes the same one), with an optional per-group bound (default group = the MCP server a tool belongs to) inside the global one.
+ * A wait is FIFO and is not a refusal. It bounds what this process sends; a remote rate limit shared with OTHER clients is
+ * still the server's to enforce.
  */
-export function bounded(invoke: NonNullable<ToolContext["invoke"]>, max: number): NonNullable<ToolContext["invoke"]> {
-	let running = 0; const waiting: (() => void)[] = [];
-	return async (name, input) => {
-		if (running >= max) await new Promise<void>((r) => waiting.push(r));
-		running += 1;
-		try { return await invoke(name, input); } finally { running -= 1; waiting.shift()?.(); }
-	};
+export class ChildLimiter {
+	readonly #global: number; readonly #perGroup: number | undefined; readonly #groupOf: (tool: string) => string;
+	#running = 0; readonly #inGroup = new Map<string, number>(); readonly #waiting: { group: string; go: () => void }[] = [];
+	constructor(opts: { global?: number; perGroup?: number; groupOf?: (tool: string) => string } = {}) {
+		this.#global = opts.global ?? DEFAULT_MAX_CONCURRENT_CHILDREN; this.#perGroup = opts.perGroup;
+		this.#groupOf = opts.groupOf ?? ((t) => /^mcp__([^_]+(?:_[^_]+)*?)__/.exec(t)?.[1] ?? "(local)");
+	}
+	#room(group: string): boolean { return this.#running < this.#global && (this.#perGroup === undefined || (this.#inGroup.get(group) ?? 0) < this.#perGroup); }
+	#take(group: string): void { this.#running += 1; this.#inGroup.set(group, (this.#inGroup.get(group) ?? 0) + 1); }
+	#pump(): void { for (let i = 0; i < this.#waiting.length; i += 1) { const w = this.#waiting[i]!; if (this.#room(w.group)) { this.#waiting.splice(i, 1); this.#take(w.group); w.go(); i -= 1; } } }
+	async run<T>(tool: string, fn: () => Promise<T>): Promise<T> {
+		const group = this.#groupOf(tool);
+		if (this.#waiting.length > 0 || !this.#room(group)) await new Promise<void>((go) => { this.#waiting.push({ group, go }); this.#pump(); });
+		else this.#take(group);
+		try { return await fn(); } finally { this.#running -= 1; this.#inGroup.set(group, (this.#inGroup.get(group) ?? 1) - 1); this.#pump(); }
+	}
 }
 
 /** Where a program can ask what a tool IS right now (the MCP bridge: a fresh tools/list). */
@@ -41,8 +53,9 @@ export const unverifiedNote = (n: number): string => `Note: ${n} tool call${n ==
  * no `started`, no effect, an explicit message. Modes: see BindingSource. Even `enforce` cannot close the window between the check
  * and the server acting on the call, and a digest proves the DECLARATION unchanged, not the server's behaviour.
  */
-export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefined, maxConcurrent = DEFAULT_MAX_CONCURRENT_CHILDREN): GuardedInvoke {
-	const invoke = bounded(ctx.invoke!, maxConcurrent);
+export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefined, limiter: ChildLimiter = new ChildLimiter()): GuardedInvoke {
+	const raw = ctx.invoke!;
+	const invoke: NonNullable<ToolContext["invoke"]> = (name, input) => limiter.run(name, () => raw(name, input));
 	let unverified = 0;
 	const out = (async (name, input): Promise<ToolResult> => {
 		if (source === undefined || ctx.catalog === undefined) return invoke(name, input);

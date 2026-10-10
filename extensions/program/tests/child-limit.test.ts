@@ -37,3 +37,41 @@ describe("child concurrency bound", () => {
 		expect(r.stats.max).toBe(3);
 	});
 });
+
+// ── agent-wide, not per script (owner's ruling 2026-10-11) ───────────────────────────────────────
+import { withEffects, ChildLimiter } from "../src/index.js";
+async function twoPrograms(front: KisoExtension[], codeA: string, codeB: string, declareShared: boolean) {
+	const stats = { now: 0, max: 0 };
+	const adapter = createFauxProvider([
+		{ events: [{ type: "tool_call_end", callId: "pa", name: "program", input: { code: codeA } }, { type: "tool_call_end", callId: "pb", name: "program", input: { code: codeB } }, { type: "stop", reason: "tool_use" }] },
+		{ events: [{ type: "text_delta", text: "d" }, { type: "stop", reason: "end_turn" }] },
+	]);
+	const fronts = declareShared ? front.map((f) => withEffects(f, (t) => (t.name === "program" ? { concurrency: "shared" } : undefined))) : front;
+	const agent = createAgent({ model: "faux", adapter, tools: [], extensions: [...fronts, hideTools(probe(stats))], store: new SessionStore(mkdtempSync(join(tmpdir(), "lim-"))) });
+	const session = await agent.session({ id: "s" });
+	const events: Event[] = [];
+	for await (const ev of session.run("go")) events.push(ev);
+	return { stats, events };
+}
+const BURST = (tag: string) => `await Promise.all(Array.from({ length: 20 }, (_, i) => tools.read({ n: i }))); return "${tag}";`;
+describe("one bound for the whole agent", () => {
+	it("two programs the kernel runs one after the other never exceed the bound (default: the program tool is exclusive)", async () => {
+		const r = await twoPrograms([createProgramExtension({}, { maxConcurrentChildren: 6 })], BURST("a"), BURST("b"), false);
+		expect(r.stats.max).toBe(6);
+	});
+	it("two programs the HOST made concurrent still share ONE bound (not 2 x bound)", async () => {
+		const r = await twoPrograms([createProgramExtension({}, { maxConcurrentChildren: 6 })], BURST("a"), BURST("b"), true);
+		expect(r.stats.max).toBeLessThanOrEqual(6);
+		expect(r.stats.max).toBeGreaterThan(1);
+	});
+	it("a limiter the host passes to both extensions bounds program and plan children together", async () => {
+		const limiter = new ChildLimiter({ global: 4 });
+		const r = await twoPrograms([createProgramExtension({}, { limiter })], BURST("a"), BURST("b"), true);
+		expect(r.stats.max).toBeLessThanOrEqual(4);
+	});
+	it("a per-server group bound is respected inside the global one", async () => {
+		const limiter = new ChildLimiter({ global: 8, perGroup: 2, groupOf: () => "svc" });
+		const r = await twoPrograms([createProgramExtension({}, { limiter })], BURST("a"), BURST("b"), true);
+		expect(r.stats.max).toBeLessThanOrEqual(2);
+	});
+});

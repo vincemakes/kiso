@@ -12,12 +12,12 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { createHash } from "node:crypto";
-import { guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
+import { ChildLimiter, guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
 import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
 export { runProgram } from "./sandbox.js";
-export { guardedInvoke, unverifiedNote, type BindingSource, type GuardedInvoke } from "./binding.js";
+export { ChildLimiter, guardedInvoke, unverifiedNote, type BindingSource, type GuardedInvoke } from "./binding.js";
 export { parseScope, scopeDigest, ScopeBook, type ScopeEntry, type ScopeOptions } from "./scope.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
@@ -33,8 +33,9 @@ export const PROGRAM_DESCRIPTION = [
 
 const PROMPT_LINE = "Tools you do not see listed (for example those of an MCP server) are reachable through the program tool: in a script, searchTools(\"keywords\") finds them, describeTool(name) shows the schema, tools.<name>(args) calls them.";
 
-export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean | ScopeOptions; maxConcurrentChildren?: number } = {}): KisoExtension {
+export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean | ScopeOptions; maxConcurrentChildren?: number; limiter?: ChildLimiter } = {}): KisoExtension {
 	const book = new ScopeBook(typeof opts.scope === "object" ? opts.scope : {});
+	const limiter = opts.limiter ?? new ChildLimiter(opts.maxConcurrentChildren !== undefined ? { global: opts.maxConcurrentChildren } : {});
 	const program = defineTool<{ code: string; scope?: unknown }>({
 		name: "program",
 		description: opts.scope ? `${PROGRAM_DESCRIPTION}\n${SCOPE_DESCRIPTION}` : PROGRAM_DESCRIPTION,
@@ -47,7 +48,7 @@ export function createProgramExtension(limits: ProgramLimits = {}, opts: { bindi
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
 			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
 			try {
-				const guarded = guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren);
+				const guarded = guardedInvoke(ctx, opts.binding, limiter);
 				const r = await runProgram(input.code, { invoke: guarded, catalog: ctx.catalog, signal: ctx.signal }, limits);
 				const content = guarded.unverified() > 0 ? `${r.output}\n${unverifiedNote(guarded.unverified())}` : r.output;
 				// a failed script may have had effects: a plain failure, so the kernel adds the honest note

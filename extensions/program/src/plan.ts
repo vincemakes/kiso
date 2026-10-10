@@ -7,7 +7,7 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { run } from "./ir/engine.js";
-import { guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
+import { ChildLimiter, guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
 import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { buildPlan } from "./ir/builder.js";
 import type { CallResult, Effect, Json } from "./ir/types.js";
@@ -33,6 +33,8 @@ export interface PlanOptions {
 	scope?: boolean | ScopeOptions;
 	/** At most this many children at once (default 8); the engine's own `maxConcurrency` also applies. */
 	maxConcurrentChildren?: number;
+	/** One limiter for the whole agent: pass the same instance to the program extension to bound both together. */
+	limiter?: ChildLimiter;
 	/** Bytes of output returned before it is cut (the rest is named, not silently dropped). */
 	maxOutputBytes?: number;
 }
@@ -41,6 +43,7 @@ const parseResult = (content: string): Json => { try { return JSON.parse(content
 
 export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 	const book = new ScopeBook(typeof opts.scope === "object" ? opts.scope : {});
+	const limiter = opts.limiter ?? new ChildLimiter(opts.maxConcurrentChildren !== undefined ? { global: opts.maxConcurrentChildren } : {});
 	const plan = defineTool<{ code: string; scope?: unknown }>({
 		name: "plan",
 		description: opts.scope ? `${PLAN_DESCRIPTION}\n${SCOPE_DESCRIPTION}` : PLAN_DESCRIPTION,
@@ -52,7 +55,7 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			if (!built.ok) return { content: built.error, isError: true, errorKind: "precondition" };
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
 			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
-			const invoke = guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren);
+			const invoke = guardedInvoke(ctx, opts.binding, limiter);
 			let unverifiedCount = 0;
 			try {
 			const r = await run(built.program, {
