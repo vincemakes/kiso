@@ -7,6 +7,7 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { run } from "./ir/engine.js";
+import { guardedInvoke, type BindingSource } from "./binding.js";
 import { buildPlan } from "./ir/builder.js";
 import type { CallResult, Effect, Json } from "./ir/types.js";
 
@@ -25,6 +26,8 @@ export interface PlanOptions {
 	mode?: "sequential" | "parallel";
 	maxCalls?: number;
 	maxConcurrency?: number;
+	/** Checks each tool's live contract against the one the plan was admitted with (see binding.ts). */
+	binding?: BindingSource;
 	/** Bytes of output returned before it is cut (the rest is named, not silently dropped). */
 	maxOutputBytes?: number;
 }
@@ -41,7 +44,7 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			if (ctx.invoke === undefined || ctx.catalog === undefined) return { content: "plan: child tool calls are not available in this execution", isError: true, errorKind: "precondition" };
 			const built = await buildPlan(input.code, ctx.catalog());
 			if (!built.ok) return { content: built.error, isError: true, errorKind: "precondition" };
-			const invoke = ctx.invoke;
+			const invoke = guardedInvoke(ctx, opts.binding);
 			const r = await run(built.program, {
 				mode: opts.mode ?? "parallel",
 				maxCalls: opts.maxCalls ?? 500,

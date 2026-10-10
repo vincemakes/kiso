@@ -96,7 +96,7 @@ if (ARM === "js-index") {
 	while (bridge.connecting === true && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
 	index = signatureIndex(bridge.tools ?? []);
 }
-const front = ARM === "plan" ? createPlanExtension({ effects: studioEffects, mode: process.env.PLAN_MODE === "sequential" ? "sequential" : "parallel" }) : createProgramExtension();
+const front = ARM === "plan" ? createPlanExtension({ binding: bridge, effects: studioEffects, mode: process.env.PLAN_MODE === "sequential" ? "sequential" : "parallel" }) : createProgramExtension({}, { binding: bridge });
 
 const agent = createAgent({
 	model, provider: "openai-compat", baseUrl, apiKey: process.env.OPENAI_API_KEY, ...(Object.keys(headers).length > 0 ? { headers } : {}),

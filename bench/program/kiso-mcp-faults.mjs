@@ -5,7 +5,8 @@
  *   disconnect  the server process exits right after replying to its 2nd tool call
  *   drift       after the 1st call add_subject's signature changes server-side (name -> title)
  * Prints what the program returned, the ledger (per execution), what the server did, and the time taken.
- * usage: node kiso-mcp-faults.mjs <worktree root> <disconnect|drift>
+ * usage: node kiso-mcp-faults.mjs <worktree root> <disconnect|drift> [guard]
+ *   guard: the program extension checks each tool's live contract against the one it was admitted with
  */
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,8 +15,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { startFakeLlm } from "../mcp-ptc/fake-llm.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const [ROOT, MODE] = process.argv.slice(2);
-if (!ROOT || !["disconnect", "drift"].includes(MODE ?? "")) { console.error("usage: node kiso-mcp-faults.mjs <worktree root> <disconnect|drift>"); process.exit(2); }
+const [ROOT, MODE, GUARD] = process.argv.slice(2);
+if (!ROOT || !["disconnect", "drift"].includes(MODE ?? "")) { console.error("usage: node kiso-mcp-faults.mjs <worktree root> <disconnect|drift> [guard]"); process.exit(2); }
 const SERVER = join(HERE, "..", "mcp-ptc", "server.mjs");
 const SCRIPT = `
 const out = [];
@@ -35,7 +36,7 @@ const root = mkdtempSync(join(tmpdir(), "mcp-faults-")); const snap = join(root,
 const llm = await startFakeLlm(join(root, "req"), { delayMs: 200, respond: (n) => (n === 1 ? { toolCalls: [{ id: "p1", name: "program", arguments: { code: SCRIPT } }] } : null) });
 const env = { MCP_TOOLS: "13", MCP_SNAPSHOT: snap, ...(MODE === "disconnect" ? { MCP_EXIT_AFTER: "2" } : { MCP_DRIFT_AFTER: "1" }) };
 const bridge = await mcp({ servers: { studio: { command: process.execPath, args: [SERVER], env } } });
-const agent = createAgent({ model: "m", provider: "openai-compat", baseUrl: llm.url, apiKey: "x", tools: [], store: new SessionStore(store), extensions: [createProgramExtension(), hideTools(bridge), connectWait(bridge, 10_000)], systemPrompt: "You are a test agent." });
+const agent = createAgent({ model: "m", provider: "openai-compat", baseUrl: llm.url, apiKey: "x", tools: [], store: new SessionStore(store), extensions: [createProgramExtension({}, GUARD === "guard" ? { binding: bridge } : {}), hideTools(bridge), connectWait(bridge, 10_000)], systemPrompt: "You are a test agent." });
 const session = await agent.session({ id: "s" });
 const t0 = Date.now(); let result = "";
 const timer = setTimeout(() => { console.log("HUNG: no end after 40 s"); process.exit(1); }, 40_000);
@@ -46,7 +47,7 @@ const file = join(store, readdirSync(store).find((f) => f.endsWith(".jsonl") && 
 const evs = readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => { const o = JSON.parse(l); return o.event ?? o; });
 const rec = new Map(evs.filter((e) => e.type === "tool_execution_succeeded" || e.type === "tool_execution_failed").map((e) => [e.executionId, e.type.replace("tool_execution_", "") + (e.error ? `: ${String(e.error).slice(0, 110)}` : "")]));
 console.log("--- ledger ---");
-for (const e of evs.filter((x) => x.type === "tool_execution_started")) console.log(`${e.callId.padEnd(6)} ${e.name.replace("mcp__studio__", "").padEnd(16)} ${rec.get(e.executionId) ?? "STARTED, NO RECEIPT (uncertain)"}`);
+for (const e of evs.filter((x) => x.type === "tool_execution_started")) console.log(`${e.callId.padEnd(6)} ${e.name.replace("mcp__studio__", "").padEnd(16)} ${(e.binding?.digest ?? "no-binding").slice(0, 17).padEnd(17)} parent=${e.parent ?? "-"} ${rec.get(e.executionId) ?? "STARTED, NO RECEIPT (uncertain)"}`);
 console.log(`uncertain after the run: ${session.uncertainExecutions().length}`);
 try { const w = JSON.parse(readFileSync(snap, "utf8")); console.log(`--- server end state --- calls: ${JSON.stringify(w.calls)}; subjects: ${Object.keys(w.subjects).filter((k) => w.subjects[k].project && w.projects[w.subjects[k].project]?.name === "Fault").length}`); } catch { console.log("no snapshot"); }
 await llm.close(); try { await bridge.dispose?.(); } catch { /* gone */ } process.exit(0);

@@ -11,9 +11,11 @@
  * `searchTools` / `ALL_TOOLS` and calls them with `tools.<name>(args)`.
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
+import { guardedInvoke, type BindingSource } from "./binding.js";
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
 export { runProgram } from "./sandbox.js";
+export { guardedInvoke, type BindingSource } from "./binding.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
 export { run as runIr, validate as validateIr, conflicts as irConflicts } from "./ir/engine.js";
@@ -28,7 +30,7 @@ export const PROGRAM_DESCRIPTION = [
 
 const PROMPT_LINE = "Tools you do not see listed (for example those of an MCP server) are reachable through the program tool: in a script, searchTools(\"keywords\") finds them, describeTool(name) shows the schema, tools.<name>(args) calls them.";
 
-export function createProgramExtension(limits: ProgramLimits = {}): KisoExtension {
+export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource } = {}): KisoExtension {
 	const program = defineTool<{ code: string }>({
 		name: "program",
 		description: PROGRAM_DESCRIPTION,
@@ -38,7 +40,7 @@ export function createProgramExtension(limits: ProgramLimits = {}): KisoExtensio
 			if (ctx.invoke === undefined || ctx.catalog === undefined) {
 				return { content: "program: child tool calls are not available in this execution (the runtime offers no invoke)", isError: true, errorKind: "precondition" };
 			}
-			const r = await runProgram(input.code, { invoke: ctx.invoke, catalog: ctx.catalog, signal: ctx.signal }, limits);
+			const r = await runProgram(input.code, { invoke: guardedInvoke(ctx, opts.binding), catalog: ctx.catalog, signal: ctx.signal }, limits);
 			// a failed script may have had effects: a plain failure, so the kernel adds the honest note
 			return r.ok ? { content: r.output, isError: false } : { content: r.output, isError: true };
 		},

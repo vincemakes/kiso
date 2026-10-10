@@ -26,7 +26,7 @@ import type { Tool } from "./tool.js";
 export interface ToolTable {
 	readonly specs: readonly ToolSpec[];
 	/** P3: every tool the table dispatches, hidden ones included (specs omits them). */
-	readonly catalog: readonly ToolSpec[];
+	readonly catalog: readonly (ToolSpec & { readonly digest?: string })[];
 	get(name: string): Tool<any> | undefined;
 }
 
@@ -73,7 +73,7 @@ export class ToolRegistry {
 		for (const t of this.#tools.values()) take(t, "registered");
 		for (const { source, owner } of this.#live) for (const t of source()) take(t, owner);
 		const all = [...captured.values()].map(({ tool: t }) => ({ tool: t, spec: { name: t.name, description: t.description, inputSchema: t.parameters } as ToolSpec }));
-		return { specs: all.filter(({ tool }) => tool.hidden !== true).map(({ spec }) => spec), catalog: all.map(({ spec }) => spec), get: (name) => captured.get(name)?.tool };
+		return { specs: all.filter(({ tool }) => tool.hidden !== true).map(({ spec }) => spec), catalog: all.map(({ tool: t, spec }) => (t.digest !== undefined ? { ...spec, digest: t.digest } : spec)), get: (name) => captured.get(name)?.tool };
 	}
 
 	get(name: string): Tool<any> | undefined {

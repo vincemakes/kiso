@@ -483,7 +483,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// the parent's own lane — a second `launch()` would wait for the fence the
 	// parent holds. No tool_result is written (the model never issued it) and
 	// its events carry no invocationSeq (recovery binds model calls by it).
-	const invokeFor = (parent: { callId: string }) => {
+	const invokeFor = (parent: { callId: string; executionId: string }) => {
 		const lane = makeLane();
 		let n = 0;
 		return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
@@ -495,7 +495,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
 				if (v.action === "ask") return { content: "a child call that needs a human decision is not supported inside a program yet", isError: true, errorKind: "precondition" };
 				await slot.wait;
-				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, true);
+				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, parent.executionId);
 			} catch (err) {
 				if (err === ABORTED) return { content: "aborted before execution", isError: true, errorKind: "precondition" };
 				throw err;
@@ -1449,8 +1449,8 @@ async function runLedgered(
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
-	mkInvoke?: (parent: { callId: string }) => NonNullable<ToolContext["invoke"]>,
-	child?: true,
+	mkInvoke?: (parent: { callId: string; executionId: string }) => NonNullable<ToolContext["invoke"]>,
+	child?: string, // a child call: the executionId of the call it ran under
 ): Promise<ToolResult> {
 	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
 	const tool = registry.get(call.name)!; // validated + decided by decideCall
@@ -1473,6 +1473,8 @@ async function runLedgered(
 				invocationSeq: call.seq,
 				name: call.name,
 				input: call.input!, // non-null: decideCall denied a null input before this ran
+				...(tool.digest !== undefined ? { binding: { digest: tool.digest } } : {}),
+				...(child !== undefined ? { parent: child } : {}),
 			} as EventInput,
 			(id) => res(id ?? ""), // the drain always passes the allocated id for a started event
 		);
@@ -1485,7 +1487,7 @@ async function runLedgered(
 		// a cancel.
 		result = signal?.aborted
 			? { content: "aborted before execution", isError: true, errorKind: "precondition" }
-			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId, ...(mkInvoke !== undefined ? { invoke: mkInvoke(call), catalog: () => registry.catalog } : {}) });
+			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId, ...(mkInvoke !== undefined ? { invoke: mkInvoke({ callId: call.callId, executionId }), catalog: () => registry.catalog } : {}) });
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),

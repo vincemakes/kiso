@@ -58,7 +58,7 @@ export interface ToolContext {
 	readonly invoke?: (name: string, input: Record<string, unknown>) => Promise<ToolResult>;
 	/** P3: what `invoke` can run — every tool of the request's table, hidden ones
 	 *  included, from the SAME snapshot the kernel dispatches from. */
-	readonly catalog?: () => readonly ToolSpec[];
+	readonly catalog?: () => readonly (ToolSpec & { readonly digest?: string })[];
 }
 
 /**
@@ -109,6 +109,8 @@ export interface Tool<I = unknown> {
 	readonly idempotent?: boolean;
 	/** P3: callable (a program's `invoke`, the catalog) but not declared to the model. */
 	readonly hidden?: true;
+	/** The provider's digest of this tool's contract (input schema, effects, origin). The kernel only records it; it never computes it. */
+	readonly digest?: string;
 	/**
 	 * EC-1 — an OPTIMIZATION CERTIFICATE, never a safety claim.
 	 *

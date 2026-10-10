@@ -31,6 +31,7 @@ import { statusTool } from "./status.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -138,6 +139,7 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
 	// the background connects replace them with the fresh lists on settle.
 	const tools: Tool[] = [];
 	const clients: Client[] = [];
+	const byServer = new Map<string, Client>();
 	// The `connecting` flag the CLI banner reads ("mcp (connecting…)").
 	let connecting = false;
 	// The tool cache: written after every successful connect, read at
@@ -173,7 +175,8 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
 		// tools' calls fail with the connect error).
 		connects.push(
 			connectPromise.then(
-				({ tools: mapped, stderr }) => {
+				({ tools: mapped, stderr, client }) => {
+					byServer.set(name, client);
 					const idx = status.findIndex((s) => s.server === name);
 					const entry: ServerStatus = {
 						server: name,
@@ -234,6 +237,13 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
 		get connecting() {
 			return connecting;
 		},
+		/** What the server says this tool is NOW (a fresh tools/list), as a digest; undefined when the server is unknown or unreachable. */
+		liveDigest: async (toolName: string): Promise<string | undefined> => {
+			const m = /^mcp__(.+?)__(.+)$/.exec(toolName);
+			const client = m ? byServer.get(m[1]!) : undefined;
+			if (!m || !client) return undefined;
+			try { const { tools: fresh } = await client.listTools(); const t = fresh.find((x) => x.name === m[2]); return t ? contractDigest(m[1]!, t.name, t.inputSchema) : undefined; } catch { return undefined; }
+		},
 		// finding #8 (P1): the LOADER calls this on exit — closing every client
 		// terminates its transport (the stdio children end; a hung process
 		// would otherwise keep the host alive forever).
@@ -248,6 +258,12 @@ export default function createMcpExtension(opts: McpExtensionOptions = {}): Kiso
  *  connectServer's race), then calls through the connected client. A
  *  failed connect makes the call fail with the connect error — disconnects are honest,
  *  never a silent hang nor a fake success. */
+/** sha256 of the canonical JSON of what a caller binds to: the server, the tool and its input schema. */
+function contractDigest(server: string, name: string, schema: unknown): string {
+	const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v !== null && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v);
+	return `sha256:${createHash("sha256").update(JSON.stringify(canon({ server, name, inputSchema: schema ?? { type: "object", properties: {} } }))).digest("hex")}`;
+}
+
 function mapCachedTool(
 	server: string,
 	cached: { name: string; description?: string; inputSchema?: unknown },
@@ -255,6 +271,7 @@ function mapCachedTool(
 ): Tool {
 	return {
 		name: `mcp__${server}__${cached.name}`,
+		digest: contractDigest(server, cached.name, cached.inputSchema),
 		description: cached.description ?? `${server}: ${cached.name}`,
 		parameters: (cached.inputSchema ?? { type: "object", properties: {} }) as Readonly<Record<string, unknown>>,
 		execute: async (input: unknown, ctx: ToolContext): Promise<ToolResult> => {
@@ -411,6 +428,7 @@ async function connectWithTimeout(client: Client, transport: StdioClientTranspor
 function mapTool(server: string, client: Client, mcpTool: { name: string; description?: string | undefined; inputSchema?: unknown }): Tool {
 	return {
 		name: `mcp__${server}__${mcpTool.name}`,
+		digest: contractDigest(server, mcpTool.name, mcpTool.inputSchema),
 		description: mcpTool.description ?? `${server}: ${mcpTool.name}`,
 		parameters: (mcpTool.inputSchema ?? { type: "object", properties: {} }) as Readonly<Record<string, unknown>>,
 		execute: async (input: unknown, ctx: ToolContext): Promise<ToolResult> => {
