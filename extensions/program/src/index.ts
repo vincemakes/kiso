@@ -19,6 +19,7 @@ import { runProgram, type ProgramLimits } from "./sandbox.js";
 export { runProgram } from "./sandbox.js";
 export { ChildLimiter, guardedInvoke, unverifiedNote, type BindingSource, type GuardedInvoke } from "./binding.js";
 export { parseScope, scopeDigest, ScopeBook, type ScopeEntry, type ScopeOptions } from "./scope.js";
+export { trustedEffects, groupOfTool, type Footprint, type Resolver } from "./footprint.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
 export { run as runIr, validate as validateIr, conflicts as irConflicts } from "./ir/engine.js";

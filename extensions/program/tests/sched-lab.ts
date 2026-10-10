@@ -24,6 +24,7 @@ export class Lab {
 	state = new Map<string, number>();
 	calls = 0; refused = 0; lost = 0; inflight = 0; maxInflight = 0; failed = 0;
 	log: string[] = [];
+	directory = new Map<string, string>(); // email -> customer id: a record reachable by two names
 	constructor(readonly o: LabOpts, seed: Record<string, number> = {}) { for (const [k, v] of Object.entries(seed)) this.state.set(k, v); }
 	private sleep = (ms: number) => (ms > 0 ? new Promise<void>((r) => setTimeout(r, ms)) : Promise.resolve());
 	async call(tool: string, a: Record<string, Json>): Promise<{ ok: boolean; value?: Json; error?: string }> {
@@ -42,6 +43,16 @@ export class Lab {
 				this.state.set(k, before + 1);
 				return { ok: true, value: before + 1 };
 			}
+			if (tool === "update_customer" || tool === "update_by_email") {
+				const id = tool === "update_customer" ? String(a.customer_id ?? "") : this.directory.get(String(a.email ?? "")) ?? "";
+				if (id === "") return { ok: false, error: "unknown customer" };
+				const key = `customer:${id}`;
+				const before = this.state.get(key) ?? 0;
+				await this.sleep(this.o.latencyMs); // non-atomic read-modify-write
+				if ((this.state.get(key) ?? 0) !== before) this.lost++;
+				this.state.set(key, before + 1);
+				return { ok: true, value: before + 1 };
+			}
 			if (tool === "put") {
 				if (this.o.failPut?.(k)) { this.failed++; return { ok: false, error: "boom" }; }
 				this.state.set(k, Number(a.v ?? 0)); return { ok: true, value: Number(a.v ?? 0) };
@@ -56,7 +67,7 @@ export const effects = (tool: string, args: Json | undefined): Effect => {
 	const keys: string[] | "*" = a && a.k !== undefined ? [String(a.k)] : "*";
 	return tool === "get" ? { kind: "read", keys } : { kind: "write", keys };
 };
-const CATALOG = ["get", "incr", "put"].map((name) => ({ name, description: name, inputSchema: { type: "object" } }));
+export const CATALOG = ["get", "incr", "put", "update_customer", "update_by_email"].map((name) => ({ name, description: name, inputSchema: { type: "object" } }));
 
 export type Exec = "js-seq" | "js-naive" | "js-best" | "ir-seq" | "ir-par" | "ir-par-aware";
 export interface Outcome { scenario: string; exec: Exec; wallMs: number; calls: number; extraCalls: number; refused: number; lost: number; failedCalls: number; maxInflight: number; stateOk: boolean; note?: string }
