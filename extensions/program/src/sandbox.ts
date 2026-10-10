@@ -34,8 +34,6 @@ export interface ProgramHost {
 
 export interface ProgramLimits {
 	readonly timeoutMs?: number;
-	/** after a time-out or abort: how long to wait for children that ignore the abort before ending the program anyway */
-	readonly drainMs?: number;
 	readonly memoryBytes?: number;
 	readonly maxCalls?: number;
 	readonly maxOutputChars?: number;
@@ -52,7 +50,7 @@ export interface ProgramResult {
 	readonly fullOutputPath?: string;
 }
 
-const DEFAULTS = { timeoutMs: 60_000, memoryBytes: 64 * 1024 * 1024, maxCalls: 200, maxOutputChars: 20_000, drainMs: 2_000 } as const;
+const DEFAULTS = { timeoutMs: 60_000, memoryBytes: 64 * 1024 * 1024, maxCalls: 200, maxOutputChars: 20_000 } as const;
 
 type WasmModule = NonNullable<Parameters<typeof QuickJS.create>[0]>["wasm"];
 let wasm: Promise<WasmModule> | undefined;
@@ -106,7 +104,6 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 	const vm = await QuickJS.create({ wasm: await wasmModule(), memoryLimit: L.memoryBytes, interruptHandler: () => stop !== null || Date.now() > deadline || host.signal.aborted });
 	const cleanups: (() => void)[] = [];
 	let verdict: { ok: boolean; value?: string; error?: string };
-	let unfinished = 0;
 	let logs: string[] = [], texts: string[] = [];
 	try {
 		{
@@ -175,12 +172,11 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 	} finally {
 		for (const c of cleanups) c();
 		disposed = true; // from here on a child's reply is not delivered to the script
-		// A child cannot be cancelled once started (its tool decides when it ends), so the program waits for it:
-		// the parent's receipt must come after every child's (write-ahead ledger, invariants I2 and I5).
-		const drain = (async () => { while (inFlight.size > 0) await Promise.allSettled([...inFlight]); })();
-		// a normal end waits for the children; after a time-out/abort only a grace period (a tool that ignores the abort must not hold the program forever)
-		if (stop === null) await drain; else await Promise.race([drain, new Promise((r) => setTimeout(r, L.drainMs))]);
-		unfinished = inFlight.size;
+		// A child cannot be cancelled once started (its tool decides when it ends), so the program waits for it, however
+		// long: exactly what the kernel does for a DIRECT call to a tool that ignores the abort. The parent's receipt must
+		// come after every child's (write-ahead ledger, I2/I5), and a child's receipt travels on the parent's event channel,
+		// which closes when the parent ends: a bounded grace would let the write land and its receipt be lost (B2-F10).
+		while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
 		try { vm.dispose(); } catch { /* already gone */ }
 	}
 
@@ -191,7 +187,6 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 	}
 	for (const t of texts) lines.push(t);
 	if (logs.length > 0) lines.push("<console_output>", ...logs, "</console_output>");
-	if (unfinished > 0) lines.push(`Note: ${unfinished} tool call${unfinished === 1 ? " was" : "s were"} still running when the program ended (it ignored the stop); ${unfinished === 1 ? "its" : "their"} outcome is recorded when ${unfinished === 1 ? "it finishes" : "they finish"} and is NOT known here.`);
 	const failedCalls = calls.filter((c) => !c.ok);
 	if (verdict.ok && failedCalls.length > 0) lines.push(`Note: ${failedCalls.length} of ${calls.length} tool call${calls.length === 1 ? "" : "s"} failed (${failedCalls.map((c) => c.name).join(", ")}) and the script went on; a failed call may have partially applied its effect.`);
 	if (!verdict.ok) {

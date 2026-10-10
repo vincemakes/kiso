@@ -90,15 +90,20 @@ describe("sandbox: limits (I13)", () => {
 		expect(Date.now() - t0).toBeLessThan(3000);
 	});
 
-	it("a script awaiting a never-answering tool is stopped by the same wall budget", async () => {
-		const r = await runProgram(`await tools.list_widgets({}); return 1;`, host({ invoke: () => new Promise(() => {}) }), { timeoutMs: 300 });
+	it("a script awaiting a slow tool is stopped by the same wall budget, and the program ends only after the tool does (a child's receipt must precede the parent's)", async () => {
+		let returned = 0;
+		const r = await runProgram(`await tools.list_widgets({}); return 1;`, host({ invoke: () => new Promise((res) => setTimeout(() => { returned = Date.now(); res(ok("{}")); }, 600)) }), { timeoutMs: 200 });
+		const ended = Date.now();
 		expect(r.ok).toBe(false);
 		expect(r.output).toMatch(/time/i);
+		expect(returned).toBeGreaterThan(0);
+		expect(ended).toBeGreaterThanOrEqual(returned); // never before the child
 	});
 
 	it("an abort ends the script", async () => {
 		const ac = new AbortController();
-		const p = runProgram(`await tools.list_widgets({}); return 1;`, host({ signal: ac.signal, invoke: () => new Promise(() => {}) }), { timeoutMs: 5000 });
+		// a tool that honours the abort (the contract); one that ignores it holds the program, as it would hold a direct call
+		const p = runProgram(`await tools.list_widgets({}); return 1;`, host({ signal: ac.signal, invoke: () => new Promise((res) => ac.signal.addEventListener("abort", () => res(ok("{}")), { once: true })) }), { timeoutMs: 5000 });
 		setTimeout(() => ac.abort(), 100);
 		const r = await p;
 		expect(r.ok).toBe(false);
