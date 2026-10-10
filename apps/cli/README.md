@@ -1,4 +1,8 @@
-# @vincemakes/kiso-code
+<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vincemakes/kiso/main/assets/readme/lockup-dark.png"><img src="https://raw.githubusercontent.com/vincemakes/kiso/main/assets/readme/lockup-light.png" height="46" alt="kiso"></picture></h1>
+
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/vincemakes/kiso/main/assets/readme/features-dark.png"><img src="https://raw.githubusercontent.com/vincemakes/kiso/main/assets/readme/features-light.png" width="830" alt="Built in, not bolted on: it asks before it guesses; subagents in parallel; background tasks; approval modes; it resumes after a crash; yours to extend."></picture></p>
+
+<p align="center"><img src="https://raw.githubusercontent.com/vincemakes/kiso/main/assets/readme/screenshot.png" width="830" alt="kiso in a dark terminal window: a green diff of new tests, then the test suite started as a background task, with 1 task running in the status row"></p>
 
 The coding agent that survives kill -9: durable sessions (append-only
 JSONL), pre-effect approvals, and honest recovery — an interrupted side

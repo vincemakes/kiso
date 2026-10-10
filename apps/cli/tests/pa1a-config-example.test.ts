@@ -1,8 +1,12 @@
 /**
- * PA-1a (E) — the README's config example is parsed by the real loader,
+ * PA-1a (E) — the documented config example is parsed by the real loader,
  * so the documented shape cannot drift from the schema. The example is
  * JSONC (line comments); the comments are stripped the way a reader
  * would, then `parseConfig` judges it.
+ *
+ * The README front page no longer carries the example (2026-10-10, the
+ * short README: profiles live in docs/configuration.md and the README
+ * links there), so the gate follows the example to its home.
  */
 
 import { readFileSync } from "node:fs";
@@ -11,11 +15,10 @@ import { describe, expect, it } from "vitest";
 import { parseConfig } from "../src/config.js";
 
 function readmeExample(): string {
-	const readme = readFileSync(fileURLToPath(new URL("../../../README.md", import.meta.url)), "utf8");
-	// The 2026-09-09 redesign renamed the section; anchor on the new
-	// heading and FAIL if it is gone, rather than silently falling back to
-	// whatever the file's first jsonc fence happens to be.
-	const start = readme.indexOf("## Models and effort");
+	const readme = readFileSync(fileURLToPath(new URL("../../../docs/configuration.md", import.meta.url)), "utf8");
+	// Anchor on the section heading and FAIL if it is gone, rather than
+	// silently falling back to whatever the file's first jsonc fence is.
+	const start = readme.indexOf("## Model configuration");
 	expect(start).toBeGreaterThanOrEqual(0);
 	const open = readme.indexOf("```jsonc", start);
 	const close = readme.indexOf("```", open + 8);
@@ -30,7 +33,7 @@ function readmeExample(): string {
 
 describe("PA-1a — the README config example parses", () => {
 	it("the documented profiles, including the Anthropic one with promptCaching, are accepted by parseConfig", () => {
-		const cfg = parseConfig(readmeExample(), "README.md");
+		const cfg = parseConfig(readmeExample(), "docs/configuration.md");
 		expect(cfg.models?.deepseek?.kind).toBe("openai-compat");
 		expect(cfg.models?.claude?.kind).toBe("anthropic");
 		expect(cfg.models?.claude?.model).toBe("claude-opus-5");
