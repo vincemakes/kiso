@@ -82,7 +82,16 @@ describe("Plan A gate 2: the first request on the wire", () => {
 		const body = await firstRequest();
 		const { composeToolTable } = await import("../../../packages/runtime/dist/compose.js");
 		const { ToolRegistry } = await import("@vincemakes/kiso-core");
-		const parts = await defaultCompositionParts({ home: isolatedEnv().dirs.home });
+		// the wire's home configures one profile ("wire"), and the CLI hands the
+		// subagent extension the profiles before it loads (SA-F1), so the
+		// predicted delegate offers `model` too; the ledger's own snapshot is
+		// the bare home and is not touched
+		const savedDelegation = process.env.KISO_DELEGATION_CONFIG_JSON;
+		process.env.KISO_DELEGATION_CONFIG_JSON = JSON.stringify({ checks: {}, evaluators: [], profiles: ["wire"] });
+		const parts = await defaultCompositionParts({ home: isolatedEnv().dirs.home }).finally(() => {
+			if (savedDelegation === undefined) delete process.env.KISO_DELEGATION_CONFIG_JSON;
+			else process.env.KISO_DELEGATION_CONFIG_JSON = savedDelegation;
+		});
 		const registry = new ToolRegistry();
 		for (const t of parts.tools) registry.register(t);
 		for (const ext of parts.extensions) {

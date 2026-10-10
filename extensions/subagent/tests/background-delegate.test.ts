@@ -54,14 +54,18 @@ beforeEach(() => {
 });
 
 describe("ADR-0058 3d — the schema", () => {
-	it("a host without tasks sees today's delegate schema; wired, the only difference is `background`", async () => {
+	it("a host without tasks sees today's delegate schema; wired: `background` added, `timeoutMs` gone (0.49.0 A), one sentence more", async () => {
 		const plain = await delegateOf();
 		const wired = await delegateOf({ tasks: () => undefined });
 		expect(JSON.stringify(plain.parameters)).not.toContain("background");
 		const { background, ...rest } = (wired.parameters as { properties: Record<string, unknown> }).properties;
 		expect(background).toMatchObject({ type: "boolean" });
-		expect(JSON.stringify({ ...(wired.parameters as object), properties: rest })).toBe(JSON.stringify(plain.parameters));
-		expect(wired.description).toBe(plain.description);
+		// a wired child's bound is its turn budget, the parent's the join: no wall clock to ask for
+		const plainParams = JSON.parse(JSON.stringify(plain.parameters)) as { properties: { tasks: { items: { properties: Record<string, unknown> } } } };
+		expect(plainParams.properties.tasks.items.properties.timeoutMs).toBeDefined();
+		delete plainParams.properties.tasks.items.properties.timeoutMs;
+		expect(JSON.stringify({ ...(wired.parameters as object), properties: rest })).toBe(JSON.stringify(plainParams));
+		expect(wired.description).toBe(`${plain.description}. Use background when the next step does not need the result; a foreground wait is bounded and continues in the background on its own.`);
 	});
 });
 
@@ -97,13 +101,19 @@ describe("ADR-0058 3d — a background call", () => {
 		expect(started[0]!.exec.args[started[0]!.exec.args.indexOf("--max-turns") + 1]).toBe("5");
 	});
 
-	it("D1: an implementer or verifier is refused, nothing starts", async () => {
+	it("0.49.0 B lifts D1 — a writer may run in the background; outside a git repository it is refused honestly, and nothing starts", async () => {
 		const { manager, started } = fakeTasks(0);
 		const delegate = await delegateOf({ tasks: () => manager });
-		for (const role of ["implementer", "verifier"]) {
-			const r = (await delegate.execute({ tasks: [explorer(), { role, task: "x" }], background: true }, ctx() as never)) as { content: string; isError: boolean; errorKind?: string };
-			expect(r).toMatchObject({ isError: true, errorKind: "precondition" });
-			expect(r.content).toContain(`background is not supported for the ${role} role in this release; run this delegation in the foreground`);
+		const here = process.cwd();
+		process.chdir(mkdtempSync(join(tmpdir(), "kiso-nogit-")));
+		try {
+			for (const role of ["implementer", "verifier"]) {
+				const r = (await delegate.execute({ tasks: [explorer(), { role, task: "x" }], background: true }, ctx() as never)) as { content: string; isError: boolean; errorKind?: string };
+				expect(r).toMatchObject({ isError: true, errorKind: "precondition" });
+				expect(r.content).toMatch(/a writer needs a git repository with a commit/);
+			}
+		} finally {
+			process.chdir(here);
 		}
 		expect(started).toEqual([]);
 	});

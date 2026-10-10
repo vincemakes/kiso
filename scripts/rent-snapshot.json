@@ -40,7 +40,7 @@
 		},
 		{
 			"surface": "tool:delegate",
-			"chars": 1125
+			"chars": 1135
 		},
 		{
 			"surface": "envelope",
@@ -48,8 +48,8 @@
 		}
 	],
 	"total": {
-		"chars": 8898,
-		"estTokens": 2231
+		"chars": 8908,
+		"estTokens": 2233
 	},
 	"history": [
 		{
@@ -74,6 +74,18 @@
 			"date": "2026-10-09",
 			"chars": 8898,
 			"estTokens": 2231,
+			"why": "a ratchet step (shrink only)"
+		},
+		{
+			"date": "2026-10-09",
+			"chars": 8936,
+			"estTokens": 2240,
+			"why": "kiso-doc plan-subagents-0490-2026-10-09.md rev 3.2, part A (owner-approved 2026-10-09): the delegate description gains the join sentence; timeoutMs leaves the tasks-wired task item (re-frozen on #293's diet)"
+		},
+		{
+			"date": "2026-10-09",
+			"chars": 8908,
+			"estTokens": 2233,
 			"why": "a ratchet step (shrink only)"
 		}
 	]

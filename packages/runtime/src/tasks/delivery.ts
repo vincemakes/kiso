@@ -37,6 +37,15 @@
  * 16 KiB together; members already delivered are named as reported, and
  * only the rest are receipted. A failure goes into a live run at once and
  * never wakes on its own; idle, it waits for its group.
+ *
+ * 0.49.0 A: a delegate call that waits for its children (the join)
+ * CLAIMS each one that ended while it waited, and its own result carries
+ * that child's handoff. Such a member is delivered once the claiming
+ * call's result is durable — an error result included, since it carries
+ * the handoffs too — and the group's notice names it as reported. A claim
+ * whose call never returned (a crash: the kernel records no result, only
+ * an uncertain execution) delivered nothing, so the member rides its
+ * group's notice in full: never in both places, never in neither.
  */
 
 import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync } from "node:fs";
@@ -68,6 +77,12 @@ export interface TaskDeliveryOptions {
 	 *  startup or as it is heard — the person can be told at once, while
 	 *  the model's notice keeps its own turn. A claimed loss never comes. */
 	readonly onLost?: (taskIds: readonly string[]) => void;
+	/** Finding 0480-F9: the chain budget is spent — a task's end that would
+	 *  have woken the session only notifies. Called ONCE per exhaustion (the
+	 *  first such end since the last run a person started; a resume whose log
+	 *  already carries the sentence is not told again), so the person can be
+	 *  told why the chain went quiet. The model's notice says it either way. */
+	readonly onBudgetSpent?: (info: { readonly wakes: number; readonly maxWakes: number; readonly taskIds: readonly string[] }) => void;
 	/** How much of a failed task's output rides its notice. Default 2 KB. */
 	readonly tailBytes?: number;
 	/** Read a task's output tail (injectable for tests). */
@@ -81,6 +96,9 @@ interface Pending {
 
 const key = (i: TaskDeliveryItem): string => `${i.taskId}:${i.transition}`;
 export const DEFAULT_MAX_WAKES = 20;
+
+/** The model's sentence for a spent budget (the text 0.48.0 shipped). */
+const spentSentence = (wakes: number): string => `chain budget spent: ${wakes} autonomous wakes since the person's last message — continue when they speak`;
 
 /** ADR-0058 3d (D3): a child's excerpt, and a group's excerpts together —
  *  the handoff format's budgets (0.49.0 C3). */
@@ -101,6 +119,8 @@ export class TaskDelivery {
 	/** ended agent tasks waiting for their group (restart: heard at startup) */
 	readonly #ended = new Map<string, { readonly restart: boolean }>();
 	#recheck: ReturnType<typeof setTimeout> | null = null;
+	/** the person-run the budget was last said spent in (0480-F9) */
+	#spentEpoch: number | null = null;
 	readonly #unsubscribe: () => void;
 
 	constructor(options: TaskDeliveryOptions) {
@@ -114,8 +134,10 @@ export class TaskDelivery {
 		for (const task of this.#safeList()) {
 			const item = itemOf(task);
 			if (item === null || item.transition === "ready" || this.#receipts.has(key(item))) continue;
-			// a tool result reported it: the claim alone decides (Amendment 7)
-			if (task.claims?.some((c) => c.transition === item.transition) === true) continue;
+			// a tool result reported it: the claim alone decides (Amendment 7) —
+			// for an agent task, once its claiming call's result is durable (0.49.0 A)
+			const claim = task.claims?.find((c) => c.transition === item.transition);
+			if (claim !== undefined && (task.agent === undefined || this.#toldByResult(claim.executionId))) continue;
 			if (item.transition === "unknown") lost.push(task.id);
 			if (task.agent !== undefined) this.#ended.set(task.id, { restart: true });
 			else missed.push({ item, line: this.#line(task, item) });
@@ -188,8 +210,8 @@ export class TaskDelivery {
 		if (task.agent !== undefined && item.transition !== "ready") return this.#agentEnded(task, item);
 		const mode = this.#modeOf(task, item);
 		if (mode === "silent") return;
-		const spent = mode === "notify" && this.#eligible(task, item) && !this.#underBudget();
-		this.#buffer.push({ item, line: spent ? `${this.#line(task, item)}\nchain budget spent: ${this.#wakesSinceLastPerson()} autonomous wakes since the person's last message — continue when they speak` : this.#line(task, item), mode });
+		const spent = mode === "notify" && this.#eligible(task, item) ? this.#spent([task.id]) : null;
+		this.#buffer.push({ item, line: spent !== null ? `${this.#line(task, item)}\n${spent}` : this.#line(task, item), mode });
 		if (this.#timer === null) this.#timer = setTimeout(() => this.#flush(), this.#o.windowMs ?? 1_000);
 	}
 
@@ -273,6 +295,42 @@ export class TaskDelivery {
 		return this.#wakesSinceLastPerson() < (this.#o.maxWakes ?? DEFAULT_MAX_WAKES);
 	}
 
+	/** 0480-F9: the sentence when the budget is spent (null while it is not),
+	 *  and the person's hook, once per exhaustion. */
+	#spent(taskIds: readonly string[]): string | null {
+		if (this.#underBudget()) return null;
+		const wakes = this.#wakesSinceLastPerson();
+		const epoch = this.#personEpoch();
+		if (this.#spentEpoch !== epoch) {
+			this.#spentEpoch = epoch;
+			if (!this.#spentInLog(epoch)) this.#o.onBudgetSpent?.({ wakes, maxWakes: this.#o.maxWakes ?? DEFAULT_MAX_WAKES, taskIds });
+		}
+		return spentSentence(wakes);
+	}
+
+	/** The index of the last run's first input a person started (−1: none). */
+	#personEpoch(): number {
+		const events = this.#o.events();
+		let epoch = -1;
+		let firstOfRun = true;
+		for (let i = 0; i < events.length; i++) {
+			const e = events[i]!;
+			if (e.type === "terminal") {
+				firstOfRun = true;
+				continue;
+			}
+			if (e.type !== "user_input" || !firstOfRun) continue;
+			firstOfRun = false;
+			if (!isRuntimeInput(e)) epoch = i;
+		}
+		return epoch;
+	}
+
+	/** A resume: the log already carries the sentence after that run. */
+	#spentInLog(epoch: number): boolean {
+		return this.#o.events().slice(epoch + 1).some((e) => e.type === "user_input" && typeof e.content === "string" && e.content.includes("chain budget spent:"));
+	}
+
 	#wakesSinceLastPerson(): number {
 		let wakes = 0;
 		let firstOfRun = true;
@@ -354,9 +412,11 @@ export class TaskDelivery {
 	}
 
 	#complete(group: { readonly closed: boolean; readonly members: readonly string[] }): boolean {
+		// 0.49.0 B: a member's END, not its process's — a writer being
+		// collected has not ended, so its group is not complete yet
 		return group.closed && group.members.every((id) => {
-			const kind = this.#o.manager.get(id)?.state.kind;
-			return kind === undefined || kind === "ended" || kind === "unknown" || kind === "not_run";
+			const task = this.#o.manager.get(id);
+			return task === undefined || endTransitionOf(task) !== null;
 		});
 	}
 
@@ -368,9 +428,17 @@ export class TaskDelivery {
 		const tasks = members.map((id) => this.#o.manager.get(id)).filter((t): t is TaskInfo => t !== undefined);
 		const fresh: { task: TaskInfo; item: TaskDeliveryItem }[] = [];
 		const lines: string[] = [];
+		const unreturned = new Set<string>();
 		for (const task of tasks) {
 			const item = itemOf(task);
 			if (item === null) continue;
+			// 0.49.0 A: its delegate call's own result carried it
+			const claim = task.claims?.find((c) => c.transition === item.transition);
+			if (claim !== undefined && this.#toldByResult(claim.executionId)) {
+				lines.push(`<kiso-task id="${task.id}" kind="agent" role="${task.agent?.role ?? ""}" status="${item.transition}" reported="earlier"/>`);
+				continue;
+			}
+			if (claim !== undefined) unreturned.add(task.id);
 			if (this.#receipts.has(key(item)) || this.#inFlight.has(key(item))) {
 				lines.push(`<kiso-task id="${task.id}" kind="agent" role="${task.agent?.role ?? ""}" status="${item.transition}" reported="earlier"/>`);
 				continue;
@@ -383,15 +451,26 @@ export class TaskDelivery {
 		for (const { task, item } of fresh) {
 			const excerpt = excerptOf(task, Math.min(CHILD_EXCERPT_BYTES, budget));
 			budget -= excerpt.bytes;
-			lines.push(`${this.#agentTag(task, item)}${excerpt.text}`);
+			lines.push(`${this.#agentTag(task, item, unreturned.has(task.id))}${excerpt.text}`);
 		}
 		const items = fresh.map((f) => f.item);
 		const notice: TaskNotice = { lines, items };
 		const wake = !restart && items.some((i) => this.#wakes(i));
+		// 0480-F9: a group that could have woken but for the budget says why,
+		// as a single task's end does (0.48.0 delivered it silently)
+		const spent = !restart && !wake && fresh.some(({ task, item }) => this.#eligible(task, item)) ? this.#spent(fresh.map((f) => f.task.id)) : null;
+		if (spent !== null) lines.push(spent);
 		const run = this.#o.liveRun();
 		if (run !== undefined && this.#hand(run, notice, wake)) return;
 		if (run === undefined) this.#pending.push({ notice, wake });
 		this.#pump();
+	}
+
+	/** 0.49.0 A: the call that claimed a child returned — its tool_result is
+	 *  durable (error or not: it carries the handoffs either way). A crashed
+	 *  call has none: the kernel records an uncertain execution instead. */
+	#toldByResult(executionId: string): boolean {
+		return this.#o.events().some((e) => e.type === "tool_result" && (e as { executionId?: string }).executionId === executionId);
 	}
 
 	/** handed to a run, or held for one, or already in the log */
@@ -405,8 +484,9 @@ export class TaskDelivery {
 		this.#pending = this.#pending.filter((p) => !(p.notice.items.length === 1 && key(p.notice.items[0]!) === k));
 	}
 
-	#agentTag(task: TaskInfo, item: TaskDeliveryItem): string {
+	#agentTag(task: TaskInfo, item: TaskDeliveryItem, unreturned = false): string {
 		const attrs = [`id="${task.id}"`, `kind="agent"`, `role="${task.agent?.role ?? ""}"`, `status="${item.transition}"`];
+		if (unreturned) attrs.push(`note="its delegate call never returned"`);
 		const outcome = outcomeOf(task);
 		if (outcome !== undefined) attrs.push(`outcome="${outcome}"`);
 		if (task.agent !== undefined) attrs.push(`session="${task.agent.session}"`);

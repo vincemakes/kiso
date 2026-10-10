@@ -143,8 +143,13 @@ describe("DT1a-F1/F2 (owner dogfood 2026-09-08): a refusal before any child is a
 	it("Plan B A10 (measured): background's description stays verbatim — a shorter one was put inside tasks[] in 4 of 5 smoke legs", async () => {
 		const d = (await createSubagentExtension({ tasks: () => undefined })).tools!.find((t) => t.name === "delegate")!;
 		const p = d.parameters as { properties: { background?: { description?: string }; tasks: { items: { properties: Record<string, unknown> } } } };
+		// 0.49.0 B drops the role limit (writers run in the background now). The
+		// guard A10 asks for was measured in the subagents round (2026-10-10,
+		// co, W1: B 8 legs, A 4): delegate-schema refusals B 1 vs A 2, within
+		// the registered "rc <= ctl + 2"; the placement failure A10 saw did not
+		// recur.
 		expect(p.properties.background!.description).toBe(
-			"explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
+			"start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one",
 		);
 		expect(p.properties.tasks.items.properties).not.toHaveProperty("background");
 	});

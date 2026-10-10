@@ -233,7 +233,7 @@
 			"type": "function",
 			"function": {
 				"name": "delegate",
-				"description": "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes",
+				"description": "run subagent tasks (explorer/implementer/reviewer/verifier) in child kiso processes. Use background when the next step does not need the result; a foreground wait is bounded and continues in the background on its own.",
 				"parameters": {
 					"type": "object",
 					"properties": {
@@ -266,15 +266,15 @@
 										"maxItems": 32,
 										"description": "implementer/verifier only: globs the child may write (a scoped child has no shell)"
 									},
+									"model": {
+										"type": "string",
+										"minLength": 1,
+										"description": "a model profile: wire"
+									},
 									"after": {
 										"type": "string",
 										"minLength": 1,
 										"description": "verifier only: the 1-based index of the task whose worktree it checks"
-									},
-									"timeoutMs": {
-										"type": "integer",
-										"minimum": 1000,
-										"description": "the child's wall-clock budget, ms"
 									}
 								},
 								"required": [
@@ -286,7 +286,7 @@
 						},
 						"background": {
 							"type": "boolean",
-							"description": "explorer and reviewer only: start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one"
+							"description": "start the tasks in the background and return at once; you are told when all of them have ended. They read the workspace as it is while they run; task_stop stops one"
 						}
 					},
 					"required": [
