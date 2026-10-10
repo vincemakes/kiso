@@ -25,6 +25,8 @@ import type { Tool } from "./tool.js";
  *  dispatches from. */
 export interface ToolTable {
 	readonly specs: readonly ToolSpec[];
+	/** P3: every tool the table dispatches, hidden ones included (specs omits them). */
+	readonly catalog: readonly ToolSpec[];
 	get(name: string): Tool<any> | undefined;
 }
 
@@ -70,8 +72,8 @@ export class ToolRegistry {
 		};
 		for (const t of this.#tools.values()) take(t, "registered");
 		for (const { source, owner } of this.#live) for (const t of source()) take(t, owner);
-		const specs: ToolSpec[] = [...captured.values()].map(({ tool: t }) => ({ name: t.name, description: t.description, inputSchema: t.parameters }));
-		return { specs, get: (name) => captured.get(name)?.tool };
+		const all = [...captured.values()].map(({ tool: t }) => ({ tool: t, spec: { name: t.name, description: t.description, inputSchema: t.parameters } as ToolSpec }));
+		return { specs: all.filter(({ tool }) => tool.hidden !== true).map(({ spec }) => spec), catalog: all.map(({ spec }) => spec), get: (name) => captured.get(name)?.tool };
 	}
 
 	get(name: string): Tool<any> | undefined {
@@ -116,7 +118,7 @@ export class ToolRegistry {
 
 	/** The minimal projection an adapter may see (never the handlers). */
 	toSpecs(): readonly ToolSpec[] {
-		return this.list().map((t) => ({
+		return this.list().filter((t) => t.hidden !== true).map((t) => ({
 			name: t.name,
 			description: t.description,
 			inputSchema: t.parameters,

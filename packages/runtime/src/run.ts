@@ -999,7 +999,7 @@ export class Run implements AsyncIterable<Event> {
 		// P3: the same key set as a fresh execution (parity). A recovered execution runs
 		// OUTSIDE the kernel loop, so it cannot dispatch children: it refuses, safely.
 		const noChildren = async (): Promise<ToolResult> => ({ content: "child calls are not available in an execution executed by recovery", isError: true, errorKind: "precondition" });
-		const ctx = { signal, sessionId: this.#session.id, callId, executionId, ...(rawInput !== undefined ? { rawInput } : {}), invoke: noChildren };
+		const ctx = { signal, sessionId: this.#session.id, callId, executionId, ...(rawInput !== undefined ? { rawInput } : {}), invoke: noChildren, catalog: () => [] };
 
 		// An abort that landed while the decision was being applied must
 		// not start the side effect (finding 3).

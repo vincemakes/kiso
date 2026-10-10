@@ -1,0 +1,22 @@
+{
+	"name": "@vincemakes/kiso-program-ext",
+	"version": "0.0.0-research",
+	"private": true,
+	"description": "RESEARCH BRANCH ONLY - the program tool: a model-written script that calls tools through the kernel (ctx.invoke), run in a QuickJS sandbox",
+	"type": "module",
+	"license": "MIT",
+	"main": "./src/index.ts",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"quickjs-wasi": "3.6.2"
+	},
+	"devDependencies": {
+		"@vincemakes/kiso-core": "0.48.0",
+		"@types/node": "^26.1.2",
+		"typescript": "^5.7.2",
+		"vitest": "^3.0.0"
+	}
+}

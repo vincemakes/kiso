@@ -26,6 +26,7 @@
 
 import type { AbortSignalLike } from "../protocol/adapter.js";
 import type { ToolErrorKind } from "../protocol/events.js";
+import type { ToolSpec } from "../protocol/messages.js";
 
 /** Everything a handler needs, and nothing else. */
 export interface ToolContext {
@@ -55,6 +56,9 @@ export interface ToolContext {
 	 *  execution (callId `<callId>/<n>`). It is not a conversation turn: no
 	 *  tool_result is written for it. Offered only to a model-issued call. */
 	readonly invoke?: (name: string, input: Record<string, unknown>) => Promise<ToolResult>;
+	/** P3: what `invoke` can run — every tool of the request's table, hidden ones
+	 *  included, from the SAME snapshot the kernel dispatches from. */
+	readonly catalog?: () => readonly ToolSpec[];
 }
 
 /**
@@ -103,6 +107,8 @@ export interface Tool<I = unknown> {
 	 * applies. A retry is a NEW call and re-passes the approval chain.
 	 */
 	readonly idempotent?: boolean;
+	/** P3: callable (a program's `invoke`, the catalog) but not declared to the model. */
+	readonly hidden?: true;
 	/**
 	 * EC-1 — an OPTIMIZATION CERTIFICATE, never a safety claim.
 	 *
