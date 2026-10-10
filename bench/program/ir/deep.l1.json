@@ -1,0 +1,14 @@
+{"steps":[
+ {"id":"p","call":"create_project","args":{"name":"Meridian","budget_credits":250}},
+ {"id":"subs","map":{"over":["Copper Gull","Tide Clerk","Ash Piano","Velvet Lamp","Stone Violin","Reed Cartographer","Marrow Clock","Pale Harbor","Iron Orchid","Dust Archive","Lantern Fox","Kelp Bishop"],"as":"n","do":[{"id":"s","call":"add_subject","args":{"project_id":"$p.project_id","name":"$n"}}],"yield":"$s"}},
+ {"id":"assets","map":{"over":"$subs","as":"s","do":[{"id":"a","call":"generate_asset","args":{"subject_id":"$s.subject_id","style":"noir"}}],"yield":"$a"}},
+ {"id":"fix","until":{"max":6,"do":[
+    {"id":"rs","map":{"over":"$assets","as":"a","do":[{"id":"r","call":"analyze_asset","args":{"asset_id":"$a.asset_id"}}],"yield":"$r"}},
+    {"id":"bad","filter":{"over":"$rs","where":{"not":"$it.passes"}}},
+    {"id":"_","map":{"over":"$bad","as":"b","do":[{"call":"revise_asset","args":{"asset_id":"$b.asset_id","instruction":{"concat":["fix ",{"join":["$b.issues"," "]}]}}}]}}],
+  "done":{"empty":"$bad"}}},
+ {"id":"board","call":"arrange_board","args":{"project_id":"$p.project_id","asset_ids":{"pluck":["$assets","asset_id"]},"layout":"grid"},"after":"$fix"},
+ {"id":"ap","call":"request_approval","args":{"project_id":"$p.project_id","summary":"ready"},"after":"$board"},
+ {"id":"fin","call":"finalize_project","args":{"project_id":"$p.project_id","approval_token":"$ap.approval_token"}},
+ {"id":"w","call":"wallet_balance","args":{"project_id":"$p.project_id"},"after":"$fin"}],
+ "output":{"spent":"$w.spent"}}

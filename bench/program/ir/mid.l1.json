@@ -1,0 +1,11 @@
+{"steps":[
+ {"id":"p","call":"create_project","args":{"name":"Atlas","budget_credits":200}},
+ {"id":"subs","map":{"over":["Brass Heron","Quiet Engine","Glass Orchard","Salt Lantern","Hollow Drum","Night Ferry"],"as":"n","do":[{"id":"s","call":"add_subject","args":{"project_id":"$p.project_id","name":"$n"}}],"yield":"$s"}},
+ {"id":"assets","map":{"over":"$subs","as":"s","do":[{"id":"a","call":"generate_asset","args":{"subject_id":"$s.subject_id","style":"noir"}}],"yield":"$a"}},
+ {"id":"fix","until":{"max":5,"do":[
+    {"id":"rs","map":{"over":"$assets","as":"a","do":[{"id":"r","call":"analyze_asset","args":{"asset_id":"$a.asset_id"}}],"yield":"$r"}},
+    {"id":"bad","filter":{"over":"$rs","where":{"not":"$it.passes"}}},
+    {"id":"_","map":{"over":"$bad","as":"b","do":[{"call":"revise_asset","args":{"asset_id":"$b.asset_id","instruction":{"concat":["fix ",{"join":["$b.issues"," "]}]}}}]}}],
+  "done":{"empty":"$bad"},"collect":{"revised":"$bad.asset_id"}}},
+ {"id":"list","call":"list_assets","args":{"project_id":"$p.project_id","compact":true}}],
+ "output":{"assets":"$list.assets","revised":"$fix.revised"}}
