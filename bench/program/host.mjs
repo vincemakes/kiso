@@ -12,7 +12,7 @@
  * `$KISO_SESSIONS_DIR/<session-name>.jsonl` — the same record the CLI writes, so the
  * same extractor reads it.
  *
- * The agent has ONE tool, `program`; the MCP tools are hidden and reachable only
+ * The agent has ONE tool (`program` or, with PROGRAM_ARM=plan, `plan`); the MCP tools are hidden and reachable only
  * through it (the way a domain host without a shell would run). A bounded wait holds
  * the first request until the bridge has connected.
  */
@@ -33,7 +33,11 @@ const profileName = flag("--model");
 const imp = (rel) => import(pathToFileURL(join(ROOT, rel)).href);
 const { createAgent, SessionStore } = await imp("packages/runtime/dist/index.js");
 const createMcpExtension = (await imp("extensions/mcp/dist/kiso-mcp.mjs")).default;
-const { createProgramExtension, hideTools, connectWait } = await imp("extensions/program/dist/kiso-program.mjs");
+const { createProgramExtension, createPlanExtension, hideTools, connectWait } = await imp("extensions/program/dist/kiso-program.mjs");
+
+/** PROGRAM_ARM: js (the `program` tool, default) | js-index (the same plus a signature index of the hidden tools in the system prompt) | plan (the logical-IR `plan` tool). */
+const ARM = process.env.PROGRAM_ARM ?? "js";
+if (!["js", "js-index", "plan"].includes(ARM)) { console.error(`host: unknown PROGRAM_ARM ${ARM}`); process.exit(2); }
 
 const home = process.env.KISO_HOME ?? "";
 const profile = profileName !== undefined ? JSON.parse(readFileSync(join(home, "config.json"), "utf8")).models?.[profileName] : undefined;
@@ -46,6 +50,39 @@ let servers = {};
 try { servers = JSON.parse(readFileSync(join(home, "mcp.json"), "utf8")).mcpServers ?? {}; } catch { /* no servers */ }
 const bridge = await createMcpExtension({ servers });
 
+
+/**
+ * Effects of the mock studio server's tools, declared BY THE HOST (never read from a name or a
+ * description). Assumptions a real host would own: credit charges commute while the budget is
+ * sufficient (the tasks' budgets are), ids are opaque. Anything not listed is `unknown` = barrier.
+ */
+const studioEffects = (tool, args) => {
+	const t = tool.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "");
+	const a = args !== null && typeof args === "object" && !Array.isArray(args) ? args : undefined;
+	const key = (k, field) => (a && a[field] !== undefined ? [`${k}:${String(a[field])}`] : "*");
+	switch (t) {
+		case "create_project": return { kind: "write", keys: ["projects"] };
+		case "add_subject": return { kind: "write", keys: key("project", "project_id") };
+		case "generate_asset": return { kind: "write", keys: key("subject", "subject_id") };
+		case "revise_asset": return { kind: "write", keys: key("asset", "asset_id") };
+		case "analyze_asset": case "get_asset": return { kind: "read", keys: key("asset", "asset_id") };
+		case "list_subjects": case "list_assets": case "get_subject": case "wallet_balance": return { kind: "read", keys: "*" };
+		case "arrange_board": case "request_approval": case "finalize_project": return { kind: "write", keys: key("project", "project_id") };
+		default: return { kind: "unknown" };
+	}
+};
+
+/** The signature index: one line per tool, name(params) - first sentence. Built from the connected bridge, so it is exactly what searchTools would find. */
+function signatureIndex(tools) {
+	const ty = (p) => (p.enum ? p.enum.map((e) => JSON.stringify(e)).join("|") : p.type === "array" ? `${p.items?.type ?? "any"}[]` : (p.type ?? "any"));
+	return tools.map((t) => {
+		const props = t.inputSchema?.properties ?? {}, req = new Set(t.inputSchema?.required ?? []);
+		const params = Object.entries(props).map(([k, p]) => `${k}${req.has(k) ? "" : "?"}: ${ty(p)}`).join(", ");
+		const first = String(t.description ?? "").split(/(?<=[.!?])\s/)[0].slice(0, 140);
+		return `${t.name}(${params}) - ${first}`;
+	}).join("\n");
+}
+
 /**
  * The system prompt. PROGRAM_PROMPT=minimal reproduces the first benchmark's one-line prompt
  * (which was NOT kiso's: the 2026-10-10 op round used it and its output numbers were inflated
@@ -55,14 +92,16 @@ const bridge = await createMcpExtension({ servers });
  * "report in one or two lines". Markers are asserted so a change to the real prompt fails here
  * instead of silently diverging.
  */
-async function systemPrompt() {
+async function systemPrompt(index = "") {
 	if (process.env.PROGRAM_PROMPT === "minimal") return "You are an assistant that completes the user's task using the tools you are given.";
 	const real = (await imp("apps/cli/dist/coding-prompt.js")).SYSTEM_PROMPT;
 	const at = (marker) => { const i = real.indexOf(marker); if (i < 0) throw new Error(`host: the real prompt no longer has "${marker}"`); return i; };
 	const reach = at("What you can reach:"), discipline = at("Tool discipline:"), auth = at("An authorization covers"), flow = at("Workflow:");
 	const head = real.slice(0, reach).replace("You are kiso, a coding agent. You work in a workspace\ndirectory and change code with tools.", "You are kiso, an agent. You complete the user's task with tools.");
 	if (head === real.slice(0, reach)) throw new Error("host: the real prompt's opening changed");
-	const reachSection = "What you can reach:\n- program: runs a script that calls the other tools. Tools you do not see listed are reachable only through it (searchTools finds them).\n\n";
+	const reachSection = ARM === "plan"
+		? "What you can reach:\n- plan: declares a set of tool calls and runs them. Tools you do not see listed are reachable only through it (ALL_TOOLS and describeTool find them).\n\n"
+		: `What you can reach:\n- program: runs a script that calls the other tools. Tools you do not see listed are reachable only through it (searchTools finds them).\n${ARM === "js-index" ? `\nTools reachable through program (name(parameters) - what it does):\n${index}\n` : ""}\n`;
 	const disciplineSection = "Tool discipline:\n- Be careful - tools have side effects and may take time.\n- When a tool fails, read the error and adjust; do not repeat the same call blindly.\n\n";
 	const authSection = real.slice(auth, flow);
 	const workflow = "Workflow: understand the request, find the relevant tools, do the work, then verify the end state with a tool call.\nReport what you did in one or two lines per change.";
@@ -70,11 +109,20 @@ async function systemPrompt() {
 	return head + reachSection + disciplineSection + authSection + workflow;
 }
 
+// the index needs the connected bridge (bounded wait, as connectWait does for the first request)
+let index = "";
+if (ARM === "js-index") {
+	const until = Date.now() + 10_000;
+	while (bridge.connecting === true && Date.now() < until) await new Promise((r) => setTimeout(r, 25));
+	index = signatureIndex(bridge.tools ?? []);
+}
+const front = ARM === "plan" ? createPlanExtension({ effects: studioEffects, mode: process.env.PLAN_MODE === "sequential" ? "sequential" : "parallel" }) : createProgramExtension();
+
 const agent = createAgent({
 	model, provider: "openai-compat", baseUrl, apiKey: process.env.OPENAI_API_KEY, ...(Object.keys(headers).length > 0 ? { headers } : {}),
 	tools: [], store: new SessionStore(process.env.KISO_SESSIONS_DIR ?? join(home, "sessions")),
-	systemPrompt: await systemPrompt(),
-	extensions: [createProgramExtension(), hideTools(bridge), connectWait(bridge, 10_000)],
+	systemPrompt: await systemPrompt(index),
+	extensions: [front, hideTools(bridge), connectWait(bridge, 10_000)],
 });
 const session = await agent.session({ id: sessionName });
 

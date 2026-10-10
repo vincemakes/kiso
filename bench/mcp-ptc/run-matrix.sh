@@ -34,7 +34,7 @@ while [ "$REP" -le "$TO" ]; do
 		say "cell $CELL rep $REP"
 		for ARM in $(order "$CELL" "$REP" $(echo "$ARMS" | tr ',' ' ')); do
 			sh "$B/run-leg.sh" "$CELL" "$ARM" "r$REP" 2>&1 | grep -E "^LEG|NOT BARE|run-leg:" || true
-			case "$ARM" in K-direct|K-program) F=kiso ;; *) F=pi ;; esac
+			case "$ARM" in K-direct|K-program|K-program-index|K-plan) F=kiso ;; *) F=pi ;; esac
 			W="$MCP_ROUND_DIR/$F-$CELL-$ARM-r$REP"
 			RQ=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).requests))}catch{process.stdout.write("unknown")}' "$W/mcp-metrics.json")
 			CW=$(node -e 'try{process.stdout.write(String(require(process.argv[1]).cw))}catch{process.stdout.write("unknown")}' "$W/mcp-metrics.json")

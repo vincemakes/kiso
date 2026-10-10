@@ -23,7 +23,7 @@ B="$(cd "$(dirname "$0")/.." && pwd)"; M="$B/mcp-ptc"
 mkdir -p "$MCP_ROUND_DIR"
 CFG=$(node -e 'const c=require(process.argv[1])[process.argv[2]];if(!c){process.exit(3)}console.log(c.tools+" "+c.volume+" "+c.task)' "$M/cells.json" "$CELL" 2>/dev/null) || { echo "unknown cell $CELL" >&2; exit 3; }
 set -- $CFG; TOOLS=$1; VOLUME=$2; TASK=$3
-case "$ARM" in K-direct|K-program) FAMILY=kiso ;; P-direct|P-deferred|P-codemode|P-codemode-only) FAMILY=pi ;; *) echo "unknown arm $ARM" >&2; exit 3 ;; esac
+case "$ARM" in K-direct|K-program|K-program-index|K-plan) FAMILY=kiso ;; P-direct|P-deferred|P-codemode|P-codemode-only) FAMILY=pi ;; *) echo "unknown arm $ARM" >&2; exit 3 ;; esac
 LEG="$ARM-$CELL-$RUN"
 INST="$MCP_ROUND_DIR/inst-$CELL"
 if [ ! -d "$INST" ]; then
@@ -50,7 +50,8 @@ if [ "$FAMILY" = pi ]; then
 else
 	: "${KISO_BIN_PATH:?}" "${KISO_VERSION:?}"
 	KB="$KISO_BIN_PATH"; KV="$KISO_VERSION"; CAP=${BENCH_CAPTURE}
-	if [ "$ARM" = K-program ]; then KB="node $B/program/host.mjs"; KV=0.48.0-program; CAP=0; fi # kiso as a library, the program tool only
+	case "$ARM" in K-program|K-program-index|K-plan) KB="node $B/program/host.mjs"; KV=0.48.0-program; CAP=0 ;; esac
+	case "$ARM" in K-program-index) export PROGRAM_ARM=js-index ;; K-plan) export PROGRAM_ARM=plan ;; *) export PROGRAM_ARM=js ;; esac # kiso as a library, the program tool only
 	BENCH_CAPTURE=$CAP KISO_BIN="$KB" KISO_VERSION="$KV" sh "$B/run-t6.sh" kiso "$ARM-$RUN" || echo "run-leg: the runner exited non-zero; the leg's own files are the record" >&2
 	W="$MCP_ROUND_DIR/kiso-$CELL-$ARM-$RUN"
 fi

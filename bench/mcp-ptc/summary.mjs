@@ -25,7 +25,7 @@ const med = (xs) => { const s = xs.filter((x) => Number.isFinite(x)).sort((a, b)
 const pct = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b ? `${a / b - 1 >= 0 ? "+" : ""}${(100 * (a / b - 1)).toFixed(0)}%` : "n/a");
 const METRICS = ["requests", "cw", "output", "wallSeconds"];
 const cells = [...new Set(rows.map((r) => r.cell))];
-const ARMS = ["K-direct", "K-program", "P-direct", "P-deferred", "P-codemode", "P-codemode-only"];
+const ARMS = ["K-direct", "K-program", "K-program-index", "K-plan", "P-direct", "P-deferred", "P-codemode", "P-codemode-only"];
 for (const cell of cells) {
 	console.log(`\n== cell ${cell}`);
 	const by = {};
