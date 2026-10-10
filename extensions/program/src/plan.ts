@@ -31,6 +31,8 @@ export interface PlanOptions {
 	binding?: BindingSource;
 	/** Accept a `scope` on the plan call and decide child calls against it (see scope.ts). */
 	scope?: boolean;
+	/** At most this many children at once (default 8); the engine's own `maxConcurrency` also applies. */
+	maxConcurrentChildren?: number;
 	/** Bytes of output returned before it is cut (the rest is named, not silently dropped). */
 	maxOutputBytes?: number;
 }
@@ -50,7 +52,7 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			if (!built.ok) return { content: built.error, isError: true, errorKind: "precondition" };
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
 			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
-			const invoke = guardedInvoke(ctx, opts.binding);
+			const invoke = guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren);
 			try {
 			const r = await run(built.program, {
 				mode: opts.mode ?? "parallel",

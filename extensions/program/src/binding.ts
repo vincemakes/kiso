@@ -1,5 +1,21 @@
 import type { ToolContext, ToolResult } from "@vincemakes/kiso-core";
 
+export const DEFAULT_MAX_CONCURRENT_CHILDREN = 8;
+
+/**
+ * The kernel's window bounds the calls the MODEL issues in one turn; children are not counted in it, so once a host
+ * declares a tool `shared` a single `Promise.all` could put the whole call budget on a server at once. The program
+ * bounds its own children: at most `max` run at a time, the rest wait their turn (FIFO). A wait is not a refusal.
+ */
+export function bounded(invoke: NonNullable<ToolContext["invoke"]>, max: number): NonNullable<ToolContext["invoke"]> {
+	let running = 0; const waiting: (() => void)[] = [];
+	return async (name, input) => {
+		if (running >= max) await new Promise<void>((r) => waiting.push(r));
+		running += 1;
+		try { return await invoke(name, input); } finally { running -= 1; waiting.shift()?.(); }
+	};
+}
+
 /** Where a program can ask what a tool IS right now (the MCP bridge: a fresh tools/list). */
 export interface BindingSource {
 	liveDigest(toolName: string): Promise<string | undefined>;
@@ -15,8 +31,8 @@ export interface BindingSource {
  * error. A tool with no admitted digest, or a source that cannot say, is not guarded (the call, if it fails, fails by
  * itself). A digest proves the DECLARATION is unchanged, not that the server's behaviour is.
  */
-export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefined): NonNullable<ToolContext["invoke"]> {
-	const invoke = ctx.invoke!;
+export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefined, maxConcurrent = DEFAULT_MAX_CONCURRENT_CHILDREN): NonNullable<ToolContext["invoke"]> {
+	const invoke = bounded(ctx.invoke!, maxConcurrent);
 	if (source === undefined || ctx.catalog === undefined) return invoke;
 	const verdicts = new Map<string, Promise<string | undefined>>();
 	const short = (d: string): string => d.replace("sha256:", "").slice(0, 10);

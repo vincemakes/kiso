@@ -32,7 +32,7 @@ export const PROGRAM_DESCRIPTION = [
 
 const PROMPT_LINE = "Tools you do not see listed (for example those of an MCP server) are reachable through the program tool: in a script, searchTools(\"keywords\") finds them, describeTool(name) shows the schema, tools.<name>(args) calls them.";
 
-export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean } = {}): KisoExtension {
+export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean; maxConcurrentChildren?: number } = {}): KisoExtension {
 	const book = new ScopeBook();
 	const program = defineTool<{ code: string; scope?: unknown }>({
 		name: "program",
@@ -46,7 +46,7 @@ export function createProgramExtension(limits: ProgramLimits = {}, opts: { bindi
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
 			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
 			try {
-				const r = await runProgram(input.code, { invoke: guardedInvoke(ctx, opts.binding), catalog: ctx.catalog, signal: ctx.signal }, limits);
+				const r = await runProgram(input.code, { invoke: guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren), catalog: ctx.catalog, signal: ctx.signal }, limits);
 				// a failed script may have had effects: a plain failure, so the kernel adds the honest note
 				return r.ok ? { content: r.output, isError: false } : { content: r.output, isError: true };
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
