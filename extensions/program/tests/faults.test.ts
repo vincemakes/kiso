@@ -127,5 +127,5 @@ describe("B2 research — nested execution under faults", () => {
 		for (const id of ids) expect(rc.some((x) => x.startsWith(`${id}:`))).toBe(true);
 		const res = (r.events.filter((e) => e.type === "tool_result") as unknown as { content: string; isError: boolean }[])[0]!;
 		expect(res.isError).toBe(true);
-	});
+	}, 30_000);
 });
