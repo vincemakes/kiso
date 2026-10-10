@@ -1,15 +1,18 @@
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.png"><img src="assets/hero.png" width="100%" alt="kiso — the durable runtime for AI agents"></picture></p>
+<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/lockup-dark.png"><img src="assets/readme/lockup-light.png" height="46" alt="kiso"></picture></h1>
 
-<p align="center"><b>v0.49.0</b> · MIT · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
+<p align="center"><b>kiso is a durable agent runtime with a kernel capped at 2,200 lines,<br>and a coding agent for your terminal built on it.</b></p>
 
-**kiso is an AI coding agent for your terminal.** It runs on its own agent runtime, which you can also embed in your own program through [the SDK](#using-it).
+<p align="center">
+  <a href="https://www.npmjs.com/package/@vincemakes/kiso-code"><img alt="npm" src="https://img.shields.io/npm/v/@vincemakes/kiso-code?style=flat-square"></a>
+  <a href="https://github.com/vincemakes/kiso/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vincemakes/kiso/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square">
+</p>
 
-- **It picks up where it left off.** Every approval and tool result is on disk the moment it happens. After a crash, a `kill -9` or a closed terminal, `kiso resume` continues from the durable committed prefix: generation still streaming when it died is regenerated, and a side effect whose outcome is unknown goes to a human rather than being repeated.
-- **Long tasks don't overflow.** Past half the window, kiso compacts at the end of a phase, and each new summary replaces the last instead of piling up. The window is known per model; when an endpoint refuses an oversized request, kiso learns its real limit.
-- **You decide, and the floor holds.** Four approval modes and a don't-ask switch; "don't ask again" becomes a rule file you can delete; even in full access, a command that would destroy something unrecoverable is refused.
-- **Any model you have.** DeepSeek, Claude, GPT, a ChatGPT subscription, and any OpenAI-compatible endpoint or gateway. Keys never go in the config file.
-- **You can see where it goes.** Each turn ends with its fresh input, output and cache hits; `/context` shows what fills the context; `/status` says where the window figure comes from.
-- **Small and inspectable.** The kernel is capped at 2,200 lines (2,194 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 46 ADRs, with why, and when to overturn it.
+<p align="center"><b>v0.49.0</b> · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
+
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/features-dark.png"><img src="assets/readme/features-light.png" width="830" alt="Built in, not bolted on: it asks before it guesses; subagents in parallel; background tasks; approval modes; it resumes after a crash; yours to extend."></picture></p>
+
+<p align="center"><img src="assets/readme/screenshot.png" width="830" alt="kiso in a dark terminal window: a green diff of new tests, then the test suite started as a background task, with 1 task running in the status row"></p>
 
 ## Install
 
@@ -18,81 +21,27 @@ npm install -g @vincemakes/kiso-code
 kiso
 ```
 
-Node ≥ 22 on macOS or Linux. Or run it without installing: `npx @vincemakes/kiso-code`. A newer release announces itself at start, and `kiso update` installs it.
-
-The first run needs no key: kiso plays a scripted demo turn, so you see the shape before anything is spent, then asks you to connect a model.
-
-## Models and effort
-
-Sign in once:
+Node ≥ 22 on macOS or Linux. Or run it without installing: `npx @vincemakes/kiso-code`. The first run needs no key: kiso plays a scripted demo turn, so you see the shape before anything is spent, then asks you to connect a model.
 
 ```bash
 kiso login deepseek      # or anthropic / openai / zai
 kiso login chatgpt       # a ChatGPT subscription: a browser sign-in, no key
 kiso login --endpoint https://gateway.example/v1   # a gateway: its key, sent to it alone
-kiso auth                # what is stored, masked
 ```
 
-Then a profile in `~/.kiso/config.json` picks the model; `kiso login` prints one you can paste. The block below is annotated JSONC — strip the `//` comments before saving it:
+Keys never go in the config file. Profiles, effort levels, context windows and every other option: [docs/configuration.md](docs/configuration.md).
 
-```jsonc
-{
-  "model": "deepseek",
-  "models": {
-    "deepseek": { "kind": "openai-compat", "model": "deepseek-flash", "baseUrl": "https://api.deepseek.com" },
-    "claude": {
-      "kind": "anthropic",
-      "model": "claude-opus-5",
-      "apiKeyEnv": "ANTHROPIC_API_KEY",    // the key's env var — never the key
-      "promptCaching": false
-    }
-  }
-}
-```
+## Under the hood
 
-- Keys are never in the config: they come from `kiso login`, or from the variable a profile names in `apiKeyEnv`. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` alone in the environment also works.
-- `/model` switches the model and its effort in a session (←→ picks the level; some models go down to `none`, which turns thinking off).
-- Gateways, context windows, request headers and every other option: [docs/configuration.md](docs/configuration.md).
+- **It picks up where it left off.** After a crash, a `kill -9` or a closed terminal, `kiso resume` continues from the durable committed prefix: generation still streaming when it died is regenerated, and a side effect whose outcome is unknown goes to a human rather than being repeated.
+- **Long tasks don't overflow.** Past half the window, kiso compacts at the end of a phase, and each new summary replaces the last instead of piling up.
+- **Any model you have.** DeepSeek, Claude, GPT, a ChatGPT subscription, and any OpenAI-compatible endpoint or gateway.
+- **You can see where it goes.** Each turn ends with its fresh input, output and cache hits; `/context` shows what fills the context.
+- **Small and inspectable.** The kernel is capped at 2,200 lines (2,194 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 46 ADRs, with why, and when to overturn it.
 
-## Everyday use
+Keys, commands and the status row: [docs/cli.md](docs/cli.md). `?` shows the keys in a session and `/help` lists the commands. `ctrl+v` attaches the clipboard image on macOS; elsewhere, put the image's path in your message.
 
-Say what you want done. The model has six tools — read, list, search, write, edit and shell — and writes and shell ask you first by default.
-
-**Keys** (`?` shows them all):
-
-| key | does |
-|---|---|
-| `enter` | send — while a run works, steer it: the model reads it at its next step |
-| `ctrl+j` / `shift+enter` | newline |
-| `esc` | stop the run |
-| `alt+enter` | stop the run and send this instead |
-| `@` | reference a file |
-| `ctrl+o` | expand / collapse tool output |
-| `ctrl+t` | hide / show thinking (remembered) |
-| `ctrl+r` | the full transcript |
-| `ctrl+g` | edit the prompt in `$EDITOR` |
-| `ctrl+x` | copy the last answer |
-| `ctrl+v` | attach the clipboard image (macOS; elsewhere, put the image's path in your message) |
-| `shift+tab` | switch the approval mode |
-
-**Commands** (`/help` lists them all):
-
-| command | does |
-|---|---|
-| `/model` | switch the model and its effort |
-| `/mode` | switch the approval mode |
-| `/status` | session id, context use, model and version |
-| `/settings` | the settings in force, where each came from, how to change it |
-| `/compact` | summarize the older conversation to free context |
-| `/resume` | switch to another session |
-| `/clear` | start a fresh session (the old one stays resumable) |
-| `/think` | show the last full thinking block |
-| `/copy` | copy the last answer |
-| `/skills` | list the installed skills |
-| `!cmd` | run a shell command and send it with its output |
-| `!!cmd` | run it here only — the model never sees it |
-
-## Modes
+## Approval modes
 
 `/mode` or `shift+tab` switches; the status row always names the mode.
 
@@ -103,40 +52,17 @@ Say what you want done. The model has six tools — read, list, search, write, e
 | `plan` | reads only; everything else is refused |
 | `full-access` | everything runs without asking — a user deny and the floor still hold |
 
-A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. It never carries a destructive command, a write into `.git/` or `.kiso/`, a destructive `git push` (force, mirror, delete, prune) or a registry write (publish, unpublish, deprecate, a dist-tag change) — those reach you every time, unless the mode is full access. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again.
+A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again. In every mode, full access included, a destructive command aimed at what cannot be recovered — `/`, your home directory, the workspace root, its `.git`, `~/.ssh` and the like — is refused. The full rules: [docs/cli.md](docs/cli.md).
 
-**Don't ask** is a second setting beside the mode: may kiso stop for you? Turned on — `--dont-ask`, `/dont-ask`, `KISO_DONT_ASK=1` or `"dontAsk": true` — it never does. Whatever would ask is refused and the model is told why, the model is offered no questions, and a call cut off mid-flight stays unresolved rather than guessed. It grants nothing: `full-access` with don't ask is the hands-off pair, `default` with don't ask the careful one for CI. The old names still work — `bypass` is `full-access`, and `dontAsk` is `default` with the switch on.
+## Extensions
 
-In every mode, full access included, a destructive command aimed at what cannot be recovered — `/`, your home directory, the workspace root, its `.git`, `~/.ssh` and the like — is refused. The full rules: [docs/cli.md](docs/cli.md).
-
-## Sessions
-
-```bash
-kiso resume              # pick a session to continue
-kiso resume <id>         # continue that one
-kiso sessions            # list sessions and their state
-```
-
-- Sessions live per project and resume only in their own project.
-- An interrupted session resumes its own trajectory; completed steps are not replayed.
-- An operation whose outcome is unknown (a command cut off mid-run) is put to you before anything reruns — never repeated on its own.
-- Past half the model's window kiso compacts at the next phase end, past 80% at once; `/compact` does it on demand.
-
-## Extending kiso
-
-An extension is a plain `.mjs` file — no build step. Five ship built in:
-
-- **MCP** — configure servers in `~/.kiso/mcp.json`; each of their tools becomes one the model can call.
-- **Skills** — a directory with a `SKILL.md` under `~/.kiso/skills`, loaded on demand.
-- **Subagents** — the `delegate` tool runs up to 4 tasks at a time; implementers work in their own git worktree.
-- **Ask** — the model can put 1–4 multiple-choice questions to you.
-- **Task** — a durable todo list; off by default.
+An extension is a plain `.mjs` file — no build step. Five ship built in: MCP, skills, subagents, ask and task. Writing your own: [docs/extensions.md](docs/extensions.md).
 
 **Which children are stripped.** The two a model can cause to run — the shell tool and an MCP server started over stdio — lose provider credentials: the known key variables, anything ending `_API_KEY` or `_AUTH_TOKEN`, and every variable a profile names in `apiKeyEnv`. NOT stripped: a subagent's child (it is kiso itself and must reach the model) and the programs you start yourself (`$EDITOR`, the sign-in browser, `kiso update`), which inherit your environment.
 
-Writing your own: [docs/extensions.md](docs/extensions.md).
-
 ## Using it
+
+The agent is built on `@vincemakes/kiso-runtime`: a durable, append-only session store, an agent factory and a typed event stream.
 
 ```ts
 import { defineTool } from "@vincemakes/kiso-core";

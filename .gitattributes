@@ -14,3 +14,7 @@ bench/rd1/artifacts/*.tar.gz -text
 # so the README shows them from a fresh clone — true binaries, declared so
 # the whitespace / CJK / control-byte gates skip them by this row alone.
 assets/*.png -text
+
+# The README's feature strip, lockup and terminal screenshot (2026-10-10):
+# rendered PNGs, binary for the same reason as the row above.
+assets/readme/*.png -text
