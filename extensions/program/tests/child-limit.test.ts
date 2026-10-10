@@ -46,7 +46,7 @@ async function twoPrograms(front: KisoExtension[], codeA: string, codeB: string,
 		{ events: [{ type: "tool_call_end", callId: "pa", name: "program", input: { code: codeA } }, { type: "tool_call_end", callId: "pb", name: "program", input: { code: codeB } }, { type: "stop", reason: "tool_use" }] },
 		{ events: [{ type: "text_delta", text: "d" }, { type: "stop", reason: "end_turn" }] },
 	]);
-	const fronts = declareShared ? front.map((f) => withEffects(f, (t) => (t.name === "program" ? { concurrency: "shared" } : undefined))) : front;
+	const fronts = declareShared ? front.map((f) => withEffects(f, (t) => (t.name === "program" ? { concurrency: "shared" } : undefined), { allowSharedProgram: true })) : front;
 	const agent = createAgent({ model: "faux", adapter, tools: [], extensions: [...fronts, hideTools(probe(stats))], store: new SessionStore(mkdtempSync(join(tmpdir(), "lim-"))) });
 	const session = await agent.session({ id: "s" });
 	const events: Event[] = [];
@@ -73,5 +73,31 @@ describe("one bound for the whole agent", () => {
 		const limiter = new ChildLimiter({ global: 8, perGroup: 2, groupOf: () => "svc" });
 		const r = await twoPrograms([createProgramExtension({}, { limiter })], BURST("a"), BURST("b"), true);
 		expect(r.stats.max).toBeLessThanOrEqual(2);
+	});
+});
+
+// ── AUDIT: exclusivity of an EXCLUSIVE child across two concurrent programs ───────────────────────
+describe("audit: an exclusive child is alone across programs", () => {
+	it.fails("KERNEL GAP (audit AF-1, documented as an expected failure): two programs the HOST made concurrent, each calling an EXCLUSIVE tool: the kernel's 'while it runs, it runs alone' must hold between them", async () => {
+		const stats = { now: 0, max: 0 };
+		const excl: KisoExtension = { name: "excl", tools: [defineTool({ name: "write", description: "w", parameters: { type: "object", properties: { n: { type: "number" } } }, execute: async () => { stats.now++; stats.max = Math.max(stats.max, stats.now); await new Promise((r) => setTimeout(r, 40)); stats.now--; return { content: "{}", isError: false }; } })] as never }; // no effects: exclusive
+		const code = (t: string) => `await tools.write({ n: 1 }); await tools.write({ n: 2 }); return "${t}";`;
+		const adapter = createFauxProvider([
+			{ events: [{ type: "tool_call_end", callId: "pa", name: "program", input: { code: code("a") } }, { type: "tool_call_end", callId: "pb", name: "program", input: { code: code("b") } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: "d" }, { type: "stop", reason: "end_turn" }] },
+		]);
+		const front = withEffects(createProgramExtension(), (t) => (t.name === "program" ? { concurrency: "shared" } : undefined), { allowSharedProgram: true });
+		const agent = createAgent({ model: "faux", adapter, tools: [], extensions: [front, hideTools(excl)], store: new SessionStore(mkdtempSync(join(tmpdir(), "lim-"))) });
+		const session = await agent.session({ id: "s" });
+		for await (const _ of session.run("go")) { /* */ }
+		expect(stats.max).toBe(1);
+	});
+});
+
+describe("the extension refuses the unsafe declaration by default", () => {
+	it("declaring the program or plan tool shared throws unless the research flag is passed", () => {
+		expect(() => (withEffects(createProgramExtension(), () => ({ concurrency: "shared" })).tools ?? []).length).toThrow(/must not be declared shared/);
+		expect(() => (withEffects(createPlanExtension(), () => ({ concurrency: "shared" })).tools ?? []).length).toThrow(/must not be declared shared/);
+		expect((withEffects(createProgramExtension(), () => ({ concurrency: "shared" }), { allowSharedProgram: true }).tools ?? []).length).toBe(1);
 	});
 });
