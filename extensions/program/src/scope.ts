@@ -1,6 +1,12 @@
 /**
  * Scope-shaped approval (research prototype, extension level - no kernel change).
  *
+ * REQUESTED vs GRANTED (owner's ruling, 2026-10-10): the scope a model writes is only a REQUEST. It limits the program (a child outside it is
+ * always denied) but it grants nothing by itself. A grant exists only when the program call was approved by a HUMAN (a `permission_decided`
+ * without `decidedBy`) or by a policy the host named in `trustedPolicies`. A call another policy simply allowed (a blanket mode, say) is not a
+ * grant: its in-scope children are decided by their own policies as if no scope had been declared (an `ask` is refused). Grants are keyed by the
+ * parent call id and removed when the program ends; they are observed from the event stream, which delivers a decision before the call's `started`.
+ *
  * The program (or plan) call may carry `scope`: the tools it intends to use, optional argument constraints and
  * call counts. The human approves the PROGRAM CALL, and that call's input includes the scope, so the scope is what
  * was approved and it is durable in the log with the call. Then every child call is decided here:
@@ -11,7 +17,8 @@
  * It is a policy in the composed chain, so an explicit deny from any other policy still wins, schema validation
  * still runs before the chain, and every child still gets its own started/receipt.
  */
-import type { ApprovalPolicy } from "@vincemakes/kiso-core";
+import { createHash } from "node:crypto";
+import type { ApprovalPolicy, HookHost } from "@vincemakes/kiso-core";
 
 export type ScopeValue = string | number | boolean;
 export interface ScopeEntry { readonly tool: string; readonly maxCalls?: number; readonly where?: Readonly<Record<string, ScopeValue | readonly ScopeValue[]>> }
@@ -48,10 +55,52 @@ export const SCOPE_PARAMETER = {
 } as const;
 export const SCOPE_DESCRIPTION = "Declare the tools you will call in `scope` when they need approval: the user approves once, for exactly that scope.";
 
+export interface ScopeOptions { /** names of extensions whose allow of the program call counts as a grant (a trusted host policy) */ readonly trustedPolicies?: readonly string[] }
+
+/** sha256 of the canonical JSON of a scope: what the human saw is compared with what the program then runs under. */
+export function scopeDigest(entries: readonly ScopeEntry[]): string {
+	const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v !== null && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v);
+	return `sha256:${createHash("sha256").update(JSON.stringify(canon(entries))).digest("hex")}`;
+}
+
+interface Decision { approved: boolean; decidedBy?: string; decisionId: string }
+
 export class ScopeBook {
-	readonly #scopes = new Map<string, { entries: readonly ScopeEntry[]; used: number[] }>();
-	register(callId: string, entries: readonly ScopeEntry[]): void { this.#scopes.set(callId, { entries, used: entries.map(() => 0) }); }
-	release(callId: string): void { this.#scopes.delete(callId); }
+	readonly #scopes = new Map<string, { entries: readonly ScopeEntry[]; used: number[]; granted: boolean }>();
+	readonly #pending = new Set<string>(); // scope-bearing program calls whose decision is still to be observed
+	readonly #decisions = new Map<string, Decision>();
+	readonly #seenDigest = new Map<string, string>(); // what the human was shown (from permission_requested)
+	constructor(readonly opts: ScopeOptions = {}) {}
+
+	/** The grant, if any, for a parent call: human, or a named trusted policy, and the scope is the one the human saw. */
+	#grantFor(callId: string, entries: readonly ScopeEntry[]): boolean {
+		const d = this.#decisions.get(callId);
+		if (d === undefined || !d.approved) return false;
+		const origin = d.decidedBy === undefined ? "human" : (this.opts.trustedPolicies ?? []).includes(d.decidedBy) ? "trusted-policy" : undefined;
+		if (origin === undefined) return false;
+		const shown = this.#seenDigest.get(callId);
+		return shown === undefined || shown === scopeDigest(entries);
+	}
+	register(callId: string, entries: readonly ScopeEntry[]): void { this.#scopes.set(callId, { entries, used: entries.map(() => 0), granted: this.#grantFor(callId, entries) }); }
+	release(callId: string): void { this.#scopes.delete(callId); this.#pending.delete(callId); this.#decisions.delete(callId); this.#seenDigest.delete(callId); }
+	/** Whether a registered scope is a grant (for tests and audit). */
+	isGranted(callId: string): boolean { return this.#scopes.get(callId)?.granted === true; }
+
+	/** Observes how a scope-bearing program call was decided. Add to the extension's hooks. */
+	hooks(fronts: readonly string[]): HookHost {
+		return {
+			onEvent: async (event) => {
+				const e = event as unknown as { type: string; callId?: string; name?: string; input?: Record<string, unknown>; decision?: string; decidedBy?: string; decisionId?: string };
+				if (e.callId === undefined || e.callId.includes("/")) return;
+				if (e.type === "permission_requested" && e.name !== undefined && fronts.includes(e.name) && this.#pending.has(e.callId)) {
+					try { const sc = parseScope(e.input?.scope); if (sc !== undefined) this.#seenDigest.set(e.callId, scopeDigest(sc)); } catch { /* refused elsewhere */ }
+				}
+				if (e.type === "permission_decided" && this.#pending.has(e.callId)) {
+					this.#decisions.set(e.callId, { approved: e.decision === "approved", ...(e.decidedBy !== undefined ? { decidedBy: e.decidedBy } : {}), decisionId: e.decisionId ?? "" });
+				}
+			},
+		};
+	}
 
 	/** The policy that goes into the extension's `approvals`. `fronts` = the names of the tools that carry a scope. */
 	policy(fronts: readonly string[]): ApprovalPolicy {
@@ -61,7 +110,11 @@ export class ScopeBook {
 				if (callId === undefined) return { action: "abstain" };
 				if (fronts.includes(call.name) && !callId.includes("/")) {
 					// the program call itself: with a scope declared the human is shown it; a bad scope is refused here, before anything runs
-					try { return parseScope(call.input.scope) === undefined ? { action: "abstain" } : { action: "ask" }; } catch (e) { return { action: "deny", reason: (e as Error).message }; }
+					try {
+						if (parseScope(call.input.scope) === undefined) return { action: "abstain" };
+						this.#pending.add(callId); this.#decisions.delete(callId); this.#seenDigest.delete(callId); // a reused call id must not inherit an old grant
+						return { action: "ask" };
+					} catch (e) { return { action: "deny", reason: (e as Error).message }; }
 				}
 				if (!callId.includes("/")) return { action: "abstain" };
 				const book = this.#scopes.get(callId.split("/")[0]!);
@@ -70,8 +123,9 @@ export class ScopeBook {
 				const hit = book.entries.findIndex((e, i) => e.tool === call.name && (e.maxCalls === undefined || book.used[i]! < e.maxCalls) && Object.entries(e.where ?? {}).every(([k, want]) => (Array.isArray(want) ? want.includes(input[k] as ScopeValue) : want === input[k])));
 				if (hit < 0) {
 					const approved = book.entries.map((e) => `${e.tool}${e.where ? JSON.stringify(e.where) : ""}${e.maxCalls ? ` x${e.maxCalls}` : ""}`).join(", ");
-					return { action: "deny", reason: `outside the approved scope of this program (${call.name} ${JSON.stringify(call.input).slice(0, 120)}); approved: ${approved || "nothing"}. Ask for a new approval with a wider scope.` };
+					return { action: "deny", reason: `outside the ${book.granted ? "approved" : "requested"} scope of this program (${call.name} ${JSON.stringify(call.input).slice(0, 120)}); declared: ${approved || "nothing"}. Ask for a new approval with a wider scope.` };
 				}
+				if (!book.granted) return { action: "abstain" }; // in the request, but nobody granted it: the tool's own policy decides
 				book.used[hit]! += 1;
 				return { action: "allow" };
 			},

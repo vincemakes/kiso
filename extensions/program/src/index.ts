@@ -12,12 +12,12 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { guardedInvoke, type BindingSource } from "./binding.js";
-import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER } from "./scope.js";
+import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
 export { runProgram } from "./sandbox.js";
 export { guardedInvoke, type BindingSource } from "./binding.js";
-export { parseScope, ScopeBook, type ScopeEntry } from "./scope.js";
+export { parseScope, scopeDigest, ScopeBook, type ScopeEntry, type ScopeOptions } from "./scope.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
 export { run as runIr, validate as validateIr, conflicts as irConflicts } from "./ir/engine.js";
@@ -32,8 +32,8 @@ export const PROGRAM_DESCRIPTION = [
 
 const PROMPT_LINE = "Tools you do not see listed (for example those of an MCP server) are reachable through the program tool: in a script, searchTools(\"keywords\") finds them, describeTool(name) shows the schema, tools.<name>(args) calls them.";
 
-export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean; maxConcurrentChildren?: number } = {}): KisoExtension {
-	const book = new ScopeBook();
+export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean | ScopeOptions; maxConcurrentChildren?: number } = {}): KisoExtension {
+	const book = new ScopeBook(typeof opts.scope === "object" ? opts.scope : {});
 	const program = defineTool<{ code: string; scope?: unknown }>({
 		name: "program",
 		description: opts.scope ? `${PROGRAM_DESCRIPTION}\n${SCOPE_DESCRIPTION}` : PROGRAM_DESCRIPTION,
@@ -52,7 +52,7 @@ export function createProgramExtension(limits: ProgramLimits = {}, opts: { bindi
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},
 	});
-	return { name: "program", tools: [program as unknown as Tool], systemPrompt: { append: PROMPT_LINE }, ...(opts.scope ? { approvals: [book.policy(["program"])] } : {}) };
+	return { name: "program", tools: [program as unknown as Tool], systemPrompt: { append: PROMPT_LINE }, ...(opts.scope ? { approvals: [book.policy(["program"])], hooks: book.hooks(["program"]) } : {}) };
 }
 
 /**

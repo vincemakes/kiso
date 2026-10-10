@@ -85,3 +85,58 @@ describe("scope-shaped approval", () => {
 		expect(r.effects).toEqual([]);
 	});
 });
+
+// ── the grant must come from a verified decision, not from the model's own scope ───────────────
+const allowsProgram = (): KisoExtension => ({ name: "blanket-mode", approvals: [{ decide: (c: { name: string }) => (c.name === "program" || c.name === "plan" ? { action: "allow" as const } : { action: "abstain" as const }) }] } as never);
+async function runWith(input: Record<string, unknown>, extra: KisoExtension[], answer: "approve" | "deny" | "none" = "approve", front?: KisoExtension) {
+	const effects: string[] = [], events: Event[] = [];
+	const agent = createAgent({ model: "faux", adapter: createFauxProvider(script("program", input)), tools: [], extensions: [front ?? createProgramExtension({}, { scope: true }), hideTools(domain(effects)), ...extra], store: new SessionStore(mkdtempSync(join(tmpdir(), "scope-"))) });
+	const session = await agent.session({ id: "s" });
+	for await (const ev of session.run("go")) { events.push(ev); if (ev.type === "permission_requested" && answer !== "none") await session.approve((ev as unknown as { decisionId: string }).decisionId, answer === "approve"); }
+	const res = String((events.filter((e) => e.type === "tool_result") as unknown as { content: string }[])[0]!.content);
+	return { effects, events, res };
+}
+const ONE = `try { await tools.secret({ n: 1 }); return "ran"; } catch (e) { return "refused: " + e.message.slice(0, 80); }`;
+describe("scope grant origin (owner's ruling: requested scope is not granted scope)", () => {
+	it("a program call auto-allowed by another policy does NOT turn its own scope into a grant: the child that needs a human is still refused", async () => {
+		const r = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), allowsProgram()], "none");
+		expect(r.events.some((e) => e.type === "permission_requested")).toBe(false); // nobody was asked: the blanket allow decided
+		expect(r.effects).toEqual([]);
+		expect(r.res).toMatch(/refused: .*needs a human decision/);
+	});
+	it("a human who DENIES the program call: nothing runs", async () => {
+		const r = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret")], "deny");
+		expect(r.effects).toEqual([]);
+		expect(r.events.some((e) => e.type === "tool_execution_started")).toBe(false);
+	});
+	it("a human who approves: the same scope IS a grant", async () => {
+		const r = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret")], "approve");
+		expect(r.effects).toEqual(["secret:1"]);
+	});
+	it("a named trusted policy's allow of the program call is a grant; an unnamed one is not", async () => {
+		const trusted = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), { name: "ops-policy", approvals: [{ decide: (c: { name: string }) => (c.name === "program" ? { action: "allow" as const } : { action: "abstain" as const }) }] } as never], "none", createProgramExtension({}, { scope: { trustedPolicies: ["ops-policy"] } }));
+		expect(trusted.effects).toEqual(["secret:1"]);
+		const untrusted = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), allowsProgram()], "none", createProgramExtension({}, { scope: { trustedPolicies: ["ops-policy"] } }));
+		expect(untrusted.effects).toEqual([]);
+	});
+	it("outside the REQUESTED scope is still denied even with no grant (the scope only ever limits)", async () => {
+		const r = await runWith({ code: `try { await tools.other({ who: "x" }); return "ran"; } catch (e) { return "refused: " + e.message.slice(0, 120); }`, scope: [{ tool: "secret" }] }, [asksFor("other"), allowsProgram()], "none");
+		expect(r.effects).toEqual([]);
+		expect(r.res).toMatch(/outside the approved scope|outside the requested scope/);
+	});
+	it("two programs in one turn: one human-approved, one auto-allowed: no grant leaks between them", async () => {
+		const effects: string[] = [], events: Event[] = [];
+		const script2 = [
+			{ events: [
+				{ type: "tool_call_end" as const, callId: "pa", name: "program", input: { code: `await tools.secret({ n: 11 }); return "a";`, scope: [{ tool: "secret" }] } },
+				{ type: "tool_call_end" as const, callId: "pb", name: "program", input: { code: `try { await tools.secret({ n: 22 }); return "b ran"; } catch (e) { return "b refused"; }`, scope: [{ tool: "secret" }] } },
+				{ type: "stop" as const, reason: "tool_use" as const }] },
+			{ events: [{ type: "text_delta" as const, text: "done" }, { type: "stop" as const, reason: "end_turn" as const }] },
+		];
+		const autoB: KisoExtension = { name: "auto-b", approvals: [{ decide: (c: { name: string; input: Record<string, unknown> }) => (c.name === "program" && String(c.input.code).includes("b ran") ? { action: "allow" as const } : { action: "abstain" as const }) }] } as never;
+		const agent = createAgent({ model: "faux", adapter: createFauxProvider(script2), tools: [], extensions: [createProgramExtension({}, { scope: true }), hideTools(domain(effects)), asksFor("secret"), autoB], store: new SessionStore(mkdtempSync(join(tmpdir(), "scope-"))) });
+		const session = await agent.session({ id: "s" });
+		for await (const ev of session.run("go")) { events.push(ev); if (ev.type === "permission_requested") await session.approve((ev as unknown as { decisionId: string }).decisionId, true); }
+		expect(effects).toEqual(["secret:11"]); // only the human-approved program's child ran
+	});
+});

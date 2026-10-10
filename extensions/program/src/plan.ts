@@ -8,7 +8,7 @@
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { run } from "./ir/engine.js";
 import { guardedInvoke, type BindingSource } from "./binding.js";
-import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER } from "./scope.js";
+import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { buildPlan } from "./ir/builder.js";
 import type { CallResult, Effect, Json } from "./ir/types.js";
 
@@ -30,7 +30,7 @@ export interface PlanOptions {
 	/** Checks each tool's live contract against the one the plan was admitted with (see binding.ts). */
 	binding?: BindingSource;
 	/** Accept a `scope` on the plan call and decide child calls against it (see scope.ts). */
-	scope?: boolean;
+	scope?: boolean | ScopeOptions;
 	/** At most this many children at once (default 8); the engine's own `maxConcurrency` also applies. */
 	maxConcurrentChildren?: number;
 	/** Bytes of output returned before it is cut (the rest is named, not silently dropped). */
@@ -40,7 +40,7 @@ export interface PlanOptions {
 const parseResult = (content: string): Json => { try { return JSON.parse(content) as Json; } catch { return content; } };
 
 export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
-	const book = new ScopeBook();
+	const book = new ScopeBook(typeof opts.scope === "object" ? opts.scope : {});
 	const plan = defineTool<{ code: string; scope?: unknown }>({
 		name: "plan",
 		description: opts.scope ? `${PLAN_DESCRIPTION}\n${SCOPE_DESCRIPTION}` : PLAN_DESCRIPTION,
@@ -78,5 +78,5 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},
 	});
-	return { name: "plan", tools: [plan as unknown as Tool], ...(opts.scope ? { approvals: [book.policy(["plan"])] } : {}), systemPrompt: { append: "Tools you do not see listed (for example those of an MCP server) are reachable through the plan tool: ALL_TOOLS and describeTool(name) list them, call(\"name\", args) calls them." } };
+	return { name: "plan", tools: [plan as unknown as Tool], ...(opts.scope ? { approvals: [book.policy(["plan"])], hooks: book.hooks(["plan"]) } : {}), systemPrompt: { append: "Tools you do not see listed (for example those of an MCP server) are reachable through the plan tool: ALL_TOOLS and describeTool(name) list them, call(\"name\", args) calls them." } };
 }
