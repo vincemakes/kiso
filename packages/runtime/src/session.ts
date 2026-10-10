@@ -1313,6 +1313,9 @@ export class AgentSession {
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible (the append below is synchronous, so a same-tick second call sees it)
+		// P3: rule on a program's children first — what the model is told about the program lists how each ended
+		const open = [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain" && r.callId.startsWith(`${record.callId}/`));
+		if (open.length > 0) throw new Error(`rule on the child call(s) of ${record.callId} first: ${open.map((r) => `${r.callId} (${r.name})`).join(", ")}`);
 		// CT-1 (ADR-0051 Amendment 6): the verdict is persisted directly — there
 		// is no live resolver to hand it to (the loop never read one since
 		// ADR-0038; the round-7 live branch that waited for it was unreachable).
@@ -1349,10 +1352,14 @@ export class AgentSession {
 						(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") &&
 						e.executionId === executionId,
 				);
+			// P3: a program's ruling must tell the model what its children really did —
+			// "must not be treated as applied" is false for a child that took effect.
+			const kids = [...executionLedger(this.log.all).values()].filter((r) => r.callId.startsWith(`${record.callId}/`));
+			const kidNote = kids.length === 0 ? "" : `\nchild calls of this execution (confirmed ones DID take effect and are not undone): ${kids.map((k) => `${k.callId} ${k.name} ${k.status}`).join("; ")}`;
 			const result = this.log.append({
 				type: "tool_result",
 				callId: record.callId,
-				content: denial.content,
+				content: denial.content + kidNote,
 				isError: true,
 				errorKind: denial.errorKind,
 				...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),

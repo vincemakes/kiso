@@ -98,10 +98,37 @@ describe("P3/B1 runtime — children in the durable log", () => {
 		expect(by("p1").status).toBe("uncertain"); // the program itself
 		expect(resumed.uncertainExecutions().map((u) => u.callId).sort()).toEqual(["p1", "p1/3"]);
 		await expect((async () => { for await (const _ of resumed.resume()) { /* */ } })()).rejects.toThrow(/blocked by 2 uncertain.*program.*mutate|blocked by 2 uncertain/s);
+		// the program cannot be ruled on while one of its children is still undecided: what the model is
+		// told about the program must include how every child ended
+		await expect(resumed.resolveUncertain(by("p1").executionId, "abandoned")).rejects.toThrow(/child/i);
 		// a human rules on the child: recorded, and NO tool_result is invented for a call the model never made
 		const toolResultsBefore = resumed.log.all.filter((e) => e.type === "tool_result").length;
 		await resumed.resolveUncertain(by("p1/3").executionId, "abandoned");
 		expect(resumed.log.all.some((e) => e.type === "tool_execution_resolved" && (e as { callId: string }).callId === "p1/3")).toBe(true);
 		expect(resumed.log.all.filter((e) => e.type === "tool_result").length).toBe(toolResultsBefore);
+
+		// and the ruling on the PROGRAM tells the model what its children really did: two took effect,
+		// the third was ruled abandoned. "must not be treated as applied" alone would be false for the first two.
+		await resumed.resolveUncertain(by("p1").executionId, "abandoned");
+		const told = (resumed.log.all.filter((e) => e.type === "tool_result" && (e as { callId: string }).callId === "p1").at(-1) as unknown as { content: string }).content;
+		expect(told).toMatch(/mutate succeeded.*mutate succeeded/s);
+		expect(told).toMatch(/hang abandoned/);
+		expect(told).toMatch(/not undone|did take effect/i);
+	}, 20000);
+
+	it("a program with no children is told nothing extra", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "p3-nokids-"));
+		const hung = createAgent({ model: "faux", adapter: createFauxProvider([{ events: [{ type: "tool_call_end", callId: "q1", name: "stuck", input: {} }, { type: "stop", reason: "tool_use" }] }]), tools: [defineTool({ name: "stuck", description: "never reports", parameters: { type: "object", properties: {} }, execute: async () => { await new Promise(() => {}); return ok("never"); } })], store: new SessionStore(dir) });
+		const live = await hung.session({ id: "s" });
+		void (async () => { for await (const _ of live.run("go")) { /* drive */ } })();
+		const file = () => join(dir, readdirSync(dir).find((f) => f.endsWith(".jsonl") && !f.includes("trace"))!);
+		for (let i = 0; i < 100; i += 1) { await new Promise((r) => setTimeout(r, 20)); try { if (readFileSync(file(), "utf8").includes("tool_execution_started")) break; } catch { /* not yet */ } }
+		const crashed = mkdtempSync(join(tmpdir(), "p3-nokids2-"));
+		cpSync(dir, crashed, { recursive: true, filter: (src) => !/\.lock$|\.lock\//.test(src) });
+		const resumed = await createAgent({ model: "faux", adapter: createFauxProvider([]), tools: [], store: new SessionStore(crashed) }).session({ id: "s" });
+		const rec = [...executionLedger(resumed.log.all).values()].find((r) => r.callId === "q1")!;
+		await resumed.resolveUncertain(rec.executionId, "abandoned");
+		const told = (resumed.log.all.filter((e) => e.type === "tool_result").at(-1) as unknown as { content: string }).content;
+		expect(told).not.toMatch(/child/i);
 	}, 20000);
 });
