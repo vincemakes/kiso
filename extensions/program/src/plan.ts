@@ -8,6 +8,7 @@
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { run } from "./ir/engine.js";
 import { guardedInvoke, type BindingSource } from "./binding.js";
+import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER } from "./scope.js";
 import { buildPlan } from "./ir/builder.js";
 import type { CallResult, Effect, Json } from "./ir/types.js";
 
@@ -28,6 +29,8 @@ export interface PlanOptions {
 	maxConcurrency?: number;
 	/** Checks each tool's live contract against the one the plan was admitted with (see binding.ts). */
 	binding?: BindingSource;
+	/** Accept a `scope` on the plan call and decide child calls against it (see scope.ts). */
+	scope?: boolean;
 	/** Bytes of output returned before it is cut (the rest is named, not silently dropped). */
 	maxOutputBytes?: number;
 }
@@ -35,16 +38,20 @@ export interface PlanOptions {
 const parseResult = (content: string): Json => { try { return JSON.parse(content) as Json; } catch { return content; } };
 
 export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
-	const plan = defineTool<{ code: string }>({
+	const book = new ScopeBook();
+	const plan = defineTool<{ code: string; scope?: unknown }>({
 		name: "plan",
-		description: PLAN_DESCRIPTION,
-		parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript that declares the plan." } }, required: ["code"], additionalProperties: false },
+		description: opts.scope ? `${PLAN_DESCRIPTION}\n${SCOPE_DESCRIPTION}` : PLAN_DESCRIPTION,
+		parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript that declares the plan." }, ...(opts.scope ? { scope: SCOPE_PARAMETER } : {}) }, required: ["code"], additionalProperties: false },
 		promptSnippet: "plan - declare tool calls; they run in parallel where independent",
-		execute: async (input: { code: string }, ctx: ToolContext): Promise<ToolResult> => {
+		execute: async (input: { code: string; scope?: unknown }, ctx: ToolContext): Promise<ToolResult> => {
 			if (ctx.invoke === undefined || ctx.catalog === undefined) return { content: "plan: child tool calls are not available in this execution", isError: true, errorKind: "precondition" };
 			const built = await buildPlan(input.code, ctx.catalog());
 			if (!built.ok) return { content: built.error, isError: true, errorKind: "precondition" };
+			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
+			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
 			const invoke = guardedInvoke(ctx, opts.binding);
+			try {
 			const r = await run(built.program, {
 				mode: opts.mode ?? "parallel",
 				maxCalls: opts.maxCalls ?? 500,
@@ -66,7 +73,8 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			if (r.errors.length > 12) lines.push(`… and ${r.errors.length - 12} more failures`);
 			if (!r.ok) lines.push("Calls that succeeded were applied and are not undone.");
 			return { content: lines.join("\n"), isError: !r.ok };
+			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},
 	});
-	return { name: "plan", tools: [plan as unknown as Tool], systemPrompt: { append: "Tools you do not see listed (for example those of an MCP server) are reachable through the plan tool: ALL_TOOLS and describeTool(name) list them, call(\"name\", args) calls them." } };
+	return { name: "plan", tools: [plan as unknown as Tool], ...(opts.scope ? { approvals: [book.policy(["plan"])] } : {}), systemPrompt: { append: "Tools you do not see listed (for example those of an MCP server) are reachable through the plan tool: ALL_TOOLS and describeTool(name) list them, call(\"name\", args) calls them." } };
 }

@@ -12,10 +12,12 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { guardedInvoke, type BindingSource } from "./binding.js";
+import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER } from "./scope.js";
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
 export { runProgram } from "./sandbox.js";
 export { guardedInvoke, type BindingSource } from "./binding.js";
+export { parseScope, ScopeBook, type ScopeEntry } from "./scope.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
 export { run as runIr, validate as validateIr, conflicts as irConflicts } from "./ir/engine.js";
@@ -30,22 +32,27 @@ export const PROGRAM_DESCRIPTION = [
 
 const PROMPT_LINE = "Tools you do not see listed (for example those of an MCP server) are reachable through the program tool: in a script, searchTools(\"keywords\") finds them, describeTool(name) shows the schema, tools.<name>(args) calls them.";
 
-export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource } = {}): KisoExtension {
-	const program = defineTool<{ code: string }>({
+export function createProgramExtension(limits: ProgramLimits = {}, opts: { binding?: BindingSource; scope?: boolean } = {}): KisoExtension {
+	const book = new ScopeBook();
+	const program = defineTool<{ code: string; scope?: unknown }>({
 		name: "program",
-		description: PROGRAM_DESCRIPTION,
-		parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript: the body of an async function." } }, required: ["code"], additionalProperties: false },
+		description: opts.scope ? `${PROGRAM_DESCRIPTION}\n${SCOPE_DESCRIPTION}` : PROGRAM_DESCRIPTION,
+		parameters: { type: "object", properties: { code: { type: "string", description: "JavaScript: the body of an async function." }, ...(opts.scope ? { scope: SCOPE_PARAMETER } : {}) }, required: ["code"], additionalProperties: false },
 		promptSnippet: "program - run a script that calls tools",
-		execute: async (input: { code: string }, ctx: ToolContext): Promise<ToolResult> => {
+		execute: async (input: { code: string; scope?: unknown }, ctx: ToolContext): Promise<ToolResult> => {
 			if (ctx.invoke === undefined || ctx.catalog === undefined) {
 				return { content: "program: child tool calls are not available in this execution (the runtime offers no invoke)", isError: true, errorKind: "precondition" };
 			}
-			const r = await runProgram(input.code, { invoke: guardedInvoke(ctx, opts.binding), catalog: ctx.catalog, signal: ctx.signal }, limits);
-			// a failed script may have had effects: a plain failure, so the kernel adds the honest note
-			return r.ok ? { content: r.output, isError: false } : { content: r.output, isError: true };
+			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
+			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
+			try {
+				const r = await runProgram(input.code, { invoke: guardedInvoke(ctx, opts.binding), catalog: ctx.catalog, signal: ctx.signal }, limits);
+				// a failed script may have had effects: a plain failure, so the kernel adds the honest note
+				return r.ok ? { content: r.output, isError: false } : { content: r.output, isError: true };
+			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},
 	});
-	return { name: "program", tools: [program as unknown as Tool], systemPrompt: { append: PROMPT_LINE } };
+	return { name: "program", tools: [program as unknown as Tool], systemPrompt: { append: PROMPT_LINE }, ...(opts.scope ? { approvals: [book.policy(["program"])] } : {}) };
 }
 
 /**
@@ -67,6 +74,23 @@ export function hideTools<E extends KisoExtension>(ext: E): E {
 			return Reflect.get(target, key, receiver);
 		},
 	});
+}
+
+/**
+ * HOST policy: declare kernel effects for tools an extension publishes (the MCP bridge declares none, so the kernel runs
+ * each of its calls exclusively). `decide(tool)` returns the effects to declare, or undefined to leave the tool as it is.
+ * This is the trusted party's statement - the model and the program never get to make it. `concurrency: "shared"` means
+ * EVERY invocation of the tool may overlap every other sibling invocation: it is only right for tools the host has
+ * checked are free of shared state, rate limits and cost coupling (read-only is necessary, not sufficient).
+ */
+export function withEffects<E extends KisoExtension>(ext: E, decide: (tool: Tool) => Tool["effects"] | undefined): E {
+	const cache = new WeakMap<Tool, Tool>();
+	const wrap = (t: Tool): Tool => {
+		let w = cache.get(t);
+		if (w === undefined) { const e = decide(t); w = e === undefined ? t : { ...t, effects: { ...t.effects, ...e } }; cache.set(t, w); }
+		return w;
+	};
+	return new Proxy(ext, { get(target, key, receiver) { return key === "tools" ? (target.tools ?? []).map(wrap) : Reflect.get(target, key, receiver); } });
 }
 
 /**
