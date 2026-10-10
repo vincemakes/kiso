@@ -16,6 +16,8 @@ import { runProgram, type ProgramLimits } from "./sandbox.js";
 export { runProgram } from "./sandbox.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
+export { run as runIr, validate as validateIr, conflicts as irConflicts } from "./ir/engine.js";
+export type { Program as IrProgram, Effect as IrEffect, RunResult as IrRunResult } from "./ir/types.js";
 export type { ProgramHost, ProgramLimits, ProgramResult } from "./sandbox.js";
 
 export const PROGRAM_DESCRIPTION = [

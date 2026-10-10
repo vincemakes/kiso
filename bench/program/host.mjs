@@ -30,6 +30,7 @@ const positional = args.filter((a, i) => !a.startsWith("--") && !["--mode", "--m
 const sessionName = positional.at(-1) ?? "program-host";
 const profileName = flag("--model");
 
+import { studioEffects } from "./studio-effects.mjs";
 const imp = (rel) => import(pathToFileURL(join(ROOT, rel)).href);
 const { createAgent, SessionStore } = await imp("packages/runtime/dist/index.js");
 const createMcpExtension = (await imp("extensions/mcp/dist/kiso-mcp.mjs")).default;
@@ -50,27 +51,6 @@ let servers = {};
 try { servers = JSON.parse(readFileSync(join(home, "mcp.json"), "utf8")).mcpServers ?? {}; } catch { /* no servers */ }
 const bridge = await createMcpExtension({ servers });
 
-
-/**
- * Effects of the mock studio server's tools, declared BY THE HOST (never read from a name or a
- * description). Assumptions a real host would own: credit charges commute while the budget is
- * sufficient (the tasks' budgets are), ids are opaque. Anything not listed is `unknown` = barrier.
- */
-const studioEffects = (tool, args) => {
-	const t = tool.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "");
-	const a = args !== null && typeof args === "object" && !Array.isArray(args) ? args : undefined;
-	const key = (k, field) => (a && a[field] !== undefined ? [`${k}:${String(a[field])}`] : "*");
-	switch (t) {
-		case "create_project": return { kind: "write", keys: ["projects"] };
-		case "add_subject": return { kind: "write", keys: key("project", "project_id") };
-		case "generate_asset": return { kind: "write", keys: key("subject", "subject_id") };
-		case "revise_asset": return { kind: "write", keys: key("asset", "asset_id") };
-		case "analyze_asset": case "get_asset": return { kind: "read", keys: key("asset", "asset_id") };
-		case "list_subjects": case "list_assets": case "get_subject": case "wallet_balance": return { kind: "read", keys: "*" };
-		case "arrange_board": case "request_approval": case "finalize_project": return { kind: "write", keys: key("project", "project_id") };
-		default: return { kind: "unknown" };
-	}
-};
 
 /** The signature index: one line per tool, name(params) - first sentence. Built from the connected bridge, so it is exactly what searchTools would find. */
 function signatureIndex(tools) {
