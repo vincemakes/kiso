@@ -57,6 +57,8 @@ if (family === "pi") {
 	}
 }
 m.cw = Math.round(m.fresh + 0.1 * m.cacheRead);
+// PRIMARY metric of the Program/IR experiment (frozen 2026-10-10): dollars at a realistic cache price. List prices per million tokens: miss 0.14, hit 0.0028, output 0.28 (an assumption, not the route's bill).
+m.usd = Number(((m.fresh * 0.14 + m.cacheRead * 0.0028 + m.output * 0.28) / 1e6).toFixed(5));
 m.wallSeconds = ["wall_1", "wall_2", "wall_3", "wall_4"].reduce((s, n) => s + (existsSync(join(leg, n)) ? Number(readFileSync(join(leg, n), "utf8")) || 0 : 0), 0);
 if (snapPath && existsSync(snapPath)) {
 	const s = JSON.parse(readFileSync(snapPath, "utf8"));
