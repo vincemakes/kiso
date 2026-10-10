@@ -38,6 +38,9 @@ const EXIT_AFTER = Number(process.env.MCP_EXIT_AFTER ?? 0);
 const DRIFT_AFTER = Number(process.env.MCP_DRIFT_AFTER ?? 0);
 // MCP_LATENCY_MS=n — every tool call is answered n ms after it arrived (calls in flight together are answered together: real concurrency)
 const LATENCY = Number(process.env.MCP_LATENCY_MS ?? 0);
+// MCP_INFLIGHT_FILE=path — the server counts the calls it has received and not yet answered, and writes {max,total} (what the SERVER saw)
+const INFLIGHT_FILE = process.env.MCP_INFLIGHT_FILE ?? "";
+let inflight = 0, maxInflight = 0, totalSeen = 0;
 let toolCalls = 0;
 const DELAY_AFTER = Object.fromEntries((process.env.MCP_DELAY_AFTER ?? "").split(",").filter(Boolean).map((x) => x.split(":")).map(([k, v]) => [k, Number(v)]));
 const LOG_LINES = { small: 0, medium: 8, large: 30 }[VOLUME] ?? 0;
@@ -238,10 +241,10 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 		case "ping": return reply({});
 		case "tools/list": return reply({ tools: OFFERED.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
 		case "tools/call": {
-			toolCalls += 1;
+			toolCalls += 1; inflight += 1; totalSeen += 1; maxInflight = Math.max(maxInflight, inflight);
 			if (DRIFT_AFTER > 0 && toolCalls > DRIFT_AFTER) { const t = BY.get("add_subject"); if (t && !t.drifted) { t.drifted = true; t.inputSchema = { ...t.inputSchema, properties: { ...t.inputSchema.properties, title: t.inputSchema.properties.name }, required: ["project_id", "title"] }; delete t.inputSchema.properties.name; } }
 			const out = callTool(m.params?.name, m.params?.arguments ?? {}); const d = DELAY_AFTER[m.params?.name];
-			const send = () => { reply(out); if (EXIT_AFTER > 0 && toolCalls >= EXIT_AFTER) setTimeout(() => process.exit(3), 20); };
+			const send = () => { inflight -= 1; if (INFLIGHT_FILE) writeFileSync(INFLIGHT_FILE, JSON.stringify({ max: maxInflight, total: totalSeen })); reply(out); if (EXIT_AFTER > 0 && toolCalls >= EXIT_AFTER) setTimeout(() => process.exit(3), 20); };
 			return d || LATENCY ? void setTimeout(send, (d ?? 0) + LATENCY) : send();
 		}
 		default: return m.method?.startsWith("notifications/") ? undefined : fail(-32601, `method not found: ${m.method}`);
