@@ -34,6 +34,8 @@ export interface ProgramHost {
 
 export interface ProgramLimits {
 	readonly timeoutMs?: number;
+	/** after a time-out or abort: how long to wait for children that ignore the abort before ending the program anyway */
+	readonly drainMs?: number;
 	readonly memoryBytes?: number;
 	readonly maxCalls?: number;
 	readonly maxOutputChars?: number;
@@ -50,7 +52,7 @@ export interface ProgramResult {
 	readonly fullOutputPath?: string;
 }
 
-const DEFAULTS = { timeoutMs: 60_000, memoryBytes: 64 * 1024 * 1024, maxCalls: 200, maxOutputChars: 20_000 } as const;
+const DEFAULTS = { timeoutMs: 60_000, memoryBytes: 64 * 1024 * 1024, maxCalls: 200, maxOutputChars: 20_000, drainMs: 2_000 } as const;
 
 type WasmModule = NonNullable<Parameters<typeof QuickJS.create>[0]>["wasm"];
 let wasm: Promise<WasmModule> | undefined;
@@ -99,10 +101,12 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 	const calls: { name: string; ok: boolean }[] = [];
 	let issued = 0;
 	let disposed = false;
+	const inFlight = new Set<Promise<void>>(); // children issued and not yet finished: the program may not be receipted before them
 	let stop: string | null = null; // why the host ended the script
 	const vm = await QuickJS.create({ wasm: await wasmModule(), memoryLimit: L.memoryBytes, interruptHandler: () => stop !== null || Date.now() > deadline || host.signal.aborted });
 	const cleanups: (() => void)[] = [];
 	let verdict: { ok: boolean; value?: string; error?: string };
+	let unfinished = 0;
 	let logs: string[] = [], texts: string[] = [];
 	try {
 		{
@@ -121,10 +125,11 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 				issued += 1;
 				let input: Record<string, unknown> = {};
 				try { input = JSON.parse(argsH.toString()) as Record<string, unknown>; } catch { /* {} */ }
-				host.invoke(name, input).then(
+				const done: Promise<void> = host.invoke(name, input).then(
 					(r) => { calls.push({ name, ok: !r.isError }); settle(r.isError ? { ok: false, error: r.content } : { ok: true, value: parseResult(r.content) }); },
 					(e: unknown) => { calls.push({ name, ok: false }); settle({ ok: false, error: e instanceof Error ? e.message : String(e) }); },
-				);
+				).then(() => undefined, () => undefined).finally(() => { inFlight.delete(done); });
+				inFlight.add(done);
 				return deferred.handle;
 			});
 			vm.setProp(vm.global, "__call", fn);
@@ -169,7 +174,13 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 		verdict = { ok: false, error: `sandbox error: ${e instanceof Error ? e.message : String(e)}` };
 	} finally {
 		for (const c of cleanups) c();
-		disposed = true;
+		disposed = true; // from here on a child's reply is not delivered to the script
+		// A child cannot be cancelled once started (its tool decides when it ends), so the program waits for it:
+		// the parent's receipt must come after every child's (write-ahead ledger, invariants I2 and I5).
+		const drain = (async () => { while (inFlight.size > 0) await Promise.allSettled([...inFlight]); })();
+		// a normal end waits for the children; after a time-out/abort only a grace period (a tool that ignores the abort must not hold the program forever)
+		if (stop === null) await drain; else await Promise.race([drain, new Promise((r) => setTimeout(r, L.drainMs))]);
+		unfinished = inFlight.size;
 		try { vm.dispose(); } catch { /* already gone */ }
 	}
 
@@ -180,6 +191,9 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 	}
 	for (const t of texts) lines.push(t);
 	if (logs.length > 0) lines.push("<console_output>", ...logs, "</console_output>");
+	if (unfinished > 0) lines.push(`Note: ${unfinished} tool call${unfinished === 1 ? " was" : "s were"} still running when the program ended (it ignored the stop); ${unfinished === 1 ? "its" : "their"} outcome is recorded when ${unfinished === 1 ? "it finishes" : "they finish"} and is NOT known here.`);
+	const failedCalls = calls.filter((c) => !c.ok);
+	if (verdict.ok && failedCalls.length > 0) lines.push(`Note: ${failedCalls.length} of ${calls.length} tool call${calls.length === 1 ? "" : "s"} failed (${failedCalls.map((c) => c.name).join(", ")}) and the script went on; a failed call may have partially applied its effect.`);
 	if (!verdict.ok) {
 		lines.push(`Script error: ${verdict.error ?? "unknown"}`);
 		if (calls.length > 0) lines.push(`Calls that had already completed before the failure (tool effects are NOT undone): ${calls.map((c) => `${c.name} ${c.ok ? "ok" : "error"}`).join(", ")}`);
