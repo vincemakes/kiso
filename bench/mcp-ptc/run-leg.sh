@@ -50,8 +50,12 @@ if [ "$FAMILY" = pi ]; then
 else
 	: "${KISO_BIN_PATH:?}" "${KISO_VERSION:?}"
 	KB="$KISO_BIN_PATH"; KV="$KISO_VERSION"; CAP=${BENCH_CAPTURE}
-	case "$ARM" in K-program|K-program-index|K-plan) KB="node $B/program/host.mjs"; KV=0.48.0-program; CAP=0 ;; esac
-	case "$ARM" in K-program-index) export PROGRAM_ARM=js-index ;; K-plan) export PROGRAM_ARM=plan ;; *) export PROGRAM_ARM=js ;; esac # kiso as a library, the program tool only
+	# the runner starts the binary under `env -i`, so the arm travels in the command itself
+	case "$ARM" in
+		K-program) KB="env PROGRAM_ARM=js node $B/program/host.mjs"; KV=0.48.0-program; CAP=0 ;;
+		K-program-index) KB="env PROGRAM_ARM=js-index node $B/program/host.mjs"; KV=0.48.0-program; CAP=0 ;;
+		K-plan) KB="env PROGRAM_ARM=plan node $B/program/host.mjs"; KV=0.48.0-program; CAP=0 ;;
+	esac
 	BENCH_CAPTURE=$CAP KISO_BIN="$KB" KISO_VERSION="$KV" sh "$B/run-t6.sh" kiso "$ARM-$RUN" || echo "run-leg: the runner exited non-zero; the leg's own files are the record" >&2
 	W="$MCP_ROUND_DIR/kiso-$CELL-$ARM-$RUN"
 fi
