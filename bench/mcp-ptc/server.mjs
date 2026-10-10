@@ -32,6 +32,11 @@ const PASS_AT = 70;
 const COST = { generate: 5, analyze: 1, revise: 3, finalize: 10 };
 const ISSUES = ["LIGHT_FLAT", "HAND_ARTIFACT", "TEXT_MISSPELL", "COLOR_CAST", "CROP_TIGHT"];
 // MCP_DELAY_AFTER="tool:ms,tool:ms" — answer a call that already took effect only after ms (the crash window)
+// MCP_EXIT_AFTER=n — the server process exits right after replying to its n-th tool call (a disconnect in the middle of a program)
+const EXIT_AFTER = Number(process.env.MCP_EXIT_AFTER ?? 0);
+// MCP_DRIFT_AFTER=n — after n tool calls the signature of add_subject changes server-side (`name` becomes `title`): drift between a program's admission and a later call
+const DRIFT_AFTER = Number(process.env.MCP_DRIFT_AFTER ?? 0);
+let toolCalls = 0;
 const DELAY_AFTER = Object.fromEntries((process.env.MCP_DELAY_AFTER ?? "").split(",").filter(Boolean).map((x) => x.split(":")).map(([k, v]) => [k, Number(v)]));
 const LOG_LINES = { small: 0, medium: 8, large: 30 }[VOLUME] ?? 0;
 
@@ -230,7 +235,13 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 		case "initialize": return reply({ protocolVersion: m.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "studio-mock", version: "1.0.0" } });
 		case "ping": return reply({});
 		case "tools/list": return reply({ tools: OFFERED.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
-		case "tools/call": { const out = callTool(m.params?.name, m.params?.arguments ?? {}); const d = DELAY_AFTER[m.params?.name]; return d ? void setTimeout(() => reply(out), d) : reply(out); }
+		case "tools/call": {
+			toolCalls += 1;
+			if (DRIFT_AFTER > 0 && toolCalls > DRIFT_AFTER) { const t = BY.get("add_subject"); if (t && !t.drifted) { t.drifted = true; t.inputSchema = { ...t.inputSchema, properties: { ...t.inputSchema.properties, title: t.inputSchema.properties.name }, required: ["project_id", "title"] }; delete t.inputSchema.properties.name; } }
+			const out = callTool(m.params?.name, m.params?.arguments ?? {}); const d = DELAY_AFTER[m.params?.name];
+			const send = () => { reply(out); if (EXIT_AFTER > 0 && toolCalls >= EXIT_AFTER) setTimeout(() => process.exit(3), 20); };
+			return d ? void setTimeout(send, d) : send();
+		}
 		default: return m.method?.startsWith("notifications/") ? undefined : fail(-32601, `method not found: ${m.method}`);
 	}
 }).on("close", () => { snapshot(); process.exit(0); });
