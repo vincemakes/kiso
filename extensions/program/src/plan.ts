@@ -7,7 +7,7 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { run } from "./ir/engine.js";
-import { guardedInvoke, type BindingSource } from "./binding.js";
+import { guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
 import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { buildPlan } from "./ir/builder.js";
 import type { CallResult, Effect, Json } from "./ir/types.js";
@@ -53,6 +53,7 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
 			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
 			const invoke = guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren);
+			let unverifiedCount = 0;
 			try {
 			const r = await run(built.program, {
 				mode: opts.mode ?? "parallel",
@@ -74,6 +75,8 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			for (const e of r.errors.slice(0, 12)) lines.push(`failed ${e.tool ?? e.id}${e.args !== undefined ? ` ${JSON.stringify(e.args).slice(0, 160)}` : ""}: ${e.error.slice(0, 300)}`);
 			if (r.errors.length > 12) lines.push(`… and ${r.errors.length - 12} more failures`);
 			if (!r.ok) lines.push("Calls that succeeded were applied and are not undone.");
+			unverifiedCount = invoke.unverified();
+			if (unverifiedCount > 0) lines.push(unverifiedNote(unverifiedCount));
 			return { content: lines.join("\n"), isError: !r.ok };
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},

@@ -11,12 +11,13 @@
  * `searchTools` / `ALL_TOOLS` and calls them with `tools.<name>(args)`.
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
-import { guardedInvoke, type BindingSource } from "./binding.js";
+import { createHash } from "node:crypto";
+import { guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
 import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
 export { runProgram } from "./sandbox.js";
-export { guardedInvoke, type BindingSource } from "./binding.js";
+export { guardedInvoke, unverifiedNote, type BindingSource, type GuardedInvoke } from "./binding.js";
 export { parseScope, scopeDigest, ScopeBook, type ScopeEntry, type ScopeOptions } from "./scope.js";
 export { createPlanExtension, PLAN_DESCRIPTION, type PlanOptions } from "./plan.js";
 export { buildPlan } from "./ir/builder.js";
@@ -46,9 +47,11 @@ export function createProgramExtension(limits: ProgramLimits = {}, opts: { bindi
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
 			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
 			try {
-				const r = await runProgram(input.code, { invoke: guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren), catalog: ctx.catalog, signal: ctx.signal }, limits);
+				const guarded = guardedInvoke(ctx, opts.binding, opts.maxConcurrentChildren);
+				const r = await runProgram(input.code, { invoke: guarded, catalog: ctx.catalog, signal: ctx.signal }, limits);
+				const content = guarded.unverified() > 0 ? `${r.output}\n${unverifiedNote(guarded.unverified())}` : r.output;
 				// a failed script may have had effects: a plain failure, so the kernel adds the honest note
-				return r.ok ? { content: r.output, isError: false } : { content: r.output, isError: true };
+				return r.ok ? { content, isError: false } : { content, isError: true };
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},
 	});
@@ -85,12 +88,28 @@ export function hideTools<E extends KisoExtension>(ext: E): E {
  */
 export function withEffects<E extends KisoExtension>(ext: E, decide: (tool: Tool) => Tool["effects"] | undefined): E {
 	const cache = new WeakMap<Tool, Tool>();
+	// The declared effects are part of the contract a program is bound to: declaring `shared` (or changing a declaration) changes the digest.
+	const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v !== null && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v);
+	const withDigest = (digest: string | undefined, effects: Tool["effects"]): string | undefined => (digest === undefined || effects === undefined || Object.keys(effects).length === 0 ? digest : `sha256:${createHash("sha256").update(`${digest}|${JSON.stringify(canon(effects))}`).digest("hex")}`);
+	const effective = (t: Tool): Tool["effects"] => { const e = decide(t); return e === undefined ? t.effects : { ...t.effects, ...e }; };
 	const wrap = (t: Tool): Tool => {
 		let w = cache.get(t);
-		if (w === undefined) { const e = decide(t); w = e === undefined ? t : { ...t, effects: { ...t.effects, ...e } }; cache.set(t, w); }
+		if (w === undefined) { const eff = effective(t); const d = withDigest(t.digest, eff); w = decide(t) === undefined && d === t.digest ? t : { ...t, ...(eff !== undefined ? { effects: eff } : {}), ...(d !== undefined ? { digest: d } : {}) }; cache.set(t, w); }
 		return w;
 	};
-	return new Proxy(ext, { get(target, key, receiver) { return key === "tools" ? (target.tools ?? []).map(wrap) : Reflect.get(target, key, receiver); } });
+	return new Proxy(ext, {
+		get(target, key, receiver) {
+			if (key === "tools") return (target.tools ?? []).map(wrap);
+			if (key === "liveDigest" && typeof (target as { liveDigest?: unknown }).liveDigest === "function") {
+				return async (name: string): Promise<string | undefined> => {
+					const live = await (target as unknown as { liveDigest(n: string): Promise<string | undefined> }).liveDigest(name);
+					const raw = (target.tools ?? []).find((t) => t.name === name);
+					return live === undefined || raw === undefined ? live : withDigest(live, effective(raw));
+				};
+			}
+			return Reflect.get(target, key, receiver);
+		},
+	});
 }
 
 /**
