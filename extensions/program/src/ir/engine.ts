@@ -121,6 +121,26 @@ export async function run(program: Program, opts: RunOptions): Promise<RunResult
 		return deps;
 	};
 
+	/**
+	 * The arguments of a call that is not ready yet, as far as they are known: fields whose inputs are all
+	 * finished are evaluated; the others are ABSENT. A host's effect declaration must treat an absent field it
+	 * needs as unknown (the conservative answer): that is what lets `put {k: "b3", v: <not yet>}` be recognised
+	 * as touching only b3 instead of blocking everything behind it.
+	 */
+	const partialArgs = (inst: Inst): Json | undefined => {
+		if (inst.args !== undefined) return inst.args;
+		const ex = inst.node.kind === "call" ? inst.node.args : undefined;
+		if (!ex || !("obj" in ex)) return undefined;
+		const o: Record<string, Json> = {};
+		for (const [k, fe] of Object.entries(ex.obj)) {
+			const names = new Set<string>(); refsOf(fe, names);
+			const ready = [...names].every((nm) => { const f = find(inst.scope, nm); return f === undefined || "value" in f || f.inst.status === "done"; });
+			if (!ready) continue;
+			try { o[k] = evaluate(fe, lookupIn(inst.scope)); } catch { /* unknown stays absent */ }
+		}
+		return o;
+	};
+
 	let inFlight = 0, maxInFlight = 0, made = 0;
 	const started: { tool: string; args: Json }[] = [];
 	let wake: (() => void) | null = null;
@@ -166,7 +186,7 @@ export async function run(program: Program, opts: RunOptions): Promise<RunResult
 						for (const e of live) {
 							if (e === inst || cmp(e.pos, inst.pos) >= 0 || isAncestor(e, inst) || terminal(e)) continue;
 							if (e.node.kind === "map" || e.node.kind === "until") { if (!e.expanded) { blocked = true; break; } continue; }
-							if (e.node.kind === "call" && conflicts(opts.effects(e.node.tool, e.args), mine)) { blocked = true; break; }
+							if (e.node.kind === "call" && conflicts(opts.effects(e.node.tool, partialArgs(e)), mine)) { blocked = true; break; }
 						}
 					}
 					if (blocked) continue;

@@ -195,3 +195,43 @@ describe("differential: the parallel schedule equals the sequential reference", 
 		}, 120_000);
 	}
 });
+
+describe("effects with partial arguments (A2)", () => {
+	const eff = (tool: string, a: unknown): { kind: "read" | "write"; keys: string[] | "*" } => {
+		const o = a !== null && typeof a === "object" ? (a as Record<string, unknown>) : undefined;
+		const keys: string[] | "*" = o && o.k !== undefined ? [String(o.k)] : "*";
+		return { kind: tool === "get" ? "read" : "write", keys };
+	};
+	const slowBackend = (log: string[]) => async (tool: string, a: unknown) => {
+		const k = (a as { k: string }).k; log.push(`start ${tool} ${k}`);
+		await new Promise((r) => setTimeout(r, tool === "slow" ? 40 : 5));
+		log.push(`end ${tool} ${k}`);
+		return { ok: true, value: { k, v: 1 } };
+	};
+	const plan = (nodes: unknown[]) => ({ nodes, output: { lit: null } }) as never;
+
+	it("a pending call whose KEY is known but whose value is not does not block unrelated keys", async () => {
+		const log: string[] = [];
+		const p = plan([
+			{ id: "a", kind: "call", tool: "slow", args: { obj: { k: { lit: "src" } } } },
+			{ id: "w", kind: "call", tool: "put", args: { obj: { k: { lit: "b1" }, v: { ref: "a", path: ["v"] } } } }, // waits for a; touches only b1
+			{ id: "r", kind: "call", tool: "get", args: { obj: { k: { lit: "other" } } } }, // unrelated: should start while w is still waiting
+		]);
+		const r = await run(p, { mode: "parallel", call: slowBackend(log), effects: eff });
+		expect(r.ok).toBe(true);
+		expect(log.indexOf("start get other")).toBeLessThan(log.indexOf("end slow src"));
+	});
+
+	it("a pending call whose KEY is not known yet still blocks later calls (conservative)", async () => {
+		const log: string[] = [];
+		const p = plan([
+			{ id: "a", kind: "call", tool: "slow", args: { obj: { k: { lit: "src" } } } },
+			{ id: "w", kind: "call", tool: "put", args: { obj: { k: { ref: "a", path: ["k"] } } } }, // key comes from a's result
+			{ id: "r", kind: "call", tool: "get", args: { obj: { k: { lit: "other" } } } }, // could be the same key: must wait for w
+		]);
+		const r = await run(p, { mode: "parallel", call: slowBackend(log), effects: eff });
+		expect(r.ok).toBe(true);
+		// while w's key is unknown (a still running) the read must wait; once the key is src, "other" is unrelated and may overlap
+		expect(log.indexOf("start get other")).toBeGreaterThan(log.indexOf("end slow src"));
+	});
+});

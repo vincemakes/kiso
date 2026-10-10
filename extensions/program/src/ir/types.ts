@@ -41,7 +41,7 @@ export type Status = "pending" | "running" | "done" | "failed" | "skipped";
 export interface RunOptions {
 	mode: "sequential" | "parallel";
 	call(tool: string, args: Json): Promise<CallResult>;
-	/** `args` is undefined while they are not computable yet; the answer must then be conservative (a wildcard key). */
+	/** `args` may be PARTIAL while the call is not ready: a field whose inputs are unfinished is ABSENT (or `args` is undefined when nothing is known). Treat anything absent that the answer depends on as unknown - the conservative answer (a wildcard key). */
 	effects(tool: string, args: Json | undefined): Effect;
 	maxConcurrency?: number;
 	maxCalls?: number;
