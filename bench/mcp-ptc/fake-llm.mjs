@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 
-export function startFakeLlm(outDir, { reply = "done", delayMs = Number(process.env.FAKE_LLM_DELAY_MS ?? 0) } = {}) {
+export function startFakeLlm(outDir, { reply = "done", delayMs = Number(process.env.FAKE_LLM_DELAY_MS ?? 0), respond = null } = {}) {
 	mkdirSync(outDir, { recursive: true });
 	let n = 0;
 	const srv = createServer((req, res0) => {
@@ -24,6 +24,15 @@ export function startFakeLlm(outDir, { reply = "done", delayMs = Number(process.
 			let stream = true; try { stream = JSON.parse(body).stream !== false; } catch { /* keep */ }
 			const base = { id: `fake-${n}`, object: "chat.completion.chunk", created: 0, model: "fake" };
 			const usage = { prompt_tokens: 100, completion_tokens: 2, total_tokens: 102 };
+			// respond(n, body) may return { toolCalls: [{ id, name, arguments }] } to script a tool call
+			const scripted = respond ? respond(n, (() => { try { return JSON.parse(body); } catch { return {}; } })()) : null;
+			if (scripted?.toolCalls) {
+				res.writeHead(200, { "content-type": "text/event-stream" });
+				const send0 = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);
+				send0({ ...base, choices: [{ index: 0, delta: { role: "assistant", tool_calls: scripted.toolCalls.map((c, i) => ({ index: i, id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.arguments) } })) }, finish_reason: null }] });
+				send0({ ...base, choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage });
+				res.write("data: [DONE]\n\n"); res.end(); return;
+			}
 			if (!stream) { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ...base, object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }], usage })); return; }
 			res.writeHead(200, { "content-type": "text/event-stream" });
 			const send = (o) => res.write(`data: ${JSON.stringify(o)}\n\n`);

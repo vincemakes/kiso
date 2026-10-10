@@ -31,6 +31,8 @@ const SNAPSHOT = process.env.MCP_SNAPSHOT ?? "";
 const PASS_AT = 70;
 const COST = { generate: 5, analyze: 1, revise: 3, finalize: 10 };
 const ISSUES = ["LIGHT_FLAT", "HAND_ARTIFACT", "TEXT_MISSPELL", "COLOR_CAST", "CROP_TIGHT"];
+// MCP_DELAY_AFTER="tool:ms,tool:ms" — answer a call that already took effect only after ms (the crash window)
+const DELAY_AFTER = Object.fromEntries((process.env.MCP_DELAY_AFTER ?? "").split(",").filter(Boolean).map((x) => x.split(":")).map(([k, v]) => [k, Number(v)]));
 const LOG_LINES = { small: 0, medium: 8, large: 30 }[VOLUME] ?? 0;
 
 const h = (...parts) => createHash("sha256").update([SEED, ...parts].join("|")).digest("hex");
@@ -228,7 +230,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 		case "initialize": return reply({ protocolVersion: m.params?.protocolVersion ?? "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "studio-mock", version: "1.0.0" } });
 		case "ping": return reply({});
 		case "tools/list": return reply({ tools: OFFERED.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
-		case "tools/call": return reply(callTool(m.params?.name, m.params?.arguments ?? {}));
+		case "tools/call": { const out = callTool(m.params?.name, m.params?.arguments ?? {}); const d = DELAY_AFTER[m.params?.name]; return d ? void setTimeout(() => reply(out), d) : reply(out); }
 		default: return m.method?.startsWith("notifications/") ? undefined : fail(-32601, `method not found: ${m.method}`);
 	}
 }).on("close", () => { snapshot(); process.exit(0); });
