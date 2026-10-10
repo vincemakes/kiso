@@ -453,25 +453,56 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// invocation accepted before it, so a read can never observe a
 	// half-written file. A read after a write therefore loses its latency
 	// win; safe overtaking and snapshot semantics stay future work.
-	let fence: Promise<void> = Promise.resolve();
-	const sharedRunning: Promise<void>[] = [];
-	/** Reserve this call's place in the FIFO: what it must await before
-	 *  running, and the release to call once its handler is done. */
-	const reserve = (tool: Tool | undefined): { wait: Promise<void>; release: () => void } => {
-		const shared = tool?.effects?.concurrency === "shared";
-		let release!: () => void;
-		const done = new Promise<void>((res) => {
-			release = res;
-		});
-		// An exclusive invocation waits for the fence AND every shared call
-		// already accepted ahead of it — while it runs, it runs alone.
-		const wait = shared ? fence : Promise.all([fence, ...sharedRunning]).then(() => undefined);
-		if (shared) sharedRunning.push(done);
-		else {
-			fence = done;
-			sharedRunning.length = 0;
-		}
-		return { wait, release };
+	/** One FIFO lane: the turn's own, and one per running tool for its children (P3). */
+	const makeLane = () => {
+		let fence: Promise<void> = Promise.resolve();
+		const sharedRunning: Promise<void>[] = [];
+		/** Reserve this call's place in the FIFO: what it must await before
+		 *  running, and the release to call once its handler is done. */
+		return (tool: Tool | undefined): { wait: Promise<void>; release: () => void } => {
+			const shared = tool?.effects?.concurrency === "shared";
+			let release!: () => void;
+			const done = new Promise<void>((res) => {
+				release = res;
+			});
+			// An exclusive invocation waits for the fence AND every shared call
+			// already accepted ahead of it — while it runs, it runs alone.
+			const wait = shared ? fence : Promise.all([fence, ...sharedRunning]).then(() => undefined);
+			if (shared) sharedRunning.push(done);
+			else {
+				fence = done;
+				sharedRunning.length = 0;
+			}
+			return { wait, release };
+		};
+	};
+	const reserve = makeLane();
+	// ── P3 — ctx.invoke: a child call under a running tool ────────────────────
+	// The child takes the SAME road as a model call (validation, the approval
+	// chain, write-ahead started, receipt) but runs inside its parent's slot, in
+	// the parent's own lane — a second `launch()` would wait for the fence the
+	// parent holds. No tool_result is written (the model never issued it) and
+	// its events carry no invocationSeq (recovery binds model calls by it).
+	const invokeFor = (parent: { callId: string }) => {
+		const lane = makeLane();
+		let n = 0;
+		return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+			const call = { type: "tool_call_end", callId: `${parent.callId}/${++n}`, name, input, seq: undefined as unknown as number } as ToolCallEnd;
+			const ctx = { signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) };
+			const slot = lane(table.get(name));
+			try {
+				const v = await decideCall(call, table, hooks, ctx, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicy, nextDecisionId, pushExec, undefined);
+				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
+				if (v.action === "ask") return { content: "a child call that needs a human decision is not supported inside a program yet", isError: true, errorKind: "precondition" };
+				await slot.wait;
+				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, true);
+			} catch (err) {
+				if (err === ABORTED) return { content: "aborted before execution", isError: true, errorKind: "precondition" };
+				throw err;
+			} finally {
+				slot.release();
+			}
+		};
 	};
 	const launch = (call: ToolCallEnd, rawInput?: string): void => {
 		execActive += 1;
@@ -598,6 +629,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}), ...(rawInput !== undefined ? { rawInput } : {}) },
 							signal,
 							pushExec,
+							invokeFor,
 						);
 					} finally {
 						releaseWindow();
@@ -1417,7 +1449,10 @@ async function runLedgered(
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
-): Promise<void> {
+	mkInvoke?: (parent: { callId: string }) => NonNullable<ToolContext["invoke"]>,
+	child?: true,
+): Promise<ToolResult> {
+	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
 	const tool = registry.get(call.name)!; // validated + decided by decideCall
 	// C group: the signal is re-checked immediately before the started event —
 	// an abort that landed in any permission path must not let the side
@@ -1450,7 +1485,7 @@ async function runLedgered(
 		// a cancel.
 		result = signal?.aborted
 			? { content: "aborted before execution", isError: true, errorKind: "precondition" }
-			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId });
+			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId, ...(mkInvoke !== undefined ? { invoke: mkInvoke(call) } : {}) });
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),
@@ -1502,13 +1537,15 @@ async function runLedgered(
 			type: "tool_execution_succeeded",
 			executionId,
 			callId: call.callId,
-			invocationSeq: call.seq,
+			...inv,
 			result: { content: result.content, isError: false },
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	}
 
+	if (child) return result; // the model never issued it: no tool_result
 	push(resultEvent(call, result, executionId));
+	return result;
 }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */

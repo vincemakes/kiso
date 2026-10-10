@@ -1332,7 +1332,11 @@ export class AgentSession {
 		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT —
 		// the normal live path emits the result with tags before the pause,
 		// so a crash-window repair reproduces them.
-		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
+		// P3: a child execution (callId `<parent>/<n>`) has no tool_use in the conversation
+		// — the model never issued it — so its verdict carries no model-facing result.
+		const slash = record.callId.lastIndexOf("/");
+		const issuedByModel = !(slash > 0 && [...executionLedger(this.log.all).values()].some((r) => r.callId === record.callId.slice(0, slash)));
+		if (issuedByModel && !this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
 			const denial = denialResult(
 				resolution === "rerun"
 					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"

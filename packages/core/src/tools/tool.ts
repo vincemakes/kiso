@@ -50,6 +50,11 @@ export interface ToolContext {
 	 *  callId, rawInput), and executionId is the id of the durable
 	 *  execution each path writes. */
 	readonly rawInput?: string;
+	/** P3 (research branch): run another tool THROUGH the kernel — validation, the
+	 *  composed approval chain, write-ahead `started`, receipt — as a child of this
+	 *  execution (callId `<callId>/<n>`). It is not a conversation turn: no
+	 *  tool_result is written for it. Offered only to a model-issued call. */
+	readonly invoke?: (name: string, input: Record<string, unknown>) => Promise<ToolResult>;
 }
 
 /**
