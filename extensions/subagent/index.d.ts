@@ -49,8 +49,8 @@ export interface SubagentHost {
 	readonly joinMs?: number;
 	/** 0.49.0 B: live writers (implementer, verifier) per session (default 4). */
 	readonly writerMax?: number;
-	/** 0.49.0 B: a writer's model requests before its wrap-up — unset by
-	 *  default until a measurement sets one; a writer keeps its wall clock. */
+	/** 0.49.0 B: a writer's model requests before its wrap-up (default 128;
+	 *  a writer also keeps its wall clock). */
 	readonly writerMaxTurns?: number;
 	/** 0.49.0 B: the most a writer's working-tree snapshot may copy (default
 	 *  50 MiB); over it the delegation is refused, never run from HEAD. */

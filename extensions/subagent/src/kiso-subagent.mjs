@@ -43,6 +43,13 @@ const BACKGROUND_MAX = 20;
 /** ADR-0058 3d (D6): a background child's model requests, by default — about
  *  twice the longest real explorer measured (17); 3f tunes it. */
 const BACKGROUND_MAX_TURNS = 32;
+/** 0.49.0 B: a writer's model requests, by default. The registered rule
+ *  (ceil(1.25 x p95 of the probe's completed writers)) gave 12 on a
+ *  one-function probe; the only real writers on record (41 and 66 requests)
+ *  were both cut by the wall clock unfinished, so 12 would cut healthy work.
+ *  128 is the kit's own fallback, above both; re-measured on a representative
+ *  writer task in 0.50 (the owner's ruling, 2026-10-10). */
+const WRITER_MAX_TURNS = 128;
 /** ADR-0058 3d (D1): the roles whose unattended contract is defined. */
 
 const SIX_TOOLS = ["read_file", "list_dir", "search_text", "write_file", "edit_file", "shell"];
@@ -156,10 +163,10 @@ export default async function createSubagentExtension(host = {}) {
 					tasksOf,
 					max: host.backgroundMax ?? BACKGROUND_MAX,
 					maxTurns: host.backgroundMaxTurns ?? BACKGROUND_MAX_TURNS,
-					// 0.49.0 B: writers — their cap, their turn budget (unset until the
-					// probe measures one: F1), and the snapshot's size cap
+					// 0.49.0 B: writers — their cap, their turn budget (128: the
+					// probe's 12 would cut real work), and the snapshot's size cap
 					writerMax: host.writerMax ?? WRITER_MAX,
-					writerMaxTurns: host.writerMaxTurns,
+					writerMaxTurns: host.writerMaxTurns ?? WRITER_MAX_TURNS,
 					snapshotMaxBytes: host.snapshotMaxBytes ?? SNAPSHOT_MAX_BYTES,
 					reserved: new Map(),
 				};

@@ -1156,7 +1156,13 @@ verifiers join, or run in the background, as readers do (Amendment 13).
 7. **Limits:**
    - writers count against `backgroundMax` and `writerMax` (default 4);
    - a batch that does not fit starts nothing;
-   - `writerMaxTurns` is unset until a measurement sets it. Until then a
-     writer keeps the 10-minute wall clock.
+   - `writerMaxTurns` is **128**, and a writer keeps the 10-minute wall
+     clock as well. The probe's registered rule (ceil(1.25 x p95) over its
+     completed writers) gave 12 on a one-function task; the only real
+     writers on record (41 and 66 requests) were both cut by the wall
+     clock unfinished, so 12 would cut healthy work. 128 is the probe's
+     own fallback, above both; both samples are censored, so it is
+     re-measured on a representative writer task in 0.50. The owner
+     ruled this a reversal of the registered rule on 2026-10-10.
 8. **The schema:** `background`'s description drops its role limit.
    Nothing else in it changes.
