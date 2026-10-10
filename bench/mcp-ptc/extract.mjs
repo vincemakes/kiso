@@ -23,7 +23,7 @@ if (!leg) { console.error("usage: extract.mjs <leg dir> <snapshot.json>"); proce
 const family = basename(leg).startsWith("kiso-") ? "kiso" : "pi";
 const m = { family, requests: 0, unknownUsage: 0, fresh: 0, cacheRead: 0, output: 0, toolCalls: {}, codemodeCalls: 0, toolSearchCalls: 0, nestedCalls: 0, resultChars: 0, resultCharsByTool: {} };
 const findKey = (o, k) => { if (o && typeof o === "object") { if (k in o) return o[k]; for (const v of Object.values(o)) { const r = findKey(v, k); if (r !== undefined) return r; } } return undefined; };
-const note = (name) => { m.toolCalls[name] = (m.toolCalls[name] ?? 0) + 1; if (name === "codemode") m.codemodeCalls += 1; if (name === "tool_search") m.toolSearchCalls += 1; };
+const note = (name) => { m.toolCalls[name] = (m.toolCalls[name] ?? 0) + 1; if (name === "codemode" || name === "program") m.codemodeCalls += 1; if (name === "tool_search") m.toolSearchCalls += 1; };
 const addResult = (name, chars) => { m.resultChars += chars; m.resultCharsByTool[name] = (m.resultCharsByTool[name] ?? 0) + chars; };
 
 if (family === "pi") {
@@ -52,6 +52,7 @@ if (family === "pi") {
 			if (e.known === false || typeof e.inputTokens !== "number" || typeof e.cacheRead !== "number" || typeof e.outputTokens !== "number") m.unknownUsage += 1;
 			else { m.fresh += e.inputTokens - e.cacheRead; m.cacheRead += e.cacheRead; m.output += e.outputTokens; }
 		} else if (e.type === "tool_call_end") { names[e.callId] = e.name; note(e.name); }
+		else if (e.type === "tool_execution_started" && String(e.callId).includes("/")) m.nestedCalls += 1; // a child call of a program
 		else if (e.type === "tool_result") addResult(names[e.callId] ?? "?", typeof e.content === "string" ? e.content.length : JSON.stringify(e.content ?? "").length);
 	}
 }

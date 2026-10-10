@@ -26,7 +26,7 @@ function domain(): KisoExtension {
 		tools: [
 			defineTool({ name: "make_widget", description: "Create a widget with a colour", parameters: { type: "object", properties: { colour: { type: "string" } }, required: ["colour"] }, execute: async (i: { colour: string }) => { const w = { id: widgets.length + 1, colour: i.colour }; widgets.push(w); return { content: JSON.stringify(w), isError: false }; } }),
 			defineTool({ name: "list_widgets", description: "List all widgets", parameters: { type: "object", properties: {} }, execute: async () => ({ content: JSON.stringify({ widgets }), isError: false }) }),
-		],
+		] as never,
 	};
 }
 

@@ -25,7 +25,7 @@ const med = (xs) => { const s = xs.filter((x) => Number.isFinite(x)).sort((a, b)
 const pct = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b ? `${a / b - 1 >= 0 ? "+" : ""}${(100 * (a / b - 1)).toFixed(0)}%` : "n/a");
 const METRICS = ["requests", "cw", "output", "wallSeconds"];
 const cells = [...new Set(rows.map((r) => r.cell))];
-const ARMS = ["K-direct", "P-direct", "P-deferred", "P-codemode"];
+const ARMS = ["K-direct", "K-program", "P-direct", "P-deferred", "P-codemode", "P-codemode-only"];
 for (const cell of cells) {
 	console.log(`\n== cell ${cell}`);
 	const by = {};
@@ -34,10 +34,12 @@ for (const cell of cells) {
 		by[arm] = Object.fromEntries(METRICS.map((k) => [k, med(rs.map((r) => r.m[k]))]));
 		by[arm].n = rs.length; by[arm].pass = rs.filter((r) => r.verify === "pass").length;
 		by[arm].script = rs.filter((r) => (r.m.codemodeCalls ?? 0) > 0).length; by[arm].search = rs.filter((r) => (r.m.toolSearchCalls ?? 0) > 0).length;
-		console.log(`${arm.padEnd(11)} n=${rs.length} verify ${by[arm].pass}/${rs.length}  requests ${by[arm].requests}  cw ${Math.round(by[arm].cw)}  out ${Math.round(by[arm].output)}  wall ${by[arm].wallSeconds}s${arm === "P-codemode" ? `  script-tool used in ${by[arm].script}/${rs.length}` : ""}${arm === "P-deferred" ? `  tool_search used in ${by[arm].search}/${rs.length}` : ""}`);
+		console.log(`${arm.padEnd(11)} n=${rs.length} verify ${by[arm].pass}/${rs.length}  requests ${by[arm].requests}  cw ${Math.round(by[arm].cw)}  out ${Math.round(by[arm].output)}  wall ${by[arm].wallSeconds}s${arm === "P-codemode" || arm === "P-codemode-only" || arm === "K-program" ? `  script-tool used in ${by[arm].script}/${rs.length}` : ""}${arm === "P-deferred" ? `  tool_search used in ${by[arm].search}/${rs.length}` : ""}`);
 	}
 	const line = (label, a, b) => by[a] && by[b] && console.log(`  ${label.padEnd(36)} ${METRICS.map((k) => `${k} ${pct(by[a][k], by[b][k])}`).join("  ")}`);
 	line("lazy loading   P-direct vs P-deferred", "P-direct", "P-deferred");
 	line("script tool    P-codemode vs P-deferred", "P-codemode", "P-deferred");
 	line("CROSS-HARNESS  K-direct vs P-direct", "K-direct", "P-direct");
+	line("HEAD-TO-HEAD   K-program vs P-codemode-only", "K-program", "P-codemode-only");
+	line("script only    P-codemode-only vs P-codemode", "P-codemode-only", "P-codemode");
 }

@@ -24,8 +24,8 @@ import { fileURLToPath } from "node:url";
 const [arm, tools, volume, outDir, snapshot] = process.argv.slice(2);
 if (!arm || !tools || !volume || !outDir || !snapshot) { console.error("usage: leg-config.mjs <P-direct|P-deferred|P-codemode|K-direct> <tools> <volume> <outDir> <snapshot>"); process.exit(2); }
 const SERVER = join(dirname(fileURLToPath(import.meta.url)), "server.mjs");
-const EXPOSURE = { "P-direct": "direct", "P-deferred": "deferred", "P-codemode": "codemode" };
-if (!(arm in EXPOSURE) && arm !== "K-direct") { console.error(`unknown arm ${arm}`); process.exit(2); }
+const EXPOSURE = { "P-direct": "direct", "P-deferred": "deferred", "P-codemode": "codemode", "P-codemode-only": "codemode" };
+if (!(arm in EXPOSURE) && arm !== "K-direct" && arm !== "K-program") { console.error(`unknown arm ${arm}`); process.exit(2); }
 mkdirSync(outDir, { recursive: true });
 
 const server = {

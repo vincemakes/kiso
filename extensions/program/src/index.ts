@@ -39,7 +39,7 @@ export function createProgramExtension(limits: ProgramLimits = {}): KisoExtensio
 			return r.ok ? { content: r.output, isError: false } : { content: r.output, isError: true };
 		},
 	});
-	return { name: "program", tools: [program], systemPrompt: { append: PROMPT_LINE } };
+	return { name: "program", tools: [program as unknown as Tool], systemPrompt: { append: PROMPT_LINE } };
 }
 
 /**

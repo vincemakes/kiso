@@ -23,7 +23,7 @@ B="$(cd "$(dirname "$0")/.." && pwd)"; M="$B/mcp-ptc"
 mkdir -p "$MCP_ROUND_DIR"
 CFG=$(node -e 'const c=require(process.argv[1])[process.argv[2]];if(!c){process.exit(3)}console.log(c.tools+" "+c.volume+" "+c.task)' "$M/cells.json" "$CELL" 2>/dev/null) || { echo "unknown cell $CELL" >&2; exit 3; }
 set -- $CFG; TOOLS=$1; VOLUME=$2; TASK=$3
-case "$ARM" in K-direct) FAMILY=kiso ;; P-direct|P-deferred|P-codemode) FAMILY=pi ;; *) echo "unknown arm $ARM" >&2; exit 3 ;; esac
+case "$ARM" in K-direct|K-program) FAMILY=kiso ;; P-direct|P-deferred|P-codemode|P-codemode-only) FAMILY=pi ;; *) echo "unknown arm $ARM" >&2; exit 3 ;; esac
 LEG="$ARM-$CELL-$RUN"
 INST="$MCP_ROUND_DIR/inst-$CELL"
 if [ ! -d "$INST" ]; then
@@ -40,11 +40,18 @@ export KISO_LEG_DEADLINE_S=${KISO_LEG_DEADLINE_S:-900} KISO_LEG_MAX_REQUESTS=${K
 export BENCH_INSTANCE="$INST" BENCH_INSTANCE_ID="$CELL" BENCH_INSTANCE_SEED=mcp BENCH_OVERLAY="$OVERLAY"
 if [ "$FAMILY" = pi ]; then
 	: "${PI_BIN:?}"
-	REF_BIN="$PI_BIN" sh "$B/run-t6.sh" pi "$ARM-$RUN" || echo "run-leg: the runner exited non-zero; the leg's own files are the record" >&2
+	REFB="$PI_BIN"
+	if [ "$ARM" = P-codemode-only ]; then # the same reference runtime with ONLY the script tool (no shell, no file tools): a domain host's shape
+		REFB="$MCP_ROUND_DIR/shims/pi-codemode-only"; mkdir -p "$MCP_ROUND_DIR/shims"
+		printf '#!/bin/sh\nexec "%s" --tools codemode "$@"\n' "$PI_BIN" > "$REFB"; chmod +x "$REFB"
+	fi
+	REF_BIN="$REFB" sh "$B/run-t6.sh" pi "$ARM-$RUN" || echo "run-leg: the runner exited non-zero; the leg's own files are the record" >&2
 	W="$MCP_ROUND_DIR/pi-$CELL-$ARM-$RUN"
 else
 	: "${KISO_BIN_PATH:?}" "${KISO_VERSION:?}"
-	KISO_BIN="$KISO_BIN_PATH" KISO_VERSION="$KISO_VERSION" sh "$B/run-t6.sh" kiso "$ARM-$RUN" || echo "run-leg: the runner exited non-zero; the leg's own files are the record" >&2
+	KB="$KISO_BIN_PATH"; KV="$KISO_VERSION"; CAP=${BENCH_CAPTURE}
+	if [ "$ARM" = K-program ]; then KB="node $B/program/host.mjs"; KV=0.48.0-program; CAP=0; fi # kiso as a library, the program tool only
+	BENCH_CAPTURE=$CAP KISO_BIN="$KB" KISO_VERSION="$KV" sh "$B/run-t6.sh" kiso "$ARM-$RUN" || echo "run-leg: the runner exited non-zero; the leg's own files are the record" >&2
 	W="$MCP_ROUND_DIR/kiso-$CELL-$ARM-$RUN"
 fi
 V=$(node "$M/verify.mjs" "$TASK" "$SNAP" "$W/answer.txt" 2> "$W/verify.detail.json") || V=error

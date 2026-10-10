@@ -51,9 +51,10 @@ export interface ProgramResult {
 
 const DEFAULTS = { timeoutMs: 60_000, memoryBytes: 64 * 1024 * 1024, maxCalls: 200, maxOutputChars: 20_000 } as const;
 
-let wasm: Promise<WebAssembly.Module> | undefined;
-const wasmModule = (): Promise<WebAssembly.Module> =>
-	(wasm ??= WebAssembly.compile(readFileSync(createRequire(import.meta.url).resolve("quickjs-wasi/quickjs.wasm"))));
+type WasmModule = NonNullable<Parameters<typeof QuickJS.create>[0]>["wasm"];
+let wasm: Promise<WasmModule> | undefined;
+const wasmModule = (): Promise<WasmModule> =>
+	(wasm ??= (globalThis as unknown as { WebAssembly: { compile(b: Uint8Array): Promise<unknown> } }).WebAssembly.compile(readFileSync(createRequire(import.meta.url).resolve("quickjs-wasi/quickjs.wasm"))) as Promise<WasmModule>);
 
 /** Runs inside the VM, once, before the script. Nothing here touches the host except `__call`. */
 const PRELUDE = `
