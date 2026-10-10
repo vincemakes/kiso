@@ -110,7 +110,9 @@ describe("trusted footprints on a server with real concurrency", () => {
 		expect(known.lab.maxInflight).toBeGreaterThan(1);
 		const pendingKey = await exec(`const g = call("get", { k: "src" }); call("update_customer", { customer_id: g.k }); call("update_customer", { customer_id: "B" });`, { resolvers: { ...RESOLVERS, get: () => ({ reads: ["kv:src"] }) } });
 		expect(pendingKey.lab.lost).toBe(0);
-		expect(pendingKey.lab.maxInflight).toBe(1); // the pending key blocks everything behind it: get, then the update, then B
+		// while the update's KEY is unknown (the get has not answered) the update B behind it must not start; once the key is known they are disjoint and may overlap
+		const log = pendingKey.lab.log;
+		expect(log.findIndex((l) => l.startsWith('start update_customer {"customer_id":"B"}'))).toBeGreaterThan(log.findIndex((l) => l.startsWith('end get')));
 	});
 	it("the experiment has teeth: a host resolver that gets the ALIASING wrong is caught as lost updates (the trust is in the resolver)", async () => {
 		const wrong: Record<string, Resolver> = { update_customer: byId, update_by_email: (i) => ({ writes: [`email:${String(i.email)}`] }) }; // two names for one record, not unified

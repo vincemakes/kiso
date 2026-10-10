@@ -30,7 +30,8 @@ export class Lab {
 	async call(tool: string, a: Record<string, Json>): Promise<{ ok: boolean; value?: Json; error?: string }> {
 		this.calls++;
 		if (this.o.limit !== undefined && this.inflight >= this.o.limit) { this.refused++; return { ok: false, error: "rate_limited" }; }
-		this.inflight++; this.maxInflight = Math.max(this.maxInflight, this.inflight);
+		this.inflight++; this.maxInflight = Math.max(this.inflight, this.maxInflight);
+		this.log.push(`start ${tool} ${JSON.stringify(a)}`);
 		try {
 			await this.sleep(this.o.latencyMs);
 			const k = String(a.k ?? "");
@@ -58,7 +59,7 @@ export class Lab {
 				this.state.set(k, Number(a.v ?? 0)); return { ok: true, value: Number(a.v ?? 0) };
 			}
 			return { ok: false, error: `unknown tool ${tool}` };
-		} finally { this.inflight--; }
+		} finally { this.inflight--; this.log.push(`end ${tool} ${JSON.stringify(a)}`); }
 	}
 }
 
