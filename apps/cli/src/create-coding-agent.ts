@@ -171,15 +171,12 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	settingsLayers.project = projectCfg;
 	settingsLayers.modelFlag = modelFlag;
 	const secretEnvNames = secretEnvNamesOf(merged.models ?? {});
-	const builtIn = await builtInLayer(user, proj, input !== undefined && process.stdin.isTTY ? askUi(input) : undefined, secretEnvNames);
-	setExtensionLists(builtIn, user, proj, [...builtIn, ...user, ...proj]);
 
-	// merge round B — the config surface: user config + (trusted) project config,
-	// resolved with flags > env > project > user > default. The CLI never
-	// imports provider SDKs directly — the runtime's lazy provider
-	// resolution owns them (a config profile only ever NAMES an env var for
-	// its key; the key itself never sits in a config file).
-	setMergedConfig(merged);
+	// SA-F1: set BEFORE the built-in layer loads. The subagent extension reads
+	// it once, at load, to build the delegate schema and its executor's
+	// snapshot; assigned after, it read an empty config (no `acceptance` or
+	// `model` field, a configured check refused, `subagents.model` ignored,
+	// project-layout children in the legacy sessions folder).
 	// DT-1a: what a delegated task may NAME — the configured checks and the
 	// model profiles — handed to the (in-process) subagent extension through
 	// the environment. A model never supplies a command; it names a check.
@@ -196,6 +193,16 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		// 0.49.0 C1: the profile a child runs on when its task names none
 		...(merged.subagents?.model !== undefined ? { subagentsModel: merged.subagents.model } : {}),
 	});
+
+	const builtIn = await builtInLayer(user, proj, input !== undefined && process.stdin.isTTY ? askUi(input) : undefined, secretEnvNames);
+	setExtensionLists(builtIn, user, proj, [...builtIn, ...user, ...proj]);
+
+	// merge round B — the config surface: user config + (trusted) project config,
+	// resolved with flags > env > project > user > default. The CLI never
+	// imports provider SDKs directly — the runtime's lazy provider
+	// resolution owns them (a config profile only ever NAMES an env var for
+	// its key; the key itself never sits in a config file).
+	setMergedConfig(merged);
 	setConfigModels(merged.models ?? {});
 	// CW-1 batch 2: the windows endpoints stated by refusing — read before the
 	// first window is asked for (the unknown-window notice below).
