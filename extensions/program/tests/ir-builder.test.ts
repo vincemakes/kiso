@@ -82,3 +82,55 @@ describe("builder: code -> IR", () => {
 		expect(JSON.stringify(p.output)).toContain('"get"');
 	});
 });
+
+describe("builder: the JavaScript habits the model actually has (A2, from 148 recorded plans)", () => {
+	const plan = async (code: string) => { const r = await buildPlan(code, catalog); if (!r.ok) throw new Error(r.error); return r.program; };
+	const fail = async (code: string) => { const r = await buildPlan(code, catalog); expect(r.ok).toBe(false); return (r as { error: string }).error; };
+
+	it('"gen-" + item and a template literal build a concat, exactly like the string they look like', async () => {
+		const p = await plan('const a = call("get", { k: "x" }); const b = call("ping", { x: "id-" + a.name + "-" + `${a.id}!` }); output({ b });');
+		expect(p.nodes[1]).toMatchObject({ args: { obj: { x: { op: "concat", parts: [{ lit: "id-" }, { ref: "c1", path: ["name"] }, { lit: "-" }, { ref: "c1", path: ["id"] }, { lit: "!" }] } } } });
+		const r = await run(p, { mode: "sequential", call: async (t, x) => (t === "get" ? { ok: true, value: { name: "N", id: 7 } } : { ok: true, value: x }), effects: () => ({ kind: "unknown" }) });
+		expect(r.ok).toBe(true);
+		expect(r.output).toEqual({ b: { x: "id-N-7!" } }); // the text is what the JavaScript looks like it says
+	});
+
+	it("inside map, the item works in a key: call_id: 'gen-' + s", async () => {
+		const p = await plan('const out = map(["a", "b"], (s) => call("ping", { x: "gen-" + s })); output(out);');
+		const m = p.nodes[0]! as { body: { args: { obj: { x: { op: string } } } }[] };
+		expect(m.body[0]!.args.obj.x.op).toBe("concat");
+	});
+
+	it("a handle plus a bare number is refused, naming add() and concat(): the same text could mean either", async () => {
+		expect(await fail('const a = call("get", { k: "x" }); output(a.n + 1);')).toMatch(/add\(.*concat\(/);
+		expect(await fail('const a = call("get", { k: "x" }); output(a.n * 2);')).toMatch(/number|add\(/);
+	});
+
+	it("a handle in a condition is refused, because it would always be true", async () => {
+		for (const code of [
+			'const a = call("get", { k: "x" }); if (a.ok) { call("incr", { k: "n" }); }',
+			'const a = call("get", { k: "x" }); output(a.ok ? 1 : 2);',
+			'const a = call("get", { k: "x" }); output(!a.ok);',
+			'const a = call("get", { k: "x" }); output(a.x && a.y);',
+			'const a = call("get", { k: "x" }); output(a.x || a.y);',
+		]) expect(await fail(code)).toMatch(/not\(|ifElse|and\(|when/);
+		// strings and comments that merely contain those characters are fine
+		await plan('// is it ok? && ||\nconst a = call("get", { k: "x?y" }); output(concat("!! ", a));');
+	});
+
+	it("handle.map / .filter / .join read as the model writes them", async () => {
+		const p = await plan('const xs = call("get", { k: "list" }); const ys = xs.items.map((i) => call("ping", { x: i.id })); const z = xs.items.filter((i) => gt(i.n, 1)); output({ ys, n: len(z), j: xs.tags.join(",") });');
+		expect(p.nodes.map((n) => n.kind)).toEqual(["call", "map", "let"]);
+		expect(p.nodes[1]).toMatchObject({ kind: "map", over: { ref: "c1", path: ["items"] } });
+	});
+
+	it("describeTool with a plan value says it needs a literal name", async () => {
+		expect(await fail('const names = ["get", "incr"]; output(map(names, (n) => describeTool(n)));')).toMatch(/literal tool name/);
+	});
+
+	it("the catalog does not list the plan tool or the program tool themselves", async () => {
+		const r = await buildPlan('output(ALL_TOOLS.map((t) => t.name));', [...catalog, { name: "plan", description: "x".repeat(2000), inputSchema: {} }, { name: "program", description: "y", inputSchema: {} }]);
+		expect(r.ok).toBe(true);
+		expect(JSON.stringify((r as { program: { output: unknown } }).program.output)).not.toMatch(/"plan"|"program"/);
+	});
+});

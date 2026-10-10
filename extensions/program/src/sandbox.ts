@@ -17,6 +17,7 @@
  * A failed script reports the calls that had already completed and says they
  * are NOT undone (tool effects are real) — the model must not guess.
  */
+import { discoverable } from "./catalog.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -129,7 +130,7 @@ export async function runProgram(code: string, host: ProgramHost, limits: Progra
 			vm.setProp(vm.global, "__call", fn);
 		}
 		{
-			using cat = vm.newString(JSON.stringify(host.catalog().map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))));
+			using cat = vm.newString(JSON.stringify(discoverable(host.catalog()).map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))));
 			vm.setProp(vm.global, "__catalog", cat);
 		}
 		vm.evalCode(PRELUDE, "prelude.js").dispose();

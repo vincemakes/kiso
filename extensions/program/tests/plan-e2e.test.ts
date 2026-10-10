@@ -60,7 +60,7 @@ describe("plan tool, end to end", () => {
 	});
 
 	it("a plan with a mistake runs nothing and says what is wrong", async () => {
-		const { events, log } = await runPlan(`const a = call("make_widget", { colour: "red" }); output(!a.id ? 1 : nope);`);
+		const { events, log } = await runPlan(`const a = call("make_widget", { colour: "red" }); output(a.id + nope);`);
 		expect(log).toEqual([]);
 		const r = (events.filter((e) => e.type === "tool_result") as unknown as { content: string; isError: boolean }[])[0]!;
 		expect(r.isError).toBe(true);
