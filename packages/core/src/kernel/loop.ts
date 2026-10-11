@@ -501,6 +501,8 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				const v = await decideCall(call, table, hooks, ctx, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicy, nextDecisionId, pushExec, undefined);
 				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
 				if (v.action === "ask") return { content: "a child call that needs a human decision is not supported inside a program yet", isError: true, errorKind: "precondition" };
+				// the COMMIT GATE applies to a child exactly as to a top-level call: a precommit-safe parent may start early, its effectful child may not
+				if (child?.effects?.precommitSafe !== true) { await turnSettled; if (!committed) return { content: "the turn did not commit; a child call that needs a committed turn was not started", isError: true, errorKind: "precondition" }; }
 				await slot.wait;
 				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, parent.executionId);
 			} catch (err) {
