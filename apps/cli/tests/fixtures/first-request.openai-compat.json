@@ -38,7 +38,7 @@
 						},
 						"limit": {
 							"type": "number",
-							"description": "Maximum number of lines to read (default: to the end of the file)"
+							"description": "Maximum lines; omit for the default bounded window"
 						}
 					},
 					"required": [

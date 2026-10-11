@@ -132,6 +132,15 @@ describe("read_file scoped reads", () => {
 		expect(result.content).not.toContain("more lines");
 	});
 
+	// The schema is the contract the model reads: it said "default: to the
+	// end of the file" while the tool reads the bounded window above (red:
+	// the old description).
+	it("the limit's schema description names the bounded default, never the end of the file", () => {
+		const limit = (readFileTool({ workspaceRoot: tempRoot() }).parameters as { properties: { limit: { description: string } } }).properties.limit;
+		expect(limit.description).not.toMatch(/end of the file/i);
+		expect(limit.description).toMatch(/default bounded window/i);
+	});
+
 	it("offset alone and limit alone work (tail and head forms)", async () => {
 		const root = tempRoot();
 		writeLines(root, "big.txt", 250);
