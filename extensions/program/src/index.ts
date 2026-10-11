@@ -47,7 +47,7 @@ export function createProgramExtension(limits: ProgramLimits = {}, opts: { bindi
 				return { content: "program: child tool calls are not available in this execution (the runtime offers no invoke)", isError: true, errorKind: "precondition" };
 			}
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
-			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
+			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope, input as Record<string, unknown>);
 			try {
 				const guarded = guardedInvoke(ctx, opts.binding, limiter);
 				const r = await runProgram(input.code, { invoke: guarded, catalog: ctx.catalog, signal: ctx.signal }, limits);

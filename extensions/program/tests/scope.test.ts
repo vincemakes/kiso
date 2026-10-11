@@ -113,11 +113,29 @@ describe("scope grant origin (owner's ruling: requested scope is not granted sco
 		const r = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret")], "approve");
 		expect(r.effects).toEqual(["secret:1"]);
 	});
-	it("a named trusted policy's allow of the program call is a grant; an unnamed one is not", async () => {
-		const trusted = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), { name: "ops-policy", approvals: [{ decide: (c: { name: string }) => (c.name === "program" ? { action: "allow" as const } : { action: "abstain" as const }) }] } as never], "none", createProgramExtension({}, { scope: { trustedPolicies: ["ops-policy"] } }));
-		expect(trusted.effects).toEqual(["secret:1"]);
-		const untrusted = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), allowsProgram()], "none", createProgramExtension({}, { scope: { trustedPolicies: ["ops-policy"] } }));
-		expect(untrusted.effects).toEqual([]);
+	const careless = (): KisoExtension => ({ name: "trusted-workflow", approvals: [{ decide: (c: { name: string }) => (c.name === "program" ? { action: "allow" as const } : { action: "abstain" as const }) }] } as never); // a policy a host might trust, that never looks at the scope
+	it("a policy that merely ALLOWS the program call is never a grant, however trusted it is (it did not review the scope)", async () => {
+		const r = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), careless()], "none", createProgramExtension({}, { scope: true }));
+		expect(r.effects).toEqual([]);
+		expect(r.res).toMatch(/refused: .*needs a human decision/);
+	});
+	it("the host's grant() judges the ACTUAL scope: accepted scope -> grant; a broader one -> none; a throwing judge -> none; it sees the validated scope and the call input", async () => {
+		const seen: unknown[] = [];
+		const judge = (scope: readonly { tool: string }[], input: Record<string, unknown>) => { seen.push({ scope, input }); return scope.every((e) => e.tool === "secret"); };
+		const yes = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret", "other"), careless()], "none", createProgramExtension({}, { scope: { grant: judge } }));
+		expect(yes.effects).toEqual(["secret:1"]);
+		expect(JSON.stringify(seen[0])).toContain('"tool":"secret"');
+		expect(JSON.stringify(seen[0])).toContain("code");
+		const broad = await runWith({ code: ONE, scope: [{ tool: "secret" }, { tool: "other" }] }, [asksFor("secret", "other"), careless()], "none", createProgramExtension({}, { scope: { grant: judge } }));
+		expect(broad.effects).toEqual([]); // the host refused to grant this scope; the in-request child falls back to its own policy (an ask, refused)
+		const boom = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret"), careless()], "none", createProgramExtension({}, { scope: { grant: () => { throw new Error("judge down"); } } }));
+		expect(boom.effects).toEqual([]);
+	});
+	it("safety does not depend on event timing: with no way to observe the approval, a human-approved program is NOT granted (it fails closed; only liveness is lost)", async () => {
+		const front = createProgramExtension({}, { scope: true }); delete (front as { hooks?: unknown }).hooks; // the observer is absent: the human's decision cannot be seen
+		const r = await runWith({ code: ONE, scope: [{ tool: "secret" }] }, [asksFor("secret")], "approve", front);
+		expect(r.effects).toEqual([]);
+		expect(r.res).toMatch(/refused: .*needs a human decision/);
 	});
 	it("outside the REQUESTED scope is still denied even with no grant (the scope only ever limits)", async () => {
 		const r = await runWith({ code: `try { await tools.other({ who: "x" }); return "ran"; } catch (e) { return "refused: " + e.message.slice(0, 120); }`, scope: [{ tool: "secret" }] }, [asksFor("other"), allowsProgram()], "none");

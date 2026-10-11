@@ -1,10 +1,10 @@
 /**
  * Scope-shaped approval (research prototype, extension level - no kernel change).
  *
- * REQUESTED vs GRANTED (owner's ruling, 2026-10-10): the scope a model writes is only a REQUEST. It limits the program (a child outside it is
- * always denied) but it grants nothing by itself. A grant exists only when the program call was approved by a HUMAN (a `permission_decided`
- * without `decidedBy`) or by a policy the host named in `trustedPolicies`. A call another policy simply allowed (a blanket mode, say) is not a
- * grant: its in-scope children are decided by their own policies as if no scope had been declared (an `ask` is refused). Grants are keyed by the
+ * REQUESTED vs GRANTED (owner's ruling, 2026-10-10/11): the scope a model writes is only a REQUEST. It limits the program (a child outside it is
+ * always denied) but it grants nothing by itself. A grant exists only when (a) the program call was approved by a HUMAN (a `permission_decided`
+ * without `decidedBy`, for the scope the human was shown), or (b) the host's own `grant(scope, input)` function approved THAT scope. A call some policy
+ * simply allowed (a blanket mode, or a policy the host trusts but which never looked at the scope) is not a grant: its in-scope children are decided by their own policies as if no scope had been declared (an `ask` is refused). Grants are keyed by the
  * parent call id and removed when the program ends; they are observed from the event stream, which delivers a decision before the call's `started`.
  *
  * The program (or plan) call may carry `scope`: the tools it intends to use, optional argument constraints and
@@ -55,7 +55,13 @@ export const SCOPE_PARAMETER = {
 } as const;
 export const SCOPE_DESCRIPTION = "Declare the tools you will call in `scope` when they need approval: the user approves once, for exactly that scope.";
 
-export interface ScopeOptions { /** names of extensions whose allow of the program call counts as a grant (a trusted host policy) */ readonly trustedPolicies?: readonly string[] }
+export interface ScopeOptions {
+	/**
+	 * The host's own judgement of an actual scope (sync, pure). Returning true GRANTS that scope for that call; anything else, or a throw, grants nothing.
+	 * There is no grant by name: a policy that merely allows the program call has not reviewed the scope, however much the host trusts it.
+	 */
+	readonly grant?: (scope: readonly ScopeEntry[], input: Readonly<Record<string, unknown>>) => boolean;
+}
 
 /** sha256 of the canonical JSON of a scope: what the human saw is compared with what the program then runs under. */
 export function scopeDigest(entries: readonly ScopeEntry[]): string {
@@ -72,16 +78,15 @@ export class ScopeBook {
 	readonly #seenDigest = new Map<string, string>(); // what the human was shown (from permission_requested)
 	constructor(readonly opts: ScopeOptions = {}) {}
 
-	/** The grant, if any, for a parent call: human, or a named trusted policy, and the scope is the one the human saw. */
-	#grantFor(callId: string, entries: readonly ScopeEntry[]): boolean {
+	/** The grant, if any, for a parent call: the host judged this scope, or a human approved it and the scope is the one the human saw. Fails closed. */
+	#grantFor(callId: string, entries: readonly ScopeEntry[], input: Readonly<Record<string, unknown>>): boolean {
+		if (this.opts.grant !== undefined) { try { if (this.opts.grant(entries, input) === true) return true; } catch { /* a judge that fails grants nothing */ } }
 		const d = this.#decisions.get(callId);
-		if (d === undefined || !d.approved) return false;
-		const origin = d.decidedBy === undefined ? "human" : (this.opts.trustedPolicies ?? []).includes(d.decidedBy) ? "trusted-policy" : undefined;
-		if (origin === undefined) return false;
+		if (d === undefined || !d.approved || d.decidedBy !== undefined) return false; // only a HUMAN decision (no decidedBy) counts here
 		const shown = this.#seenDigest.get(callId);
-		return shown === undefined || shown === scopeDigest(entries);
+		return shown !== undefined && shown === scopeDigest(entries); // the human must have been shown exactly this scope
 	}
-	register(callId: string, entries: readonly ScopeEntry[]): void { this.#scopes.set(callId, { entries, used: entries.map(() => 0), granted: this.#grantFor(callId, entries) }); }
+	register(callId: string, entries: readonly ScopeEntry[], input: Readonly<Record<string, unknown>> = {}): void { this.#scopes.set(callId, { entries, used: entries.map(() => 0), granted: this.#grantFor(callId, entries, input) }); }
 	release(callId: string): void { this.#scopes.delete(callId); this.#pending.delete(callId); this.#decisions.delete(callId); this.#seenDigest.delete(callId); }
 	/** Whether a registered scope is a grant (for tests and audit). */
 	isGranted(callId: string): boolean { return this.#scopes.get(callId)?.granted === true; }

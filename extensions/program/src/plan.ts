@@ -54,7 +54,7 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			const built = await buildPlan(input.code, ctx.catalog());
 			if (!built.ok) return { content: built.error, isError: true, errorKind: "precondition" };
 			let scope; try { scope = opts.scope ? parseScope(input.scope) : undefined; } catch (e) { return { content: (e as Error).message, isError: true, errorKind: "invalid_input" }; }
-			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope);
+			if (scope !== undefined && ctx.callId !== undefined) book.register(ctx.callId, scope, input as Record<string, unknown>);
 			const invoke = guardedInvoke(ctx, opts.binding, limiter);
 			let unverifiedCount = 0;
 			try {
