@@ -42,10 +42,13 @@ export interface BindingSource {
 	readonly recheck?: "after-failure" | "every-call";
 }
 
-export type GuardedInvoke = NonNullable<ToolContext["invoke"]> & { unverified(): number };
+export type GuardedInvoke = NonNullable<ToolContext["invoke"]> & { unverified(): number; exempted(): Record<string, number> };
 
 /** The line a program/plan result carries when calls ran without a verified binding (audit mode). */
 export const unverifiedNote = (n: number): string => `Note: ${n} tool call${n === 1 ? "" : "s"} ran without a verified tool binding (the server was not asked, or could not answer); the contract those calls ran under is not confirmed.`;
+
+/** The line a result carries when calls ran under the host's `allowUnbound` exemption: enforce covers only the tools that are not exempt. */
+export const exemptedNote = (e: Record<string, number>): string => { const n = Object.values(e).reduce((a, b) => a + b, 0); return `Note: ${n} tool call${n === 1 ? "" : "s"} ran under the host's exemption from binding (allowUnbound): ${Object.entries(e).map(([t, c]) => (c > 1 ? `${t} x${c}` : t)).join(", ")}; those tools' contracts were not checked.`; };
 
 /**
  * `ctx.invoke` with a binding check in front. The program was admitted against the request's tool table (each catalog entry
@@ -57,6 +60,7 @@ export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefine
 	const raw = ctx.invoke!;
 	const invoke: NonNullable<ToolContext["invoke"]> = (name, input) => limiter.run(name, () => raw(name, input));
 	let unverified = 0;
+	const exempt: Record<string, number> = {};
 	const out = (async (name, input): Promise<ToolResult> => {
 		if (source === undefined || ctx.catalog === undefined) return invoke(name, input);
 		const enforce = source.mode === "enforce";
@@ -64,7 +68,7 @@ export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefine
 		const admitted = ctx.catalog().find((t) => t.name === name)?.digest;
 		if (admitted === undefined) {
 			if (enforce && !(source.allowUnbound ?? []).includes(name)) return refuse(`${name} has no binding digest, so its contract cannot be checked: enforce mode only runs tools bound to a contract; nothing was called`);
-			unverified += 1;
+			if (enforce) exempt[name] = (exempt[name] ?? 0) + 1; else unverified += 1; // an exemption is recorded under its own name, not mixed into 'unverified'
 			return invoke(name, input);
 		}
 		const every = enforce || source.recheck === "every-call";
@@ -85,6 +89,7 @@ export function guardedInvoke(ctx: ToolContext, source: BindingSource | undefine
 	}) as GuardedInvoke;
 	const verdicts = new Map<string, Promise<Verdict>>();
 	out.unverified = () => unverified;
+	out.exempted = () => ({ ...exempt });
 	return out;
 }
 

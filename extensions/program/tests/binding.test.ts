@@ -116,6 +116,11 @@ describe("binding modes", () => {
 		const allowed = await go({ liveDigest: async () => "sha256:whatever", mode: "enforce", allowUnbound: ["x"] }, `await tools.x({}); return "ran";`, false);
 		expect(allowed.effects).toEqual(["x"]);
 	});
+	it("enforce: a call let through by the host's allowUnbound exemption is NAMED in the result (the guarantee covers only the non-exempt tools)", async () => {
+		const r = await go({ liveDigest: async () => "sha256:whatever", mode: "enforce", allowUnbound: ["x"] }, `await tools.x({}); await tools.x({}); return "ran";`, false);
+		expect(r.effects).toEqual(["x", "x"]);
+		expect(r.text).toMatch(/2 tool calls? ran under the host's exemption from binding \(allowUnbound\): x/);
+	});
 	it("enforce: a contract that changed between two calls stops the second one", async () => {
 		let live = "sha256:admitted-x"; let n = 0;
 		const r = await go({ liveDigest: async () => { n += 1; if (n > 1) live = "sha256:CHANGED"; return live; }, mode: "enforce" }, CALL3);

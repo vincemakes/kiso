@@ -12,7 +12,7 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { createHash } from "node:crypto";
-import { ChildLimiter, guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
+import { ChildLimiter, exemptedNote, guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
 import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { runProgram, type ProgramLimits } from "./sandbox.js";
 
@@ -51,7 +51,8 @@ export function createProgramExtension(limits: ProgramLimits = {}, opts: { bindi
 			try {
 				const guarded = guardedInvoke(ctx, opts.binding, limiter);
 				const r = await runProgram(input.code, { invoke: guarded, catalog: ctx.catalog, signal: ctx.signal }, limits);
-				const content = guarded.unverified() > 0 ? `${r.output}\n${unverifiedNote(guarded.unverified())}` : r.output;
+				const notes = [guarded.unverified() > 0 ? unverifiedNote(guarded.unverified()) : "", Object.keys(guarded.exempted()).length > 0 ? exemptedNote(guarded.exempted()) : ""].filter(Boolean);
+				const content = notes.length > 0 ? `${r.output}\n${notes.join("\n")}` : r.output;
 				// a failed script may have had effects: a plain failure, so the kernel adds the honest note
 				return r.ok ? { content, isError: false } : { content, isError: true };
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }

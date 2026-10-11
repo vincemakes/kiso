@@ -7,7 +7,7 @@
  */
 import { defineTool, type KisoExtension, type Tool, type ToolContext, type ToolResult } from "@vincemakes/kiso-core";
 import { run } from "./ir/engine.js";
-import { ChildLimiter, guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
+import { ChildLimiter, exemptedNote, guardedInvoke, unverifiedNote, type BindingSource } from "./binding.js";
 import { parseScope, ScopeBook, SCOPE_DESCRIPTION, SCOPE_PARAMETER, type ScopeOptions } from "./scope.js";
 import { buildPlan } from "./ir/builder.js";
 import type { CallResult, Effect, Json } from "./ir/types.js";
@@ -80,6 +80,7 @@ export function createPlanExtension(opts: PlanOptions = {}): KisoExtension {
 			if (!r.ok) lines.push("Calls that succeeded were applied and are not undone.");
 			unverifiedCount = invoke.unverified();
 			if (unverifiedCount > 0) lines.push(unverifiedNote(unverifiedCount));
+			if (Object.keys(invoke.exempted()).length > 0) lines.push(exemptedNote(invoke.exempted()));
 			return { content: lines.join("\n"), isError: !r.ok };
 			} finally { if (ctx.callId !== undefined) book.release(ctx.callId); }
 		},
