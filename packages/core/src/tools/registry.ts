@@ -30,6 +30,9 @@ export interface ToolTable {
 	get(name: string): Tool<any> | undefined;
 }
 
+/** The schema a request validates against is frozen: nothing that can read it (a catalog entry, a spec) can edit this turn's contract. */
+const deepFreeze = <T>(v: T): T => { if (v !== null && typeof v === "object") { for (const x of Object.values(v)) deepFreeze(x); Object.freeze(v); } return v; };
+
 export class ToolRegistry {
 	readonly #tools = new Map<string, Tool>();
 	readonly #live: { readonly source: () => readonly Tool[]; readonly owner: string }[] = [];
@@ -67,7 +70,7 @@ export class ToolRegistry {
 				if (prior.original === t) return; // the same object reached twice — one tool
 				throw new Error(`tool table: '${t.name}' is published by two sources (${prior.owner}, ${owner})`);
 			}
-			const copy = { ...t, parameters: structuredClone(t.parameters), ...(t.effects === undefined ? {} : { effects: Object.freeze(structuredClone(t.effects)) }) };
+			const copy = { ...t, parameters: deepFreeze(structuredClone(t.parameters)), ...(t.effects === undefined ? {} : { effects: Object.freeze(structuredClone(t.effects)) }) };
 			captured.set(t.name, { tool: Object.freeze(copy) as Tool, original: t, owner });
 		};
 		for (const t of this.#tools.values()) take(t, "registered");
