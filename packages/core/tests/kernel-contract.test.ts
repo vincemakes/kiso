@@ -11,6 +11,7 @@ import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
 import type { Adapter, StreamOptions } from "../src/protocol/adapter.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "do the thing" };
 
@@ -40,7 +41,7 @@ async function run(
 		adapter: createFauxProvider(script),
 		model: "faux",
 		registry,
-		messages: [USER],
+		log: seedLog([USER]),
 		...opts,
 	})) {
 		events.push(ev);
@@ -283,7 +284,7 @@ describe("loop: stream options passthrough", () => {
 			adapter: spyAdapter,
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			systemPrompt: "you are kiso",
 		})) {
 			events.push(ev);

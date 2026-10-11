@@ -19,6 +19,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "hi" };
 
@@ -56,7 +57,7 @@ async function run(
 	extra: Partial<Parameters<typeof loop>[0]> = {},
 ): Promise<Event[]> {
 	const events: Event[] = [];
-	for await (const ev of loop({ adapter: createFauxProvider(script), model: "faux", registry, messages: [USER], ...extra })) {
+	for await (const ev of loop({ adapter: createFauxProvider(script), model: "faux", registry, log: seedLog([USER]), ...extra })) {
 		events.push(ev);
 	}
 	return events;
@@ -156,7 +157,7 @@ describe("EC-1 (was 0.1.26 ④) — a commit-required call starts only AFTER the
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 		})) {
 			events.push(ev);
 		}

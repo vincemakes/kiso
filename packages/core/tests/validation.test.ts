@@ -10,6 +10,7 @@ import { loop } from "../src/kernel/loop.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
+import { seedLog } from "./seed.js";
 
 describe("JSON Schema validation at the execution gate", () => {
 	it("rejects arguments that fail the schema — handler never runs", async () => {
@@ -44,7 +45,7 @@ describe("JSON Schema validation at the execution gate", () => {
 			]),
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "add" }],
+			log: seedLog([{ role: "user", content: "add" }]),
 		})) {
 			events.push(ev);
 		}
@@ -81,7 +82,7 @@ describe("JSON Schema validation at the execution gate", () => {
 			]),
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "add" }],
+			log: seedLog([{ role: "user", content: "add" }]),
 		})) {
 			events.push(ev);
 		}
@@ -115,7 +116,7 @@ describe("JSON Schema validation at the execution gate", () => {
 			]),
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "add" }],
+			log: seedLog([{ role: "user", content: "add" }]),
 		})) {
 			events.push(ev);
 		}

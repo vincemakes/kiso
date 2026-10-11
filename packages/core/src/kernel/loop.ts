@@ -54,7 +54,7 @@ import { validateArgs } from "../tools/validate.js";
 import type { HookHost, ToolCallPayload } from "./hooks.js";
 import { NoOpHooks } from "./hooks.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
-import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, END_TURN, projectMessages } from "./project.js";
+import { MICROCOMPACTABLE, DO_NOT_COMPACT, END_TURN, projectMessages } from "./project.js";
 import type { ToolTable } from "../tools/registry.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
@@ -91,11 +91,9 @@ export interface LoopConfig {
 	 *  verbatim; absent = provider defaults (the byte anchor). */
 	readonly reasoning?: { readonly thinking?: "adaptive" | "enabled" | "disabled"; readonly effort?: string };
 	/**
-	 * Seed history. When a `log` is provided, the log IS the truth and this
-	 * is only used if the log is empty. See ADR-0002 / kernel/project.ts.
+	 * The run's event log - the single truth (ADR-0002). Pass the session's log to make this run durable. Prior history is the log's: a caller that
+	 * has messages encodes them first (`seedLog` in @vincemakes/kiso-runtime); the kernel only projects messages from the log, it does not encode them.
 	 */
-	readonly messages?: readonly Message[];
-	/** The run's event log. Pass the session's log to make this run durable. */
 	readonly log?: EventLog;
 	/**
 	 * ADR-0055 (A1b): the COMPACTION POINT — called before every request with
@@ -205,12 +203,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// NEXT request.
 	let table: ToolTable = config.registry.snapshot();
 
-	// Seed: a fresh log encodes the seed history as events so the projection
-	// (and any later replay) contains it. A non-empty log (session resume)
-	// is never re-seeded — the log already holds everything.
-	if (log.all.length === 0) {
-		for (const ev of messagesToEvents(config.messages ?? [])) log.append(ev);
-	}
+	// Prior history is the log's (a session's, or one seeded by the caller with `seedLog`): the kernel never encodes messages into it.
 
 	const derive = (): readonly Message[] => projectMessages(log.all);
 

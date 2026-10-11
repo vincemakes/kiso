@@ -9,6 +9,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loop, ToolRegistry, type Event, type Message } from "@vincemakes/kiso-core";
 import { createOpenAIResponsesProvider } from "../src/index.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 let server: Server;
 let port = 0;
@@ -35,7 +36,7 @@ afterEach(async () => {
 async function replay(history: Message[]): Promise<string> {
 	const adapter = createOpenAIResponsesProvider({ apiKey: "rig", baseUrl: `http://127.0.0.1:${port}/v1` });
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter, model: "gpt-x", registry: new ToolRegistry(), messages: history, maxRetries: 0 })) out.push(ev);
+	for await (const ev of loop({ adapter, model: "gpt-x", registry: new ToolRegistry(), log: seedLog(history), maxRetries: 0 })) out.push(ev);
 	const items = bodies[0]!["input"] as { type: string; arguments?: string }[];
 	return items.find((i) => i.type === "function_call")!.arguments!;
 }

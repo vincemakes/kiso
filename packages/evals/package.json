@@ -24,6 +24,7 @@
 		"@vincemakes/kiso-core": "0.49.0"
 	},
 	"devDependencies": {
+		"@vincemakes/kiso-runtime": "0.49.0",
 		"@anthropic-ai/sdk": "^0.115.0",
 		"@vincemakes/kiso-provider-anthropic": "0.49.0",
 		"@vincemakes/kiso-provider-openai": "0.49.0",

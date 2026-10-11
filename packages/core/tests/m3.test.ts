@@ -21,6 +21,7 @@ import { loop } from "../src/kernel/loop.js";
 // zero-behavior proof that the move changed no verdict.
 import { analyzeDelivery } from "@vincemakes/kiso-evals";
 import { FIXTURES } from "@vincemakes/kiso-evals";
+import { seedLog } from "./seed.js";
 
 function toolMsg(callId: string, content: string, isError = false): Message {
 	return { role: "tool", callId, content, isError };
@@ -69,7 +70,7 @@ describe("loop auto-compaction (ADR-0044: retired)", () => {
 			adapter: createFauxProvider(script),
 			model: "faux",
 			registry,
-			messages: [...history, userMsg("do it")],
+			log: seedLog([...history, userMsg("do it")]),
 		})) {
 			events.push(ev);
 		}
@@ -126,7 +127,7 @@ describe("fixture delivery asserts on the real loop", () => {
 			adapter: createFauxProvider(fixture.script),
 			model: "faux",
 			registry: new ToolRegistry(),
-			messages: [{ role: "user", content: "write a report" }],
+			log: seedLog([{ role: "user", content: "write a report" }]),
 		})) {
 			events.push(ev);
 		}

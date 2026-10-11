@@ -48,6 +48,7 @@ import {
 	type AdapterEvent,
 	type Event,
 } from "@vincemakes/kiso-core";
+import { seedLog } from "../src/seed.js";
 
 const BASE_LOG = fileURLToPath(new URL("./fixtures/sessions/gen-f-0120-faux.jsonl", import.meta.url));
 
@@ -168,8 +169,7 @@ async function replay(base: readonly Event[], registry: ToolRegistry, gapMs = 0)
 		adapter: scriptedAdapter(turnsOf(base), gapMs),
 		model: "faux",
 		registry,
-		log,
-		messages: [{ role: "user", content: user !== undefined && user.type === "user_input" ? user.content : "" }],
+		log: seedLog([{ role: "user", content: user !== undefined && user.type === "user_input" ? user.content : "" }], log),
 		approvalPolicy: { decide: async () => ({ action: "allow", decidedBy: "mode:default" }) },
 	})) {
 		// the durable log is the subject; the yielded stream is not

@@ -64,3 +64,6 @@ export { canonicalizeUsage } from "./usage/canonical.js";
 // policy, not a kernel primitive — it moved here unchanged from the core
 // package, which never called it.
 export { estimateTokens } from "./estimate-tokens.js";
+// Messages -> events moved here from the core (the kernel takes an EventLog and projects messages from it; it does not encode them): the one encoder
+// and `seedLog`, for a direct caller of `loop` that has prior messages. The runtime's own sessions pass their durable log and do not need it.
+export { messagesToEvents, seedLog } from "./seed.js";

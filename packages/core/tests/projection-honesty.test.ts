@@ -10,7 +10,8 @@
 
 import { describe, expect, it } from "vitest";
 import type { Message } from "../src/protocol/messages.js";
-import { EventLog, messagesToEvents, projectMessages } from "../src/index.js";
+import { EventLog, projectMessages } from "../src/index.js";
+import { messagesToEvents } from "@vincemakes/kiso-runtime";
 
 describe("D1: tool results carry full content blocks and tags", () => {
 	it("a tool message with image blocks round-trips", () => {

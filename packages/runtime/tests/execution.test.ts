@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 import { EventLog, loop, defineTool, ToolRegistry, type Adapter, type AbortSignalLike, type Event, type TerminalEvent, type Message, type Tool } from "@vincemakes/kiso-core";
 import { executionForCallId, executionLedger } from "../src/ledger.js";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { seedLog } from "../src/seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -46,8 +47,7 @@ async function runWithLog(
 		adapter: createFauxProvider(script),
 		model: "faux",
 		registry,
-		log,
-		messages: [USER],
+		log: seedLog([USER], log),
 		...opts,
 	})) {
 		events.push(ev);
@@ -252,7 +252,7 @@ describe("abort boundaries (Area 4)", () => {
 			adapter: flaky,
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			maxRetries: 5,
 			signal: ac.signal,
 		});
@@ -283,8 +283,7 @@ describe("abort boundaries (Area 4)", () => {
 			]),
 			model: "faux",
 			registry,
-			log,
-			messages: [USER],
+			log: seedLog([USER], log),
 			signal: ac.signal,
 			resolveApproval,
 			hooks: { onPreTool: async () => ({ action: "defer" as const }) },
@@ -349,7 +348,7 @@ describe("abort boundaries (Area 4)", () => {
 			]),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			signal: ac.signal,
 			// The kernel sees the composed chain (the runtime's composition) —
 			// here a single slow policy deciding per call.
@@ -397,7 +396,7 @@ describe("abort boundaries (Area 4)", () => {
 			adapter: canceling,
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			signal: ac.signal,
 		});
 		setTimeout(() => ac.abort(), 20);
@@ -425,8 +424,7 @@ describe("defer is a real pause (regression)", () => {
 			]),
 			model: "faux",
 			registry,
-			log,
-			messages: [USER],
+			log: seedLog([USER], log),
 			resolveApproval,
 			hooks: { onPreTool: async () => ({ action: "defer" as const }) },
 		})) {

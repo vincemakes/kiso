@@ -20,6 +20,7 @@ import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
 import { projectMessages } from "../src/kernel/project.js";
+import { seedLog } from "./seed.js";
 
 async function collect(adapter: Adapter, registry: ToolRegistry, maxRetries: number): Promise<readonly Event[]> {
 	const events: Event[] = [];
@@ -27,7 +28,7 @@ async function collect(adapter: Adapter, registry: ToolRegistry, maxRetries: num
 		adapter,
 		model: "faux-model",
 		registry,
-		messages: [{ role: "user", content: "go" }],
+		log: seedLog([{ role: "user", content: "go" }]),
 		maxRetries,
 	})) {
 		events.push(ev);
@@ -223,7 +224,7 @@ describe("F4b — EVERY uncommitted exit voids its draft (the review's P1 pair)"
 			adapter,
 			model: "faux",
 			registry: new ToolRegistry(),
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }]),
 			signal: ac.signal,
 		})) {
 			events.push(ev);
@@ -267,7 +268,7 @@ describe("F4b — EVERY uncommitted exit voids its draft (the review's P1 pair)"
 			adapter,
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }]),
 			signal: ac.signal,
 		})) {
 			events.push(ev);

@@ -60,6 +60,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool, loop, ToolRegistry, type Adapter, type Event, type TerminalEvent } from "@vincemakes/kiso-core";
 import { truncationGuard } from "../src/truncation-guard.js";
+import { seedLog } from "../src/seed.js";
 
 /** A turn whose tool call is COMPLETE but whose stream never stops — the
  *  malformed shape clause 4 names. */
@@ -113,7 +114,7 @@ async function drive(
 		adapter: adapterFor(base),
 		model: "faux",
 		registry,
-		messages: [{ role: "user" as const, content: "do it" }],
+		log: seedLog([{ role: "user" as const, content: "do it" }]),
 	})) {
 		events.push(ev);
 	}

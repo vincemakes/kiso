@@ -22,6 +22,7 @@ import type { Adapter } from "../src/protocol/adapter.js";
 import type { RetryInfo } from "../src/kernel/hooks.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { DEFAULT_MAX_RETRIES, RETRY_AFTER_MAX_MS, loop, retryDelayMs } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -73,7 +74,7 @@ function flaky(error: object, failures: number, streamFirst = false): Adapter {
 async function run(adapter: Adapter, maxRetries: number, onRetry?: (i: RetryInfo) => Promise<void>): Promise<Event[]> {
 	const out: Event[] = [];
 	const hooks = onRetry !== undefined ? { onRetry } : undefined;
-	for await (const ev of loop({ adapter, model: "faux", registry: new ToolRegistry(), messages: [USER], maxRetries, ...(hooks !== undefined ? { hooks } : {}) })) out.push(ev);
+	for await (const ev of loop({ adapter, model: "faux", registry: new ToolRegistry(), log: seedLog([USER]), maxRetries, ...(hooks !== undefined ? { hooks } : {}) })) out.push(ev);
 	return out;
 }
 

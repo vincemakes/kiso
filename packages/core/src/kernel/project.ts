@@ -1,11 +1,13 @@
 /**
  * L2 — the reducer: messages are a PURE projection of the event log.
  *
- * ADR-0002 says the log is the single truth. These two functions are what
- * make that claim enforceable: `projectMessages(log.all)` rebuilds the exact
- * message array the loop hands to the adapter, and `messagesToEvents`
- * encodes seed history into the log. Round-trip property:
- * `projectMessages(messagesToEvents(m)) === m` — pinned by tests, and
+ * ADR-0002 says the log is the single truth. `projectMessages(log.all)` is
+ * what makes that claim enforceable: it rebuilds the exact message array the
+ * loop hands to the adapter. Its inverse, `messagesToEvents` (encode messages
+ * into a log), lives in @vincemakes/kiso-runtime, not here: the kernel takes a
+ * log and projects FROM it; whoever starts a loop with prior history seeds the
+ * log first (`seedLog`). Round-trip property:
+ * `projectMessages(messagesToEvents(m)) === m` — pinned by tests (importing both), and
  * LOSSLESS (Area 6): `source`, `tags`, image content blocks, and assistant
  * text-block boundaries survive the round trip.
  *
@@ -562,83 +564,6 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	}
 	flushAssistant();
 	flushResults(true); // the log's end is the last resort: held inputs never drop
-	return out;
-}
-
-/**
- * Encode seed messages into log events — LOSSLESSLY for the framework's own
- * shapes (Area 6): one `text_delta` per text block (boundaries preserved),
- * `source` on the first event of each message, `tags` on tool results,
- * content blocks passed through. Nothing a legal Message can express is
- * dropped.
- */
-export function messagesToEvents(messages: readonly Message[]): EventInput[] {
-	const out: EventInput[] = [];
-	for (const msg of messages) {
-		switch (msg.role) {
-			case "user": {
-				out.push({
-					type: "user_input",
-					content: msg.content,
-					...(msg.source !== undefined ? { source: msg.source } : {}),
-				});
-				break;
-			}
-			case "assistant": {
-				// D group: an explicit assistant_start/assistant_end pair frames
-				// the message — adjacent and empty assistants round-trip.
-				// bootstrap P1: the reasoning re-enters the log as its ORIGINAL
-				// thinking event — the projection re-attaches it identically.
-				if (msg.reasoning !== undefined) {
-					out.push({ type: "thinking", text: msg.reasoning });
-				}
-				out.push({
-					type: "assistant_start",
-					...(msg.source !== undefined ? { source: msg.source } : {}),
-				});
-				for (const block of msg.blocks) {
-					if (block.type === "text") {
-						out.push({
-							type: "text_start",
-							...(msg.source !== undefined ? { source: msg.source } : {}),
-						});
-						out.push({ type: "text_delta", text: block.text });
-						out.push({ type: "text_end" });
-					} else {
-						out.push({
-							type: "tool_call_start",
-							callId: block.callId,
-							name: block.name,
-							...(msg.source !== undefined ? { source: msg.source } : {}),
-						});
-						// 0.43.0 (#13): a block with rawInput encodes ONE delta (even ""), so Message → Events → Message is lossless
-						if (block.rawInput !== undefined) out.push({ type: "tool_call_input_delta", callId: block.callId, inputJsonDelta: block.rawInput });
-						out.push({
-							type: "tool_call_end",
-							callId: block.callId,
-							name: block.name,
-							input: block.input as Record<string, unknown>,
-						});
-					}
-				}
-				out.push({ type: "assistant_end" });
-				break;
-			}
-			case "tool": {
-				// D1: the FULL content (blocks included) is preserved — never
-				// flattened to text.
-				out.push({
-					type: "tool_result",
-					callId: msg.callId,
-					content: msg.content,
-					isError: msg.isError,
-					...(msg.source !== undefined ? { source: msg.source } : {}),
-					...(msg.tags !== undefined ? { tags: msg.tags } : {}),
-				});
-				break;
-			}
-		}
-	}
 	return out;
 }
 

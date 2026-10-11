@@ -18,6 +18,7 @@ import type { Continuation, ContinuationScope, Event } from "../src/protocol/eve
 import { loop } from "../src/kernel/loop.js";
 import { projectMessages } from "../src/kernel/project.js";
 import { ToolRegistry } from "../src/tools/registry.js";
+import { seedLog } from "./seed.js";
 
 const RUN_SCOPE: ContinuationScope = { providerId: "anthropic", apiId: "anthropic-messages", modelId: "claude-x" };
 const FORGED_SCOPE: ContinuationScope = { providerId: "evil", apiId: "evil-api", modelId: "evil-model" };
@@ -37,7 +38,7 @@ async function collect(adapter: Adapter, scope?: ContinuationScope): Promise<rea
 		adapter,
 		model: "claude-x",
 		registry: new ToolRegistry(),
-		messages: [{ role: "user", content: "go" }],
+		log: seedLog([{ role: "user", content: "go" }]),
 		...(scope !== undefined ? { continuationScope: scope } : {}),
 	})) {
 		events.push(ev);

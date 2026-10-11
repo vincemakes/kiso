@@ -10,6 +10,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loop, ToolRegistry, type Event } from "@vincemakes/kiso-core";
 import { createOpenAICompatProvider } from "../src/index.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 let server: Server;
 let port = 0;
@@ -33,7 +34,7 @@ afterEach(async () => {
 async function drive(maxRetries: number): Promise<Event[]> {
 	const adapter = createOpenAICompatProvider({ apiKey: "rig", baseUrl: `http://127.0.0.1:${port}/v1` });
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter, model: "rig-model", registry: new ToolRegistry(), messages: [{ role: "user", content: "go" }], maxRetries })) out.push(ev);
+	for await (const ev of loop({ adapter, model: "rig-model", registry: new ToolRegistry(), log: seedLog([{ role: "user", content: "go" }]), maxRetries })) out.push(ev);
 	return out;
 }
 

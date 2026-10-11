@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool, EventLog, loop, type Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore, StaleWriterError } from "../src/index.js";
+import { seedLog } from "../src/seed.js";
 
 const STOP: FauxScript = [{ events: [{ type: "stop", reason: "end_turn" }] }];
 
@@ -107,8 +108,7 @@ describe("persistence ownership (round 1)", () => {
 			]),
 			model: "faux",
 			registry,
-			log,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }], log),
 			hooks: { onUserMessage: async (msg) => ({ ...msg, content: "rewritten" }) },
 		})) {
 			yielded.push(ev);
