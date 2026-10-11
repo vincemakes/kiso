@@ -74,4 +74,31 @@ describe("an infrastructure fault after a child's effect", () => {
 		expect(applied).toEqual([]);
 		expect(rc(r.events)).toEqual(["p1:ok"]);
 	});
+
+	// ── the whole Started -> Receipt interval (owner's review of round 5): not only an onPostTool THROW ──────────────
+	const garbageHooks = { onPostTool: async (c: { name: string }, r: ToolResult) => (c.name === "pay" ? (undefined as unknown as ToolResult) : r) }; // a hook that "returns" nothing, for the child's tool only
+	const garbageTool = (name: string, applied: string[]): Tool => defineTool({ name, description: name, parameters: { type: "object", properties: {} }, execute: (async () => { applied.push(name); return undefined; }) as never }); // a handler that returns no ToolResult
+	for (const [label, hooks, mk] of [
+		["a post-tool hook that returns nothing", garbageHooks, effectTool],
+		["a handler that returns no result", {}, garbageTool],
+	] as const) {
+		it(`BASELINE direct call, ${label}: the effect happened, the kernel cannot receipt it: unreceipted, the error surfaces`, async () => {
+			const applied: string[] = []; const registry = new ToolRegistry();
+			registry.register(mk("pay", applied));
+			const r = await run(registry, [{ callId: "c1", name: "pay" }], hooks);
+			expect(applied).toEqual(["pay"]);
+			expect(rc(r.events)).toEqual([]);
+			expect(r.error).toBeDefined();
+		});
+		it(`child + ${label}, and the parent SWALLOWS the rejection: child and parent still get no receipt, and the fault surfaces`, async () => {
+			const applied: string[] = []; const registry = new ToolRegistry();
+			registry.register(parent("prog", async (ctx) => { try { await ctx.invoke!("pay", {}); } catch { /* swallowed */ } return ok("all fine"); }));
+			registry.register(mk("pay", applied));
+			const r = await run(registry, [{ callId: "p1", name: "prog" }], hooks);
+			expect(applied).toEqual(["pay"]);
+			expect(st(r.events)).toEqual(["p1", "p1/1"]);
+			expect(rc(r.events)).toEqual([]); // not a success for the parent, not a made-up failure for the child
+			expect(r.error).toBeDefined();
+		});
+	}
 });

@@ -498,6 +498,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			const child = table.get(name);
 			if (parent.shared && child !== undefined && child.effects?.concurrency !== "shared") return refuse(`a shared tool may start only shared children: ${name} is exclusive and could not be kept alone beside other running calls`);
 			const slot = lane(child);
+			let begun = false; // the started record is durable: from here on an exception means the effect may have happened and no receipt can be trusted
 			try {
 				// decisions are made ONE AT A TIME, in one agent-wide order shared with top-level calls (`decideChain`): a stateful policy (a quota) never sees two at once.
 				// Execution concurrency is separate: only the decision waits its turn. A failing decision does not poison the chain.
@@ -510,9 +511,10 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				// the COMMIT GATE applies to a child exactly as to a top-level call: a precommit-safe parent may start early, its effectful child may not
 				if (child?.effects?.precommitSafe !== true) { await turnSettled; if (!committed) return refuse("the turn did not commit; a child call that needs a committed turn was not started"); }
 				await slot.wait;
-				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, { parent: parent.executionId, fault: (e) => { fault ??= e; } });
+				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, { parent: parent.executionId, begun: () => { begun = true; } });
 			} catch (err) {
 				if (err === ABORTED) return refuse("aborted before execution");
+				if (begun) fault ??= err; // any exception between the started record and the receipt (a hook, a malformed result, ...) is carried up to the parent, never swallowed with the handler's rejection
 				throw err;
 			} finally {
 				slot.release();
@@ -1473,7 +1475,7 @@ async function runLedgered(
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
 	mkInvoke?: (parent: { callId: string; executionId: string; shared: boolean }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void>; fault: () => unknown },
-	child?: { parent: string; fault: (e: unknown) => void }, // a child call: the executionId of the call it ran under, and where an infrastructure fault is reported
+	child?: { parent: string; begun: () => void }, // a child call: the executionId of the call it ran under, and a signal that its started record is durable (from then on any exception is an unconfirmable fault)
 ): Promise<ToolResult> {
 	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
 	const tool = registry.get(call.name)!; // validated + decided by decideCall
@@ -1503,6 +1505,7 @@ async function runLedgered(
 		);
 	});
 
+	child?.begun();
 	const kids = mkInvoke?.({ callId: call.callId, executionId, shared: tool.effects?.concurrency === "shared" });
 	let result: ToolResult;
 	try {
@@ -1524,12 +1527,7 @@ async function runLedgered(
 	if (kids !== undefined) { await kids.drain(); if (kids.fault() !== undefined) throw kids.fault(); } // a child's infrastructure fault leaves THIS call unreceipted too, as a direct call's would be
 
 	if (hooks.onPostTool) {
-		try {
-			result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
-		} catch (e) {
-			child?.fault(e); // the effect may have happened: no invented receipt; the fault surfaces on the parent
-			throw e;
-		}
+		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
 	}
 
 	// ruling #12 correction one: a non-idempotent failure's side effects may have

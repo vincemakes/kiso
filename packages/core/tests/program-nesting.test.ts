@@ -136,3 +136,13 @@ describe("AF-5 + AF-1a together — no wait-for cycle", () => {
 		expect(r.indexOf("a:ok")).toBeGreaterThan(r.indexOf("a/2:ok"));
 	});
 });
+
+describe("frozen: one level of nesting", () => {
+	it("a child is not offered `invoke` or `catalog`: recursion is not supported", async () => {
+		const registry = new ToolRegistry(); let seen: { invoke: unknown; catalog: unknown } | undefined;
+		registry.register(parent("prog", async (ctx) => { await ctx.invoke!("kid", {}); return ok("p"); }));
+		registry.register(parent("kid", async (ctx) => { seen = { invoke: ctx.invoke, catalog: ctx.catalog }; return ok("k"); }));
+		await run(registry, [{ callId: "p1", name: "prog" }]);
+		expect(seen).toEqual({ invoke: undefined, catalog: undefined });
+	});
+});
