@@ -16,17 +16,19 @@
  * Tier 2 (on demand): the read_skill tool returns the FULL SKILL.md (capped
  * at 32KB with a truncation note); an unknown name is an honest,
  * actionable error listing the installed skills. Files other than
- * SKILL.md are NOT auto-loaded — the body tells the model to read them
- * with read_file by relative path (the progressive third tier; zero new
- * mechanisms).
+ * SKILL.md are NOT auto-loaded: the model reads one when the body names
+ * it, with read_skill's `file` — a path relative to the skill's own
+ * directory, confined to it (ADR-0033 Amendment 1: the read_file
+ * convention could never reach a skill's directory, which is outside the
+ * workspace).
  *
  * Compatible with Claude Code skills: the frontmatter name/description
  * subset parses CC skill files — drop one in and it works.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const MAX_DESCRIPTION = 200;
 const MAX_BODY = 32 * 1024;
@@ -269,14 +271,48 @@ function skillsPromptAppend(index, broken) {
 	return `Available skills (load with read_skill):\n${lines.join("\n")}${warning}`;
 }
 
-/** Tier 2: read_skill — the full SKILL.md (≤32KB), or an honest,
- *  actionable unknown-name error listing the installed skills. */
+/** Tier 3 (ADR-0033 Amendment 1): a file inside the skill's own
+ *  directory, by a path relative to it. Containment, in order: no
+ *  absolute path, no `..` segment, the real path (symlinks resolved) still
+ *  inside the real skill directory, a regular file. The file is only READ
+ *  — a script comes back as text; running it is shell's business, under
+ *  shell's permission. */
+function skillFile(skill, file) {
+	if (isAbsolute(file)) return { error: `file must be relative to the skill's directory: ${file}` };
+	if (file.split(/[\\/]/).includes("..")) return { error: `file escapes the skill's directory: ${file}` };
+	const root = dirname(skill.path);
+	let full;
+	try {
+		const rootReal = realpathSync(root);
+		full = realpathSync(resolve(root, file));
+		const rel = relative(rootReal, full);
+		if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return { error: `file escapes the skill's directory: ${file}` };
+	} catch {
+		return { error: `no file ${file} in skill "${skill.name}"` };
+	}
+	const st = statSync(full);
+	if (st.isDirectory()) return { error: `${file} is a directory — name a file in it` };
+	if (!st.isFile()) return { error: `${file} is not a regular file` };
+	return { full };
+}
+
+/** Tier 2: read_skill — the full SKILL.md (≤32KB), or with `file` one of
+ *  the skill's own files (Tier 3, ≤32KB); an unknown name is an honest,
+ *  actionable error listing the installed skills. */
 function readSkillTool(index, broken) {
 	const brokenNote = broken.length > 0 ? ` (${broken.length} broken skill(s) skipped: ${broken.map((b) => b.dir).join(", ")})` : "";
 	return {
 		name: "read_skill",
-		description: "load a skill's SKILL.md (the available-skills list is in the system prompt)",
-		parameters: { type: "object", properties: { name: { type: "string", minLength: 1 } }, required: ["name"], additionalProperties: false },
+		description: "load a skill's SKILL.md, or with file one of the files it names (the available-skills list is in the system prompt)",
+		parameters: {
+			type: "object",
+			properties: {
+				name: { type: "string", minLength: 1 },
+				file: { type: "string", minLength: 1, description: "A file in the skill's directory, relative to it; omit for SKILL.md" },
+			},
+			required: ["name"],
+			additionalProperties: false,
+		},
 		// Plan B: every active tool contributes one inventory line
 		promptSnippet: "read_skill — load an installed skill",
 		execute: async (input) => {
@@ -290,14 +326,23 @@ function readSkillTool(index, broken) {
 					errorKind: "invalid_input",
 				};
 			}
+			let target = skill.path;
+			if (input?.file !== undefined) {
+				const found = skillFile(skill, String(input.file));
+				if (found.error !== undefined) return { content: `[skills] ${found.error}`, isError: true, errorKind: "invalid_input" };
+				target = found.full;
+			}
 			let text;
 			try {
-				text = readFileSync(skill.path, "utf8");
+				text = readFileSync(target, "utf8");
 			} catch (err) {
-				return { content: `[skills] cannot read ${skill.path}: ${err instanceof Error ? err.message : String(err)}`, isError: true, errorKind: "fatal" };
+				return { content: `[skills] cannot read ${target}: ${err instanceof Error ? err.message : String(err)}`, isError: true, errorKind: "fatal" };
 			}
+			// the cap is the whole contract: nothing reads past it (the old
+			// note sent the model to read_file, which cannot reach this
+			// directory)
 			if (text.length > MAX_BODY) {
-				text = `${text.slice(0, MAX_BODY)}\n…[truncated at ${MAX_BODY} chars — read the rest with read_file]`;
+				text = `${text.slice(0, MAX_BODY)}\n…[truncated at ${MAX_BODY} chars — read_skill returns at most this much of a file]`;
 			}
 			return { content: text, isError: false };
 		},

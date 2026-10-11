@@ -2,7 +2,8 @@
  * ⑤ — the skills extension unit tests (against the BUILT dist/
  * kiso-skills.mjs): the tier-1 index in the system prompt (sorted), the
  * tier-2 read_skill roundtrip, honest unknown-name errors, soft-failed
- * broken skills with a warning line, overlong-description truncation, and
+ * broken skills with a warning line, overlong-description truncation, tier 3
+ * (read_skill file, confined to the skill directory — SK0), and
  * the empty/missing-dir no-error case. Plus the safe-defaults update:
  * read_skill is allowed (local docs, read_file trust).
  */
@@ -169,6 +170,85 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 		expect(r.isError).toBe(true);
 		expect(String(r.content)).toContain('unknown skill "nope"');
 		expect(String(r.content)).toContain("a-skill, b-skill");
+	});
+});
+
+/** ADR-0033 Amendment 1 (SK0): tier 3 through read_skill's `file`. The old
+ *  convention — the body names a file, the model reads it with read_file —
+ *  could never work: read_file is workspace-bounded and refuses absolute
+ *  paths, and the skill's directory is outside the workspace. */
+describe("SK0 — tier 3: read_skill file reads the skill's own files, confined to its directory", () => {
+	const withAux = (): string => {
+		const dir = skillDir();
+		writeSkill(dir, "pdf-fill", "\nSee references/fields.md, then run scripts/fill.py.\n", { name: "pdf-fill", description: "fill PDF forms" });
+		mkdirSync(join(dir, "pdf-fill", "references"));
+		mkdirSync(join(dir, "pdf-fill", "scripts"));
+		writeFileSync(join(dir, "pdf-fill", "references", "fields.md"), "FIELD MAP: name -> A1\n");
+		writeFileSync(join(dir, "pdf-fill", "scripts", "fill.py"), "print('filled')\n");
+		writeFileSync(join(dir, "outside.md"), "NOT THE SKILL'S\n");
+		return dir;
+	};
+
+	it("a file the body names, by its path relative to the skill — subdirectories included", async () => {
+		const ext = await extWith(withAux());
+		const r = await readSkill(ext).execute({ name: "pdf-fill", file: "references/fields.md" }, ctx);
+		expect(r).toMatchObject({ isError: false, content: "FIELD MAP: name -> A1\n" });
+	});
+
+	it("a script comes back as TEXT — read_skill never runs anything", async () => {
+		const ext = await extWith(withAux());
+		const r = await readSkill(ext).execute({ name: "pdf-fill", file: "scripts/fill.py" }, ctx);
+		expect(r).toMatchObject({ isError: false, content: "print('filled')\n" });
+	});
+
+	it("an absolute path, a `..` segment, a directory and a missing file are refused, each with its reason", async () => {
+		const dir = withAux();
+		const ext = await extWith(dir);
+		const cases: [string, RegExp][] = [
+			[join(dir, "pdf-fill", "references", "fields.md"), /must be relative to the skill's directory/],
+			["../outside.md", /escapes the skill's directory/],
+			["references/../../outside.md", /escapes the skill's directory/],
+			["references", /is a directory/],
+			["nope.md", /no file nope\.md in skill "pdf-fill"/],
+		];
+		for (const [file, why] of cases) {
+			const r = await readSkill(ext).execute({ name: "pdf-fill", file }, ctx);
+			expect(r.isError, file).toBe(true);
+			expect(String(r.content), file).toMatch(why);
+		}
+	});
+
+	it("a symlink that leaves the skill's directory is refused; one that stays inside is read", async () => {
+		const dir = withAux();
+		symlinkSync(join(dir, "outside.md"), join(dir, "pdf-fill", "escape.md"));
+		symlinkSync(join(dir, "pdf-fill", "references", "fields.md"), join(dir, "pdf-fill", "alias.md"));
+		const ext = await extWith(dir);
+		const out = await readSkill(ext).execute({ name: "pdf-fill", file: "escape.md" }, ctx);
+		expect(out.isError).toBe(true);
+		expect(String(out.content)).toMatch(/escapes the skill's directory/);
+		const inside = await readSkill(ext).execute({ name: "pdf-fill", file: "alias.md" }, ctx);
+		expect(inside).toMatchObject({ isError: false, content: "FIELD MAP: name -> A1\n" });
+	});
+
+	it("over the cap, the note says the cap — it no longer sends the model to read_file (red: it did)", async () => {
+		const dir = withAux();
+		writeFileSync(join(dir, "pdf-fill", "references", "big.md"), "x".repeat(40 * 1024));
+		const ext = await extWith(dir);
+		for (const file of [undefined, "references/big.md"]) {
+			if (file === undefined) writeSkill(dir, "pdf-fill", `\n${"y".repeat(40 * 1024)}\n`, { name: "pdf-fill", description: "fill PDF forms" });
+			const r = await readSkill(file === undefined ? await extWith(dir) : ext).execute({ name: "pdf-fill", ...(file === undefined ? {} : { file }) }, ctx);
+			expect(String(r.content)).toContain("…[truncated at 32768 chars — read_skill returns at most this much of a file]");
+			expect(String(r.content)).not.toContain("read_file");
+		}
+	});
+
+	it("the schema offers `file` as optional; `name` alone still returns SKILL.md", async () => {
+		const ext = await extWith(withAux());
+		const t = readSkill(ext) as Tool & { parameters: { properties: Record<string, unknown>; required: string[] } };
+		expect(Object.keys(t.parameters.properties)).toEqual(["name", "file"]);
+		expect(t.parameters.required).toEqual(["name"]);
+		const r = await t.execute({ name: "pdf-fill" }, ctx);
+		expect(String(r.content)).toContain("See references/fields.md");
 	});
 });
 

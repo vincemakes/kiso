@@ -336,9 +336,13 @@ description: a review checklist for pull requests
 - **Tier 2 — on demand.** The `read_skill` tool returns the full `SKILL.md`
   (capped at 32KB with a truncation note); an unknown name is an honest,
   actionable error listing the installed skills.
-- **Tier 3 — progressive, zero new mechanisms.** Files other than
-  `SKILL.md` are NOT auto-loaded: the skill body tells the model to read
-  them with `read_file` by relative path when it needs them.
+- **Tier 3 — a skill's own files, through read_skill.** Files other than
+  `SKILL.md` are NOT auto-loaded. When the body names one
+  (`references/forms.md`, `scripts/fill.py`), the model reads it with
+  `read_skill {name, file}`, by its path relative to the skill's directory
+  and confined to it: no absolute path, no `..`, no symlink out, regular
+  files only. A script comes back as text; running it is shell's business.
+  read_file stays bounded to the workspace (ADR-0033 Amendment 1).
 - **Compatible with the common skill format.** The other agents that read
   skills use the same frontmatter shape; the name/description subset
   parses them as-is — drop such a skill directory into `~/.kiso/skills/`
