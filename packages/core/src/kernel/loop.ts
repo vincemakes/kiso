@@ -498,7 +498,12 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			if (parent.shared && child !== undefined && child.effects?.concurrency !== "shared") return { content: `a shared tool may start only shared children: ${name} is exclusive and could not be kept alone beside other running calls`, isError: true, errorKind: "precondition" };
 			const slot = lane(child);
 			try {
-				const v = await decideCall(call, table, hooks, ctx, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicy, nextDecisionId, pushExec, undefined);
+				// decisions are made ONE AT A TIME, in one agent-wide order shared with top-level calls (`decideChain`): a stateful policy (a quota) never sees two at once.
+				// Execution concurrency is separate: only the decision waits its turn. A failing decision does not poison the chain.
+				const v = await new Promise<ExecVerdict>((res, rej) => {
+					const step = async (): Promise<ExecVerdict> => { try { const d = await decideCall(call, table, hooks, ctx, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicy, nextDecisionId, pushExec, undefined); res(d); return d; } catch (e) { rej(e); return { action: "allow" } as ExecVerdict; } };
+					decideChain = decideChain.then(step, step);
+				});
 				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
 				if (v.action === "ask") return { content: "a child call that needs a human decision is not supported inside a program yet", isError: true, errorKind: "precondition" };
 				// the COMMIT GATE applies to a child exactly as to a top-level call: a precommit-safe parent may start early, its effectful child may not
