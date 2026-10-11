@@ -2,7 +2,8 @@
  * ⑤ — the skills extension unit tests (against the BUILT dist/
  * kiso-skills.mjs): the tier-1 index in the system prompt (sorted), the
  * tier-2 read_skill roundtrip, honest unknown-name errors, soft-failed
- * broken skills with a warning line, overlong-description truncation, and
+ * broken skills reported in the catalog (K1), overlong-description truncation, tier 3
+ * (read_skill file, confined to the skill directory — SK0), and
  * the empty/missing-dir no-error case. Plus the safe-defaults update:
  * read_skill is allowed (local docs, read_file trust).
  */
@@ -54,14 +55,17 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		);
 	});
 
-	it("④ a broken SKILL.md (no frontmatter) is a SOFT failure — skipped, one warning line at the index tail", async () => {
+	// DECLARED SUPERSESSION (ADR-0033 Amendment 1, K1): the warning line at
+	// the index tail is gone — the person sees broken entries in the catalog
+	// (/skills, the reload line); the model meets one only when it asks for
+	// it by name.
+	it("④ a broken SKILL.md (no frontmatter) is a SOFT failure — skipped, reported in the catalog, absent from the prompt", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "good", "\n# Good\nbody\n", { description: "fine" });
 		writeSkill(dir, "bad", "no frontmatter here\n");
 		const ext = await extWith(dir);
-		expect(ext.systemPrompt?.append).toContain("- good: fine");
-		expect(ext.systemPrompt?.append).toContain("skipped 1 broken skill");
-		expect(ext.systemPrompt?.append).toContain("bad");
+		expect(ext.systemPrompt?.append).toBe("Available skills (load with read_skill):\n- good: fine");
+		expect(catalogOf(ext).broken).toEqual([{ dir: "bad", reason: "no frontmatter" }]);
 		// The good skill still loads.
 		const r = await readSkill(ext).execute({ name: "good" }, ctx);
 		expect(r.isError).toBe(false);
@@ -87,16 +91,14 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		expect(String(r.content)).toContain("# Linked");
 	});
 
-	it("⑨ a broken symlink is a SOFT failure — one warning line, never an error", async () => {
+	it("⑨ a broken symlink is a SOFT failure — in the catalog, never in the prompt, never an error", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "good", "\n# Good\nbody\n", { description: "fine" });
 		symlinkSync(join(dir, "no-such-target"), join(dir, "dangling")); // → nowhere
 		symlinkSync(join(dir, "good", "SKILL.md"), join(dir, "file-link")); // → a file, not a dir
 		const ext = await extWith(dir);
-		expect(ext.systemPrompt?.append).toContain("- good: fine");
-		expect(ext.systemPrompt?.append).toContain("skipped 2 broken skill");
-		expect(ext.systemPrompt?.append).toContain("dangling");
-		expect(ext.systemPrompt?.append).toContain("file-link");
+		expect(ext.systemPrompt?.append).toBe("Available skills (load with read_skill):\n- good: fine");
+		expect(catalogOf(ext).broken.map((b) => b.dir).sort()).toEqual(["dangling", "file-link"]);
 	});
 
 	it("⑪ KISO_HOME is the ONE root — the skills dir defaults under it (finding #11)", async () => {
@@ -172,6 +174,109 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 	});
 });
 
+/** ADR-0033 Amendment 1 (K1): broken entries are installation diagnostics —
+ *  the person's, through the catalog. The model meets one only when it asks
+ *  for it by name, where the reason is new and relevant evidence. */
+describe("K1 — broken skills stay out of the model's prompt", () => {
+	it("only broken skills: no index, no tool, nothing appended — the catalog still names them (red: a warning-only append)", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "bad", "no frontmatter here\n");
+		const ext = await extWith(dir);
+		expect(ext.systemPrompt).toBeUndefined();
+		expect(ext.tools ?? []).toEqual([]);
+		expect(catalogOf(ext).broken).toEqual([{ dir: "bad", reason: "no frontmatter" }]);
+	});
+
+	it("asked for by name, a skipped skill's reason is in read_skill's error", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "good", "\nbody\n", { description: "fine" });
+		writeSkill(dir, "bad", "no frontmatter here\n");
+		const ext = await extWith(dir);
+		const r = await readSkill(ext).execute({ name: "bad" }, ctx);
+		expect(r.isError).toBe(true);
+		expect(String(r.content)).toContain('unknown skill "bad" — "bad" was skipped: no frontmatter — available: good');
+	});
+});
+
+/** ADR-0033 Amendment 1 (SK0): tier 3 through read_skill's `file`. The old
+ *  convention — the body names a file, the model reads it with read_file —
+ *  could never work: read_file is workspace-bounded and refuses absolute
+ *  paths, and the skill's directory is outside the workspace. */
+describe("SK0 — tier 3: read_skill file reads the skill's own files, confined to its directory", () => {
+	const withAux = (): string => {
+		const dir = skillDir();
+		writeSkill(dir, "pdf-fill", "\nSee references/fields.md, then run scripts/fill.py.\n", { name: "pdf-fill", description: "fill PDF forms" });
+		mkdirSync(join(dir, "pdf-fill", "references"));
+		mkdirSync(join(dir, "pdf-fill", "scripts"));
+		writeFileSync(join(dir, "pdf-fill", "references", "fields.md"), "FIELD MAP: name -> A1\n");
+		writeFileSync(join(dir, "pdf-fill", "scripts", "fill.py"), "print('filled')\n");
+		writeFileSync(join(dir, "outside.md"), "NOT THE SKILL'S\n");
+		return dir;
+	};
+
+	it("a file the body names, by its path relative to the skill — subdirectories included", async () => {
+		const ext = await extWith(withAux());
+		const r = await readSkill(ext).execute({ name: "pdf-fill", file: "references/fields.md" }, ctx);
+		expect(r).toMatchObject({ isError: false, content: "FIELD MAP: name -> A1\n" });
+	});
+
+	it("a script comes back as TEXT — read_skill never runs anything", async () => {
+		const ext = await extWith(withAux());
+		const r = await readSkill(ext).execute({ name: "pdf-fill", file: "scripts/fill.py" }, ctx);
+		expect(r).toMatchObject({ isError: false, content: "print('filled')\n" });
+	});
+
+	it("an absolute path, a `..` segment, a directory and a missing file are refused, each with its reason", async () => {
+		const dir = withAux();
+		const ext = await extWith(dir);
+		const cases: [string, RegExp][] = [
+			[join(dir, "pdf-fill", "references", "fields.md"), /must be relative to the skill's directory/],
+			["../outside.md", /escapes the skill's directory/],
+			["references/../../outside.md", /escapes the skill's directory/],
+			["references", /is a directory/],
+			["nope.md", /no file nope\.md in skill "pdf-fill"/],
+		];
+		for (const [file, why] of cases) {
+			const r = await readSkill(ext).execute({ name: "pdf-fill", file }, ctx);
+			expect(r.isError, file).toBe(true);
+			expect(String(r.content), file).toMatch(why);
+		}
+	});
+
+	it("a symlink that leaves the skill's directory is refused; one that stays inside is read", async () => {
+		const dir = withAux();
+		symlinkSync(join(dir, "outside.md"), join(dir, "pdf-fill", "escape.md"));
+		symlinkSync(join(dir, "pdf-fill", "references", "fields.md"), join(dir, "pdf-fill", "alias.md"));
+		const ext = await extWith(dir);
+		const out = await readSkill(ext).execute({ name: "pdf-fill", file: "escape.md" }, ctx);
+		expect(out.isError).toBe(true);
+		expect(String(out.content)).toMatch(/escapes the skill's directory/);
+		const inside = await readSkill(ext).execute({ name: "pdf-fill", file: "alias.md" }, ctx);
+		expect(inside).toMatchObject({ isError: false, content: "FIELD MAP: name -> A1\n" });
+	});
+
+	it("over the cap, the note says the cap — it no longer sends the model to read_file (red: it did)", async () => {
+		const dir = withAux();
+		writeFileSync(join(dir, "pdf-fill", "references", "big.md"), "x".repeat(40 * 1024));
+		const ext = await extWith(dir);
+		for (const file of [undefined, "references/big.md"]) {
+			if (file === undefined) writeSkill(dir, "pdf-fill", `\n${"y".repeat(40 * 1024)}\n`, { name: "pdf-fill", description: "fill PDF forms" });
+			const r = await readSkill(file === undefined ? await extWith(dir) : ext).execute({ name: "pdf-fill", ...(file === undefined ? {} : { file }) }, ctx);
+			expect(String(r.content)).toContain("…[truncated at 32768 chars — read_skill returns at most this much of a file]");
+			expect(String(r.content)).not.toContain("read_file");
+		}
+	});
+
+	it("the schema offers `file` as optional; `name` alone still returns SKILL.md", async () => {
+		const ext = await extWith(withAux());
+		const t = readSkill(ext) as Tool & { parameters: { properties: Record<string, unknown>; required: string[] } };
+		expect(Object.keys(t.parameters.properties)).toEqual(["name", "file"]);
+		expect(t.parameters.required).toEqual(["name"]);
+		const r = await t.execute({ name: "pdf-fill" }, ctx);
+		expect(String(r.content)).toContain("See references/fields.md");
+	});
+});
+
 describe("⑤ safe-defaults (the round's only change outside extensions/)", () => {
 	it("read_skill joins the allow list — local user-installed docs, read_file trust", async () => {
 		const mod = (await import(pathToFileURL(join(fileURLToPath(new URL("../../../examples", import.meta.url)), "extensions", "safe-defaults.mjs")).href)) as {
@@ -217,7 +322,7 @@ describe("0.40.0 skills: the catalog the CLI invokes from", () => {
 		expect(ext.systemPrompt?.append).toContain("- internal: for the model");
 	});
 
-	it("broken entries carry the loader's own reason — the same words the model's warning line uses", async () => {
+	it("broken entries carry the loader's own reason — the words read_skill names when the model asks for one", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "good", "\nbody\n", { description: "fine" });
 		writeSkill(dir, "bad", "\nbody\n", { name: "bad" });
@@ -228,7 +333,12 @@ describe("0.40.0 skills: the catalog the CLI invokes from", () => {
 			{ dir: "bad", reason: "no description" },
 			{ dir: "empty", reason: "no SKILL.md" },
 		]);
-		for (const b of cat.broken) expect(ext.systemPrompt?.append).toContain(`${b.dir} (${b.reason})`);
+		// K1: the reasons are not in the prompt; read_skill names one when asked
+		for (const b of cat.broken) {
+			expect(ext.systemPrompt?.append).not.toContain(b.dir);
+			const r = await readSkill(ext).execute({ name: b.dir }, ctx);
+			expect(String(r.content)).toContain(`"${b.dir}" was skipped: ${b.reason}`);
+		}
 	});
 
 	it("body() returns the SKILL.md body with the frontmatter stripped, read at call time", async () => {
@@ -302,7 +412,7 @@ describe("RF-2 skills: block and quoted scalars in the frontmatter", () => {
 		writeRaw(dir, "empty", "name: empty\ndescription: >\nother: x\n");
 		const ext = await extWith(dir);
 		expect(ext.systemPrompt?.append).not.toContain("- empty:");
-		expect(ext.systemPrompt?.append).toContain("empty (empty block scalar)");
+		expect(catalogOf(ext).broken).toContainEqual({ dir: "empty", reason: "empty block scalar" });
 	});
 
 	it("the plain `key: value` form is unchanged — inner spacing included, byte for byte", async () => {
@@ -326,7 +436,7 @@ describe("RF-2 skills: block and quoted scalars in the frontmatter", () => {
 		writeRaw(dir, "good", "description: fine\n");
 		writeRaw(dir, "twoline", "name: |\n  two\n  lines\ndescription: fine\n");
 		const ext = await extWith(dir);
-		expect(ext.systemPrompt?.append).toContain("twoline (name is not one line)");
+		expect(catalogOf(ext).broken).toContainEqual({ dir: "twoline", reason: "name is not one line" });
 		expect(ext.systemPrompt?.append).not.toContain("- two");
 	});
 });
@@ -403,8 +513,9 @@ describe("a host names the roots and one filter governs every surface", () => {
 		writeSkill(root, "02-deploy", "\n# Second\nsecond body\n", { name: "deploy", description: "the second" });
 		const ext = await extWith(root);
 		expect(ext.systemPrompt?.append).toBe(
-			'Available skills (load with read_skill):\n- deploy: the first\n[skills] skipped 1 broken skill(s): 02-deploy (duplicate name "deploy" — already provided by 01-deploy)',
+			"Available skills (load with read_skill):\n- deploy: the first",
 		);
+		expect(catalogOf(ext).broken).toEqual([{ dir: "02-deploy", reason: 'duplicate name "deploy" — already provided by 01-deploy' }]);
 		expect(catalogOf(ext).entries.map((e) => e.dir)).toEqual(["01-deploy"]);
 		expect((ext as unknown as { skills: number }).skills).toBe(1);
 	});
@@ -416,8 +527,9 @@ describe("a host names the roots and one filter governs every surface", () => {
 		writeSkill(second, "deploy", "\n# Second\n", { description: "the second root's" });
 		const ext = await extFrom({ roots: [first, second] });
 		expect(ext.systemPrompt?.append).toBe(
-			'Available skills (load with read_skill):\n- deploy: the first root\'s\n[skills] skipped 1 broken skill(s): deploy (duplicate name "deploy" — already provided by deploy in an earlier root)',
+			"Available skills (load with read_skill):\n- deploy: the first root's",
 		);
+		expect(catalogOf(ext).broken).toEqual([{ dir: "deploy", reason: 'duplicate name "deploy" — already provided by deploy in an earlier root' }]);
 	});
 
 	it("duplicates resolve before include: excluding the winner does not promote the loser", async () => {

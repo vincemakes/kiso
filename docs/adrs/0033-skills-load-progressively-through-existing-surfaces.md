@@ -68,3 +68,45 @@ extension.
   truncation, empty/missing dir); `extensions/skills/tests/skills-
   e2e.test.ts` (read_skill auto-allowed by safe-defaults, body back to
   the model).
+
+## Amendment 1 (2026-10-11): tier 3 goes through read_skill, and the warning line leaves the prompt
+
+**Reverses decision 3.** The tier-3 convention never worked: read_file
+is bounded to the workspace and refuses absolute paths, and the skill's
+directory (`~/.kiso/skills/<name>/`) is outside the workspace. read_skill
+never said where that directory was. A skill whose body names
+`references/forms.md` sent the model to a file it could not reach. The
+"known cost" above recorded an unenforced convention; in fact the
+convention was an unreachable one.
+
+Tier 3 is now `read_skill {name, file}`. `file` is a path relative to the
+skill's own directory, and the call is refused when:
+
+- the path is absolute;
+- it has a `..` segment;
+- its real path (symlinks resolved) leaves the skill's real directory;
+- it names something other than a regular file.
+
+The file is only read: a script comes back as text, and running it stays
+shell's business under shell's permission. Both reads keep the 32 KB cap,
+and the truncation note now says the cap. It used to send the model to
+read_file, which cannot reach the directory.
+
+read_file is **not** widened. The workspace reader keeps the workspace
+namespace, and the skill reader owns the skill namespace, so installing
+skills does not hand the workspace reader `~/.kiso/skills`.
+
+**Reverses decision 1's warning line.** Broken skills no longer append a
+`[skills] skipped …` line to the resident index:
+
+- the model cannot repair a skill directory, and the line was paid on
+  every request;
+- the person still sees every broken entry, with the loader's reason, in
+  `/skills` and the CLI's reload line (the catalog's `broken`);
+- the model meets a broken skill only when it is relevant, in read_skill's
+  unknown-name error, which names the skipped entry and its reason;
+- with no valid skill at all, the extension appends nothing and offers no
+  tool.
+
+Evidence: `extensions/skills/tests/skills.test.ts`, the SK0 and K1 blocks
+(red against the previous source).

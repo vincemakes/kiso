@@ -28,7 +28,8 @@ export interface SkillsCatalogEntry {
 
 export interface SkillsCatalog {
 	readonly entries: readonly SkillsCatalogEntry[];
-	/** the loader's own reason per skipped entry — the words the model's warning line uses */
+	/** the loader's own reason per skipped entry — the person's diagnostics (ADR-0033
+	 *  Amendment 1: not in the model's prompt; read_skill names it when asked) */
 	readonly broken: readonly { readonly dir: string; readonly reason: string }[];
 	body(name: string): { readonly body: string } | { readonly error: string };
 }

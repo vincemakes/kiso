@@ -330,15 +330,22 @@ description: a review checklist for pull requests
   YAML subset; only `name`/`description` are read — no dependency, no
   parser) becomes one line of the system prompt, sorted by directory name:
   `Available skills (load with read_skill):` followed by one
-  `- <name>: <description>` per skill. A `SKILL.md` without frontmatter is
-  skipped with a warning line at the index tail — a soft failure, like the
-  MCP bridge. No/empty skills dir → an empty extension, never an error.
+  `- <name>: <description>` per skill. A broken entry (no frontmatter, no
+  description, a broken link, a duplicate name) is skipped — a soft
+  failure, like the MCP bridge — and reported to you in `/skills` and the
+  reload line, not in the model's prompt; `read_skill` names the reason if
+  the model asks for that skill. No valid skill → an empty extension,
+  never an error.
 - **Tier 2 — on demand.** The `read_skill` tool returns the full `SKILL.md`
   (capped at 32KB with a truncation note); an unknown name is an honest,
   actionable error listing the installed skills.
-- **Tier 3 — progressive, zero new mechanisms.** Files other than
-  `SKILL.md` are NOT auto-loaded: the skill body tells the model to read
-  them with `read_file` by relative path when it needs them.
+- **Tier 3 — a skill's own files, through read_skill.** Files other than
+  `SKILL.md` are NOT auto-loaded. When the body names one
+  (`references/forms.md`, `scripts/fill.py`), the model reads it with
+  `read_skill {name, file}`, by its path relative to the skill's directory
+  and confined to it: no absolute path, no `..`, no symlink out, regular
+  files only. A script comes back as text; running it is shell's business.
+  read_file stays bounded to the workspace (ADR-0033 Amendment 1).
 - **Compatible with the common skill format.** The other agents that read
   skills use the same frontmatter shape; the name/description subset
   parses them as-is — drop such a skill directory into `~/.kiso/skills/`
@@ -348,7 +355,7 @@ description: a review checklist for pull requests
   about skills is plain file access governed by the existing policy.
 - **A name found twice** resolves to its first occurrence (root order,
   then directory-name order within each root); the later one joins the
-  broken skills in the warning line instead of sitting in the index as a
+  broken skills (in `/skills`) instead of sitting in the index as a
   skill `read_skill` could never serve.
 - **A host chooses the skills.** `createSkillsExtension({ roots, include })`:
   `roots` replaces the default scan, in order; `include(entry)` filters

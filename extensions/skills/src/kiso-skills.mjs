@@ -9,24 +9,29 @@
  * one line of the system prompt, sorted by directory name:
  *   Available skills (load with read_skill):
  *   - <name>: <description>
- * A SKILL.md without frontmatter is skipped with a warning line at the
- * tail of that index (soft failure — the mcp philosophy). No/empty skills
- * dir → an empty extension, never an error.
+ * A broken entry (no frontmatter, no description, a broken link, a
+ * duplicate name) is skipped — a soft failure, the mcp philosophy — and
+ * reported to the PERSON (the catalog's `broken`: /skills, the reload
+ * line), never in the resident prompt: the model cannot repair a skill
+ * directory (ADR-0033 Amendment 1). No valid skill → an empty extension,
+ * never an error.
  *
  * Tier 2 (on demand): the read_skill tool returns the FULL SKILL.md (capped
  * at 32KB with a truncation note); an unknown name is an honest,
  * actionable error listing the installed skills. Files other than
- * SKILL.md are NOT auto-loaded — the body tells the model to read them
- * with read_file by relative path (the progressive third tier; zero new
- * mechanisms).
+ * SKILL.md are NOT auto-loaded: the model reads one when the body names
+ * it, with read_skill's `file` — a path relative to the skill's own
+ * directory, confined to it (ADR-0033 Amendment 1: the read_file
+ * convention could never reach a skill's directory, which is outside the
+ * workspace).
  *
  * Compatible with Claude Code skills: the frontmatter name/description
  * subset parses CC skill files — drop one in and it works.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const MAX_DESCRIPTION = 200;
 const MAX_BODY = 32 * 1024;
@@ -53,11 +58,12 @@ export default async function createSkillsExtension(options = {}) {
 	// finding #8: no persistent resources — SKILL.md files are read per call;
 	// nothing is spawned or connected — no dispose is needed, explicitly.
 	const catalog = skillsCatalog(index, broken);
-	if (index.length === 0 && broken.length === 0) return { name: "skills", skills: 0, tools: [], catalog };
-	const tools = index.length > 0 ? [readSkillTool(index, broken)] : [];
+	// no valid skill: no index, no tool — broken entries reach the person
+	// through the catalog, not the model's prompt (ADR-0033 Amendment 1)
+	if (index.length === 0) return { name: "skills", skills: 0, tools: [], catalog };
 	return {
 		name: "skills",
-		tools,
+		tools: [readSkillTool(index, broken)],
 		// §2.5: how many skills THIS load indexed. The CLI's reload line reads
 		// it here rather than walking the directory again — one scan, one
 		// answer, and no second count free to disagree with this one.
@@ -66,7 +72,7 @@ export default async function createSkillsExtension(options = {}) {
 		// `/skills` — the person's door and the model's index cannot list
 		// different skills, because they are one list.
 		catalog,
-		systemPrompt: { append: skillsPromptAppend(index, broken) },
+		systemPrompt: { append: skillsPromptAppend(index) },
 	};
 }
 
@@ -261,22 +267,55 @@ function unquote(value) {
 }
 
 /** Tier 1: the resident index — one line per skill, sorted by directory
- *  name, a warning line for every broken entry at the tail. */
-function skillsPromptAppend(index, broken) {
+ *  name. Broken entries are not in it (ADR-0033 Amendment 1): they are
+ *  installation diagnostics, for the person. */
+function skillsPromptAppend(index) {
 	const lines = index.map((s) => `- ${s.name}: ${s.description}`);
-	const warning =
-		broken.length > 0 ? `\n[skills] skipped ${broken.length} broken skill(s): ${broken.map((b) => `${b.dir} (${b.reason})`).join(", ")}` : "";
-	return `Available skills (load with read_skill):\n${lines.join("\n")}${warning}`;
+	return `Available skills (load with read_skill):\n${lines.join("\n")}`;
 }
 
-/** Tier 2: read_skill — the full SKILL.md (≤32KB), or an honest,
- *  actionable unknown-name error listing the installed skills. */
+/** Tier 3 (ADR-0033 Amendment 1): a file inside the skill's own
+ *  directory, by a path relative to it. Containment, in order: no
+ *  absolute path, no `..` segment, the real path (symlinks resolved) still
+ *  inside the real skill directory, a regular file. The file is only READ
+ *  — a script comes back as text; running it is shell's business, under
+ *  shell's permission. */
+function skillFile(skill, file) {
+	if (isAbsolute(file)) return { error: `file must be relative to the skill's directory: ${file}` };
+	if (file.split(/[\\/]/).includes("..")) return { error: `file escapes the skill's directory: ${file}` };
+	const root = dirname(skill.path);
+	let full;
+	try {
+		const rootReal = realpathSync(root);
+		full = realpathSync(resolve(root, file));
+		const rel = relative(rootReal, full);
+		if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return { error: `file escapes the skill's directory: ${file}` };
+	} catch {
+		return { error: `no file ${file} in skill "${skill.name}"` };
+	}
+	const st = statSync(full);
+	if (st.isDirectory()) return { error: `${file} is a directory — name a file in it` };
+	if (!st.isFile()) return { error: `${file} is not a regular file` };
+	return { full };
+}
+
+/** Tier 2: read_skill — the full SKILL.md (≤32KB), or with `file` one of
+ *  the skill's own files (Tier 3, ≤32KB); an unknown name is an honest,
+ *  actionable error listing the installed skills. */
 function readSkillTool(index, broken) {
 	const brokenNote = broken.length > 0 ? ` (${broken.length} broken skill(s) skipped: ${broken.map((b) => b.dir).join(", ")})` : "";
 	return {
 		name: "read_skill",
-		description: "load a skill's SKILL.md (the available-skills list is in the system prompt)",
-		parameters: { type: "object", properties: { name: { type: "string", minLength: 1 } }, required: ["name"], additionalProperties: false },
+		description: "load a skill's SKILL.md, or with file one of the files it names (the available-skills list is in the system prompt)",
+		parameters: {
+			type: "object",
+			properties: {
+				name: { type: "string", minLength: 1 },
+				file: { type: "string", minLength: 1, description: "A file in the skill's directory, relative to it; omit for SKILL.md" },
+			},
+			required: ["name"],
+			additionalProperties: false,
+		},
 		// Plan B: every active tool contributes one inventory line
 		promptSnippet: "read_skill — load an installed skill",
 		execute: async (input) => {
@@ -284,20 +323,33 @@ function readSkillTool(index, broken) {
 			const skill = index.find((s) => s.name === name);
 			if (skill === undefined) {
 				const names = index.length > 0 ? index.map((s) => s.name).join(", ") : "(none installed)";
+				// the one moment a broken entry is the model's business: it asked
+				// for it by name — say why it is not there
+				const skipped = broken.find((b) => b.dir === name);
+				const why = skipped !== undefined ? ` — "${name}" was skipped: ${skipped.reason}` : "";
 				return {
-					content: `[skills] unknown skill "${name}" — available: ${names}${brokenNote}`,
+					content: `[skills] unknown skill "${name}"${why} — available: ${names}${brokenNote}`,
 					isError: true,
 					errorKind: "invalid_input",
 				};
 			}
+			let target = skill.path;
+			if (input?.file !== undefined) {
+				const found = skillFile(skill, String(input.file));
+				if (found.error !== undefined) return { content: `[skills] ${found.error}`, isError: true, errorKind: "invalid_input" };
+				target = found.full;
+			}
 			let text;
 			try {
-				text = readFileSync(skill.path, "utf8");
+				text = readFileSync(target, "utf8");
 			} catch (err) {
-				return { content: `[skills] cannot read ${skill.path}: ${err instanceof Error ? err.message : String(err)}`, isError: true, errorKind: "fatal" };
+				return { content: `[skills] cannot read ${target}: ${err instanceof Error ? err.message : String(err)}`, isError: true, errorKind: "fatal" };
 			}
+			// the cap is the whole contract: nothing reads past it (the old
+			// note sent the model to read_file, which cannot reach this
+			// directory)
 			if (text.length > MAX_BODY) {
-				text = `${text.slice(0, MAX_BODY)}\n…[truncated at ${MAX_BODY} chars — read the rest with read_file]`;
+				text = `${text.slice(0, MAX_BODY)}\n…[truncated at ${MAX_BODY} chars — read_skill returns at most this much of a file]`;
 			}
 			return { content: text, isError: false };
 		},
