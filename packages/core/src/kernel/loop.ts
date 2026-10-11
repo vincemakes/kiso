@@ -488,14 +488,15 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		let n = 0;
 		let closed = false; // AF-5: once the parent's handler is over, no new child
 		let fault: unknown; // an infrastructure fault after a child started: surfaces on the PARENT, which then gets no receipt (uncertain, like the child)
-		const open = new Set<Promise<unknown>>();
+		let tail: Promise<unknown> = Promise.resolve(); // settles when every admitted child has settled
+		const refuse = (content: string): ToolResult => ({ content, isError: true, errorKind: "precondition" });
 		const run1 = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
 			const call = { type: "tool_call_end", callId: `${parent.callId}/${++n}`, name, input, seq: undefined as unknown as number } as ToolCallEnd;
 			const ctx = { signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) };
 			// AF-1a: only a SHARED parent can run beside other parents, and a child lane excludes only its own siblings, so an exclusive child of a
 			// shared parent could not be kept alone across parents. Fail closed: a shared parent starts shared children only.
 			const child = table.get(name);
-			if (parent.shared && child !== undefined && child.effects?.concurrency !== "shared") return { content: `a shared tool may start only shared children: ${name} is exclusive and could not be kept alone beside other running calls`, isError: true, errorKind: "precondition" };
+			if (parent.shared && child !== undefined && child.effects?.concurrency !== "shared") return refuse(`a shared tool may start only shared children: ${name} is exclusive and could not be kept alone beside other running calls`);
 			const slot = lane(child);
 			try {
 				// decisions are made ONE AT A TIME, in one agent-wide order shared with top-level calls (`decideChain`): a stateful policy (a quota) never sees two at once.
@@ -505,32 +506,26 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 					decideChain = decideChain.then(step, step);
 				});
 				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
-				if (v.action === "ask") return { content: "a child call that needs a human decision is not supported inside a program yet", isError: true, errorKind: "precondition" };
+				if (v.action === "ask") return refuse("a child call that needs a human decision is not supported inside a program yet");
 				// the COMMIT GATE applies to a child exactly as to a top-level call: a precommit-safe parent may start early, its effectful child may not
-				if (child?.effects?.precommitSafe !== true) { await turnSettled; if (!committed) return { content: "the turn did not commit; a child call that needs a committed turn was not started", isError: true, errorKind: "precondition" }; }
+				if (child?.effects?.precommitSafe !== true) { await turnSettled; if (!committed) return refuse("the turn did not commit; a child call that needs a committed turn was not started"); }
 				await slot.wait;
-				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, parent.executionId);
+				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, { parent: parent.executionId, fault: (e) => { fault ??= e; } });
 			} catch (err) {
-				if (err === ABORTED) return { content: "aborted before execution", isError: true, errorKind: "precondition" };
-				if (err instanceof ChildFault) { fault ??= err.fault; throw err.fault; }
+				if (err === ABORTED) return refuse("aborted before execution");
 				throw err;
 			} finally {
 				slot.release();
 			}
 		};
 		const invoke = (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
-			if (closed) return Promise.resolve({ content: "the parent call has finished; a child call cannot start after it", isError: true, errorKind: "precondition" });
+			if (closed) return Promise.resolve(refuse("the parent call has finished; a child call cannot start after it"));
 			const p = run1(name, input);
-			open.add(p);
-			void p.then(() => open.delete(p), () => open.delete(p));
+			tail = tail.then(() => p.then(() => undefined, () => undefined));
 			return p;
 		};
-		// the parent's handler is over (returned, threw or was cut short): close the entry and wait for every admitted child, receipts persisted
-		const drain = async (): Promise<void> => {
-			closed = true;
-			while (open.size > 0) await Promise.allSettled([...open]);
-		};
-		return { invoke, drain, fault: () => fault };
+		// the parent's handler is over (returned, threw or was cut short): close the entry and wait for every admitted child
+		return { invoke, drain: async () => { closed = true; await tail; }, fault: () => fault };
 	};
 	const launch = (call: ToolCallEnd, rawInput?: string): void => {
 		execActive += 1;
@@ -1478,7 +1473,7 @@ async function runLedgered(
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
 	mkInvoke?: (parent: { callId: string; executionId: string; shared: boolean }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void>; fault: () => unknown },
-	child?: string, // a child call: the executionId of the call it ran under
+	child?: { parent: string; fault: (e: unknown) => void }, // a child call: the executionId of the call it ran under, and where an infrastructure fault is reported
 ): Promise<ToolResult> {
 	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
 	const tool = registry.get(call.name)!; // validated + decided by decideCall
@@ -1502,7 +1497,7 @@ async function runLedgered(
 				name: call.name,
 				input: call.input!, // non-null: decideCall denied a null input before this ran
 				...(tool.digest !== undefined ? { binding: { digest: tool.digest } } : {}),
-				...(child !== undefined ? { parent: child } : {}),
+				...(child !== undefined ? { parent: child.parent } : {}),
 			} as EventInput,
 			(id) => res(id ?? ""), // the drain always passes the allocated id for a started event
 		);
@@ -1532,7 +1527,8 @@ async function runLedgered(
 		try {
 			result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
 		} catch (e) {
-			throw child ? new ChildFault(e) : e; // the effect may have happened: no invented receipt either way
+			child?.fault(e); // the effect may have happened: no invented receipt; the fault surfaces on the parent
+			throw e;
 		}
 	}
 
@@ -1551,17 +1547,13 @@ async function runLedgered(
 		};
 	}
 
-	// a child's receipt is awaited until the consumer has persisted it: the parent's own receipt may not overtake it
-	let persisted: Promise<void> | undefined;
-	const pushReceipt = (ev: EventInput): void => { if (child) persisted = new Promise<void>((res) => push(ev, () => res())); else push(ev); };
-
 	if (result.isError) {
 		// Area 3: only a tool that PROVED safe-to-retry (idempotent) gets a
 		// clean failure; a non-idempotent failure may have produced a side
 		// effect and is uncertain until a human decides.
 		// round 8: the tags ride on the RECEIPT too — a crash-window repair of the
 		// tool_result reproduces the normal path losslessly.
-		pushReceipt({
+		push({
 			type: "tool_execution_failed",
 			executionId,
 			callId: call.callId,
@@ -1575,7 +1567,7 @@ async function runLedgered(
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	} else {
-		pushReceipt({
+		push({
 			type: "tool_execution_succeeded",
 			executionId,
 			callId: call.callId,
@@ -1585,13 +1577,10 @@ async function runLedgered(
 		});
 	}
 
-	if (child) { await persisted; return result; } // the model never issued it: no tool_result
+	if (child) return result; // the model never issued it: no tool_result; its receipt is already queued, so the parent's can only persist after it
 	push(resultEvent(call, result, executionId));
 	return result;
 }
-
-/** An infrastructure fault after a child's effect may have happened: the child stays unreceipted (uncertain) and the fault is carried up to its parent. */
-class ChildFault extends Error { constructor(readonly fault: unknown) { super(fault instanceof Error ? fault.message : String(fault)); } }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */
 const ABORTED = Symbol("kiso-aborted-during-approval");
