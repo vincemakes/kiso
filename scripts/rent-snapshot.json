@@ -12,7 +12,7 @@
 		},
 		{
 			"surface": "tool:read_file",
-			"chars": 626
+			"chars": 611
 		},
 		{
 			"surface": "tool:list_dir",
@@ -48,8 +48,8 @@
 		}
 	],
 	"total": {
-		"chars": 9000,
-		"estTokens": 2256
+		"chars": 8985,
+		"estTokens": 2252
 	},
 	"history": [
 		{
@@ -93,6 +93,12 @@
 			"chars": 9000,
 			"estTokens": 2256,
 			"why": "kiso-doc ruling-p13-o11-merge-and-gate-d-2026-10-11.md (owner-approved 2026-10-11): the P1.3 prompt and the hidden observed revision (O1.1) — system:base grows, edit_file/write_file/system:tools shrink, net +92 chars"
+		},
+		{
+			"date": "2026-10-11",
+			"chars": 8985,
+			"estTokens": 2252,
+			"why": "a ratchet step (shrink only)"
 		}
 	]
 }

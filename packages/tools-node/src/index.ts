@@ -469,7 +469,7 @@ export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; 
 			properties: {
 				path: { type: "string", description: "Workspace-relative path of the file to read" },
 				offset: { type: "number", description: "1-based first line to read (default: 1)" },
-				limit: { type: "number", description: "Maximum number of lines to read (default: to the end of the file)" },
+				limit: { type: "number", description: "Maximum lines; omit for the default bounded window" },
 			},
 			required: ["path"],
 			additionalProperties: false,
