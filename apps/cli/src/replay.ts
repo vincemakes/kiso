@@ -35,7 +35,7 @@ export interface ReplayBody {
 	textAppend(text: string): void;
 	textEnd(): void;
 	toolStart(name: string, callId: string, input: Record<string, unknown>): void;
-	toolResult(callId: string, result: { content: string; isError: boolean; reason?: string | null; untimed?: boolean }): void;
+	toolResult(callId: string, result: { content: string; isError: boolean; reason?: string | null; untimed?: boolean; created?: boolean }): void;
 	notice(text: string): void;
 	metaNotice(text: string, rows: readonly { readonly label: string; readonly sentence: string; readonly mark?: NoticeMark }[]): void;
 	endTurn(thoughtSeconds: number): void;
@@ -119,7 +119,8 @@ function replayTurn(body: ReplayBody, turn: readonly Ev[], tasks: readonly TaskI
 					const m = /^\[Permission denied\] (.*)$/.exec(text);
 					if (m !== null) reason = m[1]!;
 				}
-				body.toolResult(String(e.callId), { content: text, isError: e.isError === true, reason, untimed: true });
+				const created = ((e.tags as string[] | undefined) ?? []).includes("created");
+				body.toolResult(String(e.callId), { content: text, isError: e.isError === true, reason, untimed: true, ...(created ? { created: true } : {}) });
 				results.add(String(e.callId));
 				break;
 			}

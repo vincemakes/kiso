@@ -105,13 +105,14 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
         os.write(fd, b"y\\r")
         read_until(b"approve shell", 30)
         os.write(fd, b"y\\r")
-        # The kill predicate: the JSONL holds TWO tool_execution_started.
+        # The kill predicate: the JSONL holds THREE tool_execution_started
+        # (the read, the edit, the shell — O1's edit reads first).
         deadline = time.time() + 20
         while time.time() < deadline:
             try:
                 recs = open(os.path.join(home, "sessions", session_id + ".jsonl")).read()
                 starts = [l for l in recs.split("\\n") if "tool_execution_started" in l]
-                if len(starts) >= 2:
+                if len(starts) >= 3:
                     break
             except FileNotFoundError:
                 pass
@@ -330,9 +331,11 @@ def driver(cli, home, script_path, session_id, workdir, kills_at, resume_keys):
 `;
 
 const FAUX_TRAJECTORY = [
+	// O1: the edit binds the revision the model observed — read first.
+	{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "f1.txt" } }, { type: "stop", reason: "tool_use" }] },
 	{
 		events: [
-			{ type: "tool_call_end", callId: "e1", name: "edit_file", input: { path: "f1.txt", edits: [{ oldText: "OLD", newText: "NEW" }], expectedRevision: "rev:099d90cbee62f89e" } },
+			{ type: "tool_call_end", callId: "e1", name: "edit_file", input: { path: "f1.txt", edits: [{ oldText: "OLD", newText: "NEW" }] } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
@@ -342,9 +345,11 @@ const FAUX_TRAJECTORY = [
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
+	// O1: the edit binds the revision the model observed — read first.
+	{ events: [{ type: "tool_call_end", callId: "r3", name: "read_file", input: { path: "f3.txt" } }, { type: "stop", reason: "tool_use" }] },
 	{
 		events: [
-			{ type: "tool_call_end", callId: "e3", name: "edit_file", input: { path: "f3.txt", edits: [{ oldText: "OLD", newText: "NEW" }], expectedRevision: "rev:099d90cbee62f89e" } },
+			{ type: "tool_call_end", callId: "e3", name: "edit_file", input: { path: "f3.txt", edits: [{ oldText: "OLD", newText: "NEW" }] } },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},

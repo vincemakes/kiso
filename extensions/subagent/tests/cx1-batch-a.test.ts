@@ -119,7 +119,7 @@ describe("CX-1 F2 — the implementer's output is never deleted on a collection 
 		writeFileSync(
 			script,
 			JSON.stringify([
-				turn([{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "big.txt", content: big, expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }]),
+				turn([{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "big.txt", content: big } }, { type: "stop", reason: "tool_use" }]),
 				done,
 			]),
 			"utf8",
@@ -150,7 +150,7 @@ describe("CX-1 F2 — the implementer's output is never deleted on a collection 
 		writeFileSync(
 			script,
 			JSON.stringify([
-				turn([{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "work.txt", content: "valuable", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }]),
+				turn([{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "work.txt", content: "valuable" } }, { type: "stop", reason: "tool_use" }]),
 				turn([{ type: "tool_call_end", callId: "s1", name: "shell", input: { command: "mv .git .git-moved" } }, { type: "stop", reason: "tool_use" }]),
 				done,
 			]),

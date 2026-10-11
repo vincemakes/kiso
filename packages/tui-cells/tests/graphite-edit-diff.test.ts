@@ -165,6 +165,18 @@ describe("the card", () => {
 		expect(inner(rows[7]!)).toMatch(/^… 2 more lines +ctrl\+o expands$/);
 	});
 
+	// O1: with the observed revision bound by the host, the input cites no
+	// "absent"; the result's "created" tag is what says the file is new
+	// (red before it: `rewrote · 2 lines`, its lines unmarked)
+	it("O1: a write with no revision in its input is `new file` when its result was tagged created, `rewrote` otherwise", () => {
+		setGround("light");
+		const made = render(call("write_file", { path: "n.md", content: "a\nb\n" }, { created: true }));
+		expect(inner(made[1]!)).toMatch(/^WRITE n\.md +new file · 2 lines · 0\.1s$/);
+		expect(made.slice(2, 4).map(inner)).toEqual(["+ a", "+ b"]);
+		const over = render(call("write_file", { path: "o.md", content: "a\nb\n" }));
+		expect(inner(over[1]!)).toMatch(/rewrote · 2 lines · 0\.1s$/);
+	});
+
 	it("a write over a file: `rewrote · N lines`, its lines as they now read — not as additions (the old text is not in the log)", () => {
 		setGround("light");
 		const rows = render(call("write_file", { path: "o.md", expectedRevision: "rev:9", content: "a\nb\n" }));

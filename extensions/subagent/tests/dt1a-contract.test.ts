@@ -163,8 +163,8 @@ describe("DT-1a — scope: no shell, normalized path checks", () => {
 			script,
 			JSON.stringify([
 				call("s1", "shell", { command: "echo hi > README.md" }),
-				call("w1", "write_file", { path: "README.md", content: "changed\n", expectedRevision: "absent" }),
-				call("w2", "write_file", { path: "src/new.ts", content: "export const n = 2;\n", expectedRevision: "absent" }),
+				call("w1", "write_file", { path: "README.md", content: "changed\n" }),
+				call("w2", "write_file", { path: "src/new.ts", content: "export const n = 2;\n" }),
 				finish("done\n\nUNRESOLVED\nnone"),
 			]),
 			"utf8",
@@ -190,7 +190,7 @@ describe("DT-1a — acceptance: named checks or a parent-held evaluator, run by 
 	it("a configured check runs in the worktree after a completed child; exit code and passed are the parent's own", async () => {
 		const { dir, home } = repo();
 		const script = join(dir, "faux.json");
-		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/ok.txt", content: "ok\n", expectedRevision: "absent" }), finish("done")]), "utf8");
+		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/ok.txt", content: "ok\n" }), finish("done")]), "utf8");
 		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script, KISO_DELEGATION_CONFIG_JSON: JSON.stringify({ checks: { present: "test -f src/ok.txt", absent: "test -f src/missing.txt" }, profiles: [] }) });
 		process.chdir(dir);
 		const ok = await delegateWith([{ role: "implementer", task: "write ok", acceptance: { check: "present" } }], home);
@@ -218,7 +218,7 @@ describe("DT-1a — acceptance: named checks or a parent-held evaluator, run by 
 	it("an unknown check name is refused; an evaluator outside the worktree runs, one inside the parent's tree is refused", async () => {
 		const { dir, home } = repo();
 		const script = join(dir, "faux.json");
-		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/ok.txt", content: "ok\n", expectedRevision: "absent" }), finish("done")]), "utf8");
+		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/ok.txt", content: "ok\n" }), finish("done")]), "utf8");
 		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script, KISO_DELEGATION_CONFIG_JSON: JSON.stringify({ checks: {}, profiles: [] }) });
 		process.chdir(dir);
 		const unknown = await delegateWith([{ role: "implementer", task: "x", acceptance: { check: "nope" } }], home);
@@ -302,14 +302,14 @@ describe("DT-1a — the verifier's worktree", () => {
 	it("a verifier with `after` runs in a COPY of the implementer's kept worktree (ADR-0032 Amendment 1) — it sees the implementer's change, its own writes never reach the kept worktree, and the copy is removed; a verifier without `after` gets a fresh worktree from HEAD", async () => {
 		const { dir, home } = repo();
 		const script = join(dir, "faux.json");
-		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/impl.ts", content: "x\n", expectedRevision: "absent" }), finish("done")]), "utf8");
+		writeFileSync(script, JSON.stringify([call("w", "write_file", { path: "src/impl.ts", content: "x\n" }), finish("done")]), "utf8");
 		fauxEnv({ KISO_HOME: home, KISO_FAUX_SCRIPT: script });
 		process.chdir(dir);
 		const impl = await delegateWith([{ role: "implementer", task: "implement" }], home);
 		expect(impl.isError, impl.content).toBe(false);
 		const implRes = (resultFiles(home) as { identity: { childId: string }; worktree: string; baseRev: string }[])[0]!;
 		expect(existsSync(join(implRes.worktree, "src", "impl.ts"))).toBe(true);
-		writeFileSync(script, JSON.stringify([call("r", "read_file", { path: "src/impl.ts" }), call("s", "write_file", { path: "src/scratch.ts", content: "probe\n", expectedRevision: "absent" }), finish("tested")]), "utf8");
+		writeFileSync(script, JSON.stringify([call("r", "read_file", { path: "src/impl.ts" }), call("s", "write_file", { path: "src/scratch.ts", content: "probe\n" }), finish("tested")]), "utf8");
 		const verifier = await delegateWith([{ role: "verifier", task: "run the tests", after: implRes.identity.childId }], home);
 		expect(verifier.isError, verifier.content).toBe(false);
 		type Res = { identity: { childId: string }; worktree: string; baseRev: string; after?: string };

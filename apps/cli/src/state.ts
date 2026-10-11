@@ -9,10 +9,11 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
+import { projectMessages, type Event, type Message } from "@vincemakes/kiso-core";
 import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
@@ -57,6 +58,7 @@ export function codingToolOptions(): {
 	readonly secretEnvNames: readonly string[];
 	readonly protectedFiles: readonly string[];
 	readonly tasks: (sessionId: string | undefined) => ShellTasks | undefined;
+	readonly observedRevision: (sessionId: string | undefined, full: string, kind?: "edit" | "write") => string | undefined;
 	readonly limits?: { readonly minForegroundMs: number };
 } {
 	// KISO_MIN_FOREGROUND_MS — the test rigs' knob (like KISO_AUTO_DETACH_MS):
@@ -69,6 +71,7 @@ export function codingToolOptions(): {
 		secretEnvNames: secretEnvNamesOf(configModels),
 		protectedFiles: protectedFiles(),
 		tasks: tasksFor,
+		observedRevision: observedRevisionFromLog,
 		...(Number.isFinite(minForeground) && minForeground >= 0 ? { limits: { minForegroundMs: minForeground } } : {}),
 	};
 }
@@ -821,4 +824,61 @@ export function setAcceptDrift(v: boolean): void {
 }
 export function acceptDrift(): boolean {
 	return acceptDriftValue;
+}
+
+
+/** O1 — the hidden observed revision. The revision the model last
+ *  OBSERVED for a file, rebuilt from the session's MODEL-VISIBLE history
+ *  (`projectMessages` over the durable log, so a receipt cleared by
+ *  microcompaction or covered by a summary no longer counts): the last
+ *  [rev:…] of a successful read_file / edit_file / write_file on that
+ *  file, or of an edit_file stale refusal (it carries the current text).
+ *  Never the disk's current revision — a stale write stays refused.
+ *  `kind: "write"` (a whole-file replace) also needs visible whole-file
+ *  knowledge: an unranged, uncapped read or an own write, followed only
+ *  by own mutations. The log is per session, so a child session (a
+ *  subagent) inherits no observation. */
+function realOrResolved(p: string): string {
+	try { return realpathSync(p); } catch { return p; }
+}
+export function observedRevisionFromLog(sessionId: string | undefined, full: string, kind: "edit" | "write" = "edit"): string | undefined {
+	if (sessionId === undefined || activeStoreDir === "") return undefined;
+	let text: string;
+	try { text = readFileSync(join(activeStoreDir, `${sessionId}.jsonl`), "utf8"); } catch { return undefined; }
+	const events: Event[] = [];
+	for (const line of text.split("\n")) {
+		if (line === "") continue;
+		try { const e = (JSON.parse(line) as { event?: Event }).event; if (e !== undefined) events.push(e); } catch { /* a torn tail line */ }
+	}
+	let messages: readonly Message[];
+	try { messages = projectMessages(events); } catch { return undefined; }
+	const target = realOrResolved(full);
+	const calls = new Map<string, { readonly name: string; readonly full: string; readonly ranged: boolean }>();
+	let rev: string | undefined;
+	let wholeKnown = false;
+	for (const m of messages) {
+		if (m.role === "assistant") {
+			for (const b of m.blocks) {
+				if (b.type === "tool_use" && typeof b.input.path === "string") {
+					calls.set(b.callId, { name: b.name, full: realOrResolved(resolve(process.cwd(), b.input.path)), ranged: b.input.offset !== undefined || b.input.limit !== undefined });
+				}
+			}
+		} else if (m.role === "tool") {
+			const c = calls.get(m.callId);
+			if (c === undefined || c.full !== target) continue;
+			const body = typeof m.content === "string" ? m.content : m.content.map((x) => (x.type === "text" ? x.text : "")).join("");
+			const hit = [...body.matchAll(/\[(rev:[0-9a-f]{16})\]/g)].pop();
+			if (hit === undefined) continue;
+			if (!m.isError && (c.name === "read_file" || c.name === "edit_file" || c.name === "write_file")) {
+				rev = hit[1];
+				if (c.name === "read_file") wholeKnown = !c.ranged && !body.includes("(call again with offset=") && !body.includes("[output capped at");
+				else if (c.name === "write_file") wholeKnown = true;
+			} else if (m.isError && c.name === "edit_file" && body.includes(" changed since ")) {
+				rev = hit[1];
+				wholeKnown = false;
+			}
+		}
+	}
+	if (kind === "write" && !wholeKnown) return undefined;
+	return rev;
 }
