@@ -151,6 +151,8 @@
   "apps/cli/tests/xp1-binding-change.test.ts",
   "apps/cli/tests/xp1-status-truth-pty.test.ts",
   "apps/cli/tests/zombie-resume-gate.test.ts",
+  "extensions/mcp/tests/binding.test.ts",
+  "extensions/mcp/tests/connecting-flag.test.ts",
   "extensions/mcp/tests/dispose-e2e.test.ts",
   "extensions/mcp/tests/mcp-e2e.test.ts",
   "extensions/mcp/tests/mcp.test.ts",

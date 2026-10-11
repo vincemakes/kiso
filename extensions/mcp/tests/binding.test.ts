@@ -14,10 +14,10 @@ async function until(test: () => boolean, ms: number): Promise<boolean> { const 
 
 describe("MCP bridge: tool digests", () => {
 	it("every server tool has a stable digest; a changed schema changes it; liveDigest sees the change the cached tool cannot", async () => {
-		const ext = await createMcpExtension({ servers: { studio: { command: process.execPath, args: [SERVER], env: { MCP_TOOLS: "13", MCP_DRIFT_AFTER: "1" } } } });
+		const ext = (await createMcpExtension({ servers: { studio: { command: process.execPath, args: [SERVER], env: { MCP_TOOLS: "13", MCP_DRIFT_AFTER: "1" } } } })) as unknown as { connecting?: boolean; tools?: readonly unknown[]; liveDigest(name: string): Promise<string | undefined>; dispose?: () => Promise<void> };
 		try {
 			expect(await until(() => ext.connecting !== true && (ext.tools ?? []).length > 5, 10000)).toBe(true);
-			const tool = (n: string) => (ext.tools as { name: string; digest?: string; execute: (i: unknown, c: unknown) => Promise<unknown> }[]).find((t) => t.name === `mcp__studio__${n}`)!;
+			const tool = (n: string) => (ext.tools as unknown as { name: string; digest?: string; execute: (i: unknown, c: unknown) => Promise<unknown> }[]).find((t) => t.name === `mcp__studio__${n}`)!;
 			const before = tool("add_subject").digest;
 			expect(before).toMatch(/^sha256:[0-9a-f]{64}$/);
 			expect(tool("create_project").digest).not.toBe(before);
