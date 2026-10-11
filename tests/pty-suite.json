@@ -81,6 +81,7 @@
   "apps/cli/tests/lt2-breaker-pty.test.ts",
   "apps/cli/tests/lt2-checkpoint-pty.test.ts",
   "apps/cli/tests/microcompact-cli.test.ts",
+  "apps/cli/tests/o1-observed-revision.test.ts",
   "apps/cli/tests/oauth-chatgpt.test.ts",
   "apps/cli/tests/oauth-cli.test.ts",
   "apps/cli/tests/or7-effort-axis-pty.test.ts",

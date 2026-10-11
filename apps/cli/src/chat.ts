@@ -1142,7 +1142,7 @@ export async function consumeRun(
 					const m = /^\[Permission denied\] (.*)$/.exec(text);
 					if (m !== null) reason = m[1]!;
 				}
-				body.toolResult(ev.callId, { content: text, isError: ev.isError, reason });
+				body.toolResult(ev.callId, { content: text, isError: ev.isError, reason, ...((ev.tags ?? []).includes("created") ? { created: true } : {}) });
 				break;
 			}
 			case "text_delta":

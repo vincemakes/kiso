@@ -96,7 +96,10 @@ export async function defaultCompositionParts({ home } = {}) {
 			// their PRESENCE is what shapes the table: the shell gains its task
 			// parameters, task_stop and wait join (tools-node createCodingTools).
 			// The stub answers no task question — only the shape is read here.
-			tools: createCodingTools({ workspaceRoot: process.cwd(), tasks: () => undefined }),
+			// O1: the CLI also binds the observed revision (codingToolOptions,
+			// `observedRevision`), and its PRESENCE drops expectedRevision from
+			// edit_file / write_file and their revision guideline from the table.
+			tools: createCodingTools({ workspaceRoot: process.cwd(), tasks: () => undefined, observedRevision: () => undefined }),
 			toolRules: CODING_TOOL_RULES,
 			extensions: [mcp, skills, subagent],
 		};

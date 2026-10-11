@@ -17,7 +17,7 @@ import { spawnSync } from "node:child_process";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { composeSystemPrompt, readProjectInstructions } from "../src/index.js";
+import { composeSystemPrompt, readProjectInstructions, SYSTEM_PROMPT } from "../src/index.js";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -29,7 +29,9 @@ describe("A: system prompt composition", () => {
 	it("no AGENTS.md/CLAUDE.md → no injection (the bare coding-agent prompt)", () => {
 		const dir = workdir();
 		const prompt = composeSystemPrompt(dir);
-		expect(prompt).toContain("coding agent");
+		// the bare composition IS the constant (the P1.3 prompt no longer
+		// says "coding agent"; the wording was never the subject here)
+		expect(prompt).toBe(SYSTEM_PROMPT);
 		expect(prompt).not.toContain("Project instructions");
 	});
 

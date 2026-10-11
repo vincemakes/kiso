@@ -53,9 +53,13 @@ describe("ACI-6: the routing policy is stated once", () => {
 		expect(hits, `found ${hits.length}`).toHaveLength(1);
 	});
 
+	// MOVED (2026-10-11, the P1.3 prompt): the base prompt no longer
+	// carries the caution; the shell tool's own description does, once —
+	// still on every request, still not duplicated.
 	it("the shell CAUTION survives — it is not duplicated and not what contradicted", () => {
-		expect(SYSTEM_PROMPT).toMatch(/side effects/i);
-		expect(SYSTEM_PROMPT).toMatch(/may take time/i);
+		const { description } = createCodingTools({ workspaceRoot: "/tmp" }).find((t) => t.name === "shell")!;
+		expect(description).toMatch(/side effects are real/i);
+		expect(`${SYSTEM_PROMPT}\n${table()}\n${description}`.match(/side effects/gi) ?? []).toHaveLength(1);
 	});
 
 	it("'one command at a time' is gone — the kernel enforces it, the prompt was paying for it", () => {
@@ -74,18 +78,20 @@ describe("ACI-6: the routing policy is stated once", () => {
 });
 
 describe("ACI-6: what this round must NOT touch", () => {
-	// Regression guards, GREEN before this change too. Their job is to stay
-	// green while the deletions above go red — they are not red proofs, and
-	// calling them proofs would be the red-in-both-positions mistake.
-	it("the reach section is byte-identical — it contradicts nothing AND it is one of the five clauses PR-1 measured together", () => {
-		expect(SYSTEM_PROMPT).toContain("What you can reach:");
-		expect(SYSTEM_PROMPT).toContain("- The workspace: read_file, list_dir, search_text, write_file, edit_file.");
-		expect(SYSTEM_PROMPT).toMatch(/The human: ask_user, for a decision that is theirs\./);
-	});
-
-	it("the 0.37.0 re-read bullet is byte-identical — it was measured", () => {
+	// DECLARED SUPERSESSION (2026-10-11, the P1.3 prompt — kiso-doc
+	// report-p13-confirm-and-fidelity-2026-10-11). Both texts these guards
+	// held byte-identical were replaced, each by a measured successor:
+	//   - the reach section -> the reach paragraph, pinned with its
+	//     measurement in pr1d-clause-pins.test.ts (Capability Fidelity
+	//     48/48 against 0.49.0's 48/48);
+	//   - the 0.37.0 re-read bullet -> the observation-continuity
+	//     paragraph, measured with the hidden observed revision (O1.1):
+	//     T6 turn-start post-edit re-reads 66 -> 56 in the P1.3 round,
+	//     87 -> 13 in the P1.2 round, no task-success regression.
+	it("the observation-continuity paragraph replaces the re-read bullet", () => {
 		expect(SYSTEM_PROMPT).toContain(
-			"- Do not re-read a file you already read unchanged, or one you changed\n  yourself through a confirmed edit — rely on the earlier result and\n  on the change you just made.",
+			"After a successful edit or write, treat the change you made and the returned revision as the file's current observed state.",
 		);
+		expect(SYSTEM_PROMPT).toContain("A confirmed tool result is evidence; do not re-read or re-check solely for reassurance.");
 	});
 });

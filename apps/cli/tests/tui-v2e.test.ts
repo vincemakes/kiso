@@ -87,13 +87,15 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		writeFileSync(
 			script,
 			JSON.stringify([
+				// O1: the edit binds the revision the model observed — read first.
+				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "work.txt" } }, { type: "stop", reason: "tool_use" }] },
 				{
 					events: [
 						{
 							type: "tool_call_end",
 							callId: "c1",
 							name: "edit_file",
-							input: { path: "work.txt", edits: [{ oldText: "OLD", newText: "NEW" }], expectedRevision: "rev:68d57b25056a1d5a" },
+							input: { path: "work.txt", edits: [{ oldText: "OLD", newText: "NEW" }] },
 						},
 						{ type: "stop", reason: "tool_use" },
 					],
@@ -139,13 +141,15 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		writeFileSync(
 			script,
 			JSON.stringify([
+				// O1: the edit binds the revision the model observed — read first.
+				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "work.txt" } }, { type: "stop", reason: "tool_use" }] },
 				{
 					events: [
 						{
 							type: "tool_call_end",
 							callId: "c1",
 							name: "edit_file",
-							input: { path: "work.txt", edits: [{ oldText: "line1", newText: "FIRST" }, { oldText: "line2", newText: "LAST" }], expectedRevision: "rev:68d57b25056a1d5a" },
+							input: { path: "work.txt", edits: [{ oldText: "line1", newText: "FIRST" }, { oldText: "line2", newText: "LAST" }] },
 						},
 						{ type: "stop", reason: "tool_use" },
 					],
@@ -181,13 +185,15 @@ describe("TUI v2e (real PTY, 24×80) — the approval-moment diff", () => {
 		writeFileSync(
 			script,
 			JSON.stringify([
+				// O1: the edit binds the revision the model observed — read first.
+				{ events: [{ type: "tool_call_end", callId: "r1", name: "read_file", input: { path: "work.txt" } }, { type: "stop", reason: "tool_use" }] },
 				{
 					events: [
 						{
 							type: "tool_call_end",
 							callId: "c1",
 							name: "edit_file",
-							input: { path: "work.txt", edits: [{ oldText: "OLD", newText: "NEW" }], expectedRevision: "rev:68d57b25056a1d5a" },
+							input: { path: "work.txt", edits: [{ oldText: "OLD", newText: "NEW" }] },
 						},
 						{ type: "stop", reason: "tool_use" },
 					],

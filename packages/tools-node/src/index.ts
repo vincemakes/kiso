@@ -299,6 +299,12 @@ export interface WorkspaceToolsOptions {
 	 *  serves the session's task outputs. Absent: today's shell, its schema
 	 *  byte for byte. */
 	readonly tasks?: (sessionId: string | undefined) => ShellTasks | undefined;
+	/** O1 — the hidden observed revision. When present, edit_file and
+	 *  write_file take no expectedRevision (the model-facing schema drops
+	 *  it): the host returns the revision the model last OBSERVED for the
+	 *  file (undefined: never observed — the call is refused). Absent:
+	 *  the explicit expectedRevision protocol, its schema byte for byte. */
+	readonly observedRevision?: (sessionId: string | undefined, full: string, kind?: "edit" | "write") => string | undefined;
 	/**
 	 * DC-54 — the bounds that keep a tool call finite. Every field is
 	 * optional and defaults to the constant beside it; a host embedding
@@ -928,28 +934,29 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; content: string; expectedRevision?: string }> {
 	return defineTool<{ path: string; content: string; expectedRevision?: string }>({
 		name: "write_file",
-		description:
-			"Create or replace a whole workspace file. expectedRevision is the file's latest revision token, or \"absent\" to create a new file.",
+		description: opts.observedRevision !== undefined
+			? "Create or replace a whole workspace file. Replacing a file needs an earlier read of it."
+			: "Create or replace a whole workspace file. expectedRevision is the file's latest revision token, or \"absent\" to create a new file.",
 		parameters: {
 			type: "object",
 			properties: {
 				path: { type: "string", description: "Workspace-relative file to write" },
 				content: { type: "string", description: "Full new content" },
-				expectedRevision: {
+				...(opts.observedRevision !== undefined ? {} : { expectedRevision: {
 					type: "string",
 					description: 'The latest revision token, or "absent" to create',
-				},
+				} }),
 			},
-			required: ["path", "content", "expectedRevision"],
+			required: opts.observedRevision !== undefined ? ["path", "content"] : ["path", "content", "expectedRevision"],
 			additionalProperties: false,
 		},
 		promptSnippet: "write_file — write a whole file",
-		promptGuidelines: ["cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
-		execute: async ({ path, content, expectedRevision: citedRevision }) => {
+		...(opts.observedRevision !== undefined ? {} : { promptGuidelines: ["cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"] }),
+		execute: async ({ path, content, expectedRevision: citedRevision }, ctx) => {
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize every plausible copy of the token FIRST —
 			// tolerance in the reader, strictness in the comparison.
-			const expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
+			let expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
 			let full: string;
 			try {
 				full = resolveWithinRoot(opts.workspaceRoot, path);
@@ -959,6 +966,11 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			}
 			const guard = protectedIdentity(opts.protectedFiles);
 			if (isProtectedPath(full, guard)) return precondition(protectedRefusalText("write_file", path));
+			// O1: bind the observed revision (never the disk's latest)
+			if (expectedRevision === undefined && opts.observedRevision !== undefined && existsSync(full)) {
+				expectedRevision = opts.observedRevision(ctx?.sessionId, full, "write");
+				if (expectedRevision === undefined) return precondition(`write_file: ${path} already exists — read it before replacing it`);
+			}
 			// WR-1 — the observed-revision stale-write guard. The decision
 			// lattice runs BEFORE any bytes move; every refusal is a
 			// precondition with one actionable sentence. What it proves:
@@ -999,7 +1011,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				if (held === null) return precondition(protectedRefusalText("write_file", path));
 				const current = contentRevision(held);
 				if (current !== expectedRevision) {
-					return precondition(`write_file: ${path} changed since ${expectedRevision} — read it again and cite its [rev:…] line, then re-apply the change`);
+					return precondition(opts.observedRevision !== undefined ? `write_file: ${path} changed since you last observed it — read it again, then re-apply the change` : `write_file: ${path} changed since ${expectedRevision} — read it again and cite its [rev:…] line, then re-apply the change`);
 				}
 			}
 			const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
@@ -1044,7 +1056,14 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				// WR-1: the result returns the NEW revision — the model just
 				// authored these bytes; a legal new world witness for chained
 				// edits without a wasted re-read.
-				return { content: `wrote ${path} (${content.length} chars)\n[${contentRevision(Buffer.from(content, "utf8"))}]`, isError: false };
+				// O1: with no "absent" in the input, the "created" tag tells
+				// the host's card a creation from a rewrite — a product tag,
+				// never sent to the model.
+				return {
+					content: `wrote ${path} (${content.length} chars)\n[${contentRevision(Buffer.from(content, "utf8"))}]`,
+					isError: false,
+					...(opts.observedRevision !== undefined && !exists ? { tags: ["created"] } : {}),
+				};
 			} catch (err) {
 				// round 8: a failed write never leaves a temp file with the FULL
 				// content behind — it is unlinked in every failure path.
@@ -1191,8 +1210,9 @@ function editHunksOf(input: EditFileInput): { hunks: readonly { search: string; 
 export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 	return defineTool<EditFileInput>({
 		name: "edit_file",
-		description:
-			"Edit a file at its latest revision (expectedRevision): exact replacements, applied in order, all or nothing. Batch changes to this file that are already known into one call. A refusal ends on its [rev:X].",
+		description: opts.observedRevision !== undefined
+			? "Edit a file you have read: exact replacements, applied in order, all or nothing. Batch changes to this file that are already known into one call."
+			: "Edit a file at its latest revision (expectedRevision): exact replacements, applied in order, all or nothing. Batch changes to this file that are already known into one call. A refusal ends on its [rev:X].",
 		parameters: {
 			type: "object",
 			properties: {
@@ -1212,18 +1232,18 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 					minItems: 1,
 					maxItems: 32,
 				},
-				expectedRevision: { type: "string", description: "The file's latest revision token" },
+				...(opts.observedRevision !== undefined ? {} : { expectedRevision: { type: "string", description: "The file's latest revision token" } }),
 			},
-			required: ["path", "edits", "expectedRevision"],
+			required: opts.observedRevision !== undefined ? ["path", "edits"] : ["path", "edits", "expectedRevision"],
 			additionalProperties: false,
 		},
 		promptSnippet: "edit_file — replace oldText with newText",
-		promptGuidelines: ["cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"],
-		execute: async (input) => {
+		...(opts.observedRevision !== undefined ? {} : { promptGuidelines: ["cite the file's latest revision as expectedRevision; each successful mutation returns the next one; use \"absent\" only to create"] }),
+		execute: async (input, ctx) => {
 			const { path, expectedRevision: citedRevision } = input;
 			const maxReadBytes = opts.limits?.readMaxFileBytes ?? READ_MAX_FILE_BYTES;
 			// WR-1-F2: normalize the citation (see write_file).
-			const expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
+			let expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
 			const shape = editHunksOf(input);
 			if (typeof shape === "string") return { content: shape, isError: true, errorKind: "invalid_input" };
 			const { hunks, single } = shape;
@@ -1236,6 +1256,11 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 			}
 			const guard = protectedIdentity(opts.protectedFiles);
 			if (isProtectedPath(full, guard)) return precondition(protectedRefusalText("edit_file", path));
+			// O1: bind the observed revision (never the disk's latest)
+			if (expectedRevision === undefined && opts.observedRevision !== undefined) {
+				expectedRevision = opts.observedRevision(ctx?.sessionId, full);
+				if (expectedRevision === undefined) return precondition(`edit_file: ${path} — read it first; there is no observation of it in this session`);
+			}
 			// WR-1: edits always target an existing file — the revision is
 			// not optional here, and the refusal teaches the protocol.
 			if (expectedRevision === undefined) {
@@ -1279,7 +1304,9 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 					// should land, and its current revision last — the retry needs
 					// no read. The headline is unchanged (bench parsers read it).
 					return precondition(
-						`edit_file: ${path} changed since ${expectedRevision} — the file as it is now is below; re-apply the change against it, citing the [rev:…] on the last line\n${staleReport(text, hunks, single)}\n[${current}]`,
+						opts.observedRevision !== undefined
+							? `edit_file: ${path} changed since you last observed it — the file as it is now is below; re-apply the change against it\n${staleReport(text, hunks, single)}\n[${current}]`
+							: `edit_file: ${path} changed since ${expectedRevision} — the file as it is now is below; re-apply the change against it, citing the [rev:…] on the last line\n${staleReport(text, hunks, single)}\n[${current}]`,
 					);
 				}
 				// ACI-3 (superseding WR-1E2's one-snapshot rule): the hunks apply

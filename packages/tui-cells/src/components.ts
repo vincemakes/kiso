@@ -294,6 +294,10 @@ export type BodyCell =
 			 *  the target, the reason in the W4 parentheses idiom, NO timing
 			 *  metadata (the call never ran). */
 			reason: string | null;
+			/** O1: the write created its file (the result's "created" tag)
+			 *  — the input no longer cites "absent" when the host binds
+			 *  the observed revision. */
+			created?: boolean;
 			/** A5: the approval verdict — the permission_decided event bound
 			 *  into the cell (no free-standing `  approved` orphan row). The
 			 *  settled head row aggregates name + status + decidedBy in ONE
@@ -1994,11 +1998,11 @@ interface EditDiff {
 	readonly meta: string;
 	readonly cap: number;
 }
-const editDiffMemo = new WeakMap<object, EditDiff | null>();
-function editDiffOf(c: { name: string; inputFull: string }): EditDiff | null {
+const editDiffMemo = new WeakMap<object, { readonly created: boolean; readonly out: EditDiff | null }>();
+function editDiffOf(c: { name: string; inputFull: string; created?: boolean }): EditDiff | null {
 	if (c.name !== "edit_file" && c.name !== "write_file") return null;
 	const known = editDiffMemo.get(c);
-	if (known !== undefined) return known;
+	if (known !== undefined && known.created === (c.created === true)) return known.out;
 	let input: Record<string, unknown> | null = null;
 	try {
 		const v: unknown = JSON.parse(c.inputFull);
@@ -2017,14 +2021,15 @@ function editDiffOf(c: { name: string; inputFull: string }): EditDiff | null {
 	} else if (input !== null && typeof input.content === "string") {
 		const content = input.content.replace(/\n$/, "");
 		const all = content === "" ? [] : content.split("\n");
-		// a write that cites "absent" creates the file; any other rewrites
-		// one whose old text is not in the log, so its lines are shown as
-		// they now read, not as additions
-		const created = input.expectedRevision === "absent";
+		// a write that cites "absent" (or, with the observed revision
+		// bound by the host, whose result is tagged "created") creates the
+		// file; any other rewrites one whose old text is not in the log, so
+		// its lines are shown as they now read, not as additions
+		const created = input.expectedRevision === "absent" || c.created === true;
 		const n = `${all.length} line${all.length === 1 ? "" : "s"}`;
 		out = { lines: all.map((text) => ({ kind: created ? ("+" as const) : (" " as const), text })), meta: created ? `new file \u00b7 ${n}` : `rewrote \u00b7 ${n}`, cap: WRITE_HEAD };
 	}
-	editDiffMemo.set(c, out);
+	editDiffMemo.set(c, { created: c.created === true, out });
 	return out;
 }
 

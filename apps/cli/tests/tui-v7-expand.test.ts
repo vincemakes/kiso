@@ -249,7 +249,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 			JSON.stringify([
 				{
 					events: [
-						{ type: "tool_call_end", callId: "c1", name: "write_file", input: { path: target, content, expectedRevision: "absent" } },
+						{ type: "tool_call_end", callId: "c1", name: "write_file", input: { path: target, content } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},

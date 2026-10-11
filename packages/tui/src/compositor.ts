@@ -668,7 +668,7 @@ export class Body {
 
 	/** `untimed`: 4c's replay settles a card from the durable log, whose
 	 *  events carry no clock — the card then says nothing about time. */
-	toolResult(callId: string, result: { content: string; isError: boolean; reason?: string | null; untimed?: boolean }): void {
+	toolResult(callId: string, result: { content: string; isError: boolean; reason?: string | null; untimed?: boolean; created?: boolean }): void {
 		const call = this.#pendingCalls.get(callId);
 		if (call !== undefined) {
 			call.result = result;
@@ -693,6 +693,7 @@ export class Body {
 			cell.isError = result.isError;
 			cell.resultText = result.content;
 			cell.reason = result.reason ?? null;
+			if (result.created === true) cell.created = true;
 			cell.doneAt = result.untimed === true ? null : Date.now();
 			cell.done = true;
 		}

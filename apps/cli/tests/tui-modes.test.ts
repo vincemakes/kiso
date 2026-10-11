@@ -133,14 +133,14 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 				},
 				{
 					events: [
-						{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "hello", expectedRevision: "absent" } },
+						{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "hello" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
 				{ events: [{ type: "text_delta", text: "plan turn done" }, { type: "stop", reason: "end_turn" }] },
 				{
 					events: [
-						{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: "out.txt", content: "hello", expectedRevision: "absent" } },
+						{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: "out.txt", content: "hello" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
@@ -423,7 +423,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			JSON.stringify([
 				{ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input: { command: "cat notes.txt" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "tool_call_end", callId: "s2", name: "shell", input: { command: "touch made.txt" } }, { type: "stop", reason: "tool_use" }] },
-				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "x", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "out.txt", content: "x" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "text_delta", text: "dontask done" }, { type: "stop", reason: "end_turn" }] },
 			]),
 			"utf8",
@@ -461,8 +461,8 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 		writeFileSync(
 			script,
 			JSON.stringify([
-				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "notes.md", content: "x", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
-				{ events: [{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: ".git/config", content: "[core]\n", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "w1", name: "write_file", input: { path: "notes.md", content: "x" } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "tool_call_end", callId: "w2", name: "write_file", input: { path: ".git/config", content: "[core]\n" } }, { type: "stop", reason: "tool_use" }] },
 				{ events: [{ type: "text_delta", text: "pw done" }, { type: "stop", reason: "end_turn" }] },
 			]),
 			"utf8",
@@ -561,7 +561,7 @@ describe("Modes (real PTY, 24×80) — plan mode, /mode switching, the audit tra
 			JSON.stringify([
 				{
 					events: [
-						{ type: "tool_call_end", callId: "p1", name: "write_file", input: { path: "out.txt", content: "x", expectedRevision: "absent" } },
+						{ type: "tool_call_end", callId: "p1", name: "write_file", input: { path: "out.txt", content: "x" } },
 						{ type: "stop", reason: "tool_use" },
 					],
 				},
