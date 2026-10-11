@@ -330,14 +330,19 @@ description: a review checklist for pull requests
   YAML subset; only `name`/`description` are read — no dependency, no
   parser) becomes one line of the system prompt, sorted by directory name:
   `Available skills (load with read_skill):` followed by one
-  `- <name>: <description>` per skill. A broken entry (no frontmatter, no
+  `- <name>: <description>` per skill. The index has a 3,000-character
+  budget: over it, every name stays and the descriptions are cut to one
+  common length (short ones stay whole), down to names only if it must —
+  a skill is never dropped from the index (ADR-0033 Amendment 2). A broken entry (no frontmatter, no
   description, a broken link, a duplicate name) is skipped — a soft
   failure, like the MCP bridge — and reported to you in `/skills` and the
   reload line, not in the model's prompt; `read_skill` names the reason if
   the model asks for that skill. No valid skill → an empty extension,
   never an error.
-- **Tier 2 — on demand.** The `read_skill` tool returns the full `SKILL.md`
-  (capped at 32KB with a truncation note); an unknown name is an honest,
+- **Tier 2 — on demand.** The `read_skill` tool returns the `SKILL.md`
+  (capped at 32KB with a truncation note) — its body alone when the
+  frontmatter holds only `name`/`description`/`user-invocable`, which the
+  index already carries; any other key keeps the whole file as written; an unknown name is an honest,
   actionable error listing the installed skills.
 - **Tier 3 — a skill's own files, through read_skill.** Files other than
   `SKILL.md` are NOT auto-loaded. When the body names one

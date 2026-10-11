@@ -152,7 +152,7 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 });
 
 describe("⑤ skills: tier 2 — read_skill", () => {
-	it("② read_skill returns the FULL SKILL.md", async () => {
+	it("② read_skill returns the SKILL.md (its body: this frontmatter holds only what the index carries — Amendment 2)", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "a-skill", "\n# A skill\n\nDetailed body with a plan.\n", { description: "desc" });
 		const ext = await extWith(dir);
@@ -171,6 +171,84 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 		expect(r.isError).toBe(true);
 		expect(String(r.content)).toContain('unknown skill "nope"');
 		expect(String(r.content)).toContain("a-skill, b-skill");
+	});
+});
+
+/** ADR-0033 Amendment 2 — the skills family diet (kiso-doc
+ *  kit-skills-screen-2026-10-11: screened, combined, confirmed once). */
+describe("K3 — the resident index has a 3,000-char budget, and never drops a name", () => {
+	const many = (n: number, desc: (i: number) => string): string => {
+		const dir = skillDir();
+		for (let i = 0; i < n; i++) writeSkill(dir, `${String(i).padStart(3, "0")}-s`, "\nbody\n", { name: `skill-${i}`, description: desc(i) });
+		return dir;
+	};
+	const lines = (ext: KisoExtension): string[] => String(ext.systemPrompt?.append).split("\n").slice(1);
+
+	it("under the budget the index is byte for byte what it was", async () => {
+		const ext = await extWith(many(5, (i) => `does thing ${i}`));
+		expect(ext.systemPrompt?.append).toBe(`Available skills (load with read_skill):\n${[0, 1, 2, 3, 4].map((i) => `- skill-${i}: does thing ${i}`).join("\n")}`);
+	});
+
+	it("over it, every name stays, the index fits, short descriptions are whole and long ones share one cut (red: 5,000+ chars)", async () => {
+		const ext = await extWith(many(32, (i) => (i % 4 === 0 ? `short ${i}` : `Team procedures for area ${i}: when to use it, the conventions we follow, the review steps and the common mistakes to avoid`)));
+		const append = String(ext.systemPrompt?.append);
+		expect(append.length).toBeLessThanOrEqual(3000);
+		const ls = lines(ext);
+		expect(ls.map((l) => /^- (skill-\d+)/.exec(l)?.[1])).toEqual(Array.from({ length: 32 }, (_, i) => `skill-${i}`));
+		for (let i = 0; i < 32; i += 4) expect(ls[i]).toBe(`- skill-${i}: short ${i}`);
+		const cut = ls.filter((_, i) => i % 4 !== 0).map((l) => l.slice(l.indexOf(": ") + 2));
+		expect(cut.every((d) => d.endsWith("…"))).toBe(true);
+		expect(new Set(cut.map((d) => d.startsWith("Team procedures for area")))).toEqual(new Set([true]));
+	});
+
+	it("when even short descriptions do not fit, the index is names only — still every one", async () => {
+		const ext = await extWith(many(200, (i) => `description number ${i} that is reasonably long`));
+		const ls = lines(ext);
+		expect(ls).toHaveLength(200);
+		expect(ls.every((l, i) => l === `- skill-${i}`)).toBe(true);
+	});
+});
+
+describe("K2 — read_skill drops a frontmatter that only repeats the index", () => {
+	it("name/description/user-invocable only: the body alone", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "a", "\n# A\nthe body\n", { name: "a", description: "desc", "user-invocable": "false" });
+		const r = await readSkill(await extWith(dir)).execute({ name: "a" }, ctx);
+		expect(String(r.content)).toBe("\n# A\nthe body\n");
+	});
+
+	it("any other key keeps the whole block — the loader does not know what it means (allowed-tools, model, …)", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "a", "\n# A\n", { name: "a", description: "desc", "allowed-tools": "Read, Grep" });
+		const r = await readSkill(await extWith(dir)).execute({ name: "a" }, ctx);
+		expect(String(r.content)).toContain("allowed-tools: Read, Grep");
+		expect(String(r.content).startsWith("---")).toBe(true);
+	});
+
+	it("a block-scalar description is still recognised as consumed", async () => {
+		const dir = skillDir();
+		mkdirSync(join(dir, "a"));
+		writeFileSync(join(dir, "a", "SKILL.md"), "---\nname: a\ndescription: >\n  folded\n  text\n---\n# A\n", "utf8");
+		const r = await readSkill(await extWith(dir)).execute({ name: "a" }, ctx);
+		expect(String(r.content)).toBe("# A\n");
+	});
+
+	it("an auxiliary file is returned as written, frontmatter or not", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "a", "\n# A\n", { name: "a", description: "desc" });
+		writeFileSync(join(dir, "a", "notes.md"), "---\nname: x\n---\nnotes\n", "utf8");
+		const r = await readSkill(await extWith(dir)).execute({ name: "a", file: "notes.md" }, ctx);
+		expect(String(r.content)).toBe("---\nname: x\n---\nnotes\n");
+	});
+});
+
+describe("K4 — read_skill says what it does once", () => {
+	it("the description names both reads; the file parameter keeps its own description", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "a", "\n# A\n", { description: "desc" });
+		const t = readSkill(await extWith(dir)) as Tool & { parameters: { properties: { file: { description: string } } } };
+		expect(t.description).toBe("Load an installed skill, or one of its files");
+		expect(t.parameters.properties.file.description).toBe("A file in the skill's directory, relative to it; omit for SKILL.md");
 	});
 });
 

@@ -110,3 +110,48 @@ skills does not hand the workspace reader `~/.kiso/skills`.
 
 Evidence: `extensions/skills/tests/skills.test.ts`, the SK0 and K1 blocks
 (red against the previous source).
+
+## Amendment 2 (2026-10-12): the index has a budget, and read_skill stops repeating it
+
+This is a measured diet, unlike Amendment 1's correctness fixes. Each
+change was screened against its own regression cells, the survivors were
+combined, and the combination was confirmed once (kiso-doc
+kit-skills-screen-2026-10-11).
+
+1. **Tier 1 has a 3,000-char budget** (an engineering budget, to be
+   re-measured, not a cognitive threshold).
+   - Under it, the index is unchanged byte for byte.
+   - Over it, **every name stays**. The descriptions share the remaining
+     room through one common cap: short ones stay whole, the longest are
+     cut first and end in "…". When even 16 chars per description do not
+     fit, the index lists names only.
+   - A skill is never dropped. A missing description loses detail; a
+     missing name loses the skill, because there is no second discovery
+     surface.
+   - There is no skill-count threshold: the rent is chars, not skills.
+2. **Tier 2 returns the body alone** when SKILL.md's frontmatter holds only
+   the keys the loader consumes and the index already carries (`name`,
+   `description`, `user-invocable`).
+   - Any other key keeps the whole block. The loader does not know what
+     `allowed-tools` or `model` means to the body, so it does not decide
+     that the key is redundant.
+   - An auxiliary file (`file`) is returned exactly as written.
+3. **read_skill's description says what it does once:** "Load an installed
+   skill, or one of its files". The `file` parameter keeps its own
+   description.
+
+**Evidence.** `co`, effort none, against main 293ca26b:
+
+- **Confirmation:** T6 with 12 skills installed, 12 pairs:
+  - verify 12/12;
+  - median pair cost +1.3%, worst pair +26.1%;
+  - median wall −20.3%.
+- **Probes,** n=5, 20/20 on both arms:
+  - discovery, a similar pair, an auxiliary file, and a task that must load
+    no skill;
+  - for budget pressure, 32 skills (5,436 → 2,980 index chars) with
+    targets at the head, the middle and the tail, plus one whose name says
+    nothing and whose topic lives only in its description;
+  - every target 5/5.
+- **Tests:** `extensions/skills/tests/skills.test.ts`, the K2, K3 and K4
+  blocks (red against the previous source).
