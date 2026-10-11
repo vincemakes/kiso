@@ -487,6 +487,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		const lane = makeLane();
 		let n = 0;
 		let closed = false; // AF-5: once the parent's handler is over, no new child
+		let fault: unknown; // an infrastructure fault after a child started: surfaces on the PARENT, which then gets no receipt (uncertain, like the child)
 		const open = new Set<Promise<unknown>>();
 		const run1 = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
 			const call = { type: "tool_call_end", callId: `${parent.callId}/${++n}`, name, input, seq: undefined as unknown as number } as ToolCallEnd;
@@ -504,6 +505,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, parent.executionId);
 			} catch (err) {
 				if (err === ABORTED) return { content: "aborted before execution", isError: true, errorKind: "precondition" };
+				if (err instanceof ChildFault) { fault ??= err.fault; throw err.fault; }
 				throw err;
 			} finally {
 				slot.release();
@@ -521,7 +523,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 			closed = true;
 			while (open.size > 0) await Promise.allSettled([...open]);
 		};
-		return { invoke, drain };
+		return { invoke, drain, fault: () => fault };
 	};
 	const launch = (call: ToolCallEnd, rawInput?: string): void => {
 		execActive += 1;
@@ -1468,7 +1470,7 @@ async function runLedgered(
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
-	mkInvoke?: (parent: { callId: string; executionId: string; shared: boolean }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void> },
+	mkInvoke?: (parent: { callId: string; executionId: string; shared: boolean }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void>; fault: () => unknown },
 	child?: string, // a child call: the executionId of the call it ran under
 ): Promise<ToolResult> {
 	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
@@ -1517,10 +1519,14 @@ async function runLedgered(
 	}
 
 	// AF-5: this call is not over while a child it admitted is unfinished - on a return, a throw and an abort alike
-	if (kids !== undefined) await kids.drain();
+	if (kids !== undefined) { await kids.drain(); if (kids.fault() !== undefined) throw kids.fault(); } // a child's infrastructure fault leaves THIS call unreceipted too, as a direct call's would be
 
 	if (hooks.onPostTool) {
-		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
+		try {
+			result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
+		} catch (e) {
+			throw child ? new ChildFault(e) : e; // the effect may have happened: no invented receipt either way
+		}
 	}
 
 	// ruling #12 correction one: a non-idempotent failure's side effects may have
@@ -1576,6 +1582,9 @@ async function runLedgered(
 	push(resultEvent(call, result, executionId));
 	return result;
 }
+
+/** An infrastructure fault after a child's effect may have happened: the child stays unreceipted (uncertain) and the fault is carried up to its parent. */
+class ChildFault extends Error { constructor(readonly fault: unknown) { super(fault instanceof Error ? fault.message : String(fault)); } }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */
 const ABORTED = Symbol("kiso-aborted-during-approval");
