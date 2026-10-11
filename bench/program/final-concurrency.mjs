@@ -27,7 +27,7 @@ const llm = await startFakeLlm(join(root, "req"), { delayMs: 100, respond: (n) =
 const bridge = await mcp({ servers: { studio: { command: process.execPath, args: [SERVER], env: { MCP_TOOLS: "13", MCP_LATENCY_MS: "100", MCP_INFLIGHT_FILE: stats } } } });
 const certified = withEffects(bridge, (t) => (READS.has(t.name.replace("mcp__studio__", "")) ? { concurrency: "shared" } : undefined));
 let front = createProgramExtension({}, { maxConcurrentChildren: Number(BOUND) });
-if (COND === "two-concurrent") front = withEffects(front, (t) => (t.name === "program" ? { concurrency: "shared" } : undefined), { allowSharedProgram: true }); // research only: every child here is a shared read
+if (COND === "two-concurrent") front = withEffects(front, (t) => (t.name === "program" ? { concurrency: "shared" } : undefined)); // the program tool shared: legal because every child here is a shared read (the kernel refuses an exclusive one)
 const agent = createAgent({ model: "m", provider: "openai-compat", baseUrl: llm.url, apiKey: "x", tools: [], store: new SessionStore(store), extensions: [front, hideTools(certified), connectWait(bridge, 10_000)], systemPrompt: "t" });
 const session = await agent.session({ id: "s" });
 const t0 = Date.now(); let programsOverlapped = 0;

@@ -483,7 +483,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// the parent's own lane — a second `launch()` would wait for the fence the
 	// parent holds. No tool_result is written (the model never issued it) and
 	// its events carry no invocationSeq (recovery binds model calls by it).
-	const invokeFor = (parent: { callId: string; executionId: string }) => {
+	const invokeFor = (parent: { callId: string; executionId: string; shared: boolean }) => {
 		const lane = makeLane();
 		let n = 0;
 		let closed = false; // AF-5: once the parent's handler is over, no new child
@@ -491,7 +491,11 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		const run1 = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
 			const call = { type: "tool_call_end", callId: `${parent.callId}/${++n}`, name, input, seq: undefined as unknown as number } as ToolCallEnd;
 			const ctx = { signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) };
-			const slot = lane(table.get(name));
+			// AF-1a: only a SHARED parent can run beside other parents, and a child lane excludes only its own siblings, so an exclusive child of a
+			// shared parent could not be kept alone across parents. Fail closed: a shared parent starts shared children only.
+			const child = table.get(name);
+			if (parent.shared && child !== undefined && child.effects?.concurrency !== "shared") return { content: `a shared tool may start only shared children: ${name} is exclusive and could not be kept alone beside other running calls`, isError: true, errorKind: "precondition" };
+			const slot = lane(child);
 			try {
 				const v = await decideCall(call, table, hooks, ctx, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicy, nextDecisionId, pushExec, undefined);
 				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
@@ -1464,7 +1468,7 @@ async function runLedgered(
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
-	mkInvoke?: (parent: { callId: string; executionId: string }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void> },
+	mkInvoke?: (parent: { callId: string; executionId: string; shared: boolean }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void> },
 	child?: string, // a child call: the executionId of the call it ran under
 ): Promise<ToolResult> {
 	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
@@ -1495,7 +1499,7 @@ async function runLedgered(
 		);
 	});
 
-	const kids = mkInvoke?.({ callId: call.callId, executionId });
+	const kids = mkInvoke?.({ callId: call.callId, executionId, shared: tool.effects?.concurrency === "shared" });
 	let result: ToolResult;
 	try {
 		// C group: re-checked again right before the handler — the handler also

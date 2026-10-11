@@ -88,15 +88,13 @@ export function hideTools<E extends KisoExtension>(ext: E): E {
  * EVERY invocation of the tool may overlap every other sibling invocation: it is only right for tools the host has
  * checked are free of shared state, rate limits and cost coupling (read-only is necessary, not sufficient).
  */
-export function withEffects<E extends KisoExtension>(ext: E, decide: (tool: Tool) => Tool["effects"] | undefined, opts: { allowSharedProgram?: boolean } = {}): E {
+export function withEffects<E extends KisoExtension>(ext: E, decide: (tool: Tool) => Tool["effects"] | undefined): E {
 	const cache = new WeakMap<Tool, Tool>();
 	// The declared effects are part of the contract a program is bound to: declaring `shared` (or changing a declaration) changes the digest.
 	const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v !== null && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v);
 	const withDigest = (digest: string | undefined, effects: Tool["effects"]): string | undefined => (digest === undefined || effects === undefined || Object.keys(effects).length === 0 ? digest : `sha256:${createHash("sha256").update(`${digest}|${JSON.stringify(canon(effects))}`).digest("hex")}`);
 	const effective = (t: Tool): Tool["effects"] => {
 		const e = decide(t);
-		// audit AF-1: each running program has its OWN child lane, so two programs the kernel runs at once do not exclude each other's EXCLUSIVE children.
-		if (e?.concurrency === "shared" && (t.name === "program" || t.name === "plan") && opts.allowSharedProgram !== true) throw new Error(`${t.name} must not be declared shared: exclusive children of two concurrent programs would run together (kernel gap, audit AF-1); pass allowSharedProgram only for a research setup whose children are all shared`);
 		return e === undefined ? t.effects : { ...t.effects, ...e };
 	};
 	const wrap = (t: Tool): Tool => {

@@ -200,11 +200,12 @@ describe("P3/B1 — lanes: no self-wait, and the barrier still serialises exclus
 		expect(log).toEqual(["kid:start", "kid:end"]);
 	});
 
-	it("four SHARED parents, each with an EXCLUSIVE child, complete (window and fence are not exhausted)", async () => {
+	it("four SHARED parents, each with a SHARED child, complete (window and fence are not exhausted)", async () => {
+		// B1 originally let a shared parent start an exclusive child here; AF-1a (kernel guard) now refuses that combination - see program-nesting.test.ts
 		const log: string[] = [];
 		const registry = new ToolRegistry();
 		registry.register(parentTool("prog", async (ctx) => ctx.invoke!("kid", {}), { concurrency: "shared" }));
-		registry.register(childTool("kid", log, { ms: 20 }));
+		registry.register(childTool("kid", log, { ms: 20, effects: { concurrency: "shared" } }));
 		const calls = ["a", "b", "c", "d"].map((c) => ({ callId: c, name: "prog" }));
 		const events = await Promise.race([
 			run(registry, turn(calls)),
