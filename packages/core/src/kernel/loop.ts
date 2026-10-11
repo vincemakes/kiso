@@ -486,7 +486,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	const invokeFor = (parent: { callId: string; executionId: string }) => {
 		const lane = makeLane();
 		let n = 0;
-		return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+		let closed = false; // AF-5: once the parent's handler is over, no new child
+		const open = new Set<Promise<unknown>>();
+		const run1 = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
 			const call = { type: "tool_call_end", callId: `${parent.callId}/${++n}`, name, input, seq: undefined as unknown as number } as ToolCallEnd;
 			const ctx = { signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) };
 			const slot = lane(table.get(name));
@@ -503,6 +505,19 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				slot.release();
 			}
 		};
+		const invoke = (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+			if (closed) return Promise.resolve({ content: "the parent call has finished; a child call cannot start after it", isError: true, errorKind: "precondition" });
+			const p = run1(name, input);
+			open.add(p);
+			void p.then(() => open.delete(p), () => open.delete(p));
+			return p;
+		};
+		// the parent's handler is over (returned, threw or was cut short): close the entry and wait for every admitted child, receipts persisted
+		const drain = async (): Promise<void> => {
+			closed = true;
+			while (open.size > 0) await Promise.allSettled([...open]);
+		};
+		return { invoke, drain };
 	};
 	const launch = (call: ToolCallEnd, rawInput?: string): void => {
 		execActive += 1;
@@ -1449,7 +1464,7 @@ async function runLedgered(
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
-	mkInvoke?: (parent: { callId: string; executionId: string }) => NonNullable<ToolContext["invoke"]>,
+	mkInvoke?: (parent: { callId: string; executionId: string }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void> },
 	child?: string, // a child call: the executionId of the call it ran under
 ): Promise<ToolResult> {
 	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
@@ -1480,6 +1495,7 @@ async function runLedgered(
 		);
 	});
 
+	const kids = mkInvoke?.({ callId: call.callId, executionId });
 	let result: ToolResult;
 	try {
 		// C group: re-checked again right before the handler — the handler also
@@ -1487,7 +1503,7 @@ async function runLedgered(
 		// a cancel.
 		result = signal?.aborted
 			? { content: "aborted before execution", isError: true, errorKind: "precondition" }
-			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId, ...(mkInvoke !== undefined ? { invoke: mkInvoke({ callId: call.callId, executionId }), catalog: () => registry.catalog } : {}) });
+			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId, ...(kids !== undefined ? { invoke: kids.invoke, catalog: () => registry.catalog } : {}) });
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),
@@ -1495,6 +1511,9 @@ async function runLedgered(
 			errorKind: "fatal",
 		};
 	}
+
+	// AF-5: this call is not over while a child it admitted is unfinished - on a return, a throw and an abort alike
+	if (kids !== undefined) await kids.drain();
 
 	if (hooks.onPostTool) {
 		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
@@ -1515,13 +1534,17 @@ async function runLedgered(
 		};
 	}
 
+	// a child's receipt is awaited until the consumer has persisted it: the parent's own receipt may not overtake it
+	let persisted: Promise<void> | undefined;
+	const pushReceipt = (ev: EventInput): void => { if (child) persisted = new Promise<void>((res) => push(ev, () => res())); else push(ev); };
+
 	if (result.isError) {
 		// Area 3: only a tool that PROVED safe-to-retry (idempotent) gets a
 		// clean failure; a non-idempotent failure may have produced a side
 		// effect and is uncertain until a human decides.
 		// round 8: the tags ride on the RECEIPT too — a crash-window repair of the
 		// tool_result reproduces the normal path losslessly.
-		push({
+		pushReceipt({
 			type: "tool_execution_failed",
 			executionId,
 			callId: call.callId,
@@ -1535,7 +1558,7 @@ async function runLedgered(
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	} else {
-		push({
+		pushReceipt({
 			type: "tool_execution_succeeded",
 			executionId,
 			callId: call.callId,
@@ -1545,7 +1568,7 @@ async function runLedgered(
 		});
 	}
 
-	if (child) return result; // the model never issued it: no tool_result
+	if (child) { await persisted; return result; } // the model never issued it: no tool_result
 	push(resultEvent(call, result, executionId));
 	return result;
 }
