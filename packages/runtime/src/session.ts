@@ -1323,7 +1323,7 @@ export class AgentSession {
 			}
 		}
 		// P3: rule on a program's children first — what the model is told about the program lists how each ended
-		const open = [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain" && r.callId.startsWith(`${record.callId}/`));
+		const open = [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain" && r.parent === record.executionId);
 		if (open.length > 0) throw new Error(`rule on the child call(s) of ${record.callId} first: ${open.map((r) => `${r.callId} (${r.name})`).join(", ")}`);
 		// CT-1 (ADR-0051 Amendment 6): the verdict is persisted directly — there
 		// is no live resolver to hand it to (the loop never read one since
@@ -1346,8 +1346,7 @@ export class AgentSession {
 		// so a crash-window repair reproduces them.
 		// P3: a child execution (callId `<parent>/<n>`) has no tool_use in the conversation
 		// — the model never issued it — so its verdict carries no model-facing result.
-		const slash = record.callId.lastIndexOf("/");
-		const issuedByModel = !(slash > 0 && [...executionLedger(this.log.all).values()].some((r) => r.callId === record.callId.slice(0, slash)));
+		const issuedByModel = record.parent === undefined; // the explicit link, not the call id's shape: a provider id may contain a slash
 		if (issuedByModel && !this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
 			const denial = denialResult(
 				resolution === "rerun"
@@ -1363,7 +1362,7 @@ export class AgentSession {
 				);
 			// P3: a program's ruling must tell the model what its children really did —
 			// "must not be treated as applied" is false for a child that took effect.
-			const kids = [...executionLedger(this.log.all).values()].filter((r) => r.callId.startsWith(`${record.callId}/`));
+			const kids = [...executionLedger(this.log.all).values()].filter((r) => r.parent === record.executionId);
 			const kidNote = kids.length === 0 ? "" : `\nchild calls of this execution (confirmed ones DID take effect and are not undone): ${kids.map((k) => `${k.callId} ${k.name} ${k.status}`).join("; ")}`;
 			const result = this.log.append({
 				type: "tool_result",

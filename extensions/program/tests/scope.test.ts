@@ -158,3 +158,18 @@ describe("scope grant origin (owner's ruling: requested scope is not granted sco
 		expect(effects).toEqual(["secret:11"]); // only the human-approved program's child ran
 	});
 });
+
+describe("a provider call id that contains a slash", () => {
+	it("a scoped program whose own call id is `fn/7` is approved, granted and its children decided like any other", async () => {
+		const effects: string[] = [], events: Event[] = [];
+		const adapter = createFauxProvider([
+			{ events: [{ type: "tool_call_end", callId: "fn/7", name: "program", input: { code: `await tools.secret({ n: 1 }); try { await tools.other({ who: "x" }); } catch (e) { return "other denied"; } return "other ran";`, scope: [{ tool: "secret" }] } }, { type: "stop", reason: "tool_use" }] },
+			{ events: [{ type: "text_delta", text: "done" }, { type: "stop", reason: "end_turn" }] },
+		]);
+		const agent = createAgent({ model: "faux", adapter, tools: [], extensions: [createProgramExtension({}, { scope: true }), hideTools(domain(effects)), asksFor("secret", "other")], store: new SessionStore(mkdtempSync(join(tmpdir(), "scope-"))) });
+		const session = await agent.session({ id: "s" });
+		for await (const ev of session.run("go")) { events.push(ev); if (ev.type === "permission_requested") await session.approve((ev as unknown as { decisionId: string }).decisionId, true); }
+		expect(effects).toEqual(["secret:1"]); // inside the scope: ran; `other` is outside it: denied
+		expect(String((events.filter((e) => e.type === "tool_result") as unknown as { content: string }[])[0]!.content)).toContain("other denied");
+	});
+});

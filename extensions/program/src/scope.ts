@@ -96,7 +96,7 @@ export class ScopeBook {
 		return {
 			onEvent: async (event) => {
 				const e = event as unknown as { type: string; callId?: string; name?: string; input?: Record<string, unknown>; decision?: string; decidedBy?: string; decisionId?: string };
-				if (e.callId === undefined || e.callId.includes("/")) return;
+				if (e.callId === undefined) return;
 				if (e.type === "permission_requested" && e.name !== undefined && fronts.includes(e.name) && this.#pending.has(e.callId)) {
 					try { const sc = parseScope(e.input?.scope); if (sc !== undefined) this.#seenDigest.set(e.callId, scopeDigest(sc)); } catch { /* refused elsewhere */ }
 				}
@@ -113,7 +113,9 @@ export class ScopeBook {
 			decide: (call, ctx) => {
 				const callId = (ctx as { callId?: string }).callId;
 				if (callId === undefined) return { action: "abstain" };
-				if (fronts.includes(call.name) && !callId.includes("/")) {
+				// a child is `<registered running parent>/<number>`: matched against the parents this book knows, never by "contains a slash" (a provider id may)
+				const parentId = [...this.#scopes.keys()].find((id) => callId.startsWith(`${id}/`) && /^\d+$/.test(callId.slice(id.length + 1)));
+				if (parentId === undefined && fronts.includes(call.name)) {
 					// the program call itself: with a scope declared the human is shown it; a bad scope is refused here, before anything runs
 					try {
 						if (parseScope(call.input.scope) === undefined) return { action: "abstain" };
@@ -121,8 +123,8 @@ export class ScopeBook {
 						return { action: "ask" };
 					} catch (e) { return { action: "deny", reason: (e as Error).message }; }
 				}
-				if (!callId.includes("/")) return { action: "abstain" };
-				const book = this.#scopes.get(callId.split("/")[0]!);
+				if (parentId === undefined) return { action: "abstain" };
+				const book = this.#scopes.get(parentId);
 				if (book === undefined) return { action: "abstain" };
 				const input = call.input as Record<string, unknown>;
 				const hit = book.entries.findIndex((e, i) => e.tool === call.name && (e.maxCalls === undefined || book.used[i]! < e.maxCalls) && Object.entries(e.where ?? {}).every(([k, want]) => (Array.isArray(want) ? want.includes(input[k] as ScopeValue) : want === input[k])));

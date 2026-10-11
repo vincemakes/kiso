@@ -45,6 +45,8 @@ export interface ExecutionRecord {
 	readonly input: Readonly<Record<string, unknown>>;
 	/** The contract digest the call was bound to when it started (absent = not recorded). */
 	readonly binding?: { readonly digest: string };
+	/** A child call: the executionId of the call it ran under (the explicit link; the callId prefix is only for humans). */
+	readonly parent?: string;
 	readonly status: ExecutionStatus;
 	/** Present when `status` is "succeeded" — the durable result to replay. */
 	readonly result?: { readonly content: string; readonly isError: false };
@@ -63,6 +65,7 @@ export function executionLedger(events: readonly Event[]): Map<string, Execution
 					name: ev.name,
 					input: ev.input,
 					...(ev.binding !== undefined ? { binding: ev.binding } : {}),
+					...(ev.parent !== undefined ? { parent: ev.parent } : {}),
 					status: "uncertain",
 				});
 				break;
