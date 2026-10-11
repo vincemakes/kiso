@@ -9,9 +9,12 @@
  * one line of the system prompt, sorted by directory name:
  *   Available skills (load with read_skill):
  *   - <name>: <description>
- * A SKILL.md without frontmatter is skipped with a warning line at the
- * tail of that index (soft failure — the mcp philosophy). No/empty skills
- * dir → an empty extension, never an error.
+ * A broken entry (no frontmatter, no description, a broken link, a
+ * duplicate name) is skipped — a soft failure, the mcp philosophy — and
+ * reported to the PERSON (the catalog's `broken`: /skills, the reload
+ * line), never in the resident prompt: the model cannot repair a skill
+ * directory (ADR-0033 Amendment 1). No valid skill → an empty extension,
+ * never an error.
  *
  * Tier 2 (on demand): the read_skill tool returns the FULL SKILL.md (capped
  * at 32KB with a truncation note); an unknown name is an honest,
@@ -55,11 +58,12 @@ export default async function createSkillsExtension(options = {}) {
 	// finding #8: no persistent resources — SKILL.md files are read per call;
 	// nothing is spawned or connected — no dispose is needed, explicitly.
 	const catalog = skillsCatalog(index, broken);
-	if (index.length === 0 && broken.length === 0) return { name: "skills", skills: 0, tools: [], catalog };
-	const tools = index.length > 0 ? [readSkillTool(index, broken)] : [];
+	// no valid skill: no index, no tool — broken entries reach the person
+	// through the catalog, not the model's prompt (ADR-0033 Amendment 1)
+	if (index.length === 0) return { name: "skills", skills: 0, tools: [], catalog };
 	return {
 		name: "skills",
-		tools,
+		tools: [readSkillTool(index, broken)],
 		// §2.5: how many skills THIS load indexed. The CLI's reload line reads
 		// it here rather than walking the directory again — one scan, one
 		// answer, and no second count free to disagree with this one.
@@ -68,7 +72,7 @@ export default async function createSkillsExtension(options = {}) {
 		// `/skills` — the person's door and the model's index cannot list
 		// different skills, because they are one list.
 		catalog,
-		systemPrompt: { append: skillsPromptAppend(index, broken) },
+		systemPrompt: { append: skillsPromptAppend(index) },
 	};
 }
 
@@ -263,12 +267,11 @@ function unquote(value) {
 }
 
 /** Tier 1: the resident index — one line per skill, sorted by directory
- *  name, a warning line for every broken entry at the tail. */
-function skillsPromptAppend(index, broken) {
+ *  name. Broken entries are not in it (ADR-0033 Amendment 1): they are
+ *  installation diagnostics, for the person. */
+function skillsPromptAppend(index) {
 	const lines = index.map((s) => `- ${s.name}: ${s.description}`);
-	const warning =
-		broken.length > 0 ? `\n[skills] skipped ${broken.length} broken skill(s): ${broken.map((b) => `${b.dir} (${b.reason})`).join(", ")}` : "";
-	return `Available skills (load with read_skill):\n${lines.join("\n")}${warning}`;
+	return `Available skills (load with read_skill):\n${lines.join("\n")}`;
 }
 
 /** Tier 3 (ADR-0033 Amendment 1): a file inside the skill's own
@@ -320,8 +323,12 @@ function readSkillTool(index, broken) {
 			const skill = index.find((s) => s.name === name);
 			if (skill === undefined) {
 				const names = index.length > 0 ? index.map((s) => s.name).join(", ") : "(none installed)";
+				// the one moment a broken entry is the model's business: it asked
+				// for it by name — say why it is not there
+				const skipped = broken.find((b) => b.dir === name);
+				const why = skipped !== undefined ? ` — "${name}" was skipped: ${skipped.reason}` : "";
 				return {
-					content: `[skills] unknown skill "${name}" — available: ${names}${brokenNote}`,
+					content: `[skills] unknown skill "${name}"${why} — available: ${names}${brokenNote}`,
 					isError: true,
 					errorKind: "invalid_input",
 				};

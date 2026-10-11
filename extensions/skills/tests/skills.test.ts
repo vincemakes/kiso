@@ -2,7 +2,7 @@
  * ⑤ — the skills extension unit tests (against the BUILT dist/
  * kiso-skills.mjs): the tier-1 index in the system prompt (sorted), the
  * tier-2 read_skill roundtrip, honest unknown-name errors, soft-failed
- * broken skills with a warning line, overlong-description truncation, tier 3
+ * broken skills reported in the catalog (K1), overlong-description truncation, tier 3
  * (read_skill file, confined to the skill directory — SK0), and
  * the empty/missing-dir no-error case. Plus the safe-defaults update:
  * read_skill is allowed (local docs, read_file trust).
@@ -55,14 +55,17 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		);
 	});
 
-	it("④ a broken SKILL.md (no frontmatter) is a SOFT failure — skipped, one warning line at the index tail", async () => {
+	// DECLARED SUPERSESSION (ADR-0033 Amendment 1, K1): the warning line at
+	// the index tail is gone — the person sees broken entries in the catalog
+	// (/skills, the reload line); the model meets one only when it asks for
+	// it by name.
+	it("④ a broken SKILL.md (no frontmatter) is a SOFT failure — skipped, reported in the catalog, absent from the prompt", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "good", "\n# Good\nbody\n", { description: "fine" });
 		writeSkill(dir, "bad", "no frontmatter here\n");
 		const ext = await extWith(dir);
-		expect(ext.systemPrompt?.append).toContain("- good: fine");
-		expect(ext.systemPrompt?.append).toContain("skipped 1 broken skill");
-		expect(ext.systemPrompt?.append).toContain("bad");
+		expect(ext.systemPrompt?.append).toBe("Available skills (load with read_skill):\n- good: fine");
+		expect(catalogOf(ext).broken).toEqual([{ dir: "bad", reason: "no frontmatter" }]);
 		// The good skill still loads.
 		const r = await readSkill(ext).execute({ name: "good" }, ctx);
 		expect(r.isError).toBe(false);
@@ -88,16 +91,14 @@ describe("⑤ skills: tier 1 — the resident index", () => {
 		expect(String(r.content)).toContain("# Linked");
 	});
 
-	it("⑨ a broken symlink is a SOFT failure — one warning line, never an error", async () => {
+	it("⑨ a broken symlink is a SOFT failure — in the catalog, never in the prompt, never an error", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "good", "\n# Good\nbody\n", { description: "fine" });
 		symlinkSync(join(dir, "no-such-target"), join(dir, "dangling")); // → nowhere
 		symlinkSync(join(dir, "good", "SKILL.md"), join(dir, "file-link")); // → a file, not a dir
 		const ext = await extWith(dir);
-		expect(ext.systemPrompt?.append).toContain("- good: fine");
-		expect(ext.systemPrompt?.append).toContain("skipped 2 broken skill");
-		expect(ext.systemPrompt?.append).toContain("dangling");
-		expect(ext.systemPrompt?.append).toContain("file-link");
+		expect(ext.systemPrompt?.append).toBe("Available skills (load with read_skill):\n- good: fine");
+		expect(catalogOf(ext).broken.map((b) => b.dir).sort()).toEqual(["dangling", "file-link"]);
 	});
 
 	it("⑪ KISO_HOME is the ONE root — the skills dir defaults under it (finding #11)", async () => {
@@ -170,6 +171,30 @@ describe("⑤ skills: tier 2 — read_skill", () => {
 		expect(r.isError).toBe(true);
 		expect(String(r.content)).toContain('unknown skill "nope"');
 		expect(String(r.content)).toContain("a-skill, b-skill");
+	});
+});
+
+/** ADR-0033 Amendment 1 (K1): broken entries are installation diagnostics —
+ *  the person's, through the catalog. The model meets one only when it asks
+ *  for it by name, where the reason is new and relevant evidence. */
+describe("K1 — broken skills stay out of the model's prompt", () => {
+	it("only broken skills: no index, no tool, nothing appended — the catalog still names them (red: a warning-only append)", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "bad", "no frontmatter here\n");
+		const ext = await extWith(dir);
+		expect(ext.systemPrompt).toBeUndefined();
+		expect(ext.tools ?? []).toEqual([]);
+		expect(catalogOf(ext).broken).toEqual([{ dir: "bad", reason: "no frontmatter" }]);
+	});
+
+	it("asked for by name, a skipped skill's reason is in read_skill's error", async () => {
+		const dir = skillDir();
+		writeSkill(dir, "good", "\nbody\n", { description: "fine" });
+		writeSkill(dir, "bad", "no frontmatter here\n");
+		const ext = await extWith(dir);
+		const r = await readSkill(ext).execute({ name: "bad" }, ctx);
+		expect(r.isError).toBe(true);
+		expect(String(r.content)).toContain('unknown skill "bad" — "bad" was skipped: no frontmatter — available: good');
 	});
 });
 
@@ -297,7 +322,7 @@ describe("0.40.0 skills: the catalog the CLI invokes from", () => {
 		expect(ext.systemPrompt?.append).toContain("- internal: for the model");
 	});
 
-	it("broken entries carry the loader's own reason — the same words the model's warning line uses", async () => {
+	it("broken entries carry the loader's own reason — the words read_skill names when the model asks for one", async () => {
 		const dir = skillDir();
 		writeSkill(dir, "good", "\nbody\n", { description: "fine" });
 		writeSkill(dir, "bad", "\nbody\n", { name: "bad" });
@@ -308,7 +333,12 @@ describe("0.40.0 skills: the catalog the CLI invokes from", () => {
 			{ dir: "bad", reason: "no description" },
 			{ dir: "empty", reason: "no SKILL.md" },
 		]);
-		for (const b of cat.broken) expect(ext.systemPrompt?.append).toContain(`${b.dir} (${b.reason})`);
+		// K1: the reasons are not in the prompt; read_skill names one when asked
+		for (const b of cat.broken) {
+			expect(ext.systemPrompt?.append).not.toContain(b.dir);
+			const r = await readSkill(ext).execute({ name: b.dir }, ctx);
+			expect(String(r.content)).toContain(`"${b.dir}" was skipped: ${b.reason}`);
+		}
 	});
 
 	it("body() returns the SKILL.md body with the frontmatter stripped, read at call time", async () => {
@@ -382,7 +412,7 @@ describe("RF-2 skills: block and quoted scalars in the frontmatter", () => {
 		writeRaw(dir, "empty", "name: empty\ndescription: >\nother: x\n");
 		const ext = await extWith(dir);
 		expect(ext.systemPrompt?.append).not.toContain("- empty:");
-		expect(ext.systemPrompt?.append).toContain("empty (empty block scalar)");
+		expect(catalogOf(ext).broken).toContainEqual({ dir: "empty", reason: "empty block scalar" });
 	});
 
 	it("the plain `key: value` form is unchanged — inner spacing included, byte for byte", async () => {
@@ -406,7 +436,7 @@ describe("RF-2 skills: block and quoted scalars in the frontmatter", () => {
 		writeRaw(dir, "good", "description: fine\n");
 		writeRaw(dir, "twoline", "name: |\n  two\n  lines\ndescription: fine\n");
 		const ext = await extWith(dir);
-		expect(ext.systemPrompt?.append).toContain("twoline (name is not one line)");
+		expect(catalogOf(ext).broken).toContainEqual({ dir: "twoline", reason: "name is not one line" });
 		expect(ext.systemPrompt?.append).not.toContain("- two");
 	});
 });
@@ -483,8 +513,9 @@ describe("a host names the roots and one filter governs every surface", () => {
 		writeSkill(root, "02-deploy", "\n# Second\nsecond body\n", { name: "deploy", description: "the second" });
 		const ext = await extWith(root);
 		expect(ext.systemPrompt?.append).toBe(
-			'Available skills (load with read_skill):\n- deploy: the first\n[skills] skipped 1 broken skill(s): 02-deploy (duplicate name "deploy" — already provided by 01-deploy)',
+			"Available skills (load with read_skill):\n- deploy: the first",
 		);
+		expect(catalogOf(ext).broken).toEqual([{ dir: "02-deploy", reason: 'duplicate name "deploy" — already provided by 01-deploy' }]);
 		expect(catalogOf(ext).entries.map((e) => e.dir)).toEqual(["01-deploy"]);
 		expect((ext as unknown as { skills: number }).skills).toBe(1);
 	});
@@ -496,8 +527,9 @@ describe("a host names the roots and one filter governs every surface", () => {
 		writeSkill(second, "deploy", "\n# Second\n", { description: "the second root's" });
 		const ext = await extFrom({ roots: [first, second] });
 		expect(ext.systemPrompt?.append).toBe(
-			'Available skills (load with read_skill):\n- deploy: the first root\'s\n[skills] skipped 1 broken skill(s): deploy (duplicate name "deploy" — already provided by deploy in an earlier root)',
+			"Available skills (load with read_skill):\n- deploy: the first root's",
 		);
+		expect(catalogOf(ext).broken).toEqual([{ dir: "deploy", reason: 'duplicate name "deploy" — already provided by deploy in an earlier root' }]);
 	});
 
 	it("duplicates resolve before include: excluding the winner does not promote the loser", async () => {
