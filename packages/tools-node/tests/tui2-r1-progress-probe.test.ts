@@ -20,6 +20,12 @@
  *       `callId` and `executionId`. The declared `meta` field is NEVER
  *       populated. A tool still cannot emit, and cannot be handed a sink
  *       to emit into: the ids name the call, they are not a channel.
+ *       DECLARED SUPERSESSION (child invocation, contract C1-C2, research
+ *       candidate): the kernel also hands a running tool `invoke` and
+ *       `catalog`. They are a way to START further calls through the
+ *       kernel's own road, not a way to emit output; a CHILD is offered
+ *       neither (one level, C1). The prohibition on output channels below
+ *       is unchanged.
  *
  *   ①c  — the finding that shaped the 0.13-era design — the executionId
  *       was NOT reachable from inside a tool: allocated kernel-side at
@@ -66,7 +72,7 @@ describe("TUI2-R1 ① — the C probe: the tool contract has no incremental outp
 		expect(result.content).toContain("second");
 	});
 
-	it("①b ToolContext offers no progress surface — the kernel passes signal, sessionId and (0.42.0) the call's ids, nothing else", async () => {
+	it("①b ToolContext offers no progress surface — the kernel passes signal, sessionId, the call's ids and (child invocation) invoke + catalog, nothing else", async () => {
 		let captured: ToolContext | null = null;
 		const registry = new ToolRegistry();
 		registry.register(
@@ -98,7 +104,7 @@ describe("TUI2-R1 ① — the C probe: the tool contract has no incremental outp
 		// the populated set, exactly: no emit, no onOutput, no write, no
 		// progress, no stream — and `meta` (the declared free-form field)
 		// is never populated by the kernel.
-		expect(Object.keys(ctx).sort()).toEqual(["callId", "executionId", "sessionId", "signal"]);
+		expect(Object.keys(ctx).sort()).toEqual(["callId", "catalog", "executionId", "invoke", "sessionId", "signal"]);
 		expect(ctx.meta).toBeUndefined();
 		for (const channel of ["emit", "onOutput", "progress", "write", "stream", "push"]) {
 			expect(ctx[channel], `ToolContext must not offer a ${channel} channel`).toBeUndefined();

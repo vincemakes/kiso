@@ -446,25 +446,81 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 	// invocation accepted before it, so a read can never observe a
 	// half-written file. A read after a write therefore loses its latency
 	// win; safe overtaking and snapshot semantics stay future work.
-	let fence: Promise<void> = Promise.resolve();
-	const sharedRunning: Promise<void>[] = [];
-	/** Reserve this call's place in the FIFO: what it must await before
-	 *  running, and the release to call once its handler is done. */
-	const reserve = (tool: Tool | undefined): { wait: Promise<void>; release: () => void } => {
-		const shared = tool?.effects?.concurrency === "shared";
-		let release!: () => void;
-		const done = new Promise<void>((res) => {
-			release = res;
-		});
-		// An exclusive invocation waits for the fence AND every shared call
-		// already accepted ahead of it — while it runs, it runs alone.
-		const wait = shared ? fence : Promise.all([fence, ...sharedRunning]).then(() => undefined);
-		if (shared) sharedRunning.push(done);
-		else {
-			fence = done;
-			sharedRunning.length = 0;
-		}
-		return { wait, release };
+	/** One FIFO lane: the turn's own, and one per running tool for its children (P3). */
+	const makeLane = () => {
+		let fence: Promise<void> = Promise.resolve();
+		const sharedRunning: Promise<void>[] = [];
+		/** Reserve this call's place in the FIFO: what it must await before
+		 *  running, and the release to call once its handler is done. */
+		return (tool: Tool | undefined): { wait: Promise<void>; release: () => void } => {
+			const shared = tool?.effects?.concurrency === "shared";
+			let release!: () => void;
+			const done = new Promise<void>((res) => {
+				release = res;
+			});
+			// An exclusive invocation waits for the fence AND every shared call
+			// already accepted ahead of it — while it runs, it runs alone.
+			const wait = shared ? fence : Promise.all([fence, ...sharedRunning]).then(() => undefined);
+			if (shared) sharedRunning.push(done);
+			else {
+				fence = done;
+				sharedRunning.length = 0;
+			}
+			return { wait, release };
+		};
+	};
+	const reserve = makeLane();
+	// ── P3 — ctx.invoke: a child call under a running tool ────────────────────
+	// The child takes the SAME road as a model call (validation, the approval
+	// chain, write-ahead started, receipt) but runs inside its parent's slot, in
+	// the parent's own lane — a second `launch()` would wait for the fence the
+	// parent holds. No tool_result is written (the model never issued it) and
+	// its events carry no invocationSeq (recovery binds model calls by it).
+	const invokeFor = (parent: { callId: string; executionId: string; shared: boolean }) => {
+		const lane = makeLane();
+		let n = 0;
+		let closed = false; // AF-5: once the parent's handler is over, no new child
+		let fault: unknown; // an infrastructure fault after a child started: surfaces on the PARENT, which then gets no receipt (uncertain, like the child)
+		let tail: Promise<unknown> = Promise.resolve(); // settles when every admitted child has settled
+		const refuse = (content: string): ToolResult => ({ content, isError: true, errorKind: "precondition" });
+		const run1 = async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+			const call = { type: "tool_call_end", callId: `${parent.callId}/${++n}`, name, input, seq: undefined as unknown as number } as ToolCallEnd;
+			const ctx = { signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) };
+			// AF-1a: only a SHARED parent can run beside other parents, and a child lane excludes only its own siblings, so an exclusive child of a
+			// shared parent could not be kept alone across parents. Fail closed: a shared parent starts shared children only.
+			const child = table.get(name);
+			if (parent.shared && child !== undefined && child.effects?.concurrency !== "shared") return refuse(`a shared tool may start only shared children: ${name} is exclusive and could not be kept alone beside other running calls`);
+			const slot = lane(child);
+			let begun = false; // the started record is durable: from here on an exception means the effect may have happened and no receipt can be trusted
+			try {
+				// decisions are made ONE AT A TIME, in one agent-wide order shared with top-level calls (`decideChain`): a stateful policy (a quota) never sees two at once.
+				// Execution concurrency is separate: only the decision waits its turn. A failing decision does not poison the chain.
+				const v = await new Promise<ExecVerdict>((res, rej) => {
+					const step = async (): Promise<ExecVerdict> => { try { const d = await decideCall(call, table, hooks, ctx, log, config.resolveApproval, config.approvalVerdict, signal, config.approvalPolicy, nextDecisionId, pushExec, undefined); res(d); return d; } catch (e) { rej(e); return { action: "allow" } as ExecVerdict; } };
+					decideChain = decideChain.then(step, step);
+				});
+				if (v.action === "deny") return v.result as unknown as ToolResult; // the refusal, with its own kind
+				if (v.action === "ask") return refuse("a child call that needs a human decision is not supported inside a program yet");
+				// the COMMIT GATE applies to a child exactly as to a top-level call: a precommit-safe parent may start early, its effectful child may not
+				if (child?.effects?.precommitSafe !== true) { await turnSettled; if (!committed) return refuse("the turn did not commit; a child call that needs a committed turn was not started"); }
+				await slot.wait;
+				return await runLedgered(call, table, hooks, ctx, signal, pushExec, undefined, { parent: parent.executionId, begun: () => { begun = true; } });
+			} catch (err) {
+				if (err === ABORTED) return refuse("aborted before execution");
+				if (begun) fault ??= err; // any exception between the started record and the receipt (a hook, a malformed result, ...) is carried up to the parent, never swallowed with the handler's rejection
+				throw err;
+			} finally {
+				slot.release();
+			}
+		};
+		const invoke = (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+			if (closed) return Promise.resolve(refuse("the parent call has finished; a child call cannot start after it"));
+			const p = run1(name, input);
+			tail = tail.then(() => p.then(() => undefined, () => undefined));
+			return p;
+		};
+		// the parent's handler is over (returned, threw or was cut short): close the entry and wait for every admitted child
+		return { invoke, drain: async () => { closed = true; await tail; }, fault: () => fault };
 	};
 	const launch = (call: ToolCallEnd, rawInput?: string): void => {
 		execActive += 1;
@@ -591,6 +647,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}), ...(rawInput !== undefined ? { rawInput } : {}) },
 							signal,
 							pushExec,
+							invokeFor,
 						);
 					} finally {
 						releaseWindow();
@@ -1410,7 +1467,10 @@ async function runLedgered(
 	ctx: ToolContext,
 	signal: AbortSignalLike | undefined,
 	push: (ev: EventInput, ack?: (executionId?: string) => void) => void,
-): Promise<void> {
+	mkInvoke?: (parent: { callId: string; executionId: string; shared: boolean }) => { invoke: NonNullable<ToolContext["invoke"]>; drain: () => Promise<void>; fault: () => unknown },
+	child?: { parent: string; begun: () => void }, // a child call: the executionId of the call it ran under, and a signal that its started record is durable (from then on any exception is an unconfirmable fault)
+): Promise<ToolResult> {
+	const inv = child ? {} : { invocationSeq: call.seq }; // a child is not a model call
 	const tool = registry.get(call.name)!; // validated + decided by decideCall
 	// C group: the signal is re-checked immediately before the started event —
 	// an abort that landed in any permission path must not let the side
@@ -1431,11 +1491,15 @@ async function runLedgered(
 				invocationSeq: call.seq,
 				name: call.name,
 				input: call.input!, // non-null: decideCall denied a null input before this ran
+				...(tool.digest !== undefined ? { binding: { digest: tool.digest } } : {}),
+				...(child !== undefined ? { parent: child.parent } : {}),
 			} as EventInput,
 			(id) => res(id ?? ""), // the drain always passes the allocated id for a started event
 		);
 	});
 
+	child?.begun();
+	const kids = mkInvoke?.({ callId: call.callId, executionId, shared: tool.effects?.concurrency === "shared" });
 	let result: ToolResult;
 	try {
 		// C group: re-checked again right before the handler — the handler also
@@ -1443,7 +1507,7 @@ async function runLedgered(
 		// a cancel.
 		result = signal?.aborted
 			? { content: "aborted before execution", isError: true, errorKind: "precondition" }
-			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId });
+			: await tool.execute(call.input!, { ...ctx, callId: call.callId, executionId, ...(kids !== undefined ? { invoke: kids.invoke, catalog: () => registry.catalog } : {}) });
 	} catch (err) {
 		result = {
 			content: err instanceof Error ? err.message : String(err),
@@ -1451,6 +1515,9 @@ async function runLedgered(
 			errorKind: "fatal",
 		};
 	}
+
+	// AF-5: this call is not over while a child it admitted is unfinished - on a return, a throw and an abort alike
+	if (kids !== undefined) { await kids.drain(); if (kids.fault() !== undefined) throw kids.fault(); } // a child's infrastructure fault leaves THIS call unreceipted too, as a direct call's would be
 
 	if (hooks.onPostTool) {
 		result = await hooks.onPostTool({ callId: call.callId, name: call.name, input: call.input ?? {}, ...(ctx.rawInput !== undefined ? { rawInput: ctx.rawInput } : {}) }, result, ctx);
@@ -1495,13 +1562,15 @@ async function runLedgered(
 			type: "tool_execution_succeeded",
 			executionId,
 			callId: call.callId,
-			invocationSeq: call.seq,
+			...inv,
 			result: { content: result.content, isError: false },
 			...(result.tags !== undefined ? { tags: result.tags } : {}),
 		});
 	}
 
+	if (child) return result; // the model never issued it: no tool_result; its receipt is already queued, so the parent's can only persist after it
 	push(resultEvent(call, result, executionId));
+	return result;
 }
 
 /** Thrown when an abort lands while the loop awaits a human decision. */

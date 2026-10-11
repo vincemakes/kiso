@@ -26,6 +26,7 @@
 
 import type { AbortSignalLike } from "../protocol/adapter.js";
 import type { ToolErrorKind } from "../protocol/events.js";
+import type { ToolSpec } from "../protocol/messages.js";
 
 /** Everything a handler needs, and nothing else. */
 export interface ToolContext {
@@ -50,6 +51,14 @@ export interface ToolContext {
 	 *  callId, rawInput), and executionId is the id of the durable
 	 *  execution each path writes. */
 	readonly rawInput?: string;
+	/** P3 (research branch): run another tool THROUGH the kernel — validation, the
+	 *  composed approval chain, write-ahead `started`, receipt — as a child of this
+	 *  execution (callId `<callId>/<n>`). It is not a conversation turn: no
+	 *  tool_result is written for it. Offered only to a model-issued call. */
+	readonly invoke?: (name: string, input: Record<string, unknown>) => Promise<ToolResult>;
+	/** P3: what `invoke` can run — every tool of the request's table, hidden ones
+	 *  included, from the SAME snapshot the kernel dispatches from. */
+	readonly catalog?: () => readonly (ToolSpec & { readonly digest?: string })[];
 }
 
 /**
@@ -98,6 +107,10 @@ export interface Tool<I = unknown> {
 	 * applies. A retry is a NEW call and re-passes the approval chain.
 	 */
 	readonly idempotent?: boolean;
+	/** P3: callable (a program's `invoke`, the catalog) but not declared to the model. */
+	readonly hidden?: true;
+	/** The provider's digest of this tool's contract (input schema, effects, origin). The kernel only records it; it never computes it. */
+	readonly digest?: string;
 	/**
 	 * EC-1 — an OPTIMIZATION CERTIFICATE, never a safety claim.
 	 *

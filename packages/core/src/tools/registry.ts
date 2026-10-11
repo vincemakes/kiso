@@ -25,8 +25,13 @@ import type { Tool } from "./tool.js";
  *  dispatches from. */
 export interface ToolTable {
 	readonly specs: readonly ToolSpec[];
+	/** P3: every tool the table dispatches, hidden ones included (specs omits them). */
+	readonly catalog: readonly (ToolSpec & { readonly digest?: string })[];
 	get(name: string): Tool<any> | undefined;
 }
+
+/** The schema a request validates against is frozen: nothing that can read it (a catalog entry, a spec) can edit this turn's contract. */
+const deepFreeze = <T>(v: T): T => { if (v !== null && typeof v === "object") { for (const x of Object.values(v)) deepFreeze(x); Object.freeze(v); } return v; };
 
 export class ToolRegistry {
 	readonly #tools = new Map<string, Tool>();
@@ -65,13 +70,13 @@ export class ToolRegistry {
 				if (prior.original === t) return; // the same object reached twice — one tool
 				throw new Error(`tool table: '${t.name}' is published by two sources (${prior.owner}, ${owner})`);
 			}
-			const copy = { ...t, parameters: structuredClone(t.parameters), ...(t.effects === undefined ? {} : { effects: Object.freeze(structuredClone(t.effects)) }) };
+			const copy = { ...t, parameters: deepFreeze(structuredClone(t.parameters)), ...(t.effects === undefined ? {} : { effects: Object.freeze(structuredClone(t.effects)) }) };
 			captured.set(t.name, { tool: Object.freeze(copy) as Tool, original: t, owner });
 		};
 		for (const t of this.#tools.values()) take(t, "registered");
 		for (const { source, owner } of this.#live) for (const t of source()) take(t, owner);
-		const specs: ToolSpec[] = [...captured.values()].map(({ tool: t }) => ({ name: t.name, description: t.description, inputSchema: t.parameters }));
-		return { specs, get: (name) => captured.get(name)?.tool };
+		const all = [...captured.values()].map(({ tool: t }) => ({ tool: t, spec: { name: t.name, description: t.description, inputSchema: t.parameters } as ToolSpec }));
+		return { specs: all.filter(({ tool }) => tool.hidden !== true).map(({ spec }) => spec), catalog: all.map(({ tool: t, spec }) => (t.digest !== undefined ? { ...spec, digest: t.digest } : spec)), get: (name) => captured.get(name)?.tool };
 	}
 
 	get(name: string): Tool<any> | undefined {
@@ -116,7 +121,7 @@ export class ToolRegistry {
 
 	/** The minimal projection an adapter may see (never the handlers). */
 	toSpecs(): readonly ToolSpec[] {
-		return this.list().map((t) => ({
+		return this.list().filter((t) => t.hidden !== true).map((t) => ({
 			name: t.name,
 			description: t.description,
 			inputSchema: t.parameters,

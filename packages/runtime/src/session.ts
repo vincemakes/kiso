@@ -1314,12 +1314,24 @@ export class AgentSession {
 	 * model-facing result — a dangling tool_use with NO result would be
 	 * rejected by real providers (review finding 1).
 	 */
-	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): Promise<void> {
+	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned", opts: { acknowledgeBindingChange?: boolean } = {}): Promise<void> {
 		// round 4: a poisoned session may not mutate the log.
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible (the append below is synchronous, so a same-tick second call sees it)
+		// A "rerun" lets the model re-issue the call against the CURRENT tool. If the attempt was bound to a contract (recorded digest) and the live
+		// tool's digest differs or the tool is gone, the human is not told "same tool": the ruling is refused unless acknowledged explicitly.
+		if (resolution === "rerun" && record.binding !== undefined && opts.acknowledgeBindingChange !== true) {
+			const live = this.#config.registry.get(record.name);
+			if (live === undefined || live.digest !== record.binding.digest) {
+				const short = (d: string | undefined): string => (d === undefined ? "none" : d.replace("sha256:", "").slice(0, 12));
+				throw new Error(`binding changed for ${record.name}: the attempt was bound to ${short(record.binding.digest)}, ${live === undefined ? "that tool is no longer registered" : `the tool is now ${short(live.digest)}`}; pass acknowledgeBindingChange to rerun anyway`);
+			}
+		}
+		// P3: rule on a program's children first — what the model is told about the program lists how each ended
+		const open = [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain" && r.parent === record.executionId);
+		if (open.length > 0) throw new Error(`rule on the child call(s) of ${record.callId} first: ${open.map((r) => `${r.callId} (${r.name})`).join(", ")}`);
 		// CT-1 (ADR-0051 Amendment 6): the verdict is persisted directly — there
 		// is no live resolver to hand it to (the loop never read one since
 		// ADR-0038; the round-7 live branch that waited for it was unreachable).
@@ -1339,7 +1351,10 @@ export class AgentSession {
 		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT —
 		// the normal live path emits the result with tags before the pause,
 		// so a crash-window repair reproduces them.
-		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
+		// P3: a child execution (callId `<parent>/<n>`) has no tool_use in the conversation
+		// — the model never issued it — so its verdict carries no model-facing result.
+		const issuedByModel = record.parent === undefined; // the explicit link, not the call id's shape: a provider id may contain a slash
+		if (issuedByModel && !this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
 			const denial = denialResult(
 				resolution === "rerun"
 					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
@@ -1352,10 +1367,14 @@ export class AgentSession {
 						(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") &&
 						e.executionId === executionId,
 				);
+			// P3: a program's ruling must tell the model what its children really did —
+			// "must not be treated as applied" is false for a child that took effect.
+			const kids = [...executionLedger(this.log.all).values()].filter((r) => r.parent === record.executionId);
+			const kidNote = kids.length === 0 ? "" : `\nchild calls of this execution (confirmed ones DID take effect and are not undone): ${kids.map((k) => `${k.callId} ${k.name} ${k.status}`).join("; ")}`;
 			const result = this.log.append({
 				type: "tool_result",
 				callId: record.callId,
-				content: denial.content,
+				content: denial.content + kidNote,
 				isError: true,
 				errorKind: denial.errorKind,
 				...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),

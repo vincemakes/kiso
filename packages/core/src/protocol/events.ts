@@ -246,6 +246,10 @@ export interface ToolExecutionStarted {
 	readonly invocationSeq?: number;
 	readonly name: string;
 	readonly input: Readonly<Record<string, unknown>>;
+	/** The contract the tool was bound to (copied from `Tool.digest`; absent = unknown). */
+	readonly binding?: { readonly digest: string };
+	/** A child call: the executionId of the call it ran under. */
+	readonly parent?: string;
 }
 
 /** The side effect completed successfully. A confirmed success never re-runs. */
@@ -758,6 +762,7 @@ function isExecutionId(v: Record<string, unknown>): boolean {
 /** R-E 0.1.43: the optional framework invocation identity — absent on old
  *  logs, otherwise a non-negative safe integer (the tool_call_end.seq). */
 const isInvocationSeq = (v: Record<string, unknown>): boolean => v.invocationSeq === undefined || isNonNegativeInt(v.invocationSeq);
+const isBinding = (v: Record<string, unknown>): boolean => (v.binding === undefined || (isPlainObject(v.binding) && typeof v.binding.digest === "string")) && (v.parent === undefined || typeof v.parent === "string");
 
 /** A StructuredError — the shape the `error` terminal carries. round 9: a
  *  status, when present, is a non-negative safe integer (no negatives,
@@ -883,7 +888,7 @@ const EVENT_VALIDATORS = {
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&
 		typeof v.name === "string" &&
-		isPlainObject(v.input) && isInvocationSeq(v),
+		isPlainObject(v.input) && isInvocationSeq(v) && isBinding(v),
 	tool_execution_succeeded: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" &&
 		typeof v.callId === "string" &&

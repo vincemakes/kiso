@@ -58,6 +58,7 @@ export function unansweredAbortedCalls(records: readonly StoreRecord[]): Unanswe
 	for (const r of records) {
 		const e = r.event;
 		if (e.type !== "tool_result" && e.type !== "tool_execution_started") continue;
+		if ((e as { parent?: string }).parent !== undefined) continue; // a child call answers nothing the model asked
 		const invocationSeq = (e as { invocationSeq?: number }).invocationSeq;
 		if (invocationSeq !== undefined) answeredSeqs.add(invocationSeq);
 		else legacy.push({ callId: e.callId, seq: e.seq });
