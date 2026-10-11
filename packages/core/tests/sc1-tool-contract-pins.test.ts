@@ -49,6 +49,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "hi" };
 
@@ -84,7 +85,7 @@ async function runTurn(registry: ToolRegistry): Promise<Event[]> {
 		adapter: createFauxProvider(script),
 		model: "faux",
 		registry,
-		messages: [USER],
+		log: seedLog([USER]),
 	})) {
 		events.push(ev);
 	}

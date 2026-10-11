@@ -45,6 +45,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { ToolRegistry, defineTool, loop, type Event, type ToolContext } from "@vincemakes/kiso-core";
 import { shellTool } from "../src/index.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 describe("TUI2-R1 ① — the C probe: the tool contract has no incremental output channel", () => {
 	it("①a a long-running shell yields NOTHING before it settles — one result, at completion", async () => {
@@ -87,7 +88,7 @@ describe("TUI2-R1 ① — the C probe: the tool contract has no incremental outp
 			]),
 			model: "faux-model",
 			registry,
-			messages: [{ role: "user", content: "probe" }],
+			log: seedLog([{ role: "user", content: "probe" }]),
 			sessionId: "s-probe",
 		})) {
 			events.push(ev);
@@ -126,7 +127,7 @@ describe("TUI2-R1 ① — the C probe: the tool contract has no incremental outp
 			]),
 			model: "faux-model",
 			registry,
-			messages: [{ role: "user", content: "probe" }],
+			log: seedLog([{ role: "user", content: "probe" }]),
 			sessionId: "s-probe",
 		})) {
 			events.push(ev);

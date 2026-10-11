@@ -15,6 +15,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool, type ToolContext, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -26,7 +27,7 @@ function turn(calls: { callId: string; name: string }[]): Adapter {
 	} } as unknown as Adapter;
 }
 const withDigest = (t: Tool, digest: string): Tool => ({ ...t, digest });
-const run = async (registry: ToolRegistry, adapter: Adapter): Promise<Event[]> => { const out: Event[] = []; for await (const ev of loop({ adapter, model: "faux", registry, messages: [USER] } as never)) out.push(ev); return out; };
+const run = async (registry: ToolRegistry, adapter: Adapter): Promise<Event[]> => { const out: Event[] = []; for await (const ev of loop({ adapter, model: "faux", registry, log: seedLog([USER]) } as never)) out.push(ev); return out; };
 const startedOf = (events: Event[]) => events.filter((e): e is Event & { type: "tool_execution_started" } => e.type === "tool_execution_started");
 
 describe("tool binding on the durable record", () => {

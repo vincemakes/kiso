@@ -10,6 +10,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool, type ToolContext, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -38,7 +39,7 @@ function quotaPolicy(initial: number, log: string[]) {
 }
 async function run(registry: ToolRegistry, calls: { callId: string; name: string }[], policy: unknown): Promise<Event[]> {
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter: turn(calls), model: "faux", registry, messages: [USER], approvalPolicy: policy } as never)) out.push(ev);
+	for await (const ev of loop({ adapter: turn(calls), model: "faux", registry, log: seedLog([USER]), approvalPolicy: policy } as never)) out.push(ev);
 	return out;
 }
 const startedNames = (events: Event[]) => events.filter((e) => e.type === "tool_execution_started").map((e) => `${(e as { callId: string }).callId}`);

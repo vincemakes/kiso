@@ -9,6 +9,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool, type ToolContext, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -23,7 +24,7 @@ const parent = (name: string, body: (ctx: ToolContext) => Promise<ToolResult>, e
 const effectTool = (name: string, applied: string[]): Tool => defineTool({ name, description: name, parameters: { type: "object", properties: {} }, execute: async () => { applied.push(name); return ok(name); } });
 async function run(registry: ToolRegistry, calls: { callId: string; name: string }[], hooks: Record<string, unknown>): Promise<{ events: Event[]; error?: unknown }> {
 	const events: Event[] = []; let error: unknown;
-	try { for await (const ev of loop({ adapter: turn(calls), model: "faux", registry, messages: [USER], hooks } as never)) events.push(ev); } catch (e) { error = e; }
+	try { for await (const ev of loop({ adapter: turn(calls), model: "faux", registry, log: seedLog([USER]), hooks } as never)) events.push(ev); } catch (e) { error = e; }
 	return { events, error };
 }
 const rc = (events: Event[]) => events.filter((e) => e.type === "tool_execution_succeeded" || e.type === "tool_execution_failed").map((e) => `${(e as { callId: string }).callId}:${e.type === "tool_execution_succeeded" ? "ok" : "failed"}`);

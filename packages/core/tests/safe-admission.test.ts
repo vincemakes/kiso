@@ -29,6 +29,7 @@ import { EventLog, loop, type AdmissionInput, type LoopConfig } from "../src/ind
 import { END_TURN } from "../src/kernel/project.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
+import { seedLog } from "./seed.js";
 
 const TOOL_TURN = { events: [{ type: "tool_call_end" as const, callId: "c1", name: "work", input: {} }, { type: "stop" as const, reason: "tool_use" as const }] };
 const END = (text = "done") => ({ events: [{ type: "text_delta" as const, text }, { type: "stop" as const, reason: "end_turn" as const }] });
@@ -91,7 +92,7 @@ function registryWith(onRun: () => void | Promise<void>, tags?: readonly string[
 
 async function drive(config: Partial<LoopConfig> & Pick<LoopConfig, "adapter" | "registry">): Promise<Event[]> {
 	const events: Event[] = [];
-	for await (const ev of loop({ model: "faux", log: new EventLog(), messages: [{ role: "user", content: "go" }], ...config })) events.push(ev);
+	for await (const ev of loop({ model: "faux", log: seedLog([{ role: "user", content: "go" }], new EventLog()), ...config })) events.push(ev);
 	return events;
 }
 

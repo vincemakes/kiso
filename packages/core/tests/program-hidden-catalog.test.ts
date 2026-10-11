@@ -14,6 +14,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type ToolContext, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -45,7 +46,7 @@ describe("hidden tools and the catalog", () => {
 		registry.register(plain("visible"));
 		registry.register(plain("secret", { hidden: true }));
 		const events: Event[] = [];
-		for await (const ev of loop({ adapter: recording(offered), model: "faux", registry, messages: [USER] } as never)) events.push(ev);
+		for await (const ev of loop({ adapter: recording(offered), model: "faux", registry, log: seedLog([USER]) } as never)) events.push(ev);
 		expect(offered[0]).toEqual(["prog", "visible"]); // `secret` is not declared
 		expect(catalog.map((t) => t.name).sort()).toEqual(["prog", "secret", "visible"]); // but it is discoverable
 		expect(viaInvoke).toMatchObject({ isError: false, content: "secret" });
@@ -57,7 +58,7 @@ describe("hidden tools and the catalog", () => {
 		const registry = new ToolRegistry();
 		registry.register(defineTool({ name: "prog", description: "program", parameters: { type: "object", properties: {} }, execute: async (_i: unknown, ctx: ToolContext) => { entry = ctx.catalog!().find((t) => t.name === "visible"); return ok("p"); } }));
 		registry.register(plain("visible"));
-		for await (const _ of loop({ adapter: recording([]), model: "faux", registry, messages: [USER] } as never)) void _;
+		for await (const _ of loop({ adapter: recording([]), model: "faux", registry, log: seedLog([USER]) } as never)) void _;
 		expect(entry?.inputSchema).toMatchObject({ type: "object", properties: { v: { type: "number" } } });
 	});
 });

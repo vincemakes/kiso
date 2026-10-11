@@ -12,6 +12,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool, type ToolContext, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -26,7 +27,7 @@ const parent = (name: string, body: (ctx: ToolContext) => Promise<ToolResult>, e
 const kid = (name: string, ms: number, log: string[], effects?: Tool["effects"]): Tool => defineTool({ name, description: name, parameters: { type: "object", properties: {} }, ...(effects ? { effects } : {}), execute: async () => { log.push(`${name}:start`); await new Promise((r) => setTimeout(r, ms)); log.push(`${name}:landed`); return ok(name); } });
 async function run(registry: ToolRegistry, adapter: Adapter, extra: Record<string, unknown> = {}, slowConsumerMs = 0): Promise<Event[]> {
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter, model: "faux", registry, messages: [USER], ...extra } as never)) { out.push(ev); if (slowConsumerMs > 0) await new Promise((r) => setTimeout(r, slowConsumerMs)); }
+	for await (const ev of loop({ adapter, model: "faux", registry, log: seedLog([USER]), ...extra } as never)) { out.push(ev); if (slowConsumerMs > 0) await new Promise((r) => setTimeout(r, slowConsumerMs)); }
 	return out;
 }
 const receipts = (events: Event[]) => events.filter((e) => e.type === "tool_execution_succeeded" || e.type === "tool_execution_failed").map((e) => `${(e as { callId: string }).callId}:${e.type === "tool_execution_succeeded" ? "ok" : "failed"}`);

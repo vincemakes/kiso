@@ -8,7 +8,8 @@
 import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import type { Event, EventInput } from "../src/index.js";
-import { messagesToEvents, projectMessages } from "../src/kernel/project.js";
+import { projectMessages } from "../src/kernel/project.js";
+import { messagesToEvents } from "@vincemakes/kiso-runtime";
 import type { Message } from "../src/protocol/messages.js";
 
 const ev = (seq: number, e: EventInput): Event => ({ seq, ...e } as Event);

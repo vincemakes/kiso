@@ -15,6 +15,7 @@ import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { EventLog, loop, type Event } from "../src/index.js";
+import { seedLog } from "./seed.js";
 
 function makeRegistry(): ToolRegistry {
 	const registry = new ToolRegistry();
@@ -178,8 +179,7 @@ describe("E1: an absent approval flow degrades honestly", () => {
 			adapter: createFauxProvider(scriptedCall("read_file", "r1", { path: "a.ts" })),
 			model: "faux",
 			registry: makeRegistry(),
-			log: logA,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }], logA),
 			approvalPolicy: {
 				decide: async () => ({ action: "allow" as const, decidedBy: "reader" }),
 			},
@@ -200,8 +200,7 @@ describe("E1: an absent approval flow degrades honestly", () => {
 			adapter: createFauxProvider(scriptedCall("shell", "s1", { command: "ls" })),
 			model: "faux",
 			registry: makeRegistry(),
-			log: logB,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }], logB),
 			approvalPolicy: { decide: askAll },
 			resolveApproval: async () => ({ action: "allow" as const, decidedBy: "reader" }),
 		})) {

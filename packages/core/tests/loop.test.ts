@@ -15,6 +15,7 @@ import { loop, DEFAULT_MAX_TURNS } from "../src/kernel/loop.js";
 import { projectMessages } from "../src/kernel/project.js";
 import { terminalLies } from "@vincemakes/kiso-evals";
 import { silentToolFailure } from "@vincemakes/kiso-evals";
+import { seedLog } from "./seed.js";
 
 async function run(
 	script: FauxScript,
@@ -27,7 +28,7 @@ async function run(
 		adapter: createFauxProvider(script),
 		model: "faux-model",
 		registry,
-		messages: [user],
+		log: seedLog([user]),
 		...opts,
 	})) {
 		events.push(ev);
@@ -282,7 +283,7 @@ describe("loop", () => {
 			adapter: flakyAdapter,
 			model: "faux",
 			registry,
-			messages: [user],
+			log: seedLog([user]),
 			maxRetries: 2,
 		})) {
 			events.push(ev);
@@ -309,7 +310,7 @@ describe("loop", () => {
 			adapter: failingAdapter,
 			model: "faux",
 			registry,
-			messages: [user],
+			log: seedLog([user]),
 			maxRetries: 1,
 		})) {
 			events.push(ev);

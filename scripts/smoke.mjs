@@ -89,7 +89,7 @@ function installTier(label, names, proj) {
 		join(proj, "smoke.mjs"),
 		`import { defineTool, ToolRegistry, loop, mapApiError } from "@vincemakes/kiso-core";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
-import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { createAgent, SessionStore, seedLog } from "@vincemakes/kiso-runtime";
 import { readFileTool } from "@vincemakes/kiso-tools-node";
 
 // 1. the raw loop
@@ -108,7 +108,7 @@ for await (const ev of loop({
   ]),
   model: "faux",
   registry,
-  messages: [{ role: "user", content: "What is 2+3?" }],
+  log: seedLog([{ role: "user", content: "What is 2+3?" }]),
 })) events.push(ev);
 const terminal = events.filter((e) => e.type === "terminal").at(-1);
 if (terminal?.outcome?.kind !== "completed") throw new Error("expected completed terminal, got " + JSON.stringify(terminal?.outcome));

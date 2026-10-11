@@ -24,6 +24,7 @@ import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { seedLog } from "./seed.js";
 
 const TOOL_TURN: FauxScript = [
 	{ events: [{ type: "tool_call_end", callId: "c1", name: "web_search", input: {} }, { type: "stop", reason: "tool_use" }] },
@@ -62,8 +63,7 @@ describe("raw core loop (round 3)", () => {
 			adapter: seenAdapter(seen, TOOL_TURN),
 			model: "faux",
 			registry: registryWith(),
-			log,
-			messages: [{ role: "user", content: "original" }],
+			log: seedLog([{ role: "user", content: "original" }], log),
 			hooks: {
 				onUserMessage: async (msg) => ({ ...msg, content: "replaced", source: "suggestion" as const }),
 			},
@@ -88,8 +88,7 @@ describe("raw core loop (round 3)", () => {
 			adapter: createFauxProvider([{ events: [{ type: "stop", reason: "end_turn" }] }]),
 			model: "faux",
 			registry: registryWith(),
-			log,
-			messages: [{ role: "user", content: "original" }],
+			log: seedLog([{ role: "user", content: "original" }], log),
 			hooks: {
 				onUserMessage: async (msg) => ({ ...msg, content: "replaced", source: "suggestion" as const }),
 			},
@@ -111,11 +110,10 @@ describe("raw core loop (round 3)", () => {
 			adapter: seenAdapter(seen, [{ events: [{ type: "stop", reason: "end_turn" }] }]),
 			model: "faux",
 			registry: registryWith(),
-			log,
-			messages: [
+			log: seedLog([
 				{ role: "user", content: "history that exists" },
 				{ role: "user", content: "vetoed input" },
-			],
+			], log),
 			hooks: {
 				onUserMessage: async () => null, // veto the LAST message
 			},

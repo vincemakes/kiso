@@ -26,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loop, ToolRegistry, type AdapterEvent, type Event } from "@vincemakes/kiso-core";
 import { createOpenAIResponsesProvider } from "../src/index.js";
 import { errorReply, type Reply, type Rig, sseReply, startRig, truncatedReply } from "./helpers/rig.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 const PREFIX = [
 	{ type: "response.created", response: { id: "resp_1" } },
@@ -133,7 +134,7 @@ describe("the point of the class: the run RECOVERS instead of ending", () => {
 
 		const adapter = createOpenAIResponsesProvider({ apiKey: "sk-rig", baseUrl: rig.baseUrl });
 		const out: Event[] = [];
-		for await (const ev of loop({ adapter, model: "gpt-5.5", registry: new ToolRegistry(), messages: [{ role: "user", content: "go" }], maxRetries: 2 })) out.push(ev);
+		for await (const ev of loop({ adapter, model: "gpt-5.5", registry: new ToolRegistry(), log: seedLog([{ role: "user", content: "go" }]), maxRetries: 2 })) out.push(ev);
 
 		expect(served).toBe(2);
 		const terminal = out[out.length - 1] as { type: string; outcome?: { kind: string } };

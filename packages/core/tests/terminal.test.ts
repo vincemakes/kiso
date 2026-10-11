@@ -19,6 +19,7 @@ import { projectMessages } from "../src/kernel/project.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { seedLog } from "./seed.js";
 
 const registry = new ToolRegistry();
 registry.register(
@@ -39,7 +40,7 @@ async function run(
 		adapter: createFauxProvider(script),
 		model: "faux",
 		registry,
-		messages: [{ role: "user", content: "go" }],
+		log: seedLog([{ role: "user", content: "go" }]),
 		...opts,
 	})) {
 		events.push(ev);
@@ -161,7 +162,7 @@ describe("stop reasons map to explicit terminals (never blanket completed)", () 
 			adapter: createFauxProvider(script),
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }]),
 			signal: ac.signal,
 		});
 		for await (const ev of gen) {
@@ -202,7 +203,7 @@ describe("retry discipline: a streamed retry is legal only over a voided draft (
 			adapter: flaky,
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }]),
 			maxRetries: 3,
 		})) {
 			events.push(ev);
@@ -233,7 +234,7 @@ describe("retry discipline: a streamed retry is legal only over a voided draft (
 			adapter: flaky,
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }]),
 			maxRetries: 3,
 		})) {
 			events.push(ev);
@@ -261,7 +262,7 @@ describe("retry discipline: a streamed retry is legal only over a voided draft (
 			adapter: flaky,
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }]),
 			maxRetries: 2,
 		})) {
 			events.push(ev);

@@ -12,6 +12,7 @@ import { ToolRegistry } from "@vincemakes/kiso-core";
 import { loop } from "@vincemakes/kiso-core";
 import { FIXTURES, runStaticFixture } from "../src/fixtures/index.js";
 import { makeAbortSignal } from "../src/fixtures/user-abort.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 const USER = { role: "user" as const, content: "do the thing" };
 
@@ -22,7 +23,7 @@ async function runFixture(name: string, extra: Partial<Parameters<typeof loop>[0
 		adapter: createFauxProvider(fixture.script),
 		model: "faux",
 		registry: extra.registry ?? new ToolRegistry(),
-		messages: [USER],
+		log: seedLog([USER]),
 		...extra,
 	})) {
 		events.push(ev);
@@ -73,7 +74,7 @@ describe("incident suite on the real loop", () => {
 			adapter: createFauxProvider(fixture.script),
 			model: "faux",
 			registry: new ToolRegistry(),
-			messages: [USER],
+			log: seedLog([USER]),
 			signal,
 		})) {
 			events.push(ev);

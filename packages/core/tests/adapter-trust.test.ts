@@ -19,6 +19,7 @@ import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
+import { seedLog } from "./seed.js";
 
 const registry = new ToolRegistry();
 registry.register(
@@ -38,8 +39,7 @@ async function runWithForgery(forged: EventInput): Promise<{ events: Event[]; lo
 		adapter: createFauxProvider([{ events: [forged] }]),
 		model: "faux",
 		registry,
-		log,
-		messages: [{ role: "user", content: "go" }],
+		log: seedLog([{ role: "user", content: "go" }], log),
 	})) {
 		events.push(ev);
 	}
@@ -109,8 +109,7 @@ describe("adapter trust boundary (round 5)", () => {
 			]),
 			model: "faux",
 			registry,
-			log,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }], log),
 		})) {
 			events.push(ev);
 		}
@@ -140,8 +139,7 @@ describe("adapter trust boundary (round 5)", () => {
 			]),
 			model: "faux",
 			registry,
-			log,
-			messages: [{ role: "user", content: "go" }],
+			log: seedLog([{ role: "user", content: "go" }], log),
 		})) {
 			events.push(ev);
 		}
@@ -174,8 +172,7 @@ describe("adapter trust: STRUCTURAL validation (P1-8)", () => {
 				adapter: createFauxProvider([{ events: [forged] }]),
 				model: "faux",
 				registry,
-				log,
-				messages: [{ role: "user", content: "go" }],
+				log: seedLog([{ role: "user", content: "go" }], log),
 			})) {
 				events.push(ev);
 			}

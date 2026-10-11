@@ -24,6 +24,7 @@ import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
 import { EventLog } from "../src/kernel/event-log.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -66,7 +67,7 @@ function harness() {
 
 async function drive(adapter: Adapter, h: ReturnType<typeof harness>): Promise<Event[]> {
 	const events: Event[] = [];
-	for await (const ev of loop({ adapter, model: "faux", registry: h.registry, messages: [USER], approvalPolicy: h.approvalPolicy })) {
+	for await (const ev of loop({ adapter, model: "faux", registry: h.registry, log: seedLog([USER]), approvalPolicy: h.approvalPolicy })) {
 		events.push(ev);
 	}
 	return events;
@@ -182,7 +183,7 @@ describe("CX-1 F1 — a reused provider callId never inherits an earlier decisio
 			},
 		} as unknown as Adapter;
 		const events: Event[] = [];
-		for await (const ev of loop({ adapter, model: "faux", registry: h.registry, messages: [USER], maxRetries: 1, approvalPolicy: h.approvalPolicy })) events.push(ev);
+		for await (const ev of loop({ adapter, model: "faux", registry: h.registry, log: seedLog([USER]), maxRetries: 1, approvalPolicy: h.approvalPolicy })) events.push(ev);
 		expect(events.some((e) => e.type === "model_output_abandoned")).toBe(true); // the draft was voided
 		expect(n).toBe(2); // the retry's call was decided anew
 		expect(h.ran).toEqual([]); // and the new verdict (deny) governed it — nothing inherited the draft's allow

@@ -18,6 +18,7 @@ import { EventLog, loop } from "../src/index.js";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -46,7 +47,7 @@ const terminalOf = (events: readonly Event[]) =>
 describe("C1: the turn is verified BEFORE any tool runs", () => {
 	async function runTurn(script: FauxScript, registry: ToolRegistry): Promise<readonly Event[]> {
 		const events: Event[] = [];
-		for await (const ev of loop({ adapter: createFauxProvider(script), model: "faux", registry, messages: [USER] })) {
+		for await (const ev of loop({ adapter: createFauxProvider(script), model: "faux", registry, log: seedLog([USER]) })) {
 			events.push(ev);
 		}
 		return events;
@@ -182,8 +183,7 @@ describe("C3: a failed execution is a clean failure — the approval chain guard
 			]),
 			model: "faux",
 			registry,
-			log,
-			messages: [USER],
+			log: seedLog([USER], log),
 		})) {
 			events.push(ev);
 		}
@@ -214,7 +214,7 @@ describe("C3: a failed execution is a clean failure — the approval chain guard
 			]),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 		})) {
 			events.push(ev);
 		}
@@ -240,7 +240,7 @@ describe("C4: onUserMessage veto and rewrite are the only facts later turns see"
 			adapter,
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			hooks: { onUserMessage: async () => null },
 		})) {
 			events.push(ev);
@@ -267,7 +267,7 @@ describe("C4: onUserMessage veto and rewrite are the only facts later turns see"
 			adapter,
 			model: "faux",
 			registry,
-			messages: [{ role: "user", content: "original" }],
+			log: seedLog([{ role: "user", content: "original" }]),
 			hooks: {
 				onUserMessage: async (msg) => ({ ...msg, content: "rewritten-fact" }),
 			},

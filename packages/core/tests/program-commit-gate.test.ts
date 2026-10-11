@@ -9,6 +9,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -25,7 +26,7 @@ const started = (events: Event[]) => events.filter((e) => e.type === "tool_execu
 
 async function run(registry: ToolRegistry, turn1: Event[]): Promise<Event[]> {
 	const events: Event[] = [];
-	for await (const ev of loop({ adapter: delayed([turn1, [{ type: "stop", reason: "end_turn", seq: 0 }]] as unknown as Event[][], 40), model: "faux", registry, messages: [USER] })) events.push(ev);
+	for await (const ev of loop({ adapter: delayed([turn1, [{ type: "stop", reason: "end_turn", seq: 0 }]] as unknown as Event[][], 40), model: "faux", registry, log: seedLog([USER]) })) events.push(ev);
 	return events;
 }
 const VOIDED: Event[] = [{ type: "tool_call_end", callId: "p1", name: "prog", input: {}, seq: 0 }, { type: "stop", reason: "tool_use", seq: 1 }, { type: "text_delta", text: "one more thing", seq: 2 }] as unknown as Event[];

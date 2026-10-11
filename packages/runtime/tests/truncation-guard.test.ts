@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
 import { defineTool, loop, ToolRegistry, type Event, type TerminalEvent } from "@vincemakes/kiso-core";
 import { truncationGuard } from "../src/truncation-guard.js";
+import { seedLog } from "../src/seed.js";
 
 async function collect(
 	script: FauxScript,
@@ -32,7 +33,7 @@ async function collect(
 		adapter: opts.guarded ? truncationGuard(adapter) : adapter,
 		model: "faux",
 		registry,
-		messages: [user],
+		log: seedLog([user]),
 	})) {
 		events.push(ev);
 	}

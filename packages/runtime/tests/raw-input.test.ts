@@ -17,8 +17,10 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { defineTool, loop, messagesToEvents, projectMessages, ToolRegistry, type Adapter, type AdapterEvent, type Event, type Message, type ToolContext } from "@vincemakes/kiso-core";
+import { messagesToEvents } from "../src/seed.js";
+import { defineTool, loop, projectMessages, ToolRegistry, type Adapter, type AdapterEvent, type Event, type Message, type ToolContext } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
+import { seedLog } from "../src/seed.js";
 
 /** A model that streams one call's arguments in two lexical pieces, then answers. */
 function streamingModel(pieces: readonly string[] | null): Adapter {
@@ -59,7 +61,7 @@ describe("0.43.0: the handler sees the lexical arguments beside the parsed input
 		seen.length = 0;
 		const registry = new ToolRegistry();
 		registry.register(probe);
-		for await (const _ of loop({ adapter: streamingModel(['{"x":5.', "0}"]), model: "m", registry, messages: [{ role: "user", content: "go" }], maxRetries: 0, sessionId: "s" })) void _;
+		for await (const _ of loop({ adapter: streamingModel(['{"x":5.', "0}"]), model: "m", registry, log: seedLog([{ role: "user", content: "go" }]), maxRetries: 0, sessionId: "s" })) void _;
 		expect(seen).toHaveLength(1);
 		expect(seen[0]!.ctx.rawInput).toBe('{"x":5.0}');
 		expect((seen[0]!.input as { x: number }).x).toBe(5);
@@ -71,10 +73,10 @@ describe("0.43.0: the handler sees the lexical arguments beside the parsed input
 		seen.length = 0;
 		const registry = new ToolRegistry();
 		registry.register(probe);
-		for await (const _ of loop({ adapter: streamingModel(null), model: "m", registry, messages: [{ role: "user", content: "go" }], maxRetries: 0 })) void _;
+		for await (const _ of loop({ adapter: streamingModel(null), model: "m", registry, log: seedLog([{ role: "user", content: "go" }]), maxRetries: 0 })) void _;
 		expect("rawInput" in seen[0]!.ctx).toBe(false);
 		seen.length = 0;
-		for await (const _ of loop({ adapter: streamingModel([""]), model: "m", registry, messages: [{ role: "user", content: "go" }], maxRetries: 0 })) void _;
+		for await (const _ of loop({ adapter: streamingModel([""]), model: "m", registry, log: seedLog([{ role: "user", content: "go" }]), maxRetries: 0 })) void _;
 		expect(seen[0]!.ctx.rawInput).toBe("");
 	});
 });
@@ -153,7 +155,7 @@ describe("0.43.0: a callId re-used by a later invocation inherits nothing (the b
 		};
 		const registry = new ToolRegistry();
 		registry.register(probe);
-		for await (const _ of loop({ adapter, model: "m", registry, messages: [{ role: "user", content: "go" }], maxRetries: 0 })) void _;
+		for await (const _ of loop({ adapter, model: "m", registry, log: seedLog([{ role: "user", content: "go" }]), maxRetries: 0 })) void _;
 		expect(seen).toHaveLength(2);
 		expect(seen[0]!.ctx.rawInput).toBe('{"x":5.0}');
 		expect("rawInput" in seen[1]!.ctx).toBe(false);

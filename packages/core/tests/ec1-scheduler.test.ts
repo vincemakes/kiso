@@ -40,6 +40,7 @@ import type { PermissionDecision } from "../src/kernel/permission.js";
 import { defineTool, type Tool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -101,7 +102,7 @@ describe("EC-1 ③(a) — a human is never asked about an uncommitted turn", () 
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			approvalPolicy: { decide: async () => ({ action: "ask" as const }) },
 			resolveApproval: async (decisionId: string): Promise<PermissionDecision> => {
 				asked.push(decisionId);
@@ -143,7 +144,7 @@ describe("EC-1 ③(a) — a human is never asked about an uncommitted turn", () 
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			approvalPolicy: { decide: async () => ({ action: "ask" as const }) },
 			resolveApproval: async (decisionId: string): Promise<PermissionDecision> => {
 				asked.push(decisionId);
@@ -175,7 +176,7 @@ describe("EC-1 ③(a) — a human is never asked about an uncommitted turn", () 
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			approvalPolicy: { decide: async () => ({ action: "ask" as const }) },
 			resolveApproval: async (): Promise<PermissionDecision> => ({ action: "allow" }),
 		})) {
@@ -214,7 +215,7 @@ describe("EC-1 ③(a) — a human is never asked about an uncommitted turn", () 
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			signal: controller.signal,
 			approvalPolicy: { decide: async () => ({ action: "ask" as const }) },
 			// The human answers and the abort lands in the same instant: the
@@ -260,7 +261,7 @@ describe("EC-1 ③(b) — the precommit launch rule", () => {
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 		})) {
 			events.push(ev);
 		}
@@ -290,7 +291,7 @@ describe("EC-1 ③(b) — the precommit launch rule", () => {
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 			approvalPolicy: { decide: async () => ({ action: "ask" as const }) },
 			resolveApproval: async (): Promise<PermissionDecision> => ({ action: "allow" }),
 		})) {
@@ -322,7 +323,7 @@ describe("EC-1 ③(b) — the precommit launch rule", () => {
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 		})) {
 			events.push(ev);
 		}
@@ -353,7 +354,7 @@ describe("EC-1 ③(b) — the precommit launch rule", () => {
 			),
 			model: "faux",
 			registry,
-			messages: [USER],
+			log: seedLog([USER]),
 		})) {
 			events.push(ev);
 		}

@@ -13,14 +13,15 @@ import type { AssistantMessage, Message } from "../src/protocol/messages.js";
 import {
 	EventLog,
 	loop,
-	messagesToEvents,
 	projectMessages,
 } from "../src/index.js";
+import { messagesToEvents } from "@vincemakes/kiso-runtime";
 import type { EventInput } from "../src/index.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { defineTool } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { standingPrune } from "./standing-prune.js";
+import { seedLog } from "./seed.js";
 
 const seed: readonly Message[] = [
 	{ role: "user", content: "hello" },
@@ -122,8 +123,7 @@ describe("a real run's trajectory is its own truth", () => {
 			adapter,
 			model: "faux",
 			registry,
-			log,
-			messages: [{ role: "user", content: "search" }],
+			log: seedLog([{ role: "user", content: "search" }], log),
 		})) {
 			// no-op
 		}

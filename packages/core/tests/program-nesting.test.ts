@@ -13,6 +13,7 @@ import type { Message } from "../src/protocol/messages.js";
 import { defineTool, type Tool, type ToolContext, type ToolResult } from "../src/tools/tool.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 const ok = (c: string): ToolResult => ({ content: c, isError: false });
@@ -36,7 +37,7 @@ const newStats = () => ({ now: 0, max: 0, log: [] as string[] });
 async function run(registry: ToolRegistry, calls: { callId: string; name: string }[], extra: Record<string, unknown> = {}): Promise<Event[]> {
 	const out: Event[] = [];
 	await Promise.race([
-		(async () => { for await (const ev of loop({ adapter: turn(calls), model: "faux", registry, messages: [USER], ...extra } as never)) out.push(ev); })(),
+		(async () => { for await (const ev of loop({ adapter: turn(calls), model: "faux", registry, log: seedLog([USER]), ...extra } as never)) out.push(ev); })(),
 		new Promise((_, rej) => setTimeout(() => rej(new Error("DEADLOCK: the run did not end in 5 s")), 5000)),
 	]);
 	return out;

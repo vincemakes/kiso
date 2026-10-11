@@ -14,6 +14,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loop, ToolRegistry, type Event } from "@vincemakes/kiso-core";
 import { createOpenAICompatProvider } from "../src/index.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 const REQUESTED = "deepseek-v4-flash";
 const SERVED = "deepseek-flash";
@@ -47,7 +48,7 @@ afterEach(async () => {
 async function usageEvent(): Promise<{ servedModel?: string } | undefined> {
 	const adapter = createOpenAICompatProvider({ apiKey: "rig", baseUrl: `http://127.0.0.1:${port}/v1` });
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter, model: REQUESTED, registry: new ToolRegistry(), messages: [{ role: "user", content: "go" }], maxRetries: 0 })) {
+	for await (const ev of loop({ adapter, model: REQUESTED, registry: new ToolRegistry(), log: seedLog([{ role: "user", content: "go" }]), maxRetries: 0 })) {
 		out.push(ev);
 	}
 	return out.find((e) => e.type === "usage") as { servedModel?: string } | undefined;

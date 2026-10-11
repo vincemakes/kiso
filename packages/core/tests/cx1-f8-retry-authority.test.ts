@@ -18,6 +18,7 @@ import type { Adapter } from "../src/protocol/adapter.js";
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
 import { parseRetryAfter } from "../src/errors.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -38,7 +39,7 @@ function flaky(error: object, failures: number): { adapter: Adapter; calls: () =
 
 async function run(adapter: Adapter, maxRetries: number, signal?: AbortSignal): Promise<Event[]> {
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter, model: "faux", registry: new ToolRegistry(), messages: [USER], maxRetries, ...(signal !== undefined ? { signal } : {}) })) out.push(ev);
+	for await (const ev of loop({ adapter, model: "faux", registry: new ToolRegistry(), log: seedLog([USER]), maxRetries, ...(signal !== undefined ? { signal } : {}) })) out.push(ev);
 	return out;
 }
 

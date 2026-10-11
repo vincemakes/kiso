@@ -38,7 +38,9 @@
 	"kisoHome",
 	"loadExtensions",
 	"loadProjectExtensions",
+	"messagesToEvents",
 	"projectArtifacts",
 	"recordTrust",
+	"seedLog",
 	"trustFor"
 ]

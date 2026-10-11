@@ -25,6 +25,7 @@ import { defineTool, type Tool, type ToolContext, type ToolResult } from "../src
 import { ToolRegistry } from "../src/tools/registry.js";
 import { loop } from "../src/kernel/loop.js";
 import { projectMessages } from "../src/kernel/project.js";
+import { seedLog } from "./seed.js";
 
 const USER: Message = { role: "user", content: "go" };
 
@@ -67,7 +68,7 @@ function childTool(name: string, log: string[], opts: { effects?: Tool["effects"
 
 async function run(registry: ToolRegistry, adapter: Adapter, extra: Record<string, unknown> = {}): Promise<Event[]> {
 	const events: Event[] = [];
-	for await (const ev of loop({ adapter, model: "faux", registry, messages: [USER], ...extra } as never)) events.push(ev);
+	for await (const ev of loop({ adapter, model: "faux", registry, log: seedLog([USER]), ...extra } as never)) events.push(ev);
 	return events;
 }
 
@@ -239,7 +240,7 @@ describe("P3/B1 — the crash window: a child that started and never reported is
 		const gate = new Promise<void>((r) => { release = r; });
 		registry.register(parentTool("prog", async (ctx) => ctx.invoke!("hang", {})));
 		registry.register(defineTool({ name: "hang", description: "hang", parameters: { type: "object", properties: {} }, execute: async () => { await gate; return ok("late"); } }));
-		const done = (async () => { for await (const ev of loop({ adapter: turn([{ callId: "p1", name: "prog" }]), model: "faux", registry, messages: [USER] } as never)) events.push(ev); })();
+		const done = (async () => { for await (const ev of loop({ adapter: turn([{ callId: "p1", name: "prog" }]), model: "faux", registry, log: seedLog([USER]) } as never)) events.push(ev); })();
 		await new Promise((r) => setTimeout(r, 150));
 		const childStart = events.find((e) => e.type === "tool_execution_started" && (e as { callId: string }).callId === "p1/1");
 		expect(childStart).toBeDefined(); // durable before the handler finished

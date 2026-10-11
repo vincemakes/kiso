@@ -12,6 +12,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loop, ToolRegistry, type Event, type Message } from "@vincemakes/kiso-core";
 import { createOpenAICompatProvider } from "../src/index.js";
+import { seedLog } from "@vincemakes/kiso-runtime";
 
 let server: Server;
 let port = 0;
@@ -43,7 +44,7 @@ afterEach(async () => {
 async function replay(history: Message[]): Promise<string> {
 	const adapter = createOpenAICompatProvider({ apiKey: "rig", baseUrl: `http://127.0.0.1:${port}/v1` });
 	const out: Event[] = [];
-	for await (const ev of loop({ adapter, model: "m", registry: new ToolRegistry(), messages: history, maxRetries: 0 })) out.push(ev);
+	for await (const ev of loop({ adapter, model: "m", registry: new ToolRegistry(), log: seedLog(history), maxRetries: 0 })) out.push(ev);
 	const msgs = bodies[0]!["messages"] as { role: string; tool_calls?: { function: { arguments: string } }[] }[];
 	return msgs.find((m) => m.role === "assistant")!.tool_calls![0]!.function.arguments;
 }
