@@ -9,6 +9,9 @@
  * one line of the system prompt, sorted by directory name:
  *   Available skills (load with read_skill):
  *   - <name>: <description>
+ * The index has a budget (3,000 chars, ADR-0033 Amendment 2): over it,
+ * every name stays and the descriptions are cut to one common length,
+ * down to names only — a skill is never dropped from the index.
  * A broken entry (no frontmatter, no description, a broken link, a
  * duplicate name) is skipped — a soft failure, the mcp philosophy — and
  * reported to the PERSON (the catalog's `broken`: /skills, the reload
@@ -16,8 +19,9 @@
  * directory (ADR-0033 Amendment 1). No valid skill → an empty extension,
  * never an error.
  *
- * Tier 2 (on demand): the read_skill tool returns the FULL SKILL.md (capped
- * at 32KB with a truncation note); an unknown name is an honest,
+ * Tier 2 (on demand): the read_skill tool returns the SKILL.md (capped at
+ * 32KB with a truncation note) — its body alone when the frontmatter holds
+ * only what the index already carries (ADR-0033 Amendment 2); an unknown name is an honest,
  * actionable error listing the installed skills. Files other than
  * SKILL.md are NOT auto-loaded: the model reads one when the body names
  * it, with read_skill's `file` — a path relative to the skill's own
@@ -269,9 +273,28 @@ function unquote(value) {
 /** Tier 1: the resident index — one line per skill, sorted by directory
  *  name. Broken entries are not in it (ADR-0033 Amendment 1): they are
  *  installation diagnostics, for the person. */
+const INDEX_BUDGET = 3000;
+const MIN_DESCRIPTION = 16;
 function skillsPromptAppend(index) {
-	const lines = index.map((s) => `- ${s.name}: ${s.description}`);
-	return `Available skills (load with read_skill):\n${lines.join("\n")}`;
+	const head = "Available skills (load with read_skill):";
+	const full = index.map((s) => `- ${s.name}: ${s.description}`);
+	if (head.length + full.reduce((n, l) => n + 1 + l.length, 0) <= INDEX_BUDGET) return `${head}\n${full.join("\n")}`;
+	// K3: over the budget, every name stays; the descriptions share what is
+	// left evenly (the longest are cut first, to one common cap) — and when
+	// even short descriptions do not fit, the index is names only. A skill
+	// is never dropped: losing a description loses detail, losing a name
+	// loses the skill.
+	const room = INDEX_BUDGET - head.length - index.reduce((n, s) => n + 1 + `- ${s.name}: `.length, 0);
+	const cost = (cap) => index.reduce((n, s) => n + Math.min(s.description.length, cap), 0);
+	if (room < index.length * MIN_DESCRIPTION) return `${head}\n${index.map((s) => `- ${s.name}`).join("\n")}`;
+	let lo = MIN_DESCRIPTION, hi = Math.max(...index.map((s) => s.description.length));
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (cost(mid) <= room) lo = mid;
+		else hi = mid - 1;
+	}
+	const cut = (d) => (d.length <= lo ? d : `${d.slice(0, lo - 1).trimEnd()}…`);
+	return `${head}\n${index.map((s) => `- ${s.name}: ${cut(s.description)}`).join("\n")}`;
 }
 
 /** Tier 3 (ADR-0033 Amendment 1): a file inside the skill's own
@@ -293,10 +316,27 @@ function skillFile(skill, file) {
 	} catch {
 		return { error: `no file ${file} in skill "${skill.name}"` };
 	}
-	const st = statSync(full);
+	// a file removed between the containment check and here is a tool
+	// error, never a throw (the realpath → stat window)
+	let st;
+	try {
+		st = statSync(full);
+	} catch {
+		return { error: `no file ${file} in skill "${skill.name}"` };
+	}
 	if (st.isDirectory()) return { error: `${file} is a directory — name a file in it` };
 	if (!st.isFile()) return { error: `${file} is not a regular file` };
 	return { full };
+}
+
+const CONSUMED = new Set(["name", "description", "user-invocable"]);
+function bodyIfOnlyConsumed(text) {
+	if (!text.startsWith("---")) return text;
+	const end = text.indexOf("\n---", 3);
+	if (end < 0) return text;
+	const keys = text.slice(3, end).split(/\r?\n/).map((l) => /^([A-Za-z0-9_-]+)\s*:/.exec(l)?.[1]).filter((k) => k !== undefined);
+	if (keys.length === 0 || !keys.every((k) => CONSUMED.has(k))) return text;
+	return text.slice(end + 4).replace(/^[^\n]*\n?/, "");
 }
 
 /** Tier 2: read_skill — the full SKILL.md (≤32KB), or with `file` one of
@@ -306,7 +346,7 @@ function readSkillTool(index, broken) {
 	const brokenNote = broken.length > 0 ? ` (${broken.length} broken skill(s) skipped: ${broken.map((b) => b.dir).join(", ")})` : "";
 	return {
 		name: "read_skill",
-		description: "load a skill's SKILL.md, or with file one of the files it names (the available-skills list is in the system prompt)",
+		description: "Load an installed skill, or one of its files",
 		parameters: {
 			type: "object",
 			properties: {
@@ -348,6 +388,9 @@ function readSkillTool(index, broken) {
 			// the cap is the whole contract: nothing reads past it (the old
 			// note sent the model to read_file, which cannot reach this
 			// directory)
+			// K2: SKILL.md's frontmatter repeats the index line when it carries only
+			// what the loader consumed; any other key stays, with the block
+			if (target === skill.path) text = bodyIfOnlyConsumed(text);
 			if (text.length > MAX_BODY) {
 				text = `${text.slice(0, MAX_BODY)}\n…[truncated at ${MAX_BODY} chars — read_skill returns at most this much of a file]`;
 			}

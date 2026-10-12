@@ -54,11 +54,13 @@ function writeSkillCmd(skillsDir: string, name: string, mark: string): string {
 	// was, in the echo of the command that wrote it, on a tree where
 	// `/reload` did not exist. The encoded form makes the plaintext
 	// reachable only through read_skill's result.
-	// The MARK rides the description, which is line 3 — the tool card
-	// previews the first few lines of a result (R13), so a token in the body
-	// on line 6 is cut and an assertion on it fails against a working
-	// feature. That is what the first run of this gate did.
-	const md = `---\nname: ${name}\ndescription: ${mark}\n---\n\nthe skill's instructions\n`;
+	// The MARK must sit in the first few lines of read_skill's RESULT — the
+	// tool card previews only those (R13); a token in the body on line 6 was
+	// cut and failed against a working feature. It rode the description
+	// (line 3) until ADR-0033 Amendment 2 (K2): read_skill now returns the
+	// body alone when the frontmatter only repeats the index, so the mark
+	// is the body's FIRST line (and stays in the description, the index's).
+	const md = `---\nname: ${name}\ndescription: ${mark}\n---\n${mark}: the skill's instructions\n`;
 	const b64 = Buffer.from(md, "utf8").toString("base64");
 	return `!!mkdir -p ${skillsDir}/${name} && printf %s ${b64} | base64 -d > ${skillsDir}/${name}/SKILL.md${doneEcho(SHELL_DONE)}\r`;
 }
@@ -106,7 +108,9 @@ function extensionWithTool(dir: string, file: string, tool: string, answer: stri
 
 function skillDir(root: string, name: string, mark: string): void {
 	mkdirSync(join(root, name), { recursive: true });
-	writeFileSync(join(root, name, "SKILL.md"), `---\nname: ${name}\ndescription: ${mark}\n---\n\nthe skill's instructions\n`, "utf8");
+	// the mark is the body's first line too: read_skill returns the body
+	// alone when the frontmatter only repeats the index (ADR-0033 Amendment 2)
+	writeFileSync(join(root, name, "SKILL.md"), `---\nname: ${name}\ndescription: ${mark}\n---\n${mark}: the skill's instructions\n`, "utf8");
 }
 
 /** RELOAD-R1 (Astra): a `!!` line that makes the NEXT reload distinguishable.
