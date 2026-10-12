@@ -76,6 +76,18 @@ describe("ADR-0058 3d — background children through the CLI", () => {
 		expect(notice).toMatch(/<kiso-task id="t2" kind="agent" role="reviewer" status="exited"/);
 		expect(readFileSync(join(w.home, "sessions", "bg.tasks", "t1", "result.md"), "utf8")).toBe("child answer: auth lives in src/auth\n");
 		expect(out).toContain("both children reported");
+		// Result Inspect, lazily (the rent ruling): the requests before the
+		// notice carry no inspect_result; the wake run's request — the one
+		// that sees the notice's "Detailed result:" pointers — does
+		expect(notice).toContain("Detailed result: result:subagent:sub-bg-");
+		const requests = readFileSync(join(w.home, "sessions", "traces", "bg.jsonl"), "utf8")
+			.split("\n")
+			.filter((l) => l !== "")
+			.map((l) => JSON.parse(l) as { kind: string; toolSchemaHash?: string; rent?: { surface: string }[] })
+			.filter((r) => r.kind === "request");
+		const has = requests.map((r) => (r.rent ?? []).some((l) => l.surface === "tool:inspect_result"));
+		expect(has).toEqual([false, false, true]);
+		expect(new Set(requests.map((r) => r.toolSchemaHash)).size).toBe(2);
 	}, 90_000);
 
 	it("the parent is SIGKILLed while its child runs: the child finishes; the reopened session is told on the next message", async () => {

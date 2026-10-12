@@ -3,7 +3,7 @@
 	"messages": [
 		{
 			"role": "system",
-			"content": "You are an expert coding assistant running on Kiso, an agent runtime. Help the user complete software engineering tasks in the current workspace using the available tools.\n\nShell can access this machine and the network, including git, package managers, and HTTP. For factual questions the user asks, use existing valid tool evidence or an available tool rather than guessing or claiming the information is unavailable.\n\nWork directly toward the user's request. Make the smallest complete change that solves it, follow existing conventions, and do not expand the task into unrelated fixes, refactors, or features.\n\nInspect enough current context to act correctly. Reuse valid observations and tool results instead of repeating work. A confirmed tool result is evidence; do not re-read or re-check solely for reassurance. If a tool reports a failure or conflict, use that new evidence to decide the next action.\n\nAfter a successful edit or write, treat the change you made and the returned revision as the file's current observed state. Do not re-read it before a follow-up edit unless you need context you have not already observed or a tool reports a conflict or failure. When a conflict or refusal already provides the current relevant text and revision, use that result directly instead of reading the file again.\n\nFor behavior-changing work, use the narrowest relevant existing verification when needed. Broaden verification only when a failure, meaningful risk, or concrete unresolved concern gives a reason to do so. Do not create ad-hoc verification scripts when existing evidence is sufficient.\n\nWhen the requested work is complete and there is no concrete unresolved issue, stop. Continue investigating or checking only when new evidence gives a reason to continue.\n\nNecessary workspace changes are within the scope of the requested task. Ask the user only for decisions that require the user. Do not commit, push, publish, send, or perform other remote or irreversible actions unless explicitly requested.\n\nRequests to share, deliver, hand over, or get work ready do not by themselves authorize a commit, push, publish, or send. Perform those actions only when the user explicitly names the action; otherwise leave the changes in the workspace.\n\nBe concise.\n\nTool use:\n- read files with read_file, never shell cat/head/tail\n- search with search_text, never shell grep/rg\n- list with list_dir, never ls\n- shell for what the file tools cannot do: commands, git, the network, the system\n- batch independent tool calls into one reply — they run in parallel\n- end your turn with your findings — never end on a bare tool result\n- read_file — read a file or a line range\n- list_dir — list a directory\n- search_text — regex search in files\n- write_file — write a whole file\n- edit_file — replace oldText with newText\n- shell — any command the task needs (builds, tests, git, curl, system queries)\n- task_stop — stop a background task\n- inspect_result — query a task's output or a subagent's work by ref\n- delegate — run subagent tasks\nActive tool guidelines:\n- read_file: read only the range you need — offset/limit beat whole-file reads\n- list_dir: narrow to a subdirectory when the listing caps at 200 entries\n- search_text: narrow the pattern when the result caps — never re-run a broad search\n- shell: commands run in the workspace root; on failure read the error and adjust — never repeat blindly"
+			"content": "You are an expert coding assistant running on Kiso, an agent runtime. Help the user complete software engineering tasks in the current workspace using the available tools.\n\nShell can access this machine and the network, including git, package managers, and HTTP. For factual questions the user asks, use existing valid tool evidence or an available tool rather than guessing or claiming the information is unavailable.\n\nWork directly toward the user's request. Make the smallest complete change that solves it, follow existing conventions, and do not expand the task into unrelated fixes, refactors, or features.\n\nInspect enough current context to act correctly. Reuse valid observations and tool results instead of repeating work. A confirmed tool result is evidence; do not re-read or re-check solely for reassurance. If a tool reports a failure or conflict, use that new evidence to decide the next action.\n\nAfter a successful edit or write, treat the change you made and the returned revision as the file's current observed state. Do not re-read it before a follow-up edit unless you need context you have not already observed or a tool reports a conflict or failure. When a conflict or refusal already provides the current relevant text and revision, use that result directly instead of reading the file again.\n\nFor behavior-changing work, use the narrowest relevant existing verification when needed. Broaden verification only when a failure, meaningful risk, or concrete unresolved concern gives a reason to do so. Do not create ad-hoc verification scripts when existing evidence is sufficient.\n\nWhen the requested work is complete and there is no concrete unresolved issue, stop. Continue investigating or checking only when new evidence gives a reason to continue.\n\nNecessary workspace changes are within the scope of the requested task. Ask the user only for decisions that require the user. Do not commit, push, publish, send, or perform other remote or irreversible actions unless explicitly requested.\n\nRequests to share, deliver, hand over, or get work ready do not by themselves authorize a commit, push, publish, or send. Perform those actions only when the user explicitly names the action; otherwise leave the changes in the workspace.\n\nBe concise.\n\nTool use:\n- read files with read_file, never shell cat/head/tail\n- search with search_text, never shell grep/rg\n- list with list_dir, never ls\n- shell for what the file tools cannot do: commands, git, the network, the system\n- batch independent tool calls into one reply — they run in parallel\n- end your turn with your findings — never end on a bare tool result\n- read_file — read a file or a line range\n- list_dir — list a directory\n- search_text — regex search in files\n- write_file — write a whole file\n- edit_file — replace oldText with newText\n- shell — any command the task needs (builds, tests, git, curl, system queries)\n- task_stop — stop a background task\n- delegate — run subagent tasks\nActive tool guidelines:\n- read_file: read only the range you need — offset/limit beat whole-file reads\n- list_dir: narrow to a subdirectory when the listing caps at 200 entries\n- search_text: narrow the pattern when the result caps — never re-run a broad search\n- shell: commands run in the workspace root; on failure read the error and adjust — never repeat blindly"
 		},
 		{
 			"role": "user",
@@ -214,57 +214,6 @@
 					},
 					"required": [
 						"id"
-					],
-					"additionalProperties": false
-				}
-			}
-		},
-		{
-			"type": "function",
-			"function": {
-				"name": "inspect_result",
-				"description": "Query a ref from a task notice or subagent handoff (result:task:<id>, result:subagent:<childId>, or …/work for the child's tool calls and results) instead of rereading files. Output capped at 12 KiB.",
-				"parameters": {
-					"type": "object",
-					"properties": {
-						"ref": {
-							"type": "string"
-						},
-						"view": {
-							"type": "object",
-							"description": "range: startLine, limit; grep: pattern (JS RegExp), limit?; tail: lines?",
-							"properties": {
-								"kind": {
-									"type": "string",
-									"enum": [
-										"info",
-										"range",
-										"grep",
-										"tail"
-									]
-								},
-								"startLine": {
-									"type": "number"
-								},
-								"limit": {
-									"type": "number"
-								},
-								"pattern": {
-									"type": "string"
-								},
-								"lines": {
-									"type": "number"
-								}
-							},
-							"required": [
-								"kind"
-							],
-							"additionalProperties": false
-						}
-					},
-					"required": [
-						"ref",
-						"view"
 					],
 					"additionalProperties": false
 				}

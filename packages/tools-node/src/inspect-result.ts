@@ -559,6 +559,67 @@ function checkView(view: unknown): InspectView | string {
 
 type InspectInput = { ref: string; view: InspectView };
 
+/** A ref, wherever it appears in model-visible text. */
+export const RESULT_REF_PATTERN = /\bresult:(?:task:t[1-9][0-9]*|subagent:sub-[A-Za-z0-9._-]+)/;
+
+/** What the lazy source reads of a session: its id and its log. */
+export interface InspectableSession {
+	readonly id: string;
+	readonly log: { readonly all: readonly { readonly type: string; readonly content?: unknown }[] };
+}
+
+/**
+ * The owner's rent ruling (option 2, lazy registration): `inspect_result`
+ * is NOT in a fresh session's tool table. It joins once the session has
+ * produced something inspectable — once its model-visible history (a tool
+ * result, or an input: a person's, or a task notice) names a ref: a
+ * delegate handoff's "Detailed result:" pointer, a background task's start
+ * result or its notice naming result:task:<id>, or, on open/resume, a ref
+ * already in the history. It then stays.
+ *
+ * The host reaches it through a LIVE tool source (an extension's `tools`,
+ * which the registry consults at every request snapshot): the check runs
+ * as the next request is assembled, after the result or notice has landed
+ * in the log, so the very request that can see the pointer carries the
+ * tool. The scan is incremental (each event is read once per binding) and
+ * the array returned is one stable object, so the table changes exactly
+ * once. `bind` names the session the host has open (one at a time); a
+ * session's arming is remembered by id across rebinds.
+ */
+export function lazyInspectResult(opts: Parameters<typeof inspectResultTool>[0]): {
+	readonly tools: readonly Tool[];
+	bind(session: InspectableSession | undefined): void;
+	armed(sessionId: string): boolean;
+} {
+	const tool = inspectResultTool(opts) as Tool;
+	const one: readonly Tool[] = Object.freeze([tool]);
+	const none: readonly Tool[] = Object.freeze([]);
+	const armed = new Set<string>();
+	let bound: InspectableSession | undefined;
+	let scanned = 0;
+	return {
+		get tools(): readonly Tool[] {
+			if (bound === undefined) return none;
+			if (!armed.has(bound.id)) {
+				const all = bound.log.all;
+				for (; scanned < all.length; scanned += 1) {
+					const e = all[scanned]!;
+					if ((e.type === "user_input" || e.type === "tool_result") && RESULT_REF_PATTERN.test(textOf(e.content))) {
+						armed.add(bound.id);
+						break;
+					}
+				}
+			}
+			return armed.has(bound.id) ? one : none;
+		},
+		bind(session) {
+			bound = session;
+			scanned = 0;
+		},
+		armed: (id) => armed.has(id),
+	};
+}
+
 /** The tool — registered only where a session's tasks are wired. */
 export function inspectResultTool(opts: { readonly tasks?: (sessionId: string | undefined) => Pick<ShellTasks, "root"> | undefined }): Tool<InspectInput> {
 	return defineTool<InspectInput>({
@@ -586,7 +647,10 @@ export function inspectResultTool(opts: { readonly tasks?: (sessionId: string | 
 			required: ["ref", "view"],
 			additionalProperties: false,
 		},
-		promptSnippet: "inspect_result — query a task's output or a subagent's work by ref",
+		// no promptSnippet, on purpose: the tool joins a session's table LAZILY
+		// (lazyInspectResult), and the system prompt's tool table is composed
+		// per run from the registry — a snippet would change the prompt at the
+		// next run and break the prompt cache a second time
 		execute: async ({ ref, view }, ctx) => {
 			const parsed = parseResultRef(String(ref ?? ""));
 			if ("error" in parsed) return { content: `inspect_result: ${parsed.error}`, isError: true, errorKind: "precondition" };

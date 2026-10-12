@@ -17,7 +17,7 @@ import { projectMessages, type Event, type Message } from "@vincemakes/kiso-core
 import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
-import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
+import { lazyInspectResult, processTaskBackend, type InspectableSession, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { collectWriter } from "@vincemakes/kiso-subagent-ext";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 import { taskNoticeLines, taskWhat } from "./task-notice.js";
@@ -145,6 +145,25 @@ export function bindingFor(sessionId: string | undefined): { readonly profile: s
 export function profileByIdentity(model: string, baseUrl: string | undefined): string | null {
 	const hits = Object.entries(configModels).filter(([, p]) => p.model === model && p.baseUrl === baseUrl);
 	return hits.length === 1 ? hits[0]![0] : null;
+}
+
+/** Result Inspect, lazily (the owner's rent ruling, option 2): the tool
+ *  joins the table only once the open session's history names a ref. ONE
+ *  source per process; index.ts bindRestoredSession binds every session it
+ *  opens (fresh, resumed, switched, -p), and the agent carries the source
+ *  as the last extension (create-coding-agent.ts) — a live tool source,
+ *  read at every request snapshot. */
+const inspectSource = lazyInspectResult({ tasks: (sessionId) => tasksFor(sessionId) });
+export function bindInspectSession(session: InspectableSession): void {
+	inspectSource.bind(session);
+}
+export function inspectResultExtension(): KisoExtension {
+	return {
+		name: "result-inspect",
+		get tools() {
+			return inspectSource.tools;
+		},
+	};
 }
 
 export function tasksFor(sessionId: string | undefined): TaskManager | undefined {

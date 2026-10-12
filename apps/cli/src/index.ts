@@ -42,7 +42,7 @@ import { browserCommand, launchCommand } from "./launch.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { isProtectedPath, protectedIdentity, PROTECTED_REFUSAL } from "@vincemakes/kiso-tools-node";
 import { OFFERED_MODES, applyModeState, envModeLayer, getDontAsk, modeDisplay, parseMode, resolveModeLayers, type ModeLayer } from "./mode.js";
-import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setLiveSession, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
+import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, kisoHome, workspaceRoot, projectRoot, ownSessionsDir, setOpenSessionFolder, builtInExtensions, currentFaux, dock, loadedExtensions, mergedConfig, mergedTempPaths, modelChoice, projectExtensions, configModels, configuredWindow, agentBaseUrl, currentModelName, currentAgentExtensions, sessionStoreRef, sessionsDir, setAgentModel, setBody, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setLiveSession, bindInspectSession, protectedFiles, setMergedConfig, setModelChoice, setSessionStore, userExtensions, VERSION, type LineInput, lastBinding, acceptDrift, setAcceptDrift, loadedSkillsCatalog, queuedSwitchLines } from "./state.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
@@ -844,6 +844,7 @@ function retiredAutoCompact(merged: Parameters<typeof resolveAutoCompact>[0]): u
  */
 function bindRestoredSession(session: {
 	readonly id: string;
+	readonly log: { readonly all: readonly { readonly type: string; readonly content?: unknown }[] };
 	readonly model: string;
 	readonly baseUrl: string | undefined;
 	readonly profileName: string | null;
@@ -868,6 +869,9 @@ function bindRestoredSession(session: {
 	setAgentModel(session.model, session.baseUrl);
 	// 0.49.0 C1: the session a delegation reads its conversation's binding from
 	setLiveSession(session);
+	// Result Inspect: the session whose history arms inspect_result — a ref
+	// already in it (a resume) arms it before the first request
+	bindInspectSession(session);
 	session.setMicrocompactThreshold(
 		microcompactThresholdFor({
 			model: session.model,

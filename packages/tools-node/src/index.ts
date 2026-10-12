@@ -35,7 +35,6 @@ import { contentRevision, normalizeRevision, postEffectEscape, precondition, pub
 import { isProtectedPath, protectedIdentity, protectedRefusalText, readUnlessProtected } from "./protected.js";
 import { CORPUS_MAX_DEPTH, globToRegExp } from "./corpus.js";
 import { describeSearchMiss, regionForSearch } from "./search-miss.js";
-import { inspectResultTool } from "./inspect-result.js";
 
 /**
  * TUI2-R1 (C) — THE SHELL PROGRESS SIDECAR.
@@ -1411,7 +1410,7 @@ export { isCredentialName, isCredentialPath } from "./corpus.js";
 // ADR-0058: the process task backend (the runner ships beside it)
 export { processTaskBackend, type ProcessTaskBackend, type ProcessTaskBackendOptions } from "./process-backend.js";
 // Result Inspect: a bounded query over a child's raw work, by locator
-export { formatResultRef, INSPECT_CAP_BYTES, inspectResultTool, parseResultRef, type InspectView, type ResultRef } from "./inspect-result.js";
+export { formatResultRef, INSPECT_CAP_BYTES, inspectResultTool, lazyInspectResult, parseResultRef, RESULT_REF_PATTERN, type InspectableSession, type InspectView, type ResultRef } from "./inspect-result.js";
 
 /**
  * ADR-0058 (3b): a session's tasks, as the shell and `task_stop` reach them.
@@ -1906,8 +1905,9 @@ export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<an
 		writeFileTool(opts),
 		editFileTool(opts),
 		shellTool(opts),
-		// Result Inspect: only where tasks are wired — a session without them
-		// pays nothing for it
-		...(opts.tasks !== undefined ? [taskStopTool(opts), inspectResultTool(opts)] : []),
+		// Result Inspect is NOT here: the owner's rent ruling registers it
+		// lazily (lazyInspectResult — a live source the host wires), so no
+		// fresh session pays for it
+		...(opts.tasks !== undefined ? [taskStopTool(opts)] : []),
 	];
 }

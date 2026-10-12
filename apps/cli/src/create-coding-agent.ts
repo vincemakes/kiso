@@ -9,7 +9,7 @@
  */
 
 import { onInRunSummary } from "./in-run-compaction.js";
-import { activeStoreDir, childTurnBudget, setActiveStoreDir, body, bodyLog, dock, codingToolOptions, extensionsDir, floorOn, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
+import { activeStoreDir, childTurnBudget, setActiveStoreDir, body, bodyLog, dock, codingToolOptions, extensionsDir, floorOn, inspectResultExtension, kisoHome, loadedExtensions, ownSessionsDir, projectRoot, protectedFiles, secretEnvNamesOf, sessionsDir, setAgentModel, setConfigModels, setConfiguredWindow, setCurrentAgentExtensions, setCurrentFaux, setCurrentModelName, setCurrentProfileName, setExtensionLists, setFloorOn, setMergedConfig, setModelChoice, setNeverInherited, setRetryShown, setSessionStore, setUserProtectedPaths, settingsLayers, workspaceRoot, type LineInput } from "./state.js";
 import { claimProjectDir, projectLayoutActive } from "./projects.js";
 import { migrationNotice, pendingLegacyIds, planMigration, runMigration } from "./session-migration.js";
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
@@ -280,6 +280,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		...modeExtensions(workspaceRoot),
 		readOnlyShellExtension(codingToolOptions),
 		...loadedExtensions.map((e) => guardSavedAllow(e, neverInherited)),
+		// Result Inspect (the rent ruling): last, so the tool, once it joins,
+		// is appended to the table and every earlier spec keeps its place
+		inspectResultExtension(),
 	];
 	setCurrentAgentExtensions(extensions);
 
