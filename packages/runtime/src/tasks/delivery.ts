@@ -503,6 +503,8 @@ export class TaskDelivery {
 		if (task.state.kind === "ended" && task.state.signal !== null) attrs.push(`signal="${task.state.signal}"`);
 		if (task.endedAt !== undefined) attrs.push(`duration="${duration(task.endedAt - task.startedAt)}"`);
 		attrs.push(`output="${task.outputPath}"`);
+		// Result Inspect: the output by ref, beside its path
+		attrs.push(`inspect="result:task:${task.id}"`);
 		const tag = `<kiso-task ${attrs.join(" ")}/>`;
 		if (item.transition !== "failed") return tag;
 		if (task.state.kind === "ended" && task.state.error !== undefined) return `${tag}\nerror: ${task.state.error}`;

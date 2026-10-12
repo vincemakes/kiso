@@ -328,8 +328,8 @@ export const KEY_BINDINGS: readonly KeyBinding[] = [
  * of would be a worse lie than printing what the model actually calls.
  *
  * kiso's OWN tools are not unknown, wherever they ship (owner, 2026-10-08):
- * the task runner's `task_stop` and the first-party extensions' `delegate`,
- * `read_skill` and `ask_user` are named here too. This narrows the rule
+ * the task runner's `task_stop` and `inspect_result`, and the first-party
+ * extensions' `delegate`, `read_skill` and `ask_user` are named here too. This narrows the rule
  * above, which had read "an extension's" as any extension's.
  */
 const DISPLAY_VERB: Readonly<Record<string, string>> = {
@@ -340,6 +340,7 @@ const DISPLAY_VERB: Readonly<Record<string, string>> = {
 	edit_file: "edit",
 	shell: "shell",
 	task_stop: "stop task",
+	inspect_result: "inspect result",
 	delegate: "subagents",
 	read_skill: "read skill",
 	ask_user: "ask user",

@@ -103,7 +103,9 @@ export const DONT_ASK_NOTE = "never asks: what would ask is refused and the run 
 
 /** The read-only tool set (plan): reading is allowed, everything else
  *  denied with the guiding reason. */
-const READ_TOOLS = new Set(["read_file", "list_dir", "search_text", "read_skill"]);
+/** Result Inspect: inspect_result reads only what the session's own tasks
+ *  and children left on disk — a read, in every tier. */
+const READ_TOOLS = new Set(["read_file", "list_dir", "search_text", "read_skill", "inspect_result"]);
 /** ADR-0058 (3b, D2): stopping a task this session started asks no one —
  *  stopping is the safe direction — in every tier but manual. */
 const STOP_TOOLS = new Set(["task_stop"]);

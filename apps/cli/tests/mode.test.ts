@@ -45,7 +45,7 @@ function verdict(tier: Mode, tool: string) {
 	return currentPolicy(tier).decide({ name: tool } as never, {} as never);
 }
 
-const READ = ["read_file", "list_dir", "search_text", "read_skill"];
+const READ = ["read_file", "list_dir", "search_text", "read_skill", "inspect_result"];
 const WRITE_EDIT = ["write_file", "edit_file"];
 
 describe("Modes: the verdict matrix", () => {

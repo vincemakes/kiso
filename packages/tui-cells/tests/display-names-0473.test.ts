@@ -23,6 +23,10 @@ describe("0.47.3 — the display names of kiso's own tools", () => {
 		expect(["task_stop", "delegate", "read_skill", "ask_user"].map((n) => displayVerb(n).toUpperCase())).toEqual(["STOP TASK", "SUBAGENTS", "READ SKILL", "ASK USER"]);
 	});
 
+	it("Result Inspect: inspect_result's row reads as a verb, like task_stop's", () => {
+		expect(displayVerb("inspect_result")).toBe("inspect result");
+	});
+
 	it("a tool kiso has never heard of still prints its own name", () => {
 		for (const n of ["mcp__github__create_issue", "my_extension_tool", "delegate_v2", "Task"]) expect(displayVerb(n)).toBe(n);
 	});

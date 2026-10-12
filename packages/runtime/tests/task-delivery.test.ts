@@ -74,6 +74,8 @@ describe("ADR-0058 §7 — into a live run: one batch, at the next safe point, e
 		expect(notices[0]!.source).toBe("system");
 		expect(notices[0]!.via).toEqual({ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }, { taskId: "t2", transition: "failed" }] });
 		expect(notices[0]!.content).toMatch(/<kiso-task id="t1" status="exited" code="0"[\s\S]*<kiso-task id="t2" status="failed" code="2"[\s\S]*Runtime notice — not the user\.$/);
+		// Result Inspect: each task's output is named by ref beside its path
+		expect(notices[0]!.content).toMatch(/<kiso-task id="t1" [^>]*output="[^"]*t1\/output\.log" inspect="result:task:t1"\/>/);
 		// a later run carries no repeat
 		const later = await drain(session.run("again"));
 		expect(inputs(later).filter((e) => e.via?.kind === "tasks")).toEqual([]);

@@ -35,6 +35,7 @@ import { contentRevision, normalizeRevision, postEffectEscape, precondition, pub
 import { isProtectedPath, protectedIdentity, protectedRefusalText, readUnlessProtected } from "./protected.js";
 import { CORPUS_MAX_DEPTH, globToRegExp } from "./corpus.js";
 import { describeSearchMiss, regionForSearch } from "./search-miss.js";
+import { inspectResultTool } from "./inspect-result.js";
 
 /**
  * TUI2-R1 (C) — THE SHELL PROGRESS SIDECAR.
@@ -1409,6 +1410,8 @@ export { PROTECTED_REFUSAL, diskPath, isProtectedPath, protectedIdentity, protec
 export { isCredentialName, isCredentialPath } from "./corpus.js";
 // ADR-0058: the process task backend (the runner ships beside it)
 export { processTaskBackend, type ProcessTaskBackend, type ProcessTaskBackendOptions } from "./process-backend.js";
+// Result Inspect: a bounded query over a child's raw work, by locator
+export { formatResultRef, INSPECT_CAP_BYTES, inspectResultTool, parseResultRef, type InspectView, type ResultRef } from "./inspect-result.js";
 
 /**
  * ADR-0058 (3b): a session's tasks, as the shell and `task_stop` reach them.
@@ -1584,7 +1587,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					profile: readyWhen !== undefined ? "service" : "oneshot",
 				});
 				const settle = tasks.awaitSettled?.bind(tasks);
-				if (readyWhen === undefined || settle === undefined) return { content: `started background task ${task.id}. ${taskNote(task.outputPath)}`, isError: false };
+				if (readyWhen === undefined || settle === undefined) return { content: `started background task ${task.id}. ${taskNote(task.outputPath, task.id)}`, isError: false };
 				return waitForReady(tasks, settle, task, readyWhen, timeout, ctx);
 			}
 			return new Promise((resolvePromise) => {
@@ -1756,7 +1759,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 									: reason === "steer"
 										? "moved to the background so the person's message could land; "
 										: `still running after ${timeout} ms; `) +
-							`continued as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath)}` +
+							`continued as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath, task.id)}` +
 							(tail !== "" ? `\nOutput so far:\n${tail}` : ""),
 						isError: false,
 					});
@@ -1843,8 +1846,8 @@ async function waitForReady(
 			: (): void => {};
 	try {
 		const w = await settle(task.id, "ready", timeout, { ...(ctx.executionId !== undefined ? { executionId: ctx.executionId } : {}), signal: release.signal });
-		const where = `Output: ${task.outputPath} (read it with read_file); task_stop stops it.`;
-		if (w.settled && w.info.state.kind === "running") return { content: `started background task ${task.id}; ready — the output contains "${readyWhen}". ${taskNote(task.outputPath)}`, isError: false };
+		const where = `Output: ${task.outputPath} (read it with read_file, or query it with inspect_result ref result:task:${task.id}); task_stop stops it.`;
+		if (w.settled && w.info.state.kind === "running") return { content: `started background task ${task.id}; ready — the output contains "${readyWhen}". ${taskNote(task.outputPath, task.id)}`, isError: false };
 		if (w.settled) {
 			const tail = outputTail(task.outputPath);
 			return { content: `background task ${task.id} ended before it was ready (${howEnded(w.info)})${tail !== "" ? `\n${tail}` : ""}`, isError: true, errorKind: "fatal" };
@@ -1860,8 +1863,8 @@ async function waitForReady(
 
 /** Where a task's output is, and what happens next — one wording for the
  *  shell's results. */
-function taskNote(outputPath: string): string {
-	return `Output: ${outputPath} (read it with read_file). You will be notified when it ends; task_stop stops it.`;
+function taskNote(outputPath: string, id: string): string {
+	return `Output: ${outputPath} (read it with read_file, or query it with inspect_result ref result:task:${id}). You will be notified when it ends; task_stop stops it.`;
 }
 
 /** ADR-0058 §4: stop a task this session started — its whole process group. */
@@ -1903,6 +1906,8 @@ export function createCodingTools(opts: WorkspaceToolsOptions): readonly Tool<an
 		writeFileTool(opts),
 		editFileTool(opts),
 		shellTool(opts),
-		...(opts.tasks !== undefined ? [taskStopTool(opts)] : []),
+		// Result Inspect: only where tasks are wired — a session without them
+		// pays nothing for it
+		...(opts.tasks !== undefined ? [taskStopTool(opts), inspectResultTool(opts)] : []),
 	];
 }
