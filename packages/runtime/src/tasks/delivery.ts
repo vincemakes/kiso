@@ -561,7 +561,9 @@ function excerptOf(task: TaskInfo, bytes: number): { readonly text: string; read
 		}
 	}
 	const tail = rawTail(task.outputPath, TAIL_BYTES);
-	return handoffBody({ record, answer, tail: tail.text, tailCut: tail.cut, resultPath: resultPath(task) }, bytes);
+	// Result Inspect: a delivered child is a task, so the parent has
+	// inspect_result — its detailed-result ref rides the handoff
+	return handoffBody({ record, answer, tail: tail.text, tailCut: tail.cut, resultPath: resultPath(task), ...(task.agent !== undefined ? { childId: task.agent.session } : {}) }, bytes);
 }
 
 function duration(ms: number): string {

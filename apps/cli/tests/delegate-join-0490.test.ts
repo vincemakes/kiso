@@ -84,6 +84,22 @@ describe("0.49.0 A — a reader delegation joins its group", () => {
 		for (const id of ["t1", "t2"]) expect(manager.get(id)!.claims).toEqual([{ transition: "exited", executionId: "ex-join" }]);
 	}, 30_000);
 
+	it("Result Inspect: each committed child's handoff gains ONE pointer line — the only bytes added to the result", async () => {
+		const r = await delegate({ tasks: readers(2) }, { joinMs: 20_000 });
+		const pointer = /\nDetailed result: result:subagent:(sub-s1-[0-9a-f]{24}-[12]-(?:explorer|reviewer)) \(and \/work for its tool calls\)\. Use inspect_result only if more detail is actually needed\./g;
+		const found = [...r.content.matchAll(pointer)];
+		expect(found.map((m) => m[1]!.replace(/-[0-9a-f]{24}-/, "-<id>-"))).toEqual(["sub-s1-<id>-1-explorer", "sub-s1-<id>-2-reviewer"]);
+		// the pointer follows the answer it points past
+		expect(r.content).toMatch(/the explorer found it\n\nUNRESOLVED\nnone\nDetailed result: result:subagent:sub-s1-/);
+		// the control: without the pointer lines, nothing else mentions the tool or a ref
+		const control = r.content.replace(pointer, "");
+		expect(control).not.toMatch(/inspect_result|result:subagent:|Detailed result/);
+		// per child: a newline, 124 fixed bytes, and the child's id (42 bytes here)
+		for (const m of found) expect(Buffer.byteLength(m[0])).toBe(1 + 124 + m[1]!.length);
+		expect(found.map((m) => Buffer.byteLength(m[0]))).toEqual([167, 167]);
+		expect(Buffer.byteLength(r.content) - Buffer.byteLength(control)).toBe(334);
+	}, 30_000);
+
 	it("one fast, one slow: the fast one's handoff, then the slow one continues as the group — never killed", async () => {
 		process.env.CHILD_SLEEP_reviewer = "4000";
 		const t0 = Date.now();

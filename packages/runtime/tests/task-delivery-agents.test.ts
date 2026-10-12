@@ -96,6 +96,9 @@ describe("ADR-0058 3d (D2) — a group closes before it can complete", () => {
 		expect(wakes[0]!.via).toEqual({ kind: "tasks", items: [{ taskId: "t1", transition: "exited" }, { taskId: "t2", transition: "exited" }] });
 		expect(wakes[0]!.content).toMatch(/<kiso-task id="t1" kind="agent" role="explorer" status="exited" outcome="completed" session="sub-explorer-1"[^>]*result="[^"]*t1\/result\.md"\/>\nauth lives in src\/auth/);
 		expect(wakes[0]!.content).toMatch(/<kiso-task id="t2" kind="agent" role="reviewer" status="exited"[^>]*\/>\nthe plan misses retries/);
+		// Result Inspect: each committed child's handoff ends with its detailed-result ref
+		expect(wakes[0]!.content).toContain("auth lives in src/auth\nDetailed result: result:subagent:sub-explorer-1 (and /work for its tool calls). Use inspect_result only if more detail is actually needed.");
+		expect(wakes[0]!.content).toContain("the plan misses retries\nDetailed result: result:subagent:sub-reviewer-1 (and /work");
 		manager.close();
 	});
 });
@@ -256,6 +259,8 @@ describe("0.49.0 I5 — the result record commits a child's answer", () => {
 		expect(all).not.toContain("an answer nothing committed");
 		expect(all).not.toMatch(/result="[^"]*t1\/result\.md"/);
 		expect(all).toMatch(/<kiso-task id="t1"[^>]*output="[^"]*"\/>/);
+		// Result Inspect: no committed record, no detailed-result pointer
+		expect(all).not.toContain("Detailed result:");
 		manager.close();
 	});
 

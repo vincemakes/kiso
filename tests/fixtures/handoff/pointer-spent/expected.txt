@@ -1,0 +1,3 @@
+
+[the whole answer: /kiso/sessions/s1.tasks/t1/result.md]
+Detailed result: result:subagent:sub-s1-0123456789abcdef01234567-1-explorer (and /work for its tool calls). Use inspect_result only if more detail is actually needed.

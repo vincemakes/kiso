@@ -14,7 +14,11 @@
  * Budgets count UTF-8 bytes of what is shown, never the pointers:
  * the error line at most ERROR_BYTES, the tail at most TAIL_BYTES, and all
  * of it within the budget the caller passes (CHILD_HANDOFF_BYTES, or what
- * is left of GROUP_HANDOFF_BYTES).
+ * is left of GROUP_HANDOFF_BYTES). *
+ * Result Inspect: a child with a committed record, rendered where its
+ * parent has the inspect_result tool (the caller passes `childId`), ends
+ * with one more pointer — its detailed-result ref. Like the answer's path
+ * it is a pointer, outside the budget.
  */
 
 export const CHILD_HANDOFF_BYTES = 4_096;
@@ -37,6 +41,8 @@ export interface HandoffInput {
 	/** whether the output held more than `tail` */
 	readonly tailCut: boolean;
 	readonly resultPath: string;
+	/** the child's session id: with a record, the detailed-result pointer */
+	readonly childId?: string;
 }
 
 /** The record a result.json holds, or null — the commit test (I5). */
@@ -51,8 +57,19 @@ export function handoffRecordOf(raw: string | null): HandoffRecord | null {
 	}
 }
 
-/** One child's handoff body: lines each led by "\n", and the bytes shown. */
+/** The detailed-result pointer of a child with a committed record. */
+export function detailPointer(childId: string): string {
+	return `Detailed result: result:subagent:${childId} (and /work for its tool calls). Use inspect_result only if more detail is actually needed.`;
+}
+
+/** One child's handoff body: lines each led by "\n", and the bytes shown
+ *  (the pointers never count). */
 export function handoffBody(input: HandoffInput, budget: number): { readonly text: string; readonly bytes: number } {
+	const body = shownBody(input, budget);
+	return input.record !== null && input.childId !== undefined ? { text: `${body.text}\n${detailPointer(input.childId)}`, bytes: body.bytes } : body;
+}
+
+function shownBody(input: HandoffInput, budget: number): { readonly text: string; readonly bytes: number } {
 	let text = "";
 	let used = 0;
 	const room = (): number => Math.max(0, budget - used);

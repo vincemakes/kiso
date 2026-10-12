@@ -41,9 +41,11 @@ declare module "*.mjs" {
 	export const HANDOFF_ERROR_BYTES: number;
 	export function handoffRecordOf(raw: string | null): { outcome: string; error?: string } | null;
 	export function handoffBody(
-		input: { record: { outcome: string; error?: string } | null; answer: string; tail: string; tailCut: boolean; resultPath: string },
+		input: { record: { outcome: string; error?: string } | null; answer: string; tail: string; tailCut: boolean; resultPath: string; childId?: string },
 		budget: number,
 	): { text: string; bytes: number };
+	// Result Inspect: the detailed-result pointer
+	export function detailPointer(childId: string): string;
 	export function runAcceptance(
 		acceptance: { check?: string; evaluator?: string },
 		cfg: { checks: Record<string, string> },

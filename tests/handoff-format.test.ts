@@ -17,8 +17,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CHILD_HANDOFF_BYTES as EXT_CHILD, GROUP_HANDOFF_BYTES as EXT_GROUP, handoffBody as extensionBody, handoffRecordOf as extensionRecord } from "../extensions/subagent/src/kiso-subagent.mjs";
-import { CHILD_HANDOFF_BYTES, GROUP_HANDOFF_BYTES, handoffBody as runtimeBody, handoffRecordOf as runtimeRecord, type HandoffInput } from "../packages/runtime/src/tasks/handoff.js";
+import { CHILD_HANDOFF_BYTES as EXT_CHILD, detailPointer as extensionPointer, GROUP_HANDOFF_BYTES as EXT_GROUP, handoffBody as extensionBody, handoffRecordOf as extensionRecord } from "../extensions/subagent/src/kiso-subagent.mjs";
+import { CHILD_HANDOFF_BYTES, detailPointer, GROUP_HANDOFF_BYTES, handoffBody as runtimeBody, handoffRecordOf as runtimeRecord, type HandoffInput } from "../packages/runtime/src/tasks/handoff.js";
 
 const CORPUS = fileURLToPath(new URL("./fixtures/handoff/", import.meta.url));
 
@@ -52,6 +52,11 @@ describe("0.49.0 I7 — the handoff format, held by an independent corpus", () =
 				"group-spent",
 				"long-error",
 				"empty",
+				"pointer-success-short",
+				"pointer-truncated",
+				"pointer-spent",
+				"pointer-failed-error-and-tail",
+				"pointer-no-record",
 			]),
 		);
 	});
@@ -81,6 +86,29 @@ describe("0.49.0 I7 — the handoff format, held by an independent corpus", () =
 		const shown = runtimeBody(euro, euro.budget).text.split("\n")[1]!;
 		expect(Buffer.byteLength(shown)).toBe(4_095); // 1,365 euro signs; a 1,366th would split at byte 4,096
 		expect(shown.length).toBe(1_365);
+	});
+
+	it("Result Inspect: the pointer adds one fixed line per child with a record, outside the budget, and nothing without one", () => {
+		const childId = "sub-dogfood-0460-bg-d158ec1731a63ac105e3970b-5-explorer";
+		const pointer = "Detailed result: result:subagent:sub-dogfood-0460-bg-d158ec1731a63ac105e3970b-5-explorer (and /work for its tool calls). Use inspect_result only if more detail is actually needed.";
+		expect(detailPointer(childId)).toBe(pointer);
+		expect(extensionPointer(childId)).toBe(pointer);
+		// the line's cost: a newline, 124 fixed bytes, and the child's id
+		expect(Buffer.byteLength(`\n${pointer}`)).toBe(1 + 124 + childId.length);
+		expect(Buffer.byteLength(`\n${pointer}`)).toBe(180);
+		for (const name of cases) {
+			const { budget, ...input } = expand(JSON.parse(readFileSync(join(CORPUS, name, "input.json"), "utf8"))) as HandoffInput & { budget: number };
+			const bare = { ...input };
+			delete (bare as { childId?: string }).childId;
+			for (const render of [runtimeBody, extensionBody]) {
+				const without = render(bare, budget);
+				const withId = render({ ...bare, childId }, budget);
+				// the bytes shown never move: the pointer is not shown content
+				expect(withId.bytes, name).toBe(without.bytes);
+				// the ONLY added bytes are the pointer line — and only beside a record
+				expect(withId.text, name).toBe(input.record === null ? without.text : `${without.text}\n${pointer}`);
+			}
+		}
 	});
 
 	it("I5: a record commits the answer — the two readers agree on what a record is", () => {

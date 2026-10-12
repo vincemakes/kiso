@@ -1,0 +1,4 @@
+
+error: 402: request failed
+…last words
+Detailed result: result:subagent:sub-s1-0123456789abcdef01234567-1-explorer (and /work for its tool calls). Use inspect_result only if more detail is actually needed.

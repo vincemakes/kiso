@@ -502,7 +502,9 @@ function memberSection(s, info) {
 		writerFailed = w.failed;
 	}
 	const all = failed || writerFailed;
-	return { failed: all, ...(all ? { failKind: "error" } : {}), text, handoff: { record, answer, tail: tail.text, tailCut: tail.cut, resultPath: join(dir, "result.md") }, trailer, toolCalls };
+	// Result Inspect: a joined child runs as a task, so its parent has
+	// inspect_result — the handoff carries the child's detailed-result ref
+	return { failed: all, ...(all ? { failKind: "error" } : {}), text, handoff: { record, answer, tail: tail.text, tailCut: tail.cut, resultPath: join(dir, "result.md"), childId: s.childId }, trailer, toolCalls };
 }
 
 /** B — what an implementer's handoff adds: its patch (by path, never
@@ -1781,8 +1783,20 @@ export function handoffRecordOf(raw) {
 	}
 }
 
-/** One child's handoff body: lines each led by "\n", and the bytes shown. */
+/** The detailed-result pointer of a child with a committed record. */
+export function detailPointer(childId) {
+	return `Detailed result: result:subagent:${childId} (and /work for its tool calls). Use inspect_result only if more detail is actually needed.`;
+}
+
+/** One child's handoff body: lines each led by "\n", and the bytes shown
+ *  (the pointers never count). Result Inspect: a child with a committed
+ *  record and a `childId` ends with its detailed-result pointer. */
 export function handoffBody(input, budget) {
+	const body = shownBody(input, budget);
+	return input.record !== null && input.childId !== undefined ? { text: `${body.text}\n${detailPointer(input.childId)}`, bytes: body.bytes } : body;
+}
+
+function shownBody(input, budget) {
 	let text = "";
 	let used = 0;
 	const room = () => Math.max(0, budget - used);

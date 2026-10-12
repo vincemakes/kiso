@@ -1,0 +1,12 @@
+{
+	"record": {
+		"outcome": "failed",
+		"error": "402: request failed"
+	},
+	"answer": "",
+	"tail": "last words\n",
+	"tailCut": true,
+	"resultPath": "/kiso/sessions/s1.tasks/t1/result.md",
+	"childId": "sub-s1-0123456789abcdef01234567-1-explorer",
+	"budget": 4096
+}

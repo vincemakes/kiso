@@ -1,0 +1,9 @@
+{
+	"record": null,
+	"answer": "an answer no record committed must never show",
+	"tail": "Error: spawn failed\n",
+	"tailCut": false,
+	"resultPath": "/kiso/sessions/s1.tasks/t1/result.md",
+	"childId": "sub-s1-0123456789abcdef01234567-1-explorer",
+	"budget": 4096
+}
