@@ -121,7 +121,7 @@ describe("O1: write_file", () => {
 		writeFileSync(join(process.cwd(), "src", "unseen.js"), "export const x = 1;\n");
 		const r = await call("write_file", { path: "src/unseen.js", content: "zz" });
 		expect(r.isError).toBe(true);
-		expect(r.content).toMatch(/read it before replacing it/);
+		expect(r.content).toBe("write_file: src/unseen.js already exists — to replace it, first read the whole file (read_file with no offset or limit; a ranged read is not enough), or change part of it with edit_file");
 		expect(readFileSync(join(process.cwd(), "src", "unseen.js"), "utf8")).toBe("export const x = 1;\n");
 	});
 
@@ -136,6 +136,10 @@ describe("O1: write_file", () => {
 		await call("read_file", { path: "src/range.js", offset: 1, limit: 1 });
 		expect(observedRevisionFromLog(SID, F(), "edit")).toBe(rev(F()));
 		expect(observedRevisionFromLog(SID, F(), "write")).toBeUndefined();
+		// the refusal says why: a ranged read does not let it replace the file
+		const refused = await call("write_file", { path: "src/range.js", content: "export {};\n" });
+		expect(refused).toMatchObject({ isError: true, errorKind: "precondition" });
+		expect(refused.content).toMatch(/read the whole file \(read_file with no offset or limit; a ranged read is not enough\), or change part of it with edit_file$/);
 		await call("read_file", { path: "src/range.js" });
 		expect(observedRevisionFromLog(SID, F(), "write")).toBe(rev(F()));
 		const r = await call("write_file", { path: "src/range.js", content: "export {};\n" });
