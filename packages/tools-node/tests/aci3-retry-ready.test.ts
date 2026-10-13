@@ -133,7 +133,7 @@ describe("ACI-3 — hunks apply IN ORDER, each against the result of the ones be
 			undefined as never,
 		);
 		expect(kindOf(r)).toBe("precondition");
-		expect(r.content.split("\n")[0]).toBe("edit_file: pattern not found in f.ts (hunk 2, after hunk 1 applied)");
+		expect(r.content.split("\n")[0]).toBe("edit_file: pattern not found in f.ts (hunk 2, matched after hunk 1) — nothing was written, f.ts is unchanged");
 		expect(read()).toBe(FILE);
 	});
 });
