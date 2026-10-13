@@ -133,7 +133,7 @@ describe("edit / shell", () => {
 });
 
 describe("workspace boundary (Area 5)", () => {
-	it("absolute paths are refused — /etc/hosts never readable", async () => {
+	it("an absolute path outside the workspace is refused — /etc/hosts never readable", async () => {
 		const root = tempRoot();
 		const result = await readFileTool({ workspaceRoot: root }).execute({ path: "/etc/hosts" }, CTX);
 		expect(denied(result)).toBe(true);

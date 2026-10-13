@@ -311,7 +311,12 @@ describe("ADR-0058 §4 — read_file serves a task's output, and nothing else wi
 		expect(outside.isError).toBe(true);
 		const relative = await tool.execute({ path: "a.txt" }, CTX);
 		expect(relative.content).toContain("workspace file");
-		const escape = await tool.execute({ path: join(root, "..", "ws", "a.txt") }, CTX);
+		// out of the task root and into the workspace: a workspace path,
+		// admitted as its relative name is; out of both stays refused
+		const intoWorkspace = await tool.execute({ path: join(root, "..", "ws", "a.txt") }, CTX);
+		expect(intoWorkspace.content).toContain("workspace file");
+		writeFileSync(join(root, "..", "beside.txt"), "neither\n");
+		const escape = await tool.execute({ path: join(root, "..", "beside.txt") }, CTX);
 		expect(escape.isError).toBe(true);
 	});
 });
