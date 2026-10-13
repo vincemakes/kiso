@@ -87,6 +87,9 @@ const DEFAULT_SHELL_TIMEOUT_MS = 30_000;
 /** ADR-0058 §3: with tasks, how long the shell waits before a command
  *  continues as a task (the model's own value wins). */
 const DEFAULT_FOREGROUND_MS = 60_000;
+/** ADR-0058 Amendment 15: with tasks, the longest foreground wait. A longer
+ *  `foregroundMs` still promotes here; the command is never killed. */
+const DEFAULT_MAX_FOREGROUND_MS = 300_000;
 /** A promoted task's output file rotates here, as a runner's does. */
 const TASK_OUTPUT_CAP = 64 * 1024 * 1024;
 /** A task's stop: SIGTERM, this long, then the confirmed sweep. */
@@ -348,6 +351,11 @@ export interface WorkspaceToolsOptions {
 		 *  the default wait). A shorter `foregroundMs` is raised to it; 0
 		 *  keeps the model's value as asked (ADR-0058 Amendment 10). */
 		readonly minForegroundMs?: number;
+		/** shell, with tasks wired: the longest foreground wait (default 5
+		 *  min). A longer `foregroundMs` is lowered to it — the command is
+		 *  promoted to a task, never killed; it never goes below the floor;
+		 *  0 keeps the model's value as asked (ADR-0058 Amendment 15). */
+		readonly maxForegroundMs?: number;
 	};
 }
 
@@ -1558,12 +1566,14 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 			// ADR-0058 Amendment 10: with tasks wired a wait shorter than the
 			// floor only moves the command to the background sooner, so the
 			// model may lengthen the wait, never shorten it. Without tasks the
-			// wait is a kill timeout and is kept as asked.
+			// wait is a kill timeout and is kept as asked. Amendment 15: a
+			// wait past the ceiling only holds the turn — the command is
+			// promoted there and the model is notified when it ends.
 			const asked = [foregroundMs, timeoutMs].find((v): v is number => typeof v === "number" && Number.isFinite(v));
-			const timeout =
-				tasks !== undefined
-					? Math.max(asked ?? DEFAULT_FOREGROUND_MS, opts.limits?.minForegroundMs ?? DEFAULT_FOREGROUND_MS)
-					: (asked ?? DEFAULT_SHELL_TIMEOUT_MS);
+			const floor = opts.limits?.minForegroundMs ?? DEFAULT_FOREGROUND_MS;
+			const ceiling = opts.limits?.maxForegroundMs ?? DEFAULT_MAX_FOREGROUND_MS;
+			const raised = Math.max(asked ?? DEFAULT_FOREGROUND_MS, floor);
+			const timeout = tasks !== undefined ? (ceiling > 0 ? Math.min(raised, Math.max(ceiling, floor)) : raised) : (asked ?? DEFAULT_SHELL_TIMEOUT_MS);
 			// E group: a PRE-aborted signal never spawns the command.
 			if (ctx.signal.aborted) {
 				return { content: "shell aborted before start", isError: true, errorKind: "fatal" };

@@ -1176,3 +1176,40 @@ verifiers join, or run in the background, as readers do (Amendment 13).
      ruled this a reversal of the registered rule on 2026-10-10.
 8. **The schema:** `background`'s description drops its role limit.
    Nothing else in it changes.
+
+## Amendment 15 — the foreground wait has a ceiling (2026-10-13, owner-approved)
+
+In a real session the model passed `foregroundMs: 1800000` for a long
+command. The person watched a foreground call for three minutes with no
+promotion and asked whether kiso had hung. The floor (Amendment 10) only
+raises short waits, so a long value held the turn for as long as the
+model asked. The owner asked for long waits to promote.
+
+1. **With tasks wired, the foreground wait is
+   `min(max(foregroundMs, floor), max(ceiling, floor))`.** The ceiling
+   defaults to 5 minutes.
+   - **Applies to** what the floor applies to: a foreground command (with
+     or without `readyWhen`), the `background` + `readyWhen` wait, and the
+     deprecated `timeoutMs`.
+   - **The command is never killed at the ceiling.** It is promoted, as at
+     any other wait: the result names the wait that happened, the task id
+     and the output path, and the model is notified when it ends.
+   - **The ceiling never goes below the floor.** A host that raises the
+     floor past the ceiling gets the floor.
+   - **Does not apply to** a host without tasks wired, where the wait is a
+     kill timeout and is kept as asked.
+2. **DECLARED NARROWING of §3** ("why 60 s and why the model's value
+   wins"). That ruling stands for waits up to the ceiling: a model that
+   expects a run of a few minutes still waits for it. What narrows is a
+   wait past the ceiling. Past it, waiting only holds the person's turn;
+   promotion keeps the command and its result, and the end notice
+   delivers it.
+3. **Hosts:** `WorkspaceToolsOptions.limits.maxForegroundMs` (default
+   300,000). 0 keeps the model's value as asked, which is the behaviour
+   before this amendment.
+4. **Unchanged:** the schema and every description, so the request bytes
+   do not move. The shell description already says a command still
+   running after the wait "continues as a background task".
+5. **For reference:** the reference implementation's shell has no
+   promotion; its optional `timeout` (seconds, no default) kills the
+   command, and without it the call waits until the command exits.
