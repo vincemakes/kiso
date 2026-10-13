@@ -120,7 +120,7 @@ describe("edit_file carries it, and changes nothing else", () => {
 			undefined as never,
 		);
 		// ACI-3: hunks apply in order, so the headline says what the hunk met
-		expect(r.content.split("\n")[0]).toContain("(hunk 2, after hunk 1 applied)");
+		expect(r.content.split("\n")[0]).toContain("(hunk 2, matched after hunk 1) — nothing was written, f.js is unchanged");
 		expect(r.content).toContain("the file ENDS there");
 	});
 

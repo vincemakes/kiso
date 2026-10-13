@@ -81,7 +81,7 @@ describe("WR-1E2 — one snapshot, N disjoint hunks, one publish", () => {
 			undefined as never,
 		);
 		expect(kindOf(dup)).toBe("precondition");
-		expect(dup.content.split("\n")[0]).toContain("(hunk 2, after hunk 1 applied)");
+		expect(dup.content.split("\n")[0]).toContain("(hunk 2, matched after hunk 1) — nothing was written, f.ts is unchanged");
 		const cross = await edit.execute(
 			{ path: "f.ts", expectedRevision: rev(ORIGINAL), edits: [{ search: "alpha one", replace: "X" }, { search: "one\nbeta", replace: "Y" }] },
 			undefined as never,

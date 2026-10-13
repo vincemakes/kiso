@@ -1347,7 +1347,12 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 				for (let i = 0; i < hunks.length; i += 1) {
 					const h = { search: lf(hunks[i]!.search), replace: lf(hunks[i]!.replace) };
 					const { count, offsets } = occurrencesOf(edited, h.search);
-					const which = single ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, after ${i === 1 ? "hunk 1" : `hunks 1–${i}`} applied)`;
+					// a batch's later hunk is matched against the text the earlier
+					// ones made IN MEMORY; "after hunk 1 applied" read as written,
+					// and the model repaired a hunk that never landed (the TB20
+					// trajectory audit) — so a batch refusal says nothing changed
+					const which = single ? "" : i === 0 ? " (hunk 1)" : ` (hunk ${i + 1}, matched after ${i === 1 ? "hunk 1" : `hunks 1–${i}`})`;
+					const untouched = hunks.length > 1 ? ` — nothing was written, ${path} is unchanged` : "";
 					if (count === 0) {
 						// WR-1A ④: the WORLD lacks the pattern (the input is
 						// fine) and nothing ran — precondition; the note never
@@ -1364,7 +1369,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 						const swap = h.replace.length > 0 && occurrencesOf(edited, h.replace).count === 1
 							? "\n  newText is already in the file once and oldText is not: either this change is already applied, or oldText and newText are swapped"
 							: "";
-						return precondition(`edit_file: pattern not found in ${path}${which}${detail ? `\n${detail}` : ""}${swap}${block}\n[${current}]`);
+						return precondition(`edit_file: pattern not found in ${path}${which}${untouched}${detail ? `\n${detail}` : ""}${swap}${block}\n[${current}]`);
 					}
 					// ACI-2: more than one resolution is a QUESTION, not an edit.
 					// Taking the first one wrote the wrong place and reported
@@ -1375,7 +1380,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 						const lines = describeMatchLines(edited, offsets, count <= ACI2_OFFSETS_KEPT);
 						const where = which === "" ? lines : `${which.slice(2, -1)}, ${lines}`;
 						return precondition(
-							`edit_file: pattern matches ${count} places in ${path} (${where}) — include enough surrounding text to make it unique\n[${current}]`,
+							`edit_file: pattern matches ${count} places in ${path} (${where}) — include enough surrounding text to make it unique${untouched !== "" ? `; nothing was written, ${path} is unchanged` : ""}\n[${current}]`,
 						);
 					}
 					edited = edited.slice(0, offsets[0]!) + h.replace + edited.slice(offsets[0]! + h.search.length);

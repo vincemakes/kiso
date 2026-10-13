@@ -94,8 +94,21 @@ describe("the new vocabulary edits", () => {
 		const w = ws(SRC);
 		const r = await run(w, { edits: [{ oldText: "return 1;", newText: "return 2;" }, { oldText: "nowhere", newText: "x" }] });
 		expect(r.isError).toBe(true);
-		expect(r.content).toMatch(/^edit_file: pattern not found in f\.js \(hunk 2, after hunk 1 applied\)/);
+		expect(r.content).toMatch(/^edit_file: pattern not found in f\.js \(hunk 2, matched after hunk 1\) — nothing was written, f\.js is unchanged/);
 		expect(w.read()).toBe(SRC);
+	});
+
+	it("a batch refused for an ambiguous hunk says nothing was written", async () => {
+		const w = ws("a\nx\nx\n");
+		const r = await run(w, { edits: [{ oldText: "a", newText: "b" }, { oldText: "x", newText: "y" }] });
+		expect(r.content.split("\n")[0]).toBe("edit_file: pattern matches 2 places in f.js (hunk 2, matched after hunk 1, lines 2, 3) — include enough surrounding text to make it unique; nothing was written, f.js is unchanged");
+		expect(w.read()).toBe("a\nx\nx\n");
+	});
+
+	it("a one-hunk edit's miss keeps its headline: nothing else could have landed, so no note", async () => {
+		const w = ws(SRC);
+		const r = await run(w, { edits: [{ oldText: "nowhere", newText: "x" }] });
+		expect(r.content.split("\n")[0]).toBe("edit_file: pattern not found in f.js (hunk 1)");
 	});
 
 	it("keeps the refusal headlines byte-identical (bench parsers read them)", async () => {
@@ -180,7 +193,7 @@ describe("the swap hint — evidence, never a guess", () => {
 	it("speaks of the hunk it is about, after the earlier hunks applied", async () => {
 		const w = ws(SRC);
 		const r = await run(w, { edits: [{ oldText: "return 1;", newText: "return 9;" }, { oldText: "return 7;", newText: "return 9;" }] });
-		expect(r.content).toMatch(/\(hunk 2, after hunk 1 applied\)/);
+		expect(r.content).toMatch(/\(hunk 2, matched after hunk 1\) — nothing was written/);
 		expect(r.content).toMatch(/swapped/);
 		expect(w.read()).toBe(SRC);
 	});
