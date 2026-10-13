@@ -179,7 +179,8 @@ function isWithin(root: string, target: string): boolean {
 
 /**
  * Resolve an input path strictly inside the workspace (Area 5):
- * - absolute inputs are refused (paths are workspace-relative);
+ * - an absolute input is taken as the workspace-relative path it names when
+ *   it lies inside the root, and refused otherwise;
  * - `..` components cannot escape because the joined path is re-checked
  *   against the canonical root;
  * - SYMLINKS cannot escape: the deepest existing ancestor is realpath'd
@@ -213,10 +214,17 @@ function resolveReadable(opts: WorkspaceToolsOptions, input: string, sessionId?:
 }
 
 export function resolveWithinRoot(root: string, input: string): string {
-	if (isAbsolute(input)) {
-		throw new PathEscapeError(`absolute paths are not allowed — use workspace-relative paths: ${input}`);
-	}
 	const rootReal = realpathSync(root);
+	if (isAbsolute(input)) {
+		// an absolute path that names a place inside the workspace — as the
+		// root is written or as it resolves — is that workspace-relative
+		// path, and takes the same canonical checks below (symlinks, `..`)
+		for (const base of [root, rootReal]) {
+			const rel = relative(base, input);
+			if (!rel.startsWith("..") && !isAbsolute(rel)) return resolveWithinRoot(root, rel === "" ? "." : rel);
+		}
+		throw new PathEscapeError(`absolute path outside the workspace: ${input} — the workspace root is ${rootReal}; use a path inside it`);
+	}
 	const candidate = resolve(root, input);
 
 	// Walk up to the deepest EXISTING ancestor (files to be created have a

@@ -178,8 +178,8 @@ decline`); the body scrolls
   ADR-0038; a receipted failure is a clean failure whose result carries an
   honest partial-side-effect note, and a retry re-passes the approval
   chain); coding tools are bound
-  to the workspace root (absolute paths, `..`, and symlink escapes are
-  refused); the approval prompt shows the full shell command and full
+  to the workspace root (absolute paths outside it, `..`, and symlink
+  escapes are refused; an absolute path inside it is admitted); the approval prompt shows the full shell command and full
   paths. The **kill -9 gate** (`apps/cli/tests/kill9.test.ts`) SIGKILLs a
   real chat mid-execution and resumes it in a fresh process — see
   [durability.md](durability.md).
