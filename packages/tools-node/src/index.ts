@@ -985,7 +985,9 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			// O1: bind the observed revision (never the disk's latest)
 			if (expectedRevision === undefined && opts.observedRevision !== undefined && existsSync(full)) {
 				expectedRevision = opts.observedRevision(ctx?.sessionId, full, "write");
-				if (expectedRevision === undefined) return precondition(`write_file: ${path} already exists — read it before replacing it`);
+				// the trajectory audit: after ranged reads the model retried this
+				// in a loop — say that only a WHOLE read lets it replace the file
+				if (expectedRevision === undefined) return precondition(`write_file: ${path} already exists — to replace it, first read the whole file (read_file with no offset or limit; a ranged read is not enough), or change part of it with edit_file`);
 			}
 			// WR-1 — the observed-revision stale-write guard. The decision
 			// lattice runs BEFORE any bytes move; every refusal is a
