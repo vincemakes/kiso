@@ -93,4 +93,3 @@ describe("finding 0480-F9 — a spent chain budget, in the person's words", () =
 		expect(budgetSpentLine({ wakes: 1 })).toBe("✦ chain budget spent — 1 autonomous wake since your last message · finished tasks wait for you");
 	});
 });
-
