@@ -383,7 +383,7 @@ fs.writeFileSync('$WORK/meta.json', JSON.stringify({
       if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
         mkdir -p "$WORK/capture"
         CAP_PORT=$(node -e 'const n=require("net");const s=n.createServer();s.listen(0,()=>{console.log(s.address().port);s.close();});')
-        python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$ROUTE_HOST" --scheme https --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
+        python3 "$B/capture-proxy.py" --port "$CAP_PORT" --upstream "$ROUTE_HOST" --scheme "$ROUTE_SCHEME" --out "$WORK/capture" --label "pi-$RUN" >/dev/null 2>&1 &
         CAP_PID=$!
         sleep 2
         REF_BASE="http://127.0.0.1:$CAP_PORT$ROUTE_PATH"
