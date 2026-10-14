@@ -30,6 +30,16 @@ case "$BENCH_ROUTE" in
 		ROUTE_CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kiso-commandcode/credentials.env"
 		ROUTE_CRED_KEY="COMMANDCODE_API_KEY"
 		;;
+	cr)
+		# co behind the local retry meter (kiso-doc VP Amendment 2): a
+		# provider 400 is re-sent byte for byte before the arm sees it. The
+		# meter must be running on BENCH_RETRY_PORT; it holds the real key.
+		ROUTE_BASE_URL="http://127.0.0.1:${BENCH_RETRY_PORT:-47630}/t/bench"
+		ROUTE_MODEL="deepseek/deepseek-v4.1-flash"
+		ROUTE_WINDOW="1000000"
+		ROUTE_CRED_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/kiso-commandcode/credentials.env"
+		ROUTE_CRED_KEY="COMMANDCODE_API_KEY"
+		;;
 	op)
 		# 2026-10-08 (the owner's word, the co credits exhausted): DeepSeek
 		# V4.1 Flash through OpenCode Go. The gateway REQUIRES a per-session
@@ -45,7 +55,7 @@ case "$BENCH_ROUTE" in
 		ROUTE_SESSION_HEADER="x-opencode-session"
 		;;
 	*)
-		echo "route.sh: unknown BENCH_ROUTE '$BENCH_ROUTE' (ds | co | op)" >&2
+		echo "route.sh: unknown BENCH_ROUTE '$BENCH_ROUTE' (ds | co | cr | op)" >&2
 		exit 1
 		;;
 esac
@@ -87,6 +97,7 @@ route_ref_models_json() {
 # The route's upstream host and path, for the capture proxy: the proxy
 # forwards the request path unchanged, so the store names the path.
 ROUTE_HOST=$(printf '%s' "$ROUTE_BASE_URL" | sed -E 's#^https?://([^/]+).*#\1#')
+ROUTE_SCHEME=$(printf '%s' "$ROUTE_BASE_URL" | sed -E 's#^(https?)://.*#\1#')
 ROUTE_PATH=$(printf '%s' "$ROUTE_BASE_URL" | sed -E 's#^https?://[^/]+##')
 # The reference arm's thinking level for the round's effort: `none` is the
 # provider default, which the arm expresses as `off` (no field on the wire).
