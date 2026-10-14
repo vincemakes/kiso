@@ -8,7 +8,7 @@
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square">
 </p>
 
-<p align="center"><b>v0.49.0</b> · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
+<p align="center"><b>v0.50.0</b> · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
 
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/features-dark.png"><img src="assets/readme/features-light.png" width="830" alt="Built in, not bolted on: it asks before it guesses; subagents in parallel; background tasks; approval modes; it resumes after a crash; yours to extend."></picture></p>
 
