@@ -5,8 +5,9 @@
 # (scripts/demo-kill9.sh).
 #
 # The story, twice in a row with a FRESH KISO_HOME each run:
-#   a real kiso chat (faux provider, a scripted trajectory: edit f1.txt →
-#   a slow shell `sleep 30 && touch marker.txt` → edit f3.txt) starts in a
+#   a real kiso chat (faux provider, a scripted trajectory: read and edit
+#   f1.txt → a slow shell `sleep 30 && touch marker.txt` → read and edit
+#   f3.txt) starts in a
 #   real PTY; the two approvals are answered; the moment the slow shell
 #   reports tool_execution_started on disk, the agent's WHOLE process
 #   group is SIGKILLed — no graceful shutdown, no signal handler — and so
@@ -129,13 +130,14 @@ def main():
 		print("FAIL: the shell approval never appeared")
 		sys.exit(1)
 	os.write(fd, b"y\r")
-	# the kill predicate: TWO tool_execution_started on disk — the slow
-	# shell is executing right now
+	# the kill predicate: the SHELL's tool_execution_started on disk — the
+	# slow shell is executing right now (counting starts broke when 0.50.0's
+	# reads joined the trajectory: two starts were the read and the edit)
 	deadline = time.time() + 20
 	while time.time() < deadline:
 		try:
 			recs = open(os.path.join(home, "sessions", sid + ".jsonl")).read()
-			if recs.count("tool_execution_started") >= 2:
+			if any('"tool_execution_started"' in l and '"name":"shell"' in l for l in recs.splitlines()):
 				break
 		except FileNotFoundError:
 			pass
@@ -286,7 +288,12 @@ run_once() {
 	sid="k9"
 	printf 'OLD' > "$workdir/f1.txt"
 	printf 'OLD' > "$workdir/f3.txt"
-	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","edits":[{"oldText":"OLD","newText":"NEW"}],"expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","edits":[{"oldText":"OLD","newText":"NEW"}],"expectedRevision":"rev:099d90cbee62f89e"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
+	# 0.50.0 (#311, O1.1): with the observed revision bound by the host, edit_file
+	# takes no expectedRevision and an unobserved file is refused, so each
+	# edit is preceded by the read that observes it (the faux trajectories in
+	# the tests changed the same way). fauxSkip counts tool results, so the
+	# added reads keep the resume position honest.
+	printf '%s' '[{"events":[{"type":"tool_call_end","callId":"r1","name":"read_file","input":{"path":"f1.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e1","name":"edit_file","input":{"path":"f1.txt","edits":[{"oldText":"OLD","newText":"NEW"}]}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"s1","name":"shell","input":{"command":"sleep 30 && touch marker.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"r3","name":"read_file","input":{"path":"f3.txt"}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"tool_call_end","callId":"e3","name":"edit_file","input":{"path":"f3.txt","edits":[{"oldText":"OLD","newText":"NEW"}]}},{"type":"stop","reason":"tool_use"}]},{"events":[{"type":"stop","reason":"end_turn"}]}]' > "$home/faux.json"
 
 	printf '\n=== demo-kill9: run %s (a fresh KISO_HOME) ===\n' "$n"
 	printf '  [%s/2] phase 1 — a real chat, two approvals, SIGKILL mid-execution\n' "$n"
