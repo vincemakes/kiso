@@ -108,7 +108,7 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 			// person types what they want and ⏎ takes the match
 			["filter, or type provider/model", "claude\r"],
 			["no credential", "/model ds max\r"], // the unavailable line's words changed with the credential store (sign-in step 1); OR-8: with a level
-			["model → ds", "exit\r"],
+			["takes effect on the next turn", "exit\r"],
 		], workdir);
 		const out = stripANSI(raw);
 		// Graphite §8.1 (R3a): the panel names itself on its opening row.
@@ -135,7 +135,8 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		expect(out).toContain("effort none · low · high · max");
 		expect(raw).toContain("\x1b[1m\x1b[33mhigh\x1b[0m");
 		expect(out).toContain("model claude: unavailable — no credential: run `kiso login anthropic` or set the env var ANTHROPIC_API_KEY");
-		expect(out).toContain("model → ds (deepseek-v4-flash · max) — takes effect on the next turn");
+		expect(out).toContain("→ ds · deepseek-v4-flash · max");
+		expect(out).toContain("takes effect on the next turn");
 		// OR-7 / OR-8 (owner, 2026-09-09): the status row is repainted BY the
 		// switch — the owner watched it keep saying the old model until the
 		// first turn — and it names the effort next to the model. Read the
@@ -154,10 +155,11 @@ describe("merge round B — /model on a real PTY (dual profiles)", () => {
 		const out = stripANSI(
 			ptyRun(env, [
 				["/mode to switch", "/model openai-compat/gpt-4o\r"],
-				["model → openai-compat/gpt-4o", "exit\r"],
+				["takes effect on the next turn", "exit\r"],
 			], workdir),
 		);
-		expect(out).toContain("model → openai-compat/gpt-4o (gpt-4o) — takes effect on the next turn");
+		expect(out).toContain("→ openai-compat/gpt-4o · gpt-4o");
+		expect(out).toContain("takes effect on the next turn");
 	});
 });
 

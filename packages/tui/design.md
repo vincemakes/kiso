@@ -886,16 +886,33 @@ beside it, folded under itself (column 14). `FAILED` and `UNCERTAIN` name
 outcomes and take the failure colour; the rest are `dim`. No card and no
 ground: they are not the machine's work.
 
-A command's own reply — `model → …`, `copied 48 chars`, `no tasks in this
-session`, `unknown command: /x — /help lists the commands` — has no kind
-of its own: its words are read as a whole, and a label would only split
-them. It stays whole at the content edge, with no label. On the terminal
-the `✦` some notices open with comes off: it is the seal's mark (§4). So
-do the brackets a reply wore and the command's name inside them (`[no
-thinking yet]`, `[/compact] nothing to compact — …`, `[reload] 4
-extensions, …` reads `reloaded 4 extensions, …`; a failure keeps what
-failed: `/model failed: …`), and a reply of two lines is one row (`no such
-mode: x · tiers: …`). A pipe prints every notice as written.
+A command's own reply that only informs — `copied 48 chars`, `no tasks in
+this session`, `unknown command: /x — /help lists the commands` — has no
+kind of its own: its words are read as a whole, and a label would only
+split them. It stays whole at the content edge, with no label. On the
+terminal the `✦` some notices open with comes off: it is the seal's mark
+(§4). So do the brackets a reply wore and the command's name inside them
+(`[no thinking yet]`, `[/compact] nothing to compact — …`; a failure keeps
+what failed: `/model failed: …`), and a reply of two lines is one row (`no
+such mode: x · tiers: …`). A pipe prints every notice as written.
+
+A reply that CHANGED something the person set is a row with the label of
+what it changed, as `MODE` and `DON'T ASK` already were: `MODEL` (the
+MODE row's sibling: a gold label, `from → to` with the new profile bold,
+then the model id, the host, the effort and `takes effect on the next
+turn`), `PAYER` (when the switch changes who pays), `NAME`, `RELOAD`, `TASK`
+(`t1 · stop requested`), `DON'T ASK` (`already on`). So are the session
+events that had no label: `COMPACTED discarded · …` (a checkpoint that did
+not shrink the context), `BUDGET chain spent · …`, `UPDATE kiso X is
+installed · …`, the tmux scrolling `HINT`, and `REWRAPPED N earlier blocks
+not re-wrapped · …`. A failed reload marks `failed` in the failure colour.
+DECLARED REVERSAL (the notices round, owner, 2026-10-14). This section
+listed `model → …` among the replies that take no label, and read `[reload]
+4 extensions, …` as `reloaded 4 extensions, …` and a failure as `reload
+failed: …`. `/model` changes a value from one thing to another, the same
+event as `MODE`, and a person reads the two together; the rest were bare
+sentences at the edge among labelled rows. A pipe prints every notice as it
+did, byte for byte.
 
 DECLARED REVERSAL (the last sweep, owner, 2026-10-06). These replies were
 raw rows at column 0, brackets and all, a blank row between the two lines

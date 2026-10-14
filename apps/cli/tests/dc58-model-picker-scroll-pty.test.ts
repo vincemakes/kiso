@@ -63,7 +63,7 @@ describe("DC-58 — /model on a real pty: twelve profiles, one screen, arrows th
 		expect(t, "the band names the whole list, not nine of twelve").toContain("model · 12 profiles");
 		expect(t, "the key row counts the cursor to the END of the list").toMatch(/esc +12\/12/);
 		expect(t, "and a more-mark says the list goes on above").toMatch(/\u2191 model-shared/);
-		expect(t, "the notice names the TWELFTH profile — the reach is the list").toContain("model → p12 (");
+		expect(t, "the notice names the TWELFTH profile — the reach is the list").toContain("→ p12 ·");
 		// the durable half, DC-60 (declared): this session never received a
 		// turn, so nothing of it is on disk — the selection lands with its
 		// first durable event (packages/runtime/tests/dc60-no-empty-sessions)

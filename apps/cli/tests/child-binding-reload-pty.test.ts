@@ -92,13 +92,13 @@ describe("0.49.0 C1 — the conversation's profile survives /reload for a delega
 					["/mode to switch", "/model beta\r"],
 					["model-beta", "map the code\r"],
 					["FIRST-DONE", "/reload\r"],
-					["reloaded ", "map it again\r"],
+					["the conversation is unchanged", "map it again\r"],
 					["SECOND-DONE", "exit\r"],
 				],
 				timeout: 90,
 			});
 			const out = strip(raw);
-			expect(out, "the reload ran").toContain("reloaded ");
+			expect(out, "the reload ran").toContain("the conversation is unchanged");
 			expect(out, "the second turn finished").toContain("SECOND-DONE");
 			const asked = readFileSync(requests, "utf8").trim().split("\n").map((l) => (JSON.parse(l) as { model: string }).model);
 			expect(new Set(asked), "the parent itself ran on beta throughout").toEqual(new Set(["model-beta"]));

@@ -31,10 +31,13 @@ import { fauxScript, ptyRun, spares } from "./helpers/pty.js";
 
 const strip = (t: string): string => t.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "");
 
-/** RE-DERIVED (the last sweep, owner 2026-10-06): on a dock `[reload] …`
- *  is a sentence without its brackets — `reloaded 4 extensions, …`, and a
- *  failure `reload failed: …`. A pipe still prints `[reload]`. */
-const RELOADED = "reloaded ";
+/** RE-DERIVED (the notices round, owner 2026-10-14): on a dock `[reload] …`
+ *  is a RELOAD row — `RELOAD  4 extensions, …`, and a failure
+ *  `RELOAD  failed · …` (the label column is twelve cells). A pipe still
+ *  prints `[reload]`. */
+const RELOADED = "RELOAD      ";
+/** The feed needles match the RAW bytes, where the label and the sentence are two styled runs: a needle must sit inside one. */
+const RELOADED_RAW = "the conversation is unchanged";
 
 /** Every gate asserts this FIRST. Without it each one passes on a tree
  *  where `/reload` is an unknown command: the trust question is asked
@@ -151,7 +154,7 @@ function addExtensionCmd(dir: string, name: string, mark: string): string {
  *  the needle that never appeared, and the fix is this one number. That is
  *  a thing someone should look at. */
 const BASELINE = 4;
-const reloadWith = (added: number): string => `${RELOADED}${BASELINE + added} extensions`;
+const reloadWith = (added: number): string => `${BASELINE + added} extensions`;
 
 describe("§2.5 — /reload", () => {
 	it("gate 1 — a skill added mid-session is in the index AND its tool can read it", () => {
@@ -175,7 +178,7 @@ describe("§2.5 — /reload", () => {
 				// each step waits for the PREVIOUS one to have happened,
 				// not for a number of seconds to pass
 				[SHELL_DONE, "/reload\r"],
-				[RELOADED, "use it\r"],
+				[RELOADED_RAW, "use it\r"],
 				["after.", "exit\r"],
 			],
 		});
@@ -201,7 +204,7 @@ describe("§2.5 — /reload", () => {
 				["/mode to switch", "call it\r"],
 				["first done.", `!!rm -f ${join(dirs.extensions, "probe.mjs")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
-				[RELOADED, "call it again\r"],
+				[RELOADED_RAW, "call it again\r"],
 				["second done.", "exit\r"],
 			],
 		});
@@ -228,7 +231,7 @@ describe("§2.5 — /reload", () => {
 				["/mode to switch", "go\r"],
 				["before.", `!!printf 'throw new Error("deliberately broken");\\n' > ${join(dirs.extensions, "broken.mjs")}${doneEcho(SHELL_DONE)}\r`],
 				[SHELL_DONE, "/reload\r"],
-				["reload failed", "still there?\r"],
+				["failed", "still there?\r"],
 				["STILL ALIVE", "exit\r"],
 			],
 		});
@@ -258,7 +261,7 @@ describe("§2.5 — /reload", () => {
 			feeds: [
 				["/mode to switch", "/model beta\r"],
 				["model-beta", "/reload\r"],
-				[RELOADED, "exit\r"],
+				[RELOADED_RAW, "exit\r"],
 			],
 		});
 		const out = strip(raw);

@@ -25,12 +25,12 @@ describe("R3d — /name", () => {
 			feeds: [
 				["/mode to switch", "fix the resize repaint\r"],
 				["done.", "/name   retry   work \r"],
-				['named "retry work"', "/name\r"],
-				["name: retry work", "exit\r"],
+				["retry work", "/name\r"],
+				["retry work · /name - clears it", "exit\r"],
 			],
 		});
-		expect(first).toContain('named "retry work"'); // the spaces collapse
-		expect(first).toContain("name: retry work");
+		expect(first.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("NAME        retry work"); // the spaces collapse
+		expect(first).toContain("retry work · /name - clears it");
 		expect(titles(first).some((t) => /^kiso \u00b7 retry work \u2014 /.test(t)), titles(first).join(" | ")).toBe(true);
 		expect(sidecar(dirs.home, "named-a").name).toBe("retry work");
 		// the resumed session opens under its name, not its first line
@@ -44,11 +44,11 @@ describe("R3d — /name", () => {
 			feeds: [
 				["/mode to switch", "write the notes\r"],
 				["done.", "/name notes\r"],
-				['named "notes"', "/name -\r"],
-				["name cleared", "exit\r"],
+				["NAME", "/name -\r"],
+				["cleared · /resume lists it by its first line again", "exit\r"],
 			],
 		});
-		expect(raw).toContain("name cleared");
+		expect(raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")).toContain("NAME        cleared");
 		expect(titles(raw).at(-1)).toMatch(/^kiso \u2014 /);
 		expect(sidecar(dirs.home, "named-b")).not.toHaveProperty("name");
 	}, 120_000);

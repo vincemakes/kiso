@@ -55,7 +55,7 @@ describe("DC-58's sibling — the /model panel names each profile's provider", (
 		expect(t, "the live profile's host is on its row").toMatch(/deepseek-v4-flash +api\.commandcode\.ai +current/);
 		expect(t, "and the other account's row carries ITS host — the two are not one row").toMatch(/deepseek-v4-flash +api\.deepseek\.com/);
 		expect(t, "and `ds` is NOT current — the model id alone would have marked both").not.toMatch(/api\.deepseek\.com +current/);
-		expect(t, "the switch notice names the account it will spend").toContain("model → co (deepseek-v4-flash @api.commandcode.ai)");
+		expect(t, "the switch notice names the account it will spend").toContain("→ co · deepseek-v4-flash @api.commandcode.ai");
 		expect(t, "and the status row keeps the MODEL only — the owner's second pass").not.toContain("deepseek-v4-flash@api.commandcode.ai");
 	}, 240_000);
 });
