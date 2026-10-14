@@ -51,8 +51,8 @@ describe("MP-1: the picker opens on the session's own row", () => {
 				delays: [[2.6, "\r"]],
 			}),
 		);
-		expect(t, "Enter on the opened panel keeps the session on c").toContain("model → c (model-c @gateway-c.example)");
-		expect(t, "row 0 is not what one Enter picks any more").not.toContain("model → a (");
+		expect(t, "Enter on the opened panel keeps the session on c").toContain("→ c · model-c @gateway-c.example");
+		expect(t, "row 0 is not what one Enter picks any more").not.toContain("→ a ·");
 		expect(t, "the payer did not change, so no payee line").not.toContain("paid by");
 	}, 240_000);
 
@@ -70,8 +70,8 @@ describe("MP-1: the picker opens on the session's own row", () => {
 				],
 			}),
 		);
-		expect(t).toContain("model → a (deepseek-flash @api.deepseek.com");
-		expect(t).toContain("paid by @api.deepseek.com · DS_KEY from the next turn — was @gateway-c.example · stored key");
+		expect(t).toContain("→ a · deepseek-flash @api.deepseek.com");
+		expect(t).toContain("@api.deepseek.com · DS_KEY from the next turn · was @gateway-c.example · stored key");
 		expect(t, "no key value reaches the screen").not.toMatch(/DUMMY_|fake-/);
 	}, 240_000);
 

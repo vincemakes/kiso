@@ -43,7 +43,7 @@ describe("Graphite P3 — /model on a real pty", () => {
 		expect(t, "a profile with no credential says why in two words").toMatch(/grok-4\.7 +127\.0\.0\.1:9 +no key/);
 		expect(t, "the selected row opens into its profile, protocol and key").toContain("profile ds · openai-compat · P3_KEY");
 		expect(t, "the filter narrowed the list").toContain("model · 1 of 3 match");
-		expect(t, "and ⏎ took the match").toContain("model → glm (z-ai/glm-5.3-flash");
+		expect(t, "and ⏎ took the match").toContain("→ glm · z-ai/glm-5.3-flash");
 		// from the panel's first frame on: the bar, never the pre-Graphite
 		// status row with its key ladder (the boot frame before the bar is
 		// bound has one, which is not this round's), and no `1-9>` lead

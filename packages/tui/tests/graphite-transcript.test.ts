@@ -36,8 +36,8 @@ describe("§7.12 — kiso's notices become meta rows", () => {
 		for (const [text, label, sentence] of cases) expect(noticeMeta(text), text).toEqual({ label, sentence });
 	});
 
-	it("a command's confirmation has no kind of its own: no label, the sentence whole", () => {
-		for (const text of ["mode → plan (shift+tab cycles)", "model → ds (deepseek-v4-flash · max)"]) {
+	it("a reply that only informs has no kind of its own: no label, the sentence whole", () => {
+		for (const text of ["mode → plan (shift+tab cycles)", "copied 48 chars", "no tasks in this session"]) {
 			expect(noticeMeta(text), text).toEqual({ sentence: text });
 		}
 		// RE-DERIVED (the last sweep, owner 2026-10-06): the brackets a reply

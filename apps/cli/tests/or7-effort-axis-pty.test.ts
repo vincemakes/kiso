@@ -94,7 +94,7 @@ describe("OR-7 — the pick panel's effort axis", () => {
 		expect(raw, "the second right reached the top of the ladder").toContain(IN_FORCE("max"));
 
 		// ── the notice: both axes, in the typed command's own wording ──
-		expect(plain(raw), "the notice names both axes").toContain("model → axis (claude-opus-5 · max)");
+		expect(plain(raw), "the notice names both axes").toContain("→ axis · claude-opus-5 · max");
 		// the status row carries the applied level once the panel is gone
 		expect(settledScreen(raw).join("\n"), "the row names the level it is bound to").toContain("claude-opus-5 · max");
 

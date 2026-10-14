@@ -26,18 +26,28 @@ export interface NoticeMeta {
 }
 
 /** kiso's session events — the notices that are a KIND of thing, first
- *  match wins. A command's own confirmation is not one of them: its words
- *  are read as a whole, and a label would only split them. */
-const SHAPES: readonly (readonly [RegExp, string | null, (m: RegExpExecArray) => string])[] = [
+ *  match wins. A command's own reply is one of them only when it CHANGED
+ *  something the person set (a name, the loaded set, a stopped task); a
+ *  reply that only informs (`copied 48 chars`, `no tasks in this session`)
+ *  is read as a whole, and a label would only split it. The optional fourth
+ *  member is the word the row marks (a failure's red). */
+type Shape = readonly [RegExp, string | null, (m: RegExpExecArray) => string, ((m: RegExpExecArray) => NoticeMark)?];
+const SHAPES: readonly Shape[] = [
 	[/^✦ compacted (.*)$/s, "COMPACTED", (m) => m[1]!],
 	// 0.47.1 (finding 0470-F3): one round is singular on the terminal; the
 	// pipe's text (`1 rounds`) is not touched
 	[/^\[\/compact\] ✦ compacted(?: · )?(.*)$/s, "COMPACTED", (m) => m[1]!.replace(/^1 rounds\b/, "1 round")],
+	// the notices round (owner, 2026-10-14): a checkpoint that did not shrink the
+	// context is a COMPACTED row, not a bare sentence
+	[/^✦ compaction discarded — (.*)$/s, "COMPACTED", (m) => `discarded \u00b7 ${m[1]!}`, () => ({ text: "discarded", tone: "fail" })],
 	[/^✦ pruned (.*)$/s, "PRUNED", (m) => m[1]!],
 	[/^✦ window learned — (.*)$/s, "WINDOW", (m) => `learned — ${m[1]!}`],
 	// the main-sync round: a background task's delivery (ADR-0058, main's
 	// task-notice.ts) is a session event like the others
 	[/^✦ task (.*)$/s, "TASK", (m) => m[1]!],
+	// the notices round: the chain's budget and a newer install are session events
+	[/^✦ chain budget spent — (.*)$/s, "BUDGET", (m) => `chain spent \u00b7 ${m[1]!}`],
+	[/^✦ (kiso \S+ is installed) — (.*)$/s, "UPDATE", (m) => `${m[1]!} \u00b7 ${m[2]!}`],
 	[/^run failed — (.*)$/s, "FAILED", (m) => m[1]!],
 	[/^(\S+) FAILED — (.*)$/s, "UNCERTAIN", (m) => `${m[1]!} — ${m[2]!}`],
 	// Graphite P1b (owner, 2026-09-30): dontAsk leaves an interrupted call
@@ -62,14 +72,21 @@ const SHAPES: readonly (readonly [RegExp, string | null, (m: RegExpExecArray) =>
 	// yet]`), or `--- … ---` rules; on the terminal the person has just
 	// typed the command, so the reply is a sentence at the content edge.
 	// A pipe keeps every bracket.
-	[/^\[reload\] (\d+ extensions?\b.*)$/s, null, (m) => `reloaded ${m[1]!}`],
-	[/^\[reload\] (.*)$/s, null, (m) => `reload failed: ${m[1]!}`],
+	[/^\[reload\] (\d+ extensions?\b.*)$/s, "RELOAD", (m) => m[1]!.replace(" \u2014 the conversation", " \u00b7 the conversation")],
+	[/^\[reload\] (.*)$/s, "RELOAD", (m) => `failed \u00b7 ${m[1]!.replace(" \u2014 nothing changed", " \u00b7 nothing changed")}`, () => ({ text: "failed", tone: "fail" })],
+	// the notices round: a command that changed what the person set says so
+	[/^named "(.*)"$/s, "NAME", (m) => m[1]!],
+	[/^name cleared — (.*)$/s, "NAME", (m) => `cleared \u00b7 ${m[1]!}`],
+	[/^name: (.*)$/s, "NAME", (m) => m[1]!],
+	[/^unnamed — (.*)$/s, "NAME", (m) => `unnamed \u00b7 ${m[1]!}`],
+	[/^(\S+): stop requested$/s, "TASK", (m) => `${m[1]!} \u00b7 stop requested`],
+	[/^(\S+): nothing to stop \((.*)\)$/s, "TASK", (m) => `${m[1]!} \u00b7 nothing to stop (${m[2]!})`],
 	[/^\[\/([a-z-]+)\] failed: (.*)$/s, null, (m) => `/${m[1]!} failed: ${m[2]!}`],
 	[/^\[\/[a-z-]+\] (.*)$/s, null, (m) => m[1]!],
 	[/^\[(turn held — [^\]]+)\] (.*)$/s, null, (m) => `${m[1]!} · ${m[2]!}`],
 	[/^\[([^[\]\n]+)\]$/s, null, (m) => m[1]!],
 	[/^no such mode: (.*)\ntiers: (.*)$/s, null, (m) => `no such mode: ${m[1]!} · tiers: ${m[2]!}`],
-	[/^--- (\d+ earlier blocks?) not re-wrapped \(bounded at two screens\) ---$/s, null, (m) => `${m[1]!} not re-wrapped — bounded at two screens`],
+	[/^--- (\d+ earlier blocks?) not re-wrapped \(bounded at two screens\) ---$/s, "REWRAPPED", (m) => `${m[1]!} not re-wrapped \u00b7 bounded at two screens`],
 ];
 
 /** The main sync (0.46.2, Amendment 8) — a task kiso lost track of, said
@@ -91,9 +108,11 @@ export function noticeMeta(text: string): NoticeMeta {
 	// a notice that opens with spaces continues the one above it (the
 	// verification pass's content): no label of its own
 	if (/^ {2}\S/.test(text)) return { label: "", sentence: text.trim() };
-	for (const [re, label, sentence] of SHAPES) {
+	for (const [re, label, sentence, mark] of SHAPES) {
 		const m = re.exec(text);
-		if (m !== null) return label === null ? { sentence: sentence(m) } : { label, sentence: sentence(m) };
+		if (m === null) continue;
+		const marked = mark === undefined ? {} : { mark: mark(m) };
+		return label === null ? { sentence: sentence(m), ...marked } : { label, sentence: sentence(m), ...marked };
 	}
 	// no kind of its own: the sentence stays whole — only the `✦`, which is
 	// the seal's mark on a terminal (§4), comes off

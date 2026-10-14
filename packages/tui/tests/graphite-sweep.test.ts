@@ -40,8 +40,10 @@ describe("a command's reply on the terminal", () => {
 		expect(noticeMeta("[/clear] a run is in flight — let it finish (esc stops it), then clear")).toEqual({ sentence: "a run is in flight — let it finish (esc stops it), then clear" });
 		// a failure keeps what failed
 		expect(noticeMeta("[/model] failed: no such route")).toEqual({ sentence: "/model failed: no such route" });
-		expect(noticeMeta("[reload] 4 extensions, 0 skills — the conversation is unchanged")).toEqual({ sentence: "reloaded 4 extensions, 0 skills — the conversation is unchanged" });
-		expect(noticeMeta("[reload] EACCES — nothing changed, the previous set is still in force")).toEqual({ sentence: "reload failed: EACCES — nothing changed, the previous set is still in force" });
+		// RE-DERIVED (the notices round, owner 2026-10-14): a reload changed the
+		// loaded set, so it is a RELOAD row; a failure marks `failed` in red
+		expect(noticeMeta("[reload] 4 extensions, 0 skills — the conversation is unchanged")).toEqual({ label: "RELOAD", sentence: "4 extensions, 0 skills · the conversation is unchanged" });
+		expect(noticeMeta("[reload] EACCES — nothing changed, the previous set is still in force")).toEqual({ label: "RELOAD", sentence: "failed · EACCES · nothing changed, the previous set is still in force", mark: { text: "failed", tone: "fail" } });
 		expect(noticeMeta("[turn held — the interrupted execution is still undecided] go on")).toEqual({ sentence: "turn held — the interrupted execution is still undecided · go on" });
 	});
 
@@ -49,7 +51,7 @@ describe("a command's reply on the terminal", () => {
 		expect(noticeMeta("no such mode: bogus\ntiers: default accept-edits plan full-access")).toEqual({ sentence: "no such mode: bogus · tiers: default accept-edits plan full-access" });
 		expect(noticeMeta("session 2026-10-06T12-20-36-94eb (switched — previous: sweep-a, /resume sweep-a returns)\n")).toEqual({ label: "SESSION", sentence: "2026-10-06T12-20-36-94eb · /resume sweep-a returns" });
 		expect(noticeMeta("--- re-wrapped 3 blocks at the current width (appended — the history above is unchanged) ---")).toEqual({ label: "REWRAPPED", sentence: "3 blocks at the current width · the history above is unchanged" });
-		expect(noticeMeta("--- 2 earlier blocks not re-wrapped (bounded at two screens) ---")).toEqual({ sentence: "2 earlier blocks not re-wrapped — bounded at two screens" });
+		expect(noticeMeta("--- 2 earlier blocks not re-wrapped (bounded at two screens) ---")).toEqual({ label: "REWRAPPED", sentence: "2 earlier blocks not re-wrapped · bounded at two screens" });
 		expect(noticeMeta("[dontAsk] the model's question was declined — nothing asks in dontAsk")).toEqual({ label: "DENIED", sentence: "the model's question — nothing asks while don't ask is on" });
 	});
 

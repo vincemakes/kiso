@@ -1140,7 +1140,7 @@ async function chatLoop(
 				const r = spawnSync("tmux", ["show", "-gv", "mouse"], { encoding: "utf8", timeout: 500 });
 				return r.status === 0 ? r.stdout.trim() : null;
 			});
-			if (tmuxHint !== null) body.notice(tmuxHint);
+			if (tmuxHint !== null) body.metaNotice(tmuxHint, [{ label: "HINT", sentence: tmuxHint }]);
 			void announceUpdate();
 		} else {
 			body.notice(`session ${id} (switched — previous: ${prev}, /resume ${prev} returns)\n`);

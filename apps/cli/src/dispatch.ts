@@ -926,7 +926,7 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 				const wasOn = getDontAsk();
 				setDontAsk(want);
 				if (want !== wasOn) body.dontAskNotice(`don't ask → ${want ? "on" : "off"}`, want);
-				else body.notice(`don't ask → ${want ? "on" : "off"}`);
+				else body.dontAskNotice(`don't ask → ${want ? "on" : "off"}`, want, true);
 				ctx.paintIdle();
 			}
 			ctx.input.prompt();
@@ -1132,6 +1132,9 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// session still names the outgoing profile
 							const prevProfile = currentProfileName !== null ? configModels[currentProfileName] : undefined;
 							const payeeBefore = prevProfile !== undefined ? payeeOf(prevProfile) : null;
+							// the notices round (owner, 2026-10-14): the MODEL row says what it
+							// switched FROM, read before the outgoing binding is replaced
+							const fromName = currentProfileName ?? agentModel;
 							ctx.session.setModelBinding(binding);
 							setLastBinding(binding);
 							setAgentModel(profile.model, profile.baseUrl);
@@ -1161,13 +1164,19 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 							// (and the owner's) read `gpt-6-astra · CH 92%`, the new
 							// model beside the previous model's figure.
 							ctx.modelSwitched();
-							body.notice(`model → ${profName} (${profile.model}${providerLabel(profile.baseUrl, profile.upstream) === "" ? "" : ` ${providerLabel(profile.baseUrl, profile.upstream)}`}${effortTok !== undefined ? ` · ${effortTok}` : ""}) — takes effect on the next turn`);
+							const hostLabel = providerLabel(profile.baseUrl, profile.upstream);
+							body.modelNotice(
+								`model → ${profName} (${profile.model}${hostLabel === "" ? "" : ` ${hostLabel}`}${effortTok !== undefined ? ` · ${effortTok}` : ""}) — takes effect on the next turn`,
+								fromName,
+								profName,
+								`${profile.model}${hostLabel === "" ? "" : ` ${hostLabel}`}${effortTok !== undefined ? ` \u00b7 ${effortTok}` : ""} \u00b7 takes effect on the next turn`,
+							);
 							// MP-1 (0.40.7): when the switch changes WHO PAYS — another
 							// endpoint, or another credential for it — say so, once,
 							// under the switch line. A switch between two models on the
 							// same account says nothing more.
 							const payeeAfter = payeeOf(profile);
-							if (payeeBefore !== null && payeeBefore !== payeeAfter) body.notice(`paid by ${payeeAfter} from the next turn — was ${payeeBefore}`);
+							if (payeeBefore !== null && payeeBefore !== payeeAfter) body.metaNotice(`paid by ${payeeAfter} from the next turn — was ${payeeBefore}`, [{ label: "PAYER", sentence: `${payeeAfter} from the next turn \u00b7 was ${payeeBefore}` }]);
 						}
 					}
 				} catch (err) {

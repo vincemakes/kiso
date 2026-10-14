@@ -929,7 +929,7 @@ export class Body {
 	 *  `off → on` with the new state bold. It is a switch on top of the tier,
 	 *  not a tier, so it has a row of its own. A pipe keeps #203's words
 	 *  (`don't ask → on`), byte for byte. */
-	dontAskNotice(text: string, on: boolean): void {
+	dontAskNotice(text: string, on: boolean, unchanged = false): void {
 		if (!this.#isActive()) {
 			this.#closeOpenThinking();
 			this.#closeOpenText();
@@ -939,7 +939,27 @@ export class Body {
 		this.#closeOpenThinking();
 		this.#closeOpenText();
 		const to = on ? "on" : "off";
-		this.#cells.push({ kind: "notice", text, done: true, label: "DON'T ASK", sentence: `${on ? "off" : "on"} \u2192 ${to}`, mark: { text: to, tone: "ink" }, stacked: true });
+		// the notices round (owner, 2026-10-14): setting it to what it already is
+		// is a row too — `already on`, not a bare sentence
+		const [sentence, mark] = unchanged ? [`already ${to}`, `already ${to}`] : [`${on ? "off" : "on"} \u2192 ${to}`, to];
+		this.#cells.push({ kind: "notice", text, done: true, label: "DON'T ASK", sentence, mark: { text: mark, tone: "ink" }, stacked: true });
+		this.#mark();
+	}
+
+	/** The notices round (owner, 2026-10-14) — a model switch, the MODE row's
+	 *  sibling: `MODEL` gold (the person's choice), `from → to` with the new
+	 *  profile bold, then what the switch carries (the model id and host, the
+	 *  effort) and when it lands. A pipe keeps `text`, byte for byte. */
+	modelNotice(text: string, from: string, to: string, tail: string): void {
+		if (!this.#isActive()) {
+			this.#closeOpenThinking();
+			this.#closeOpenText();
+			this.#write(`${text}\n`);
+			return;
+		}
+		this.#closeOpenThinking();
+		this.#closeOpenText();
+		this.#cells.push({ kind: "notice", text, done: true, label: "MODEL", sentence: `${from} \u2192 ${to}${tail === "" ? "" : ` \u00b7 ${tail}`}`, mark: { text: to, tone: "ink" }, stacked: true });
 		this.#mark();
 	}
 

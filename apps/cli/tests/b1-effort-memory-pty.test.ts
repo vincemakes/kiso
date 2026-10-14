@@ -27,7 +27,7 @@ describe("B1 — the effort last picked is where a new session starts", () => {
 				],
 			}),
 		);
-		expect(first).toContain("model → ds (deepseek-v4-flash · max)");
+		expect(first).toContain("→ ds · deepseek-v4-flash · max");
 		expect(JSON.parse(readFileSync(join(dirs.home, "preferences.json"), "utf8")).effort).toEqual({ ds: "max" });
 
 		// nothing is picked: the status row is read once the opening has
