@@ -1,6 +1,6 @@
 # Durable execution — the runtime, the contract, and its proof
 
-The one-screen version of this page is in the [README](../README.md#durable-execution-in-one-screen).
+The one-screen version of this page is in the [README](../README.md#under-the-hood).
 This is the whole of it: why the runtime is built the way it is, the frozen
 contract that pins it, and the `kill -9` test that proves it end to end.
 
