@@ -194,9 +194,9 @@ describe("adopt — a promotion whose result says ready claims ready for the she
 	it("adopt({ ready: true }) writes result_claimed ready for its execution; a plain promotion claims nothing", () => {
 		const { manager } = setup();
 		const runner = { pid: process.pid, startedAt: "" };
-		const ready = manager.adopt({ command: "npm run dev", cwd: "/", executionId: "ex-p", readyWhen: "Local:", runner, ready: true, stop: () => {} });
+		const ready = manager.adopt({ command: "npm run dev", cwd: "/", executionId: "ex-p", readyWhen: "Local:", runner, ready: true, startedAt: Date.now(), stop: () => {} });
 		expect(claims(manager, ready.id)).toEqual([expect.objectContaining({ transition: "ready", executionId: "ex-p" })]);
-		const waited = manager.adopt({ command: "npm test", cwd: "/", executionId: "ex-w", runner, stop: () => {} });
+		const waited = manager.adopt({ command: "npm test", cwd: "/", executionId: "ex-w", runner, startedAt: Date.now(), stop: () => {} });
 		expect(claims(manager, waited.id)).toEqual([]);
 		manager.close();
 	});

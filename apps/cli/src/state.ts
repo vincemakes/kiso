@@ -52,6 +52,14 @@ export function secretEnvNamesOf(models: Readonly<Record<string, unknown>>): rea
 	];
 }
 
+/** 0.50.1 (ADR-0058 Amendment 16): `kiso -p` runs with nobody watching and
+ *  stops its tasks when the one turn ends, so the foreground wait keeps the
+ *  model's value — no ceiling. Set once, where `-p` is parsed. */
+let printRun = false;
+export function setPrintRun(): void {
+	printRun = true;
+}
+
 export function codingToolOptions(): {
 	readonly workspaceRoot: string;
 	readonly excludeRoots: readonly string[];
@@ -59,12 +67,19 @@ export function codingToolOptions(): {
 	readonly protectedFiles: readonly string[];
 	readonly tasks: (sessionId: string | undefined) => ShellTasks | undefined;
 	readonly observedRevision: (sessionId: string | undefined, full: string, kind?: "edit" | "write") => string | undefined;
-	readonly limits?: { readonly minForegroundMs: number };
+	readonly limits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
 } {
 	// KISO_MIN_FOREGROUND_MS — the test rigs' knob (like KISO_AUTO_DETACH_MS):
 	// the least foreground wait (ADR-0058 Amendment 10, default 60 s). The
 	// rigs that promote a command by a short wait lower it; nothing else does.
 	const minForeground = Number.parseInt(process.env.KISO_MIN_FOREGROUND_MS ?? "", 10);
+	// KISO_MAX_FOREGROUND_MS — the rigs' knob for the ceiling (Amendment 15,
+	// default 5 min). `-p` has none whatever the knob says (Amendment 16).
+	const maxForeground = Number.parseInt(process.env.KISO_MAX_FOREGROUND_MS ?? "", 10);
+	const limits = {
+		...(Number.isFinite(minForeground) && minForeground >= 0 ? { minForegroundMs: minForeground } : {}),
+		...(printRun ? { maxForegroundMs: 0 } : Number.isFinite(maxForeground) && maxForeground >= 0 ? { maxForegroundMs: maxForeground } : {}),
+	};
 	return {
 		workspaceRoot: process.cwd(),
 		excludeRoots: [kisoHome()],
@@ -72,7 +87,7 @@ export function codingToolOptions(): {
 		protectedFiles: protectedFiles(),
 		tasks: tasksFor,
 		observedRevision: observedRevisionFromLog,
-		...(Number.isFinite(minForeground) && minForeground >= 0 ? { limits: { minForegroundMs: minForeground } } : {}),
+		...(Object.keys(limits).length > 0 ? { limits } : {}),
 	};
 }
 

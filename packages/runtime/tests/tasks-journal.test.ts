@@ -125,7 +125,7 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		backend.live.add(4242);
 		const m = new TaskManager({ root, backend });
 		let stops = 0;
-		const t = m.adopt({ command: "npm test", cwd: "/", executionId: "ex-9", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => void (stops += 1) });
+		const t = m.adopt({ command: "npm test", cwd: "/", executionId: "ex-9", runner: { pid: 4242, startedAt: "start-4242" }, startedAt: Date.now(), stop: () => void (stops += 1) });
 		expect(readRecords(join(root, t.id, "journal.jsonl")).map((r) => r.type)).toEqual(["planned", "runner_started", "command_started"]);
 		expect(readRecords(join(root, t.id, "journal.jsonl"))[0]).toMatchObject({ backend: "foreground", executionId: "ex-9", profile: "oneshot" });
 		expect(m.get(t.id)!.state).toEqual({ kind: "running", ready: false });
@@ -138,12 +138,39 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		m.close();
 	});
 
+	it("0.50.1 — adopt: the runtime counts from the command's own start, which may precede planned", () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const backend = fakeBackend();
+		backend.live.add(4242);
+		const m = new TaskManager({ root, backend });
+		const spawned = Date.now() - 300_000; // a 5-minute foreground wait before the promotion
+		const t = m.adopt({ command: "make check", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, startedAt: spawned, stop: () => {} });
+		const records = readRecords(join(root, t.id, "journal.jsonl"));
+		expect(records.map((r) => r.type)).toEqual(["planned", "runner_started", "command_started"]); // the append order is unchanged
+		expect(records[2]!.ts).toBe(spawned);
+		expect(records[2]!.ts).toBeLessThan(records[0]!.ts);
+		expect(m.get(t.id)!.startedAt).toBe(spawned);
+		t.ended(0, null);
+		const info = m.get(t.id)!;
+		expect(info.endedAt! - info.startedAt).toBeGreaterThanOrEqual(300_000);
+		m.close();
+	});
+
+	it("0.50.1 — a spawned task's runtime still counts from planned", async () => {
+		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
+		const m = new TaskManager({ root, backend: fakeBackend() });
+		const t = await m.start({ command: "npm test", cwd: "/" });
+		const planned = readRecords(join(root, t.id, "journal.jsonl")).find((r) => r.type === "planned")!;
+		expect(m.get(t.id)!.startedAt).toBe(planned.ts);
+		m.close();
+	});
+
 	it("adopt: the real exit code lands; a ready line is recorded once", () => {
 		const root = join(mkdtempSync(join(tmpdir(), "kiso-mgr-")), "s.tasks");
 		const backend = fakeBackend();
 		backend.live.add(4242);
 		const m = new TaskManager({ root, backend });
-		const t = m.adopt({ command: "serve", cwd: "/", readyWhen: "up", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		const t = m.adopt({ command: "serve", cwd: "/", readyWhen: "up", runner: { pid: 4242, startedAt: "start-4242" }, startedAt: Date.now(), stop: () => {} });
 		t.ready("up");
 		t.ready("up");
 		t.ended(3, null);
@@ -158,8 +185,8 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		const backend = fakeBackend();
 		backend.live.add(4242);
 		const m = new TaskManager({ root, backend });
-		const a = m.adopt({ command: "a", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
-		const b = m.adopt({ command: "b", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		const a = m.adopt({ command: "a", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, startedAt: Date.now(), stop: () => {} });
+		const b = m.adopt({ command: "b", cwd: "/", runner: { pid: 4242, startedAt: "start-4242" }, startedAt: Date.now(), stop: () => {} });
 		b.unconfirmed([777]);
 		m.close();
 		backend.live.clear(); // the owning kiso is gone
@@ -191,7 +218,7 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		backend.live.add(4242);
 		backend.unverifiable.add(4242);
 		const m = new TaskManager({ root, backend });
-		const t = m.adopt({ command: "x", cwd: "/", runner: { pid: 4242, startedAt: "" }, stop: () => {} });
+		const t = m.adopt({ command: "x", cwd: "/", runner: { pid: 4242, startedAt: "" }, startedAt: Date.now(), stop: () => {} });
 		expect(m.get(t.id)!.state.kind).toBe("running");
 		m.close();
 		// a new manager (another process) cannot verify it: the gone row
@@ -225,7 +252,7 @@ describe("ADR-0058 §6 — the TaskManager", () => {
 		const m = new TaskManager({ root, backend });
 		const p = await m.start({ command: "x", cwd: "/", executionId: "ex-3" });
 		expect(m.get(p.id)).toMatchObject({ executionId: "ex-3", backend: "process" });
-		const f = m.adopt({ command: "y", cwd: "/", executionId: "ex-4", runner: { pid: 4242, startedAt: "start-4242" }, stop: () => {} });
+		const f = m.adopt({ command: "y", cwd: "/", executionId: "ex-4", runner: { pid: 4242, startedAt: "start-4242" }, startedAt: Date.now(), stop: () => {} });
 		m.stop(f.id, "model");
 		f.ended(null, "SIGTERM");
 		expect(m.get(f.id)).toMatchObject({ executionId: "ex-4", backend: "foreground", stoppedBy: "model" });
