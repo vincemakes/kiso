@@ -46,7 +46,7 @@ import { activeStoreDir, setActiveStoreDir, agentModel, atFiles, body, bodyLog, 
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
 import { barFor, chat, contextWindowTokens, displayCtxRatio, microcompactThresholdFor, statusModelLabel } from "./chat.js";
 import { preferences, usePreferences } from "./preferences.js";
-import { settingsLayers, setChildTurnBudget, stopAllTasks, tasksFor } from "./state.js";
+import { settingsLayers, setChildTurnBudget, setPrintRun, stopAllTasks, tasksFor } from "./state.js";
 import { tasksForDisplay } from "./task-notice.js";
 import { finishChild, type ChildEnd } from "./child-result.js";
 import { loadUserConfig, resolveAutoCompact } from "./config.js";
@@ -1325,6 +1325,7 @@ async function main(): Promise<void> {
 			process.exit(2);
 		}
 		args.splice(printIdx, 2);
+		setPrintRun();
 	}
 	// merge round B: --model <profile|provider/model> — the top of the model
 	// precedence chain; the value flows into createCodingAgent's config resolution.

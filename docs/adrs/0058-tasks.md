@@ -1213,3 +1213,55 @@ model asked. The owner asked for long waits to promote.
 5. **For reference:** the reference implementation's shell has no
    promotion; its optional `timeout` (seconds, no default) kills the
    command, and without it the call waits until the command exits.
+
+## Amendment 16 — no ceiling under `kiso -p`; a promoted task's runtime; the capped wait said (2026-10-15, owner-approved, 0.50.1)
+
+In TB20b (large-scale-text-editing, `kiso -p`) the model asked
+`foregroundMs` 400,000 for a 1M-row check. The ceiling promoted the command
+at 300 s, and the model stopped the promoted task at once, twice; the trial
+timed out. `task_stop` then said `it ran 3.7s` for a command that had run
+for 300 s.
+
+1. **DECLARED NARROWING of Amendment 15: `kiso -p` has no foreground
+   ceiling.**
+   - Under `-p` the CLI passes `limits.maxForegroundMs: 0`, so the model's
+     wait is kept as asked. The floor (Amendment 10) still applies.
+   - **Why:**
+     - The ceiling exists so a watching person is not left with a held
+       turn, and under `-p` nobody watches.
+     - A `-p` run also ends with `stopAllTasks()`: nobody can answer
+       "leave tasks running", so a command promoted at the ceiling is
+       stopped when the one turn ends, even if the model never stops it.
+       The ceiling and the one-shot lifecycle conflict.
+   - **Unchanged:**
+     - the interactive CLI (5 min);
+     - the library default (5 min);
+     - every host. A host that runs unattended may pass
+       `maxForegroundMs: 0` itself.
+   - **The rigs' knob:** `KISO_MAX_FOREGROUND_MS` sets the CLI's ceiling
+     outside `-p`, as `KISO_MIN_FOREGROUND_MS` sets the floor.
+2. **A promoted task's runtime counts from the command's start.**
+   - `TaskAdoptOptions.startedAt` is required: the spawn time, which the
+     shell records before `startCommand`.
+   - `adopt()` writes `command_started` with that `ts`, and a foreground
+     task's `startedAt` reads from it.
+   - **Journal semantics:** for an adopted foreground task,
+     `command_started.ts` is the command's actual start, so it may be
+     EARLIER than `planned.ts`. The append order is still the durability
+     order.
+   - **Spawned tasks** keep `planned.ts`.
+   - **A journal written before 0.50.1** reads as before (its
+     `command_started` is the adoption time).
+   - **The fix reaches** the `task_stop` report (`it ran`), the end
+     notice's `duration`, and `/tasks`.
+3. **The capped wait is said.** This applies only when the ceiling lowered
+   the model's own wait.
+   - **The shell result** reads `still running after 300000 ms (the limit;
+     you asked 400000 ms); continued as background task t3 …`. Every other
+     promotion's result is unchanged, and so are the schema and the
+     descriptions.
+   - **The terminal** shows one TASK row,
+     `t3 · moved to the background at the 5m limit · asked 6m 40s`, live
+     and on resume. A pipe prints `✦ task t3 · …`.
+   - **Other promotions** stay rowless: the task-start row stays deferred
+     (owner, 2026-10-14).

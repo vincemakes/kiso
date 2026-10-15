@@ -126,6 +126,21 @@ describe("a claimed transition is never noticed; every other stop still is", () 
 	});
 });
 
+describe("0.50.1 — a promoted task's notice counts its runtime from the command's start", () => {
+	it("a command promoted after a 5-minute wait is noticed with its whole duration", async () => {
+		const { session, manager } = await setup([TOOL, END], async (_ctx, m) => {
+			const t = m.adopt({ command: "make check", cwd: "/", runner: { pid: process.pid, startedAt: "" }, startedAt: Date.now() - 300_000, stop: () => {} });
+			t.ended(0, null);
+			await sleep(150);
+		});
+		session.useTasks(manager, { windowMs: 30 });
+		const told = notices(await drain(session.run("go")));
+		expect(told).toHaveLength(1);
+		expect(String(told[0]!.content)).toMatch(/duration="5m0[0-9]s"/);
+		manager.close();
+	});
+});
+
 describe("0460-S1 — the snapshot learns a claimed transition only from the claiming execution's durable, successful result", () => {
 	const ev = (e: Record<string, unknown>) => e as unknown as Event;
 	const started = ev({ seq: 3, type: "tool_execution_started", executionId: "ex-start" });
@@ -168,7 +183,7 @@ describe("0460-S1 — the snapshot learns a claimed transition only from the cla
 	it("a promotion's ready, told in its own result, is what the summary says; a later notice wins by log order", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-claimsnap-"));
 		const manager = new TaskManager({ root: join(dir, "s.tasks"), backend: fakeBackend() });
-		manager.adopt({ command: "npm run dev", cwd: "/", executionId: "ex-p", readyWhen: "Local:", runner: { pid: process.pid, startedAt: "" }, ready: true, stop: () => {} });
+		manager.adopt({ command: "npm run dev", cwd: "/", executionId: "ex-p", readyWhen: "Local:", runner: { pid: process.pid, startedAt: "" }, ready: true, startedAt: Date.now(), stop: () => {} });
 		const delivery = new TaskDelivery({ manager, events: () => [], liveRun: () => undefined });
 		const pStarted = ev({ seq: 3, type: "tool_execution_started", executionId: "ex-p" });
 		const pResult = ev({ seq: 4, type: "tool_result", callId: "a", content: 'ready — the output contains "Local:"; continued as background task t1', isError: false, executionId: "ex-p" });

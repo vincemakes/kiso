@@ -23,7 +23,7 @@
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
-import { taskNoticeLines, taskNoticeRows, taskWhat } from "./task-notice.js";
+import { cappedWaitLine, taskNoticeLines, taskNoticeRows, taskWhat } from "./task-notice.js";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import type { NoticeMark } from "@vincemakes/kiso-tui";
 
@@ -122,6 +122,9 @@ function replayTurn(body: ReplayBody, turn: readonly Ev[], tasks: readonly TaskI
 				const created = ((e.tags as string[] | undefined) ?? []).includes("created");
 				body.toolResult(String(e.callId), { content: text, isError: e.isError === true, reason, untimed: true, ...(created ? { created: true } : {}) });
 				results.add(String(e.callId));
+				// 0.50.1: the capped wait's TASK row, as the live run drew it
+				const capped = e.isError === true ? null : cappedWaitLine(text);
+				if (capped !== null) body.notice(capped);
 				break;
 			}
 			case "text_delta":

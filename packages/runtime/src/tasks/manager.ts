@@ -127,6 +127,10 @@ export interface TaskAdoptOptions {
 	readonly runner: { readonly pid: number; readonly startedAt: string };
 	/** True when the ready line is what promoted it. */
 	readonly ready?: boolean;
+	/** 0.50.1: when the command actually started (ms since the epoch) —
+	 *  before its foreground wait, so earlier than this adoption. Required:
+	 *  every caller that adopts has spawned the command and knows when. */
+	readonly startedAt: number;
 	/** Stop the command. The owner then reports `ended` or `unconfirmed`. */
 	readonly stop: () => void;
 }
@@ -307,7 +311,11 @@ export class TaskManager {
 			...(options.readyWhen !== undefined ? { readyWhen: options.readyWhen } : {}),
 		});
 		appendRecord(journal, { type: "runner_started", ts: Date.now(), pid: options.runner.pid, startedAt: options.runner.startedAt });
-		appendRecord(journal, { type: "command_started", ts: Date.now() });
+		// 0.50.1: an adopted command started before its foreground wait, so
+		// its `command_started.ts` is that start and may be EARLIER than
+		// `planned.ts`. The append order is still the durability order; the
+		// task's runtime counts from this ts (`#info`).
+		appendRecord(journal, { type: "command_started", ts: options.startedAt });
 		fsyncDir(dir);
 		if (options.ready === true && options.readyWhen !== undefined) {
 			appendRecord(journal, { type: "ready", ts: Date.now(), match: options.readyWhen });
@@ -606,6 +614,11 @@ export class TaskManager {
 		const planned = records.find((r): r is Extract<TaskRecord, { type: "planned" }> => r.type === "planned");
 		const runner = runnerOf(records);
 		const terminal = records.find((r) => r.type === "terminal");
+		// 0.50.1: an adopted (foreground) command's runtime counts from its
+		// own start, which `command_started` carries; a spawned task's from
+		// `planned`, as before. A journal written before 0.50.1 has the
+		// adoption time there — the old reading, unchanged.
+		const begun = planned?.backend === "foreground" ? records.find((r) => r.type === "command_started")?.ts : undefined;
 		// an adopted task this very process still owns needs no identity
 		// check: the owner is here, holding the child; and an ended task's
 		// verdict is its terminal — identity cannot change it (Windows P6)
@@ -626,7 +639,7 @@ export class TaskManager {
 			...(planned?.agent !== undefined ? { agent: planned.agent } : {}),
 			state: verdictOf(records, verified),
 			outputPath: join(this.root, id, OUTPUT),
-			startedAt: planned?.ts ?? 0,
+			startedAt: begun ?? planned?.ts ?? 0,
 			...(terminal !== undefined ? { endedAt: terminal.ts } : {}),
 			...(claims.length > 0 ? { claims } : {}),
 			...(collected !== undefined ? { collection: { outcome: collected.outcome, ...(collected.reason !== undefined ? { reason: collected.reason } : {}) } } : {}),

@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { TaskInfo } from "@vincemakes/kiso-runtime/internal";
-import { budgetSpentLine, lostReason, taskCounts, taskNoticeLines, taskOutput, taskRow, taskStateLabel } from "../src/task-notice.js";
+import { budgetSpentLine, cappedWaitLine, lostReason, taskCounts, taskNoticeLines, taskOutput, taskRow, taskStateLabel } from "../src/task-notice.js";
 
 const task = (over: Partial<TaskInfo>): TaskInfo => ({ id: "t1", command: "npm test", profile: "oneshot", backend: "process", state: { kind: "running", ready: false }, outputPath: "/nope/output.log", startedAt: 1_000, ...over }) as TaskInfo;
 
@@ -91,5 +91,22 @@ describe("finding 0480-F9 — a spent chain budget, in the person's words", () =
 	it("one row: how many wakes, and that finished tasks wait for the person", () => {
 		expect(budgetSpentLine({ wakes: 20 })).toBe("✦ chain budget spent — 20 autonomous wakes since your last message · finished tasks wait for you");
 		expect(budgetSpentLine({ wakes: 1 })).toBe("✦ chain budget spent — 1 autonomous wake since your last message · finished tasks wait for you");
+	});
+});
+
+describe("0.50.1 (ADR-0058 Amendment 16) — the capped wait, in the person's words", () => {
+	it("a promotion at the ceiling becomes one TASK line: the id, the limit, what was asked", () => {
+		expect(cappedWaitLine("still running after 300000 ms (the limit; you asked 400000 ms); continued as background task t3 (not killed — it keeps running). Output: /x")).toBe(
+			"✦ task t3 · moved to the background at the 5m limit · asked 6m 40s",
+		);
+		expect(cappedWaitLine("still running after 90000 ms (the limit; you asked 1800000 ms); continued as background task t12 (not killed — it keeps running).")).toBe(
+			"✦ task t12 · moved to the background at the 1m 30s limit · asked 30m 0s",
+		);
+	});
+
+	it("every other promotion, and every other result, has no line", () => {
+		expect(cappedWaitLine("still running after 60000 ms; continued as background task t1 (not killed — it keeps running).")).toBeNull();
+		expect(cappedWaitLine("moved to the background by the person; continued as background task t1 (not killed — it keeps running).")).toBeNull();
+		expect(cappedWaitLine("done\n")).toBeNull();
 	});
 });

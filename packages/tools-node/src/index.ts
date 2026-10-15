@@ -1458,6 +1458,9 @@ export interface ShellTasks {
 		readonly readyWhen?: string;
 		readonly runner: { readonly pid: number; readonly startedAt: string };
 		readonly ready?: boolean;
+		/** 0.50.1: when the command was spawned (ms since the epoch) — the
+		 *  task's runtime counts from here, not from the promotion. */
+		readonly startedAt: number;
 		readonly stop: () => void;
 	}): {
 		readonly id: string;
@@ -1589,6 +1592,9 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 			const ceiling = opts.limits?.maxForegroundMs ?? DEFAULT_MAX_FOREGROUND_MS;
 			const raised = Math.max(asked ?? DEFAULT_FOREGROUND_MS, floor);
 			const timeout = tasks !== undefined ? (ceiling > 0 ? Math.min(raised, Math.max(ceiling, floor)) : raised) : (asked ?? DEFAULT_SHELL_TIMEOUT_MS);
+			// 0.50.1: the ceiling, not the model, cut this wait — a promotion
+			// at it says so, so the model does not take it for its own
+			const cut = tasks !== undefined && asked !== undefined && raised > timeout ? asked : undefined;
 			// E group: a PRE-aborted signal never spawns the command.
 			if (ctx.signal.aborted) {
 				return { content: "shell aborted before start", isError: true, errorKind: "fatal" };
@@ -1617,6 +1623,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				// timeout/abort can kill the WHOLE TREE (children included),
 				// not just the outer shell (Area 4). cwd is the workspace.
 				let child: ReturnType<typeof startCommand>;
+				// 0.50.1: a promoted task's runtime counts from here
+				const spawnedAt = Date.now();
 				try {
 					child = startCommand(command, { cwd: opts.workspaceRoot, env });
 				} catch (err) {
@@ -1765,6 +1773,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 						...(readyWhen !== undefined ? { readyWhen } : {}),
 						runner: ownerIdentity(),
 						ready: reason === "ready",
+						startedAt: spawnedAt,
 						stop: () => stopPromoted(),
 					});
 					const out = new RotatingOutput(task.outputPath, TASK_OUTPUT_CAP);
@@ -1780,7 +1789,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 									? "moved to the background by the person; "
 									: reason === "steer"
 										? "moved to the background so the person's message could land; "
-										: `still running after ${timeout} ms; `) +
+										: `still running after ${timeout} ms${cut !== undefined ? ` (the limit; you asked ${cut} ms)` : ""}; `) +
 							`continued as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath)}` +
 							(tail !== "" ? `\nOutput so far:\n${tail}` : ""),
 						isError: false,

@@ -38,6 +38,19 @@ export function taskNoticeLines(items: readonly TaskDeliveryItem[], what?: (task
 	return rows;
 }
 
+/** 0.50.1: a command promoted at the foreground ceiling — its shell result
+ *  opens `still running after <wait> ms (the limit; you asked <asked> ms);
+ *  continued as background task <id>` — is said to the person as one TASK
+ *  row: `t3 · moved to the background at the 5m limit · asked 6m 40s`. Only
+ *  this case: every other promotion stays rowless (the task-start row is
+ *  deferred, owner 2026-10-14). */
+export function cappedWaitLine(result: string): string | null {
+	const m = /^still running after (\d+) ms \(the limit; you asked (\d+) ms\); continued as background task (\S+) /.exec(result);
+	if (m === null) return null;
+	const limit = elapsedLabel(Number(m[1]) / 1000).replace(/(?<=m) 0s$/, "");
+	return `✦ task ${m[3]!} · moved to the background at the ${limit} limit · asked ${elapsedLabel(Number(m[2]) / 1000)}`;
+}
+
 /** Finding 0480-F9: the chain budget is spent — said to the person once,
  *  so a chain that went quiet on its budget does not look idle. */
 export function budgetSpentLine(info: { readonly wakes: number }): string {

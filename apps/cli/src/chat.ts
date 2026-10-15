@@ -33,7 +33,7 @@ import {
 import { askView, coldResumeLine, coldResumeView, deletionRiskHint, editFileHunksDiff, hunksOf, writeFileDiff, type DiffResult, type SaferAnswer, type SaferFailure, type SaferOption } from "@vincemakes/kiso-tui";
 import { canonicalTargetPath, isProtectedPath, protectedIdentity, shellProgressPath } from "@vincemakes/kiso-tools-node";
 import { deliveryLines, liveTasks, lostToldOf, mergedConfig, queuedSwitchLines, setExitTasks, tasksFor, taskWhatOf } from "./state.js";
-import { budgetSpentLine, taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
+import { budgetSpentLine, cappedWaitLine, taskCounts, taskNoticeLines, taskNoticeRows, tasksForDisplay } from "./task-notice.js";
 import { current as inRunCompaction, takeKept as takeKeptCompaction } from "./in-run-compaction.js";
 import { echoText } from "@vincemakes/kiso-tui-cells/render";
 import { canonicalizeUsage, RunClosedError } from "@vincemakes/kiso-runtime";
@@ -1143,6 +1143,8 @@ export async function consumeRun(
 					if (m !== null) reason = m[1]!;
 				}
 				body.toolResult(ev.callId, { content: text, isError: ev.isError, reason, ...((ev.tags ?? []).includes("created") ? { created: true } : {}) });
+				const capped = ev.isError ? null : cappedWaitLine(text);
+				if (capped !== null) body.notice(capped);
 				break;
 			}
 			case "text_delta":

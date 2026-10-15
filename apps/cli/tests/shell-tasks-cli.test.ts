@@ -6,7 +6,7 @@
  * writes its terminal — nothing is left running.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -52,6 +52,48 @@ describe("ADR-0058 (3b) — the CLI's shell promotes, and a clean exit stops the
 		expect(journal.map((r) => r.type)).toEqual(["planned", "runner_started", "command_started", "stop_requested", "terminal"]);
 		expect(journal[0]!.backend).toBe("foreground");
 		expect(journal[3]!.by).toBe("exit");
+		expect(live(marker)).toBe(0);
+	}, 90_000);
+});
+
+describe("0.50.1 (ADR-0058 Amendment 16) — the foreground ceiling at the CLI", () => {
+	const faux = (home: string, command: string): string => {
+		const script = join(home, "faux.json");
+		writeFileSync(
+			script,
+			JSON.stringify([
+				{ events: [{ type: "tool_call_end", callId: "s1", name: "shell", input: { command, foregroundMs: 5_000 } }, { type: "stop", reason: "tool_use" }] },
+				{ events: [{ type: "text_delta", text: "noted" }, { type: "stop", reason: "end_turn" }] },
+			]),
+		);
+		return script;
+	};
+
+	it("kiso -p keeps the model's wait: no ceiling, whatever the rigs' knob says", () => {
+		const { env, dirs } = isolatedEnv({ KISO_MODE: "bypass" });
+		const cwd = mkdtempSync(join(tmpdir(), "kiso-st-ws-"));
+		const done = `done-${Math.floor(Math.random() * 1e6)}`;
+		const script = faux(dirs.home, `sleep 2; echo ${done}`);
+		const run = runCli(["-p", "go"], { ...env, KISO_FAUX_SCRIPT: script, KISO_MIN_FOREGROUND_MS: "0", KISO_MAX_FOREGROUND_MS: "1000" }, { cwd, timeout: 60_000 });
+		expect(run.status).toBe(0);
+		const sessions = join(dirs.home, "sessions");
+		const logs = readdirSync(sessions).filter((f) => f.endsWith(".jsonl"));
+		expect(logs).toHaveLength(1);
+		const log = readFileSync(join(sessions, logs[0]!), "utf8");
+		expect(log).toContain(done);
+		expect(log).not.toMatch(/background task/);
+	}, 90_000);
+
+	it("the interactive CLI promotes at the ceiling, tells the model it was the limit, and draws one TASK line", () => {
+		const { env, dirs } = isolatedEnv({ KISO_MODE: "bypass" });
+		const cwd = mkdtempSync(join(tmpdir(), "kiso-st-ws-"));
+		const marker = `sleep 30.${Math.floor(Math.random() * 1e6)}`;
+		const script = faux(dirs.home, marker);
+		const run = runCli(["chat", "st2"], { ...env, KISO_FAUX_SCRIPT: script, KISO_MIN_FOREGROUND_MS: "0", KISO_MAX_FOREGROUND_MS: "1000" }, { input: "go\n", cwd, timeout: 60_000 });
+		expect(run.status).toBe(0);
+		const log = readFileSync(join(dirs.home, "sessions", "st2.jsonl"), "utf8");
+		expect(log).toMatch(/still running after 1000 ms \(the limit; you asked 5000 ms\); continued as background task t1/);
+		expect(run.stdout).toContain("✦ task t1 · moved to the background at the 1s limit · asked 5s");
 		expect(live(marker)).toBe(0);
 	}, 90_000);
 });
