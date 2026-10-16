@@ -219,7 +219,7 @@ Rows from a real 100-column screen, while a call runs and once it settles:
     packages/runtime   ok  221 tests
     packages/tui       ok  120 tests
     1s · esc stops · alt+⏎ redirects
-✦ working 19s ↓ 94 tokens · 186 tok/s · esc stop · alt+⏎ redirect · ctx left ~98%
+✦ working 19s ↓ 94 tokens · esc stop · alt+⏎ redirect · ctx left ~98%
 ```
 
 ```text
@@ -458,7 +458,7 @@ so the constraint is visible rather than encoded in a hue.
     packages/runtime   ok  221 tests
     packages/tui       ok  120 tests
     1s · esc stops · alt+⏎ redirects
-✦ working 19s ↓ 94 tokens · 186 tok/s · esc stop · alt+⏎ redirect · ctx left ~98%
+✦ working 19s ↓ 94 tokens · esc stop · alt+⏎ redirect · ctx left ~98%
 ```
 
 and the same turn once it settles:

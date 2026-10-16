@@ -36,25 +36,25 @@ describe("KC2 §5: the idle row — the bar, off a painted ground", () => {
 
 describe("KC2 §5/§2: the running row — the live row", () => {
 	it("carries the glyph, the wall seconds and the token count", () => {
-		expect(workingRow("▖", Date.now() - 3_000, 1234, null, 100)).toMatch(/^▖ working 3s · ↓ 1\.2k /);
+		expect(workingRow("▖", Date.now() - 3_000, 1234, 100)).toMatch(/^▖ working 3s · ↓ 1\.2k /);
 	});
 
 	it("a run that just started still reads 1s — the row never says 0s", () => {
-		expect(workingRow("▘", Date.now(), null, null, 100)).toMatch(/^▘ working 1s /);
+		expect(workingRow("▘", Date.now(), null, 100)).toMatch(/^▘ working 1s /);
 	});
 
 	it("omits the token segment while the output count is unknown", () => {
-		expect(workingRow("▝", Date.now(), null, null, 100)).not.toContain("↓");
+		expect(workingRow("▝", Date.now(), null, 100)).not.toContain("↓");
 	});
 
 	it("KC2 §2 — the keys name the gestures: esc stops, ⏎ steers, alt+⏎ redirects", () => {
-		expect(workingRow("▗", Date.now(), null, null, 100)).toMatch(/ esc stop · ⏎ steer · alt\+⏎ redirect$/);
+		expect(workingRow("▗", Date.now(), null, 100)).toMatch(/ esc stop · ⏎ steer · alt\+⏎ redirect$/);
 	});
 
 	it("the row still satisfies the v2d transcript gate's shape", () => {
 		// apps/cli/tests/tui-v2d.test.ts matches /^[✧✦✶✸✺] working \d+s.*$/ —
 		// every glyph in the family must produce it.
-		for (const g of STATUS_GLYPHS) expect(workingRow(g, Date.now(), null, null, 100)).toMatch(/^[✧✦✶✸✺] working \d+s.*$/);
+		for (const g of STATUS_GLYPHS) expect(workingRow(g, Date.now(), null, 100)).toMatch(/^[✧✦✶✸✺] working \d+s.*$/);
 	});
 });
 
@@ -76,12 +76,12 @@ describe("one duration form — the live row uses the shared label (0.39.1)", ()
 	// The row that started the item: the helper existed at 0.39.0, and a
 	// call site that was not swept still read `working 637s`.
 	it("past a minute the working row reads in minutes, not a four-figure second count", () => {
-		const row = workingRow("✦", Date.now() - 637_000, null, null, 100);
+		const row = workingRow("✦", Date.now() - 637_000, null, 100);
 		expect(row).toContain("working 10m 37s");
 		expect(row).not.toContain("637s");
 	});
 
 	it("under a minute nothing moved", () => {
-		expect(workingRow("✦", Date.now() - 5_000, null, null, 100)).toContain("working 5s");
+		expect(workingRow("✦", Date.now() - 5_000, null, 100)).toContain("working 5s");
 	});
 });

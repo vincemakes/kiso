@@ -80,9 +80,9 @@ describe("DF-0330-F1 — the bar at the widths people use, with the real id", ()
 });
 
 describe("DF-0330-F1 — the live row", () => {
-	it("with a rate it still fits 100 columns", () => {
-		const row = workingRow("✦", Date.now() - 3_000, 398, 178, 100);
-		expect(row).toContain("178 tok/s");
+	it("it still fits 100 columns (the rate is the status row's, never this row's)", () => {
+		const row = workingRow("✦", Date.now() - 3_000, 398, 100);
+		expect(row).not.toContain("tok/s");
 		expect(displayWidth(row), `live row was ${displayWidth(row)} columns`).toBeLessThanOrEqual(100);
 	});
 });

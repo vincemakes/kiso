@@ -426,10 +426,11 @@ function tasksOnBar(c: TaskCountsOnRow): string {
  * §8.7 — the LIVE ROW's words for a running turn: `working` for the whole
  * turn, whatever the model is doing (it never switches to "thinking" —
  * what the model thinks is in the stream), the elapsed, the output tokens,
- * the decode rate. A pending retry replaces it. The keys ride the row's
+ * (the decode rate is the status row's, never this row's: one place, 0.50.1 F2).
+ * A pending retry replaces it. The keys ride the row's
  * right end.
  */
-export function workingRow(glyph: string, since: number, outTokens: number | null, tokPerSec: number | null, W: number, retry?: RetryOnRow | null, detachable = false): string {
+export function workingRow(glyph: string, since: number, outTokens: number | null, W: number, retry?: RetryOnRow | null, detachable = false): string {
 	// a pending retry REPLACES `working` while it lasts (§8.7): it is the one
 	// thing that explains why nothing is arriving (ADR-0005 Amendment 2),
 	// and its countdown is the row's pulse — whole seconds, rounded up, so
@@ -440,7 +441,7 @@ export function workingRow(glyph: string, since: number, outTokens: number | nul
 	}
 	const out = outTokens !== null ? ` · ↓ ${kUnit(outTokens)}` : "";
 	const seconds = Math.max(1, Math.round((Date.now() - since) / 1000));
-	const facts = [`${glyph} working ${elapsedLabel(seconds)}${out}`, ...(tokPerSec !== null ? [`${tokPerSec} tok/s`] : [])].join(" · ");
+	const facts = `${glyph} working ${elapsedLabel(seconds)}${out}`;
 	// the main-sync round (ADR-0058 3e): ctrl+b exactly while a running
 	// command can be moved to the background — it gives way after esc
 	if (detachable) return liveRow(facts, ["esc stop \u00b7 ctrl+b background \u00b7 \u23ce steer \u00b7 alt+\u23ce redirect", "esc stop \u00b7 ctrl+b background \u00b7 \u23ce steer", "esc stop \u00b7 ctrl+b background", "esc stop"], W);

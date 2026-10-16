@@ -55,8 +55,8 @@ describe("the retry on the running row", () => {
 	// arriving — and its key is `esc gives up`
 	it("replaces the row while it lasts, and a row with no retry is the row it always was", () => {
 		const since = Date.now() - 5_000;
-		expect(workingRow("✦", since, 950, null, 100, null)).toBe(workingRow("✦", since, 950, null, 100));
-		const withRetry = workingRow("✦", since, 950, null, 100, { attempt: 2, maxRetries: 10, code: "network", remainingMs: 1_500 });
+		expect(workingRow("✦", since, 950, 100, null)).toBe(workingRow("✦", since, 950, 100));
+		const withRetry = workingRow("✦", since, 950, 100, { attempt: 2, maxRetries: 10, code: "network", remainingMs: 1_500 });
 		expect(withRetry).toMatch(/^↻ retrying 2\/10 · network · next try in 2s +esc gives up$/);
 		expect(withRetry).not.toContain("working");
 	});
@@ -64,7 +64,7 @@ describe("the retry on the running row", () => {
 	it("is a FACT: at a narrow width the key gives way and the retry stays whole", () => {
 		const r = { attempt: 7, maxRetries: 10, code: "network", remainingMs: 30_000 };
 		const fact = "↻ retrying 7/10 · network · next try in 30s";
-		const narrow = workingRow("✦", Date.now(), 20_300, null, displayWidth(fact) + 4, r);
+		const narrow = workingRow("✦", Date.now(), 20_300, displayWidth(fact) + 4, r);
 		expect(narrow).toBe(fact);
 		expect(narrow).not.toContain("esc gives up"); // the key went first
 	});

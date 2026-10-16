@@ -30,8 +30,8 @@ describe("3e — the task counts on the status rows", () => {
 	});
 
 	it("the live row teaches ctrl+b only while a command can be moved", () => {
-		expect(workingRow("✳", Date.now(), null, null, 120, null, true)).toMatch(/esc stop · ctrl\+b background · ⏎ steer · alt\+⏎ redirect$/);
-		expect(workingRow("✳", Date.now(), null, null, 120, null, false)).not.toContain("ctrl+b");
+		expect(workingRow("✳", Date.now(), null, 120, null, true)).toMatch(/esc stop · ctrl\+b background · ⏎ steer · alt\+⏎ redirect$/);
+		expect(workingRow("✳", Date.now(), null, 120, null, false)).not.toContain("ctrl+b");
 	});
 
 	it("at a narrow width the hint goes before any fact does", () => {
