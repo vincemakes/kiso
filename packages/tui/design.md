@@ -1227,7 +1227,7 @@ replace it while they last.
 
 | state | row |
 |---|---|
-| working | `✸ working 12.4s · ↓ 1.2k · 48 tok/s` |
+| working | `✸ working 12.4s · ↓ 1.2k` (the decode rate is the status row's alone, 0.50.1 F2) |
 | retry | `↻ retrying 3/10 · <what failed> · next try in 4s`, and `esc gives up` |
 | compacting | `✸ compacting · manual · 6 rounds · ~95.1k → ▆▆▆▆▆▆ 4.2k/32k · 18s`: the reason first — `manual` for /compact, `auto` when the opt-in threshold dispatched it (R3b) and for a summary inside a run, `cold cache` when a resumed session compacts before its first request (P1b, §8.12). The summary's progress is the status bar's own `▆` cells (§8.9), filled in `ink2` and the rest in the track colour; off a known ground `▰▱` carries the fill. One round is `1 round` |
 | waiting | `❯ needs you · <what>` — `<what>` the open panel's own words (`run paused`, `a question for you`, `uncertain execution`), the `❯` gold. It rides the STATUS row, where the panel's status always was: while a panel is up it holds the live zone itself (R3b) |

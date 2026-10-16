@@ -1731,7 +1731,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			dock.setLive(liveRow(compactingStatus(runGlyph, summary.rounds, summary.tokens, Math.round((Date.now() - summary.since) / 1000), W - 20, retryOnRow(), summary.progress, "auto"), ["esc stops"], W));
 			return;
 		}
-		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, lastTokPerSec, rowWidth(), retryOnRow(), detachableNow()));
+		dock.setLive(workingRow(runGlyph, runStart, runUsage.out, rowWidth(), retryOnRow(), detachableNow()));
 		dock.setBar(barFor(session, { tokPerSec: lastTokPerSec, tasks: taskCountsNow() }));
 	};
 	// W19: under plan the idle row makes the posture unmistakable — the W4

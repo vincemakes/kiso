@@ -63,10 +63,10 @@ describe("the bar counts the session's tasks", () => {
 describe("the live row teaches ctrl+b while a command can be moved", () => {
 	it("after esc, before the steer and the redirect; gone when nothing can move", () => {
 		setGround("light");
-		const on = plain(workingRow("✳", Date.now(), null, null, 120, null, true));
+		const on = plain(workingRow("✳", Date.now(), null, 120, null, true));
 		expect(on).toMatch(/esc stop · ctrl\+b background · ⏎ steer · alt\+⏎ redirect$/);
-		expect(plain(workingRow("✳", Date.now(), null, null, 120, null))).not.toContain("ctrl+b");
+		expect(plain(workingRow("✳", Date.now(), null, 120, null))).not.toContain("ctrl+b");
 		// narrow: the steer and the redirect give way before ctrl+b does
-		expect(plain(workingRow("✳", Date.now(), null, null, 44, null, true))).toMatch(/esc stop · ctrl\+b background$/);
+		expect(plain(workingRow("✳", Date.now(), null, 44, null, true))).toMatch(/esc stop · ctrl\+b background$/);
 	});
 });

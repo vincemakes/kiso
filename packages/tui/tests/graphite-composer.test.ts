@@ -142,18 +142,19 @@ describe("§8.9 — the ctx meter", () => {
 });
 
 describe("§8.7 — the live row", () => {
-	it("`working` the whole turn, with the elapsed, the output tokens and the rate", () => {
+	it("`working` the whole turn, with the elapsed and the output tokens (the rate is the status row's, not this row's)", () => {
 		const since = Date.now() - 12_000;
-		const row = plain(workingRow("✦", since, 1_300, 48, 120, null));
-		expect(row).toMatch(/^✦ working 12s · ↓ 1\.3k · 48 tok\/s +esc stop · ⏎ steer · alt\+⏎ redirect$/);
+		const row = plain(workingRow("✦", since, 1_300, 120, null));
+		expect(row).toMatch(/^✦ working 12s · ↓ 1\.3k +esc stop · ⏎ steer · alt\+⏎ redirect$/);
+		expect(row).not.toContain("tok/s");
 		expect(row).not.toContain("thinking");
 	});
 
 	it("a pending retry replaces `working` while it lasts: the attempt, what failed, the countdown", () => {
-		const row = plain(workingRow("✦", Date.now() - 12_000, 1_300, 48, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 3_200 }));
+		const row = plain(workingRow("✦", Date.now() - 12_000, 1_300, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 3_200 }));
 		expect(row).toMatch(/^↻ retrying 2\/10 · rate_limit · next try in 4s +esc gives up$/);
 		expect(row).not.toContain("working");
-		const inFlight = plain(workingRow("✦", Date.now(), null, null, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 0 }));
+		const inFlight = plain(workingRow("✦", Date.now(), null, 80, { attempt: 2, maxRetries: 10, code: "rate_limit", remainingMs: 0 }));
 		expect(inFlight).toMatch(/^↻ retrying 2\/10 · rate_limit +esc gives up$/);
 	});
 

@@ -34,7 +34,7 @@ export async function resume(session: AgentSession, prompt: string | undefined, 
 	const statusCb = (u: RunUsage, _ctx: number): void => {
 		runUsage = u;
 		if (!dock.active) return;
-		dock.setLive(workingRow(runGlyph, runStart, u.out, null, width(), retryOnRow()));
+		dock.setLive(workingRow(runGlyph, runStart, u.out, width(), retryOnRow()));
 		dock.setBar(barFor(session, { tokPerSec: null }));
 	};
 	const paintIdle = (): void => {

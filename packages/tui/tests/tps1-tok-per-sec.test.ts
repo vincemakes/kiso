@@ -67,21 +67,18 @@ describe("TPS-1: the rate itself", () => {
 
 // RE-DERIVED (the legacy rows retired, owner 2026-10-06): the running row
 // is the live row (§8.7), the idle row the bar (§8.9). The rules hold:
-// no rate, no segment; the rate after the tokens on the live row and last
-// on the bar; the two independent.
+// no rate, no segment; the rate lives on the bar only, last (0.50.1 F2: the
+// live row no longer carries it, the owner's ruling).
 const BAR: BarInput = { mode: "default", floorOff: false, model: "faux", ctx: { used: 0.25, soft: 0.5, hard: 0.8 }, tokPerSec: null, branch: null, folder: null };
 
 describe("TPS-1: the live row", () => {
-	it("with no rate there is no segment", () => {
-		expect(workingRow("▖", Date.now() - 3_000, 1234, null, 120)).toMatch(/^▖ working 3s · ↓ 1\.2k +esc stop/);
+	it("the live row has the elapsed and the tokens, then the keys", () => {
+		expect(workingRow("▖", Date.now() - 3_000, 1234, 120)).toMatch(/^▖ working 3s · ↓ 1\.2k +esc stop/);
 	});
 
-	it("the segment sits after the tokens, before the keys", () => {
-		expect(workingRow("▖", Date.now() - 3_000, 1234, 42, 120)).toMatch(/^▖ working 3s · ↓ 1\.2k · 42 tok\/s +esc stop/);
-	});
-
-	it("a rate with no token count yet still renders — the two are independent", () => {
-		expect(workingRow("▘", Date.now(), null, 42, 120)).toMatch(/^▘ working 1s · 42 tok\/s +esc stop/);
+	it("the live row never carries the rate: the status row is its one place (0.50.1 F2, the owner's ruling)", () => {
+		expect(workingRow("▖", Date.now() - 3_000, 1234, 120)).not.toContain("tok/s");
+		expect(workingRow("▘", Date.now(), null, 120)).not.toContain("tok/s");
 	});
 });
 
