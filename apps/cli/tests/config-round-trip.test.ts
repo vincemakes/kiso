@@ -55,6 +55,7 @@ const PROFILE_SAMPLE: Record<string, unknown> = {
 	contextWindow: 123_456,
 	upstream: "https://upstream.invalid/v1",
 	headers: { "x-gateway-session": "{session}" },
+	effort: { levels: ["none", "low", "high"], default: "high", values: { none: "off" } }, // 0.51.0: the profile's own effort levels
 };
 
 const CONFIG_SAMPLE: Record<string, unknown> = {

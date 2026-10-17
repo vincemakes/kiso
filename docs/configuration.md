@@ -63,7 +63,12 @@ a broken config file fails loudly with the file named.
       "model": "some-reasoning-model",
       "baseUrl": "https://example.invalid/v1",
       "apiKeyEnv": "SLOW_KEY",
-      "streamIdleMs": 300000                 // the stream watchdog: 5 min of silence before a retry (default 120 s; 0 off)
+      "streamIdleMs": 300000,                // the stream watchdog: 5 min of silence before a retry (default 120 s; 0 off)
+      "effort": {                            // optional: the effort levels this route accepts (see below)
+        "levels": ["none", "low", "high"],
+        "default": "high",                   // optional; omit or null when you do not know it
+        "values": { "none": "off" }          // optional: the route's own word for a level
+      }
     }
   },
   "mode": "default",                         // default/accept-edits/plan/full-access
@@ -82,9 +87,14 @@ a broken config file fails loudly with the file named.
   direct writes work too (`--model openai-compat/gpt-4o`,
   `--model anthropic/claude-sonnet-5`).
 - **Anthropic first-party notes (PA-1a, 0.28.0).** The current line —
-  Claude Fable 5.1, Opus 5, Sonnet 5, Haiku 4.5 — is registered with
+  Claude Fable 5.1, Opus 5.5, Sonnet 5.5, Haiku 5.5, Opus 5, Sonnet 5, Haiku 4.5 — is registered with
   dated, sourced context windows, effort levels, thinking modes and
-  prices (read from the docs on 2026-09-07; `/model` shows them). Effort
+  prices (read from the docs on 2026-09-07; the 5.5 line on 2026-10-17;
+  `/model` shows them). The 5.5 line differs from the 5 line in ways the
+  table carries: Opus 5.5 defaults to `medium` effort and thinking cannot
+  be turned off; Sonnet 5.5 refuses `disabled` at every level; Haiku 5.5
+  takes `disabled` only at `high` or below, and its price rises five-fold
+  for a prompt over 100,000 tokens (the row carries the lower rate). Effort
   (`low` … `max`) and thinking (`adaptive` / `disabled`, per model) go
   on the wire exactly as documented; Haiku 4.5's manual thinking budget
   is not driven. `promptCaching` is **off by default**: turning it on
@@ -103,6 +113,20 @@ a broken config file fails loudly with the file named.
   sends text — `default`/`default` resolves to an empty wire setting — but
   an explicit `low`/`high`/`max` is REFUSED, by name, rather than silently
   downgraded.
+- **A route the registry does not cover: declare its levels.** A gateway or
+  a model that arrived after the table was read can state its own effort
+  levels in the profile (`"effort"`, above). It is YOUR claim, as the
+  profile's `"contextWindow"` is: the effort picker and
+  `/model <profile> <level>` then work for that model at that endpoint, the
+  picker says `levels declared in your profile`, and a level the route
+  refuses still answers 400. `"values"` maps a level to the route's own word
+  where it differs. Profiles come from the user config only, so a repository
+  cannot declare one. To read what a route accepts without guessing, run
+  `node bench/probe-effort-levels.mjs <base-url> <model> <api-key-env>` (one
+  refused request, no tokens; `--responses` and `--header name=value` where
+  the route needs them). Command Code, for one, accepts
+  `off | low | medium | high | xhigh | max`: the table carries rows for it
+  and sends `none` as `off`.
 
 - **The context window follows the MODEL, not the address (CW-1).** The
   same few models are reachable through many endpoints — the vendor, a

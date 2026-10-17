@@ -34,7 +34,10 @@ describe("a route the registry has no row for", () => {
 
 	it("a vendor prefix and the vendor's capitals name the same weights", () => {
 		expect(modelIdentity("deepseek/DeepSeek-V4.1-Flash")).toBe("deepseek-flash");
-		expect(lookupContextWindow("deepseek/deepseek-v4.1-flash", "https://openrouter.ai/api/v1")?.tokens).toBe(1_000_000);
+		// the vendor-prefixed id on a gateway with no row of its own (since
+		// 2026-10-17 OpenRouter HAS one: its route answers with its own 1,048,576)
+		expect(lookupContextWindow("deepseek/deepseek-v4.1-flash", FORWARDER)?.tokens).toBe(1_000_000);
+		expect(lookupContextWindow("deepseek/deepseek-v4.1-flash", "https://openrouter.ai/api/v1")).toMatchObject({ tokens: 1_048_576, source: "route" });
 		expect(lookupContextWindow("deepseek-flash", FORWARDER)).toEqual({ tokens: 1_000_000, source: "model", from: "deepseek-flash" });
 	});
 

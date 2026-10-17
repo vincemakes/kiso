@@ -88,6 +88,7 @@
   "apps/cli/tests/per-project-sessions-pty.test.ts",
   "apps/cli/tests/ph1a-front-door.test.ts",
   "apps/cli/tests/ph1c-metadata-cli.test.ts",
+  "apps/cli/tests/profile-effort-declaration-pty.test.ts",
   "apps/cli/tests/profile-headers-e2e.test.ts",
   "apps/cli/tests/project-trust.test.ts",
   "apps/cli/tests/protected-context-paths.test.ts",

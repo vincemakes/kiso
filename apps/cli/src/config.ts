@@ -38,7 +38,23 @@ import { join, win32 } from "node:path";
 import { kisoHome } from "./state.js";
 import { MODE_VALUES, parseMode, type Mode } from "./mode.js";
 import { AuthError, effectiveBaseUrl, endpointCredentialId, getCredential, providerIdOf } from "./auth/credentials.js";
-import { BUILTIN_MANIFESTS } from "@vincemakes/kiso-runtime/internal";
+import { BUILTIN_MANIFESTS, declareEffort } from "@vincemakes/kiso-runtime/internal";
+
+/** The reasoning-effort levels a profile may declare: the registry's own
+ *  vocabulary (without `default`, which is "send nothing"). */
+const EFFORT_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
+type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
+/** A profile's own claim about its route's effort levels (the same kind of
+ *  claim as `contextWindow`: yours, not ours). */
+export interface ProfileEffort {
+	readonly levels: readonly EffortLevel[];
+	/** the level the route uses when none is sent; omit or null = unknown */
+	readonly default?: EffortLevel | null;
+	/** the route's spelling where it differs from the level's name, e.g.
+	 *  `{ "none": "off" }`; each key must be one of `levels` */
+	readonly values?: Readonly<Partial<Record<EffortLevel, string>>>;
+}
 
 /** OR-1: `openai-responses` is a DIALECT, not a vendor — the same kind
  *  drives the first-party Responses API and the ChatGPT subscription
@@ -78,6 +94,15 @@ export interface ModelProfile {
 	 */
 	readonly contextWindow?: number;
 	/**
+	 * The reasoning-effort levels this profile's route accepts, for a route
+	 * the registry has no row for (a gateway, a new model). It enables the
+	 * effort picker and the `/model <profile> <level>` form; the levels are
+	 * YOUR claim. A route that refuses a level answers 400, and nothing here
+	 * hides it. `kiso`'s own table wins nowhere over this: your declaration
+	 * replaces the registry's levels for this model at this endpoint.
+	 */
+	readonly effort?: ProfileEffort;
+	/**
 	 * What this endpoint FORWARDS to, when `baseUrl` is a local proxy — a URL
 	 * (`https://gateway.example/v1`) or a name (`my gateway`). It never
 	 * moves a request — they still go to `baseUrl`. The owner, 2026-09-23: a
@@ -115,6 +140,50 @@ function parseHeaders(field: string, raw: unknown, fail: (key: string, why: stri
 		out[lower] = value;
 	}
 	return out;
+}
+
+function parseEffort(field: string, raw: unknown, fail: (key: string, why: string) => never): ProfileEffort {
+	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) fail(field, "expected an object: { levels: [...], default?: ..., values?: { ... } }");
+	const o = raw as Record<string, unknown>;
+	for (const k of Object.keys(o)) if (k !== "levels" && k !== "default" && k !== "values") fail(`${field}.${k}`, "unknown key (levels, default and values are the only ones)");
+	const known = (v: unknown): v is EffortLevel => typeof v === "string" && (EFFORT_LEVELS as readonly string[]).includes(v);
+	if (!Array.isArray(o.levels) || o.levels.length === 0 || o.levels.length > EFFORT_LEVELS.length) fail(`${field}.levels`, `expected 1 to ${EFFORT_LEVELS.length} levels`);
+	const levels: EffortLevel[] = [];
+	for (const l of o.levels as unknown[]) {
+		if (!known(l)) fail(`${field}.levels`, `${JSON.stringify(l)} is not a level (${EFFORT_LEVELS.join(", ")})`);
+		if (levels.includes(l)) fail(`${field}.levels`, `${l} is listed twice`);
+		levels.push(l);
+	}
+	let def: EffortLevel | null | undefined;
+	if (o.default !== undefined && o.default !== null) {
+		if (!known(o.default) || !levels.includes(o.default)) fail(`${field}.default`, "expected null or one of the listed levels");
+		def = o.default;
+	} else if (o.default === null) def = null;
+	let values: Partial<Record<EffortLevel, string>> | undefined;
+	if (o.values !== undefined) {
+		if (o.values === null || typeof o.values !== "object" || Array.isArray(o.values)) fail(`${field}.values`, "expected an object of level names to the route's spelling");
+		values = {};
+		for (const [k, v] of Object.entries(o.values as Record<string, unknown>)) {
+			if (!known(k) || !levels.includes(k)) fail(`${field}.values.${k}`, "expected one of the listed levels");
+			if (typeof v !== "string" || !/^[A-Za-z0-9_.-]{1,24}$/.test(v)) fail(`${field}.values.${k}`, "expected a short word (letters, digits, . _ -)");
+			values[k] = v;
+		}
+	}
+	return { levels, ...(def !== undefined ? { default: def } : {}), ...(values !== undefined ? { values } : {}) };
+}
+
+/** Hand every profile's declared effort levels to the registry's lookup
+ *  (called once, right after the config is merged). A profile without a
+ *  declaration is not touched, and one that declares nothing changes nothing. */
+export function applyEffortDeclarations(cfg: KisoConfig): void {
+	for (const profile of Object.values(cfg.models ?? {})) {
+		if (profile.effort === undefined) continue;
+		declareEffort(profile.model, profile.baseUrl, {
+			levels: profile.effort.levels,
+			default: profile.effort.default ?? null,
+			...(profile.effort.values !== undefined ? { values: profile.effort.values } : {}),
+		});
+	}
 }
 
 export interface AutoCompactConfig {
@@ -311,6 +380,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 			if (p.upstream !== undefined && (typeof p.upstream !== "string" || p.upstream.trim() === ""))
 				fail(`models.${name}.upstream`, "expected the URL or name of what this endpoint forwards to");
 			const headers = p.headers === undefined ? undefined : parseHeaders(`models.${name}.headers`, p.headers, fail);
+			const effort = p.effort === undefined ? undefined : parseEffort(`models.${name}.effort`, p.effort, fail);
 			models[name] = {
 				kind: p.kind as ProfileKind,
 				model: p.model as string,
@@ -321,6 +391,7 @@ export function parseConfig(text: string, source: string): KisoConfig {
 				...(typeof p.contextWindow === "number" ? { contextWindow: p.contextWindow } : {}),
 				...(typeof p.upstream === "string" ? { upstream: p.upstream.trim() } : {}),
 				...(headers !== undefined ? { headers } : {}),
+				...(effort !== undefined ? { effort } : {}),
 			};
 		}
 		out.models = models;
