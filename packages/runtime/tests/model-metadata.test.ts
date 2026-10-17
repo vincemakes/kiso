@@ -165,7 +165,8 @@ describe("OR-10 (owner, 2026-09-09) — a cache figure that cannot be observed i
 
 // The 2026-09-09 row said low / medium / high at $0.075 in; OpenRouter's list
 // of 2026-10-17 (the generated rows, scripts/registry-or-rows.mjs) says max /
-// high / low at $0.02277 in. The route's own statement wins, dated.
+// high / low and its price floats, so the row claims none. The route's own
+// statement of levels wins, dated.
 describe("GLM 5.3 Flash through OpenRouter — the compat table's second row (re-read 2026-10-17)", () => {
 	it("resolves at the OpenRouter origin with its levels, its window and its dated price; nowhere else", () => {
 		const row = lookupModelMetadata("z-ai/glm-5.3-flash", "https://openrouter.ai/api/v1");
@@ -174,8 +175,8 @@ describe("GLM 5.3 Flash through OpenRouter — the compat table's second row (re
 		expect(row!.capabilities.reasoning?.effort?.wire).toBe("reasoning_effort");
 		expect(row!.capabilities.reasoning?.emitsThinkingStream).toBe(true);
 		expect(row!.capabilities.contextWindow).toBe(1_048_576);
-		expect(row!.pricing?.inputPerM).toBe(0.02277);
-		expect(row!.pricing?.asOf).toBe("2026-10-17");
+		// the router's list price floats (the cheapest endpoint at that moment): no price is claimed
+		expect(row!.pricing).toBeNull();
 		// the id is OpenRouter's; at another origin it is nobody's row
 		expect(lookupModelMetadata("z-ai/glm-5.3-flash", "https://api.z.ai")).toBeNull();
 	});

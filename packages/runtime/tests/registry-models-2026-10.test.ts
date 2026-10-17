@@ -121,7 +121,9 @@ describe("OpenRouter rows (generated 2026-10-17)", () => {
 		const opus = lookupModelMetadata("anthropic/claude-opus-5.5", OR);
 		expect(opus?.capabilities.reasoning?.effort).toEqual({ levels: ["low", "medium", "high", "xhigh", "max"], default: null, wire: "reasoning_effort" });
 		expect(opus?.capabilities.contextWindow).toBe(1_000_000);
-		expect(opus?.pricing).toMatchObject({ inputPerM: 4, outputPerM: 20, cacheReadPerM: 0.2, asOf: "2026-10-17" });
+		// no router price: OpenRouter's list price is the cheapest listed endpoint at that
+		// moment and moved 10x for DeepSeek within hours on 2026-10-17; unknown stays null
+		expect(opus?.pricing).toBeNull();
 		expect(lookupModelMetadata("xiaomi/mimo-v2.6-flash", OR)?.capabilities.reasoning).toBeNull();
 	});
 
