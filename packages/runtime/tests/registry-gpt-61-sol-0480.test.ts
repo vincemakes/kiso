@@ -6,7 +6,7 @@
  * `reasoning` field: the remembered `high` never reached the wire and no
  * reasoning summary came back. The row comes from the vendor CLI's
  * presets, pinned to a commit (low…ultra, default low, a 272,000 window),
- * at the subscription only; no first-party page was read for it.
+ * at the subscription only (the first-party row followed on 2026-10-17).
  */
 
 import { describe, expect, it } from "vitest";
@@ -34,7 +34,18 @@ describe("0.48.0 — gpt-6.1-sol at the subscription", () => {
 		expect(none.ok).toBe(false);
 	});
 
-	it("no first-party row is claimed: at the API origin the model is unknown, as it was", () => {
-		expect(lookupModelMetadata("gpt-6.1-sol", FIRST)).toBeNull();
+	// 0.51.0 reverses the 0.48.0 pin "no first-party row is claimed": the model
+	// page was read on 2026-10-17 and the row exists (five levels, no `none`,
+	// default medium, 1,050,000 window, $2 / $10, cache read $0.10). The
+	// subscription row above is untouched, and the two stay apart by endpoint.
+	it("the first-party row (2026-10-17) is its own: five levels, default medium, and it never lends the subscription's `ultra`", () => {
+		const first = lookupModelMetadata("gpt-6.1-sol", FIRST);
+		expect(first?.providerId).toBe("openai");
+		expect(first?.capabilities.reasoning?.effort).toEqual({ levels: ["low", "medium", "high", "xhigh", "max"], default: "medium", wire: "reasoning.effort" });
+		expect(first?.capabilities.contextWindow).toBe(1_050_000);
+		expect(first?.pricing).toMatchObject({ inputPerM: 2, outputPerM: 10, cacheReadPerM: 0.1, asOf: "2026-10-17" });
+		expect(resolveReasoning("gpt-6.1-sol", { thinking: "default", effort: "ultra" }, FIRST).ok).toBe(false);
+		expect(resolveReasoning("gpt-6.1-sol", { thinking: "default", effort: "none" }, FIRST).ok).toBe(false);
+		expect(resolveReasoning("gpt-6.1-sol", { thinking: "default", effort: "max" }, FIRST)).toEqual({ ok: true, wire: { effort: "max" } });
 	});
 });

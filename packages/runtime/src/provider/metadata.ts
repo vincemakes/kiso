@@ -19,6 +19,8 @@
  * does not move; core is untouched.
  */
 
+import { OPENROUTER_ROWS } from "./openrouter-rows.js";
+
 export interface ModelCapabilities {
 	/** tokens of context the model accepts; null = unknown. */
 	readonly contextWindow: number | null;
@@ -80,6 +82,15 @@ export interface ReasoningCapabilities {
 		readonly levels: readonly Exclude<ReasoningEffort, "default">[];
 		readonly default: Exclude<ReasoningEffort, "default"> | null;
 		readonly wire: string;
+		/** a route that SPELLS a level differently on the wire (Command Code
+		 *  takes `off` for no reasoning, and refuses `none`): the level a
+		 *  person picks stays the native name, the wire carries the route's
+		 *  word. Absent = every level goes as named. */
+		readonly values?: Readonly<Partial<Record<Exclude<ReasoningEffort, "default">, string>>>;
+		/** the levels came from the USER's profile, not from a dated source:
+		 *  a claim of theirs, shown as such (the profile's `contextWindow` is
+		 *  the same kind of claim). Absent on every registry row. */
+		readonly declared?: true;
 	} | null;
 	/** invalid combinations the provider documents (e.g. thinking-disabled
 	 *  at certain efforts). */
@@ -173,12 +184,16 @@ const ANTHROPIC_PRICING_SOURCE = "https://platform.claude.com/docs/en/about-clau
 const ANTHROPIC_MODELS_SOURCE = "https://platform.claude.com/docs/en/models/overview";
 const ANTHROPIC_EFFORT_SOURCE = "https://platform.claude.com/docs/en/build-with-claude/effort";
 const ANTHROPIC_ASOF = "2026-09-07";
-const anthropicPricing = (inputPerM: number, outputPerM: number, cacheReadPerM: number, cacheWritePerM: number): ModelPricing => ({
+/** The 5.5 line (Opus 5.5, Sonnet 5.5, Haiku 5.5): the models overview, the
+ *  effort page, the thinking table and the pricing page, all read 2026-10-17. */
+const ANTHROPIC_ASOF_55 = "2026-10-17";
+const ANTHROPIC_THINKING_SOURCE = "https://platform.claude.com/docs/en/build-with-claude/thinking-troubleshooting";
+const anthropicPricing = (inputPerM: number, outputPerM: number, cacheReadPerM: number, cacheWritePerM: number, asOf: string = ANTHROPIC_ASOF): ModelPricing => ({
 	inputPerM,
 	outputPerM,
 	cacheReadPerM,
 	cacheWritePerM,
-	asOf: ANTHROPIC_ASOF,
+	asOf,
 	source: ANTHROPIC_PRICING_SOURCE,
 });
 /** The 5-line's effort control: five native levels, default high, wire
@@ -187,24 +202,24 @@ const anthropicPricing = (inputPerM: number, outputPerM: number, cacheReadPerM: 
  *  gives the modes per model. */
 const FIVE_LEVELS = { levels: ["low", "medium", "high", "xhigh", "max"] as const, default: "high" as const, wire: "output_config.effort" };
 function anthropicLine(): ModelMetadataEntry[] {
-	const row = (model: string, capabilities: ModelCapabilities, pricing: ModelPricing): ModelMetadataEntry => ({
+	const row = (model: string, capabilities: ModelCapabilities, pricing: ModelPricing, asOf: string = ANTHROPIC_ASOF): ModelMetadataEntry => ({
 		model,
 		providerId: "anthropic",
 		capabilities,
-		capabilitiesAsOf: ANTHROPIC_ASOF,
+		capabilitiesAsOf: asOf,
 		capabilitiesSource: ANTHROPIC_MODELS_SOURCE,
 		pricing,
 	});
-	const fiveLine = (thinkingModes: readonly ("adaptive" | "disabled")[], forbidden?: readonly ReasoningSetting[]): ModelCapabilities => ({
+	const fiveLine = (thinkingModes: readonly ("adaptive" | "disabled")[], forbidden?: readonly ReasoningSetting[], opts: { readonly effortDefault?: "medium" | "high"; readonly asOf?: string } = {}): ModelCapabilities => ({
 		contextWindow: 1_000_000,
 		maxOutputTokens: 128_000,
 		promptCaching: "explicit",
 		reasoning: {
 			emitsThinkingStream: true,
 			thinking: { modes: thinkingModes, default: "adaptive" },
-			effort: FIVE_LEVELS,
+			effort: opts.effortDefault === undefined ? FIVE_LEVELS : { ...FIVE_LEVELS, default: opts.effortDefault },
 			...(forbidden !== undefined ? { forbidden } : {}),
-			asOf: ANTHROPIC_ASOF,
+			asOf: opts.asOf ?? ANTHROPIC_ASOF,
 			source: ANTHROPIC_EFFORT_SOURCE,
 		},
 		inputModalities: ["text", "image"],
@@ -231,6 +246,30 @@ function anthropicLine(): ModelMetadataEntry[] {
 		// Haiku 4.5: the pinned id and its alias (the registry matches exact ids).
 		row("claude-haiku-4-5-20251001", haiku, haikuPricing),
 		row("claude-haiku-4-5", haiku, haikuPricing),
+		// The 5.5 line (read 2026-10-17; every model id is its own pinned
+		// snapshot, so there is no dated alias). All three: 1M window, 128K
+		// output, five native effort levels, wire output_config.effort.
+		//
+		// Opus 5.5: adaptive ALWAYS on ("disabled" is a 400 at every level);
+		// the default effort is MEDIUM, one below Opus 5's. Cache hits cost 5%
+		// of input.
+		row("claude-opus-5-5", fiveLine(["adaptive"], undefined, { effortDefault: "medium", asOf: ANTHROPIC_ASOF_55 }), anthropicPricing(4, 20, 0.2, 5, ANTHROPIC_ASOF_55), ANTHROPIC_ASOF_55),
+		// Sonnet 5.5: adaptive, on by default. "disabled" is a 400 at every
+		// level; the vendor's own off switch is the new thinking type
+		// `between_tools` (accepted only here, only at effort high or below),
+		// which the registry's thinking vocabulary does not have, so it is
+		// not offered. Default effort high. Cache hits cost 5% of input.
+		row("claude-sonnet-5-5", fiveLine(["adaptive"], undefined, { asOf: ANTHROPIC_ASOF_55 }), anthropicPricing(2, 10, 0.1, 2.5, ANTHROPIC_ASOF_55), ANTHROPIC_ASOF_55),
+		// Haiku 5.5: adaptive, on by default; "disabled" accepted at effort
+		// high or below, a 400 with xhigh or max (the forbidden pair). Default
+		// effort medium. PRICE: the vendor prices by PROMPT LENGTH. The row
+		// carries the rates for prompts up to 100,000 tokens; a prompt over
+		// that pays $0.50 in / $2.50 out / $0.05 cache read / $0.625 cache
+		// write, five times the row. ModelPricing has one set of rates, so a
+		// bill computed from this row for a long prompt is a fifth of the
+		// truth: the one-rate-against-two-rates shape the DeepSeek peak
+		// rates already have.
+		row("claude-haiku-5-5", fiveLine(["adaptive", "disabled"], [{ thinking: "disabled", effort: "xhigh" }, { thinking: "disabled", effort: "max" }], { effortDefault: "medium", asOf: ANTHROPIC_ASOF_55 }), anthropicPricing(0.1, 0.5, 0.01, 0.125, ANTHROPIC_ASOF_55), ANTHROPIC_ASOF_55),
 	];
 }
 
@@ -247,7 +286,7 @@ type NativeEffort = Exclude<ReasoningEffort, "default">;
 /** OR-6: a row may name its own levels and read date; the 5.5/5.4 rows keep
  *  the 2026-09-08 defaults. A default the page does not state stays null. */
 type RowOpts = { readonly levels?: readonly NativeEffort[]; readonly asOf?: string };
-const openaiRow = (model: string, effortDefault: NativeEffort | null, rate: { readonly inputPerM: number; readonly outputPerM: number; readonly cacheReadPerM: number }, page: string, opts: RowOpts = {}): ModelMetadataEntry => ({
+const openaiRow = (model: string, effortDefault: NativeEffort | null, rate: { readonly inputPerM: number; readonly outputPerM: number; readonly cacheReadPerM: number; readonly cacheWritePerM?: number }, page: string, opts: RowOpts = {}): ModelMetadataEntry => ({
 	model,
 	providerId: "openai",
 	endpoint: "https://api.openai.com",
@@ -260,7 +299,7 @@ const openaiRow = (model: string, effortDefault: NativeEffort | null, rate: { re
 	}, inputModalities: null },
 	capabilitiesAsOf: opts.asOf ?? OPENAI_MODELS_ASOF,
 	capabilitiesSource: page,
-	pricing: { ...rate, cacheWritePerM: 0, asOf: opts.asOf ?? OPENAI_MODELS_ASOF, source: page },
+	pricing: { ...rate, cacheWritePerM: rate.cacheWritePerM ?? 0, asOf: opts.asOf ?? OPENAI_MODELS_ASOF, source: page },
 });
 /** The subscription backend's row for the same id: the presets' four
  *  levels (no `none`), the presets' context window, no price, and a cache
@@ -290,13 +329,26 @@ const ULTRA_LADDER: readonly NativeEffort[] = ["low", "medium", "high", "xhigh",
  *  The owner's `sol` profile moved to `gpt-6.1-sol` on 2026-10-08, and with
  *  no row kiso sent it no effort: the remembered `high` never reached the
  *  wire and no reasoning summary came back. The id answered on the
- *  subscription backend that night (the 0.47.3 live sessions). No
- *  first-party row: no model page was read for it. */
+ *  subscription backend that night (the 0.47.3 live sessions). The
+ *  first-party row was added 2026-10-17 (OPENAI_MODELS_ASOF_4). */
 const OPENAI_MODELS_ASOF_3 = "2026-10-09";
 const CHATGPT_PRESETS_SOURCE_3 = "https://github.com/openai/codex/blob/d63a9b8344cfe58bc78bbe319b560378fc8756ef/codex-rs/models-manager/models.json";
+/** The first-party pages for the GPT-6.1 / GPT-6 sol and luna rows, read
+ *  2026-10-17 (the model page is the source for the levels, the window, the
+ *  output cap and the price alike, as for every first-party row). */
+const OPENAI_MODELS_ASOF_4 = "2026-10-17";
 
 /** The v1 table. Nulls outnumber numbers ON PURPOSE: only values with a
  *  named source enter; everything else waits for one. */
+/** Command Code: what the gateway ACCEPTS (probe, 2026-10-17) intersected with
+ *  each model's native levels; `none` is spelled `off` on this route. */
+const COMMAND_CODE_EFFORT_SOURCE = "probe 2026-10-17: POST https://api.commandcode.ai/provider/v1/chat/completions with a sentinel reasoning_effort names the legal set; native levels per model: the first-party deepseek-flash row and https://openrouter.ai/api/v1/models";
+const COMMAND_CODE_EFFORT: Readonly<Record<"deepseek/deepseek-v4.1-flash" | "z-ai/glm-5.3-flash" | "xai/grok-4.7", NonNullable<ReasoningCapabilities["effort"]>>> = {
+	"deepseek/deepseek-v4.1-flash": { levels: ["none", "low", "high", "max"], default: "high", wire: "reasoning_effort", values: { none: "off" } },
+	"z-ai/glm-5.3-flash": { levels: ["low", "high", "max"], default: null, wire: "reasoning_effort" },
+	"xai/grok-4.7": { levels: ["low", "medium", "high", "xhigh"], default: null, wire: "reasoning_effort" },
+};
+
 const ENTRIES: readonly ModelMetadataEntry[] = [
 	{
 		model: "deepseek-chat",
@@ -538,37 +590,67 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
 	chatgptRow("gpt-6-astra", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
 	chatgptRow("gpt-5.6-sol", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_2, asOf: OPENAI_MODELS_ASOF_2 }),
 	chatgptRow("gpt-6.1-sol", { levels: ULTRA_LADDER, default: "low", source: CHATGPT_PRESETS_SOURCE_3, asOf: OPENAI_MODELS_ASOF_3 }),
-	// The compat table's SECOND row (roadmap R3.2 §1a step 1): GLM 5.3 Flash
-	// through OpenRouter, read from OpenRouter's models API on 2026-09-09. The
-	// id is OpenRouter's, so the row is keyed to that origin; the
-	// continuation scope stamps such a profile `custom` at openrouter.ai
-	// (manifest.ts's KNOWN_ORIGINS is deliberately not widened — the scope
-	// identity is a durable fact and this row needs only the lookup). The
-	// window is the TOP provider's (1,048,576), not the listing's 1,310,720:
-	// what a request actually gets. No default effort — the page states
-	// none. `reasoning_effort` is in the model's supported parameters; the
-	// stream's think arrives as `reasoning` (GLM-F1, the compat adapter).
-	{
-		model: "z-ai/glm-5.3-flash",
-		endpoint: "https://openrouter.ai",
+	// 2026-10-17: the first-party rows the 0.48.0 note said were missing
+	// ("no model page was read for it"). gpt-6.1-sol: five levels, and the
+	// page says `none` and `minimal` are not supported; default medium.
+	// gpt-6-sol and gpt-6-luna: `none` through `max`, default medium.
+	// PRICE: each page also lists a LONG-PROMPT tier: a prompt over 272,000
+	// input tokens pays 2x the input and cache rates and 1.5x the output
+	// rate for the whole request. The rows carry the standard rates; a bill
+	// computed from them for a long prompt is low (the one-rate-against-
+	// two-rates shape the DeepSeek peak rates already have). Cache writes
+	// are priced on these pages and carried (sol $2.50, luna $0.125).
+	openaiRow("gpt-6.1-sol", "medium", { inputPerM: 2, outputPerM: 10, cacheReadPerM: 0.1, cacheWritePerM: 2.5 }, "https://developers.openai.com/api/docs/models/gpt-6.1-sol", { levels: ["low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_4 }),
+	openaiRow("gpt-6-sol", "medium", { inputPerM: 2, outputPerM: 10, cacheReadPerM: 0.2, cacheWritePerM: 2.5 }, "https://developers.openai.com/api/docs/models/gpt-6-sol", { levels: ["none", "low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_4 }),
+	openaiRow("gpt-6-luna", "medium", { inputPerM: 0.1, outputPerM: 0.5, cacheReadPerM: 0.01, cacheWritePerM: 0.125 }, "https://developers.openai.com/api/docs/models/gpt-6-luna", { levels: ["none", "low", "medium", "high", "xhigh", "max"], asOf: OPENAI_MODELS_ASOF_4 }),
+	// The OpenRouter route (origin https://openrouter.ai): generated from
+	// OpenRouter's own model list by scripts/registry-or-rows.mjs and kept in
+	// openrouter-rows.ts, dated 2026-10-17. It replaces the hand-written
+	// z-ai/glm-5.3-flash row of 2026-09-09 (roadmap R3.2 §1a step 1), which
+	// the list has since moved past: the efforts are now max / high / low.
+	...OPENROUTER_ROWS,
+	// The Command Code gateway (origin https://api.commandcode.ai), read by a
+	// PROBE on 2026-10-17: a chat completion with a nonsense reasoning_effort
+	// and max_tokens 1 is refused before generation and the 400 names the
+	// legal set, `off | low | medium | high | xhigh | max`. That enum belongs
+	// to the gateway, not to a model: the same list came back for every model
+	// probed. So a row here offers the INTERSECTION of that set with the
+	// model's own native levels. `none` goes on the wire as `off`: the gateway
+	// refuses `none` (400, probed the same day) and accepts `off` (200). Each
+	// model's native levels: deepseek from the first-party deepseek-flash row
+	// (live-probed 2026-09-14); glm and grok from OpenRouter's list, which is
+	// a router's statement and is named as such in `source`. Mimo has no
+	// stated efforts anywhere, so it has no row: unknown stays unknown. No
+	// default, window, output cap or price is claimed here: the window falls
+	// to the model's identity row, and the gateway's plan has no per-token
+	// price.
+	...(["deepseek/deepseek-v4.1-flash", "z-ai/glm-5.3-flash", "xai/grok-4.7"] as const).map((model): ModelMetadataEntry => ({
+		model,
+		endpoint: "https://api.commandcode.ai",
 		capabilities: {
-			contextWindow: 1_048_576,
-			maxOutputTokens: 131_072,
-			promptCaching: "automatic",
+			contextWindow: null,
+			maxOutputTokens: null,
+			promptCaching: null,
 			reasoning: {
-				emitsThinkingStream: true,
+				emitsThinkingStream: null,
 				thinking: null,
-				effort: { levels: ["low", "medium", "high"], default: null, wire: "reasoning_effort" },
-				asOf: "2026-09-09",
-				source: "https://openrouter.ai/docs/use-cases/reasoning-tokens",
+				effort: COMMAND_CODE_EFFORT[model],
+				asOf: "2026-10-17",
+				source: COMMAND_CODE_EFFORT_SOURCE,
 			},
 			inputModalities: null,
 		},
-		capabilitiesAsOf: "2026-09-09",
-		capabilitiesSource: "https://openrouter.ai/api/v1/models",
-		pricing: { inputPerM: 0.075, outputPerM: 0.25, cacheReadPerM: 0.015, cacheWritePerM: 0, asOf: "2026-09-09", source: "https://openrouter.ai/api/v1/models" },
-	},
+		capabilitiesAsOf: "2026-10-17",
+		capabilitiesSource: COMMAND_CODE_EFFORT_SOURCE,
+		pricing: null,
+	})),
 ];
+
+/** Every row of the table, for the gate that holds the whole table to its
+ *  contract (shape, dates, sources, unique keys). Internal; read-only. */
+export function modelMetadataRows(): readonly ModelMetadataEntry[] {
+	return ENTRIES;
+}
 
 /**
  * Look a model up. `endpoint` narrows: an entry WITH an endpoint only
@@ -576,12 +658,52 @@ const ENTRIES: readonly ModelMetadataEntry[] = [
  * one matches any endpoint. Unknown model → null, never a default.
  */
 export function lookupModelMetadata(model: string, endpoint?: string): ModelMetadataEntry | null {
+	const base = lookupRegistryRow(model, endpoint);
+	const declared = DECLARED_EFFORT.get(declarationKey(model, endpoint));
+	if (declared === undefined) return base;
+	// a profile's declaration wins over the registry's effort for that
+	// (model, endpoint); the rest of the row (window, price, thinking modes)
+	// stays the registry's, and a model the registry does not know becomes a
+	// row that claims nothing but the declared levels
+	const reasoning: ReasoningCapabilities = {
+		emitsThinkingStream: base?.capabilities.reasoning?.emitsThinkingStream ?? null,
+		thinking: base?.capabilities.reasoning?.thinking ?? null,
+		effort: declared,
+		...(base?.capabilities.reasoning?.forbidden !== undefined ? { forbidden: base.capabilities.reasoning.forbidden } : {}),
+		asOf: null,
+		source: "declared in the profile",
+	};
+	if (base !== null) return { ...base, capabilities: { ...base.capabilities, reasoning } };
+	return {
+		model,
+		...(endpoint !== undefined ? { endpoint: originOf(endpoint) } : {}),
+		capabilities: { contextWindow: null, maxOutputTokens: null, promptCaching: null, reasoning, inputModalities: null },
+		pricing: null,
+	};
+}
+
+function lookupRegistryRow(model: string, endpoint?: string): ModelMetadataEntry | null {
 	for (const entry of ENTRIES) {
 		if (entry.model !== model) continue;
 		if (entry.endpoint !== undefined && endpoint !== undefined && entry.endpoint !== originOf(endpoint)) continue;
 		return entry;
 	}
 	return null;
+}
+
+/** A profile's own effort levels (the CLI reads them from the user's config
+ *  at startup). Keyed by (model, endpoint origin); a later declaration for
+ *  the same key replaces the earlier. Process-wide, like the table. */
+const DECLARED_EFFORT = new Map<string, NonNullable<ReasoningCapabilities["effort"]>>();
+const declarationKey = (model: string, endpoint?: string): string => `${model}@${endpoint === undefined ? "" : originOf(endpoint)}`;
+
+export function declareEffort(model: string, endpoint: string | undefined, effort: Omit<NonNullable<ReasoningCapabilities["effort"]>, "declared" | "wire"> & { readonly wire?: string }): void {
+	DECLARED_EFFORT.set(declarationKey(model, endpoint), { ...effort, wire: effort.wire ?? "reasoning_effort", declared: true });
+}
+
+/** For tests and a config reload: forget every declaration. */
+export function clearDeclaredEfforts(): void {
+	DECLARED_EFFORT.clear();
 }
 
 /**
@@ -593,6 +715,11 @@ const MODEL_ALIASES: Readonly<Record<string, { readonly is: string; readonly asO
 	// The pricing table: `deepseek-flash` IS DeepSeek-V4.1-Flash. Gateways
 	// serve it by the version name (`deepseek-v4.1-flash`).
 	"deepseek-v4.1-flash": { is: "deepseek-flash", asOf: "2026-09-17", source: "https://api-docs.deepseek.com/quick_start/pricing/" },
+	// OpenRouter spells the 5.5 line with a dot; the vendor's ids carry dashes
+	// (the models overview, read 2026-10-17). Same weights.
+	"claude-opus-5.5": { is: "claude-opus-5-5", asOf: "2026-10-17", source: "https://platform.claude.com/docs/en/models/overview" },
+	"claude-sonnet-5.5": { is: "claude-sonnet-5-5", asOf: "2026-10-17", source: "https://platform.claude.com/docs/en/models/overview" },
+	"claude-haiku-5.5": { is: "claude-haiku-5-5", asOf: "2026-10-17", source: "https://platform.claude.com/docs/en/models/overview" },
 };
 
 /** CW-1: the aliases, for the gate that holds each one to a dated source
@@ -698,7 +825,7 @@ export function resolveReasoning(
 			const levels = r.effort === null ? "none known" : r.effort.levels.join("/");
 			return { ok: false, reason: `${model} does not support effort "${setting.effort}" (native: ${levels})` };
 		}
-		wire.effort = setting.effort;
+		wire.effort = r.effort.values?.[setting.effort] ?? setting.effort;
 	}
 	for (const f of r.forbidden ?? []) {
 		if (f.thinking === setting.thinking && f.effort === setting.effort) {
