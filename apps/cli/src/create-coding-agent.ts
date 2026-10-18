@@ -15,7 +15,7 @@ import { migrationNotice, pendingLegacyIds, planMigration, runMigration } from "
 import { askUi, resolveProjectTrust } from "./trust-ui.js";
 import { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 import { fauxSkip, readFauxScript } from "./faux-glue.js";
-import { loadProjectConfig, loadUserConfig, mergeConfigs, resolveContextWindow, resolveModel } from "./config.js";
+import { applyEffortDeclarations, loadProjectConfig, loadUserConfig, mergeConfigs, resolveContextWindow, resolveModel } from "./config.js";
 import { builtInLayer } from "./builtin.js";
 import { recordLearnedWindow, useLearnedWindows } from "./learned-windows.js";
 import { compactionDiscardedNotice, contextWindowTokens, knownContextWindow, unknownWindowNotice, windowLearnedNotice } from "./chat.js";
@@ -166,6 +166,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	const userCfg = loadUserConfig();
 	const projectCfg = loadProjectConfig(process.cwd(), project !== null);
 	const merged = mergeConfigs(userCfg, projectCfg);
+	// a profile's own effort levels reach the registry's lookup before the
+	// picker, `/model <profile> <level>` or a resumed session reads them
+	applyEffortDeclarations(merged);
 	// 0.40.6: /settings names each value's layer from these
 	settingsLayers.user = userCfg;
 	settingsLayers.project = projectCfg;

@@ -106,7 +106,9 @@ function effortAxis(p: ModelProfile): Pick<PickOption, "levels" | "level" | "dis
 		// cursor could NOT land where the previous selection asked.
 		...(carried !== undefined && carried !== "default" && carriedIdx < 0 && defaultIdx >= 0
 			? { levelNote: `effort ${carried} \u2192 ${levels[defaultIdx]}: this model's default (it has no ${carried})` }
-			: {}),
+			: effort.declared === true
+				? { levelNote: "levels declared in your profile" }
+				: {}),
 	};
 }
 
