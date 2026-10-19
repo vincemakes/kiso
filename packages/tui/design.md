@@ -43,8 +43,9 @@ thing:
   block), what is live (the twinkle, a running call's
   breath, a message waiting to land), what needs the person (`❯`), the seal
   `✦`, and the input line. Gold never colours the machine's content.
-- **Blue is the machine:** a second-level heading, inline code, links, the
-  branch name, a call's card.
+- **Blue is the machine:** inline code, links, the branch name, a call's card.
+  A heading is never blue: `#` and `##` are gold (a `##` was blue until
+  2026-10-19, which made code inside a heading the heading's own colour).
 
 Outcomes keep their own colours on the outcome WORD only. **Strip every
 escape sequence and no fact is lost**: every block that could be taken for
@@ -1038,7 +1039,7 @@ because there a marker is the only carrier (DC-4).
 | element | rendering |
 |---|---|
 | `#` | bold `gold`, then a forty-column rule fading from `gold-mark` to the ground |
-| `##` | bold `blue`, `§` in `rail` hanging in the mark column |
+| `##` | bold `gold` (it was `blue` until 2026-10-19: inline code in a heading is `blue`, and a blue heading swallowed it), `§` in `rail` hanging in the mark column |
 | `###` | bold `ink` |
 | `####` | bold `dim`, upper case outside code spans |
 | bold / italic / strike | bold / italic / `dim` (never SGR 9: Apple Terminal draws none) |

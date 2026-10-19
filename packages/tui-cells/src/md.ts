@@ -464,11 +464,13 @@ function blockBody(b: MdBlock, W: number, depth: number, base = "", hard = false
 			if (graphite()) {
 				// Graphite §5 (R2b) — DECLARED REVERSAL of DC-4's "levels are
 				// NOT differentiated by colour": `#` bold gold over a rule that
-				// fades from gold-mark, `##` bold blue (its `§` in the mark
+				// fades from gold-mark, `##` bold gold since 2026-10-19 (it was blue; a
+				// code span inside a blue heading was the heading's own colour, so
+				// code in a heading could not be told from the heading; its `§` in the mark
 				// column, outside the block), `###` bold ink, `####` and deeper
 				// bold dim in upper case. No level prints its own `#`s. The
 				// mono forms below stay where there is no colour to carry it.
-				const tone = level === 1 ? p.gold : level === 2 ? p.blue : level >= 4 ? p.dim : "";
+				const tone = level === 1 || level === 2 ? p.gold : level >= 4 ? p.dim : "";
 				const style = `${p.bold}${tone}`;
 				const words = level >= 4 ? upperOutsideCode(text) : text;
 				const rows = wrap(`${style}${inlineSpans(words, style)}${p.reset}`, W, "", "");
