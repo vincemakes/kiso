@@ -61,10 +61,13 @@ import {
 	serializeCovered,
 	MANUAL_SUMMARY_BUDGET,
 	SUMMARY_MAX_OUTPUT,
+	resolveCheckpoint,
+	snapshotCheckpointSections,
 	summarizeConversation,
 	SummaryBudgetExhausted,
 	summaryBoundarySeq,
 } from "./summarize.js";
+import type { CheckpointSection, ResolvedCheckpoint } from "./summarize.js";
 import { canonicalizeUsageForModel } from "./usage/canonical.js";
 import { contextAnchor } from "./context-anchor.js";
 import { appendFileSync, mkdirSync } from "node:fs";
@@ -181,6 +184,8 @@ export class AgentSession {
 	// constructor, setAdapter, and setModelBinding are the only writers).
 	#adapter: Adapter;
 	readonly #config: SessionConfig;
+	/** 0.51.0: the checkpoint every summary call is built from — resolved ONCE at construction from a snapshot of `contextPolicy.checkpointSections`; the raw host array is never read again. */
+	readonly #checkpoint: ResolvedCheckpoint | undefined;
 	// PH-1a (finding PH-F8, P0): the LIVE model binding. #config froze the
 	// startup model/provider, so a /model switch replaced the adapter while
 	// every later run kept sending the OLD model id and canonicalizing
@@ -274,6 +279,10 @@ export class AgentSession {
 		}
 		const composedHooks = composeHooks(config.hooks, config.extensions ?? []);
 		this.#config = composedHooks === undefined ? config : { ...config, hooks: composedHooks };
+		// 0.51.0: validate and snapshot the host's checkpoint sections here, at
+		// construction (a direct `new AgentSession` included); an invalid list throws.
+		const sections = snapshotCheckpointSections(config.contextPolicy?.checkpointSections);
+		this.#checkpoint = sections === undefined ? undefined : resolveCheckpoint(sections);
 		this.#model = config.model;
 		this.#provider = config.provider;
 		this.#baseUrl = config.baseUrl;
@@ -521,6 +530,7 @@ export class AgentSession {
 				await this.#config.hooks?.onRetry?.(info, {});
 			},
 			...(args.onProgress !== undefined ? { onProgress: args.onProgress } : {}),
+			...(this.#checkpoint !== undefined ? { checkpoint: this.#checkpoint } : {}),
 		};
 		try {
 			// The in-band call carries the run's whole context, so the overflow
@@ -1428,6 +1438,17 @@ export class AgentSession {
  * /compact affordance point.
  */
 export interface ContextPolicy {
+	/**
+	 * 0.51.0 — the sections of every checkpoint this session writes (the run-start
+	 * auto-summary, the in-run tiers, the manual compact). Static data: a list of
+	 * `{ heading, instruction }`, rendered in place of the coding outline; EVERY
+	 * listed heading must appear as its own `## <heading>` line or the checkpoint
+	 * is rejected (the usual route: serialized retry, then the breaker). Absent:
+	 * the coding outline of 0.50.0, byte for byte. Validated and copied when the
+	 * agent or session is constructed; extend the default with
+	 * `[...DEFAULT_CHECKPOINT_SECTIONS, { heading, instruction }]`.
+	 */
+	readonly checkpointSections?: readonly CheckpointSection[];
 	/**
 	 * A — the auto-summary: at run start, when the projected context
 	 * crosses the trigger AND enough uncovered rounds exist, the

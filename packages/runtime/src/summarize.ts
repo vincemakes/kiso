@@ -281,18 +281,150 @@ export const DSML_MARKERS = ["<tool_call", "<tool_use", "<invoke", "tool_calls",
 export const REQUIRED_SECTIONS = ["## Current work", "## Next steps"] as const;
 
 /** null = pass; an error string = reject. Empty text is the existing
- *  no-text rule's domain, reported here too (defense in depth). */
-export function validateSummary(text: string): string | null {
+ *  no-text rule's domain, reported here too (defense in depth).
+ *  `headings` (a host's `checkpointSections`, canonical form): when given,
+ *  EVERY listed heading must appear as its own line (`## <heading>`,
+ *  trimmed) instead of the two default tail sections matched by substring —
+ *  `## Story` is a substring of `## Storyboard`, so the custom path cannot
+ *  match that way. */
+export function validateSummary(text: string, headings?: readonly string[]): string | null {
 	const trimmed = text.trim();
 	if (trimmed === "") return "the summary is empty";
 	const lower = trimmed.toLowerCase();
 	for (const marker of DSML_MARKERS) {
 		if (lower.includes(marker)) return `the summary carries a tool-call marker (${marker}) — reject`;
 	}
+	if (headings !== undefined) {
+		const lines = new Set(trimmed.split(/\r?\n/).map((l) => l.trim()));
+		for (const h of headings) {
+			if (!lines.has(`## ${h}`)) return `the summary is missing the required section ## ${h} — a truncated or incomplete checkpoint`;
+		}
+		return null;
+	}
 	for (const section of REQUIRED_SECTIONS) {
 		if (!trimmed.includes(section)) return `the summary is missing the required section ${section} — a truncated or incomplete checkpoint`;
 	}
 	return null;
+}
+
+/**
+ * 0.51.0 — host-defined checkpoint sections (plan-checkpoint-sections rev 2.1;
+ * ADR-0055 Amendment). Kiso owns the mechanics of a checkpoint — when it is
+ * written, its boundary, its validation, its retries; the host owns what the
+ * checkpoint records. The list is static data: a callback could read time,
+ * state or spend, and two requests from one configuration would differ.
+ */
+export interface CheckpointSection {
+	/** One line, rendered as `## <heading>`. */
+	readonly heading: string;
+	/** What the section must hold; rendered under the heading. */
+	readonly instruction: string;
+}
+
+/** The seven sections of the coding outline, as data. Deep-frozen: a host
+ *  extends it with `[...DEFAULT_CHECKPOINT_SECTIONS, { heading, instruction }]`
+ *  and cannot rewrite the shared default. */
+export const DEFAULT_CHECKPOINT_SECTIONS: readonly CheckpointSection[] = Object.freeze(
+	[
+		{ heading: "Goal", instruction: "The user's goal and the acceptance criterion, in one or two sentences." },
+		{ heading: "Constraints", instruction: "The constraints, requirements, and rulings the work must honor." },
+		{
+			heading: "User requests",
+			instruction: `Every user request of the task — those an earlier checkpoint lists and
+those in the covered range — enumerated one by one, each with what it
+asked for and what was done about it.`,
+		},
+		{
+			heading: "Files and changes",
+			instruction: `Every file touched — exact paths, what changed, and why. Include the
+precise code-level changes later turns may need to continue.`,
+		},
+		{
+			heading: "Errors and fixes",
+			instruction: `Every error encountered and its resolution; commands run and their
+outcomes.`,
+		},
+		{
+			heading: "Current work",
+			instruction: `The current state of the work — what is done, what is not. Quote the
+current task's criterion VERBATIM if one exists.`,
+		},
+		{ heading: "Next steps", instruction: "The concrete next steps, in order." },
+	].map((x) => Object.freeze(x)),
+);
+
+/** The kiso-owned rule the CUSTOM path adds: strict every-section validation
+ *  must not push the model to invent content for a section with nothing in it.
+ *  The default path does not carry it — its bytes stay 0.50.0's. */
+export const CHECKPOINT_NONE_RECORDED_RULE =
+	"Every listed section must appear. If the covered conversation holds nothing for a section, write that none is recorded; never invent content to fill it.";
+
+const SECTIONS_LEAD = "Produce the checkpoint with exactly these sections, in this order:\n\n";
+// The frame is cut from the constant itself — the host's sections replace only
+// the block between these two marks, never a copy of the frame.
+const FRAME_HEAD = SUMMARY_PROMPT.slice(0, SUMMARY_PROMPT.indexOf(SECTIONS_LEAD) + SECTIONS_LEAD.length);
+const FRAME_TAIL = SUMMARY_PROMPT.slice(SUMMARY_PROMPT.indexOf("Preserve concrete identifiers VERBATIM"));
+
+const renderSectionBlocks = (sections: readonly CheckpointSection[]): string => sections.map((x) => `## ${x.heading}\n${x.instruction}`).join("\n\n");
+
+/** The custom-path checkpoint prompt for `sections` (canonical form). */
+export function renderCheckpointPrompt(sections: readonly CheckpointSection[]): string {
+	return `${FRAME_HEAD}${renderSectionBlocks(sections)}\n\n${CHECKPOINT_NONE_RECORDED_RULE}\n\n${FRAME_TAIL}`;
+}
+
+const MAX_SECTIONS = 16;
+const MAX_HEADING_CHARS = 80;
+/** The rendered sections block's cap, UTF-8 bytes. */
+export const MAX_CHECKPOINT_SECTIONS_BYTES = 8192;
+
+/**
+ * Validate and snapshot a host's list: a deep copy, trimmed, frozen at both
+ * levels, or `undefined` for an absent list. Throws
+ * `Invalid contextPolicy.checkpointSections: …` — fail fast, never truncate.
+ * The snapshot is taken at construction (the runtime's, and a direct
+ * session's); the raw host array is never read again.
+ */
+export function snapshotCheckpointSections(input: readonly CheckpointSection[] | undefined): readonly CheckpointSection[] | undefined {
+	if (input === undefined) return undefined;
+	const fail = (why: string): never => {
+		throw new Error(`Invalid contextPolicy.checkpointSections: ${why}`);
+	};
+	if (!Array.isArray(input)) return fail("it must be an array");
+	if (input.length < 1 || input.length > MAX_SECTIONS) return fail(`it must hold 1 to ${MAX_SECTIONS} sections, got ${input.length}`);
+	const seen = new Set<string>();
+	const out = input.map((x, i) => {
+		const heading = typeof x?.heading === "string" ? x.heading.trim() : "";
+		const instruction = typeof x?.instruction === "string" ? x.instruction.trim() : "";
+		if (heading === "") return fail(`section ${i + 1} has an empty heading`);
+		if (/[\r\n]/.test(heading)) return fail(`section ${i + 1}: the heading must be one line`);
+		if (heading.length > MAX_HEADING_CHARS) return fail(`section ${i + 1}: the heading is ${heading.length} characters, the cap is ${MAX_HEADING_CHARS}`);
+		if (heading.startsWith("#")) return fail(`section ${i + 1}: the heading must not start with "#" (kiso adds "## ")`);
+		const key = heading.toLowerCase();
+		if (seen.has(key)) return fail(`section ${i + 1}: the heading "${heading}" repeats an earlier one`);
+		seen.add(key);
+		if (instruction === "") return fail(`section ${i + 1} ("${heading}") has an empty instruction`);
+		return Object.freeze({ heading, instruction });
+	});
+	const bytes = Buffer.byteLength(renderSectionBlocks(out), "utf8");
+	if (bytes > MAX_CHECKPOINT_SECTIONS_BYTES) fail(`the rendered sections are ${bytes} bytes, the cap is ${MAX_CHECKPOINT_SECTIONS_BYTES}`);
+	return Object.freeze(out);
+}
+
+/** What one summary call is built from: the system prompt of the serialized
+ *  form, the instruction of the in-band form, and the headings validation
+ *  requires (`null` = the default two-section substring rule). */
+export interface ResolvedCheckpoint {
+	readonly prompt: string;
+	readonly inBand: string;
+	readonly headings: readonly string[] | null;
+}
+
+/** Absent sections return the EXISTING constants (the path stays byte-identical
+ *  to 0.50.0), not a rebuild of them. `sections` must already be a snapshot. */
+export function resolveCheckpoint(sections?: readonly CheckpointSection[]): ResolvedCheckpoint {
+	if (sections === undefined) return { prompt: SUMMARY_PROMPT, inBand: SUMMARY_IN_BAND, headings: null };
+	const prompt = renderCheckpointPrompt(sections);
+	return { prompt, inBand: `${SUMMARY_IN_BAND.slice(0, SUMMARY_IN_BAND.length - SUMMARY_PROMPT.length)}${prompt}`, headings: sections.map((x) => x.heading) };
 }
 
 export interface SummarizeConversationOptions {
@@ -323,6 +455,9 @@ export interface SummarizeConversationOptions {
 	 *  the final usage arrive. Observation only: a throw is swallowed, and
 	 *  the request is identical with or without it. */
 	readonly onProgress?: (progress: SummaryProgress) => void;
+	/** 0.51.0: the checkpoint the call is built from (`resolveCheckpoint`).
+	 *  Absent, the coding outline of 0.50.0, byte for byte. */
+	readonly checkpoint?: ResolvedCheckpoint;
 }
 
 /**
@@ -479,12 +614,13 @@ async function summaryAttempt(options: SummarizeConversationOptions): Promise<Su
 	const budget = options.maxOutputTokens ?? null;
 	report({ produced: 0, budget, reasoningUnseen: false, reported: false });
 	const inBand = options.inBand;
+	const cp = options.checkpoint;
 	for await (const ev of adapter.stream({
 		model,
 		...(inBand === undefined
-			? { messages, systemPrompt: SUMMARY_PROMPT }
+			? { messages, systemPrompt: cp?.prompt ?? SUMMARY_PROMPT }
 			: {
-					messages: [...messages, { role: "user" as const, content: inBand.focus === undefined ? SUMMARY_IN_BAND : `${SUMMARY_IN_BAND}\n\nFocus the summary on: ${inBand.focus}` }],
+					messages: [...messages, { role: "user" as const, content: inBand.focus === undefined ? (cp?.inBand ?? SUMMARY_IN_BAND) : `${cp?.inBand ?? SUMMARY_IN_BAND}\n\nFocus the summary on: ${inBand.focus}` }],
 					...(inBand.systemPrompt !== undefined ? { systemPrompt: inBand.systemPrompt } : {}),
 					tools: inBand.tools,
 				}),
@@ -536,7 +672,7 @@ async function summaryAttempt(options: SummarizeConversationOptions): Promise<Su
 	}
 	// E6 (b): a non-checkpoint summary is an honest failure — throw, the
 	// caller reports it, nothing is persisted (the auto-T5-1 regression).
-	const invalid = validateSummary(trimmed);
+	const invalid = validateSummary(trimmed, cp?.headings ?? undefined);
 	if (invalid !== null) {
 		throw new Error(`the summary call produced an invalid summary: ${invalid}`);
 	}

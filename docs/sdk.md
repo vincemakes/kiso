@@ -7,7 +7,7 @@ the manifest is review-signed and pinned by the surface gate
 (`scripts/api-surface.mjs --check`), so the table below cannot silently
 drift.
 
-## 1. The root manifest (42 names, pinned by the gate)
+## 1. The root manifest (44 names, pinned by the gate)
 
 The curated three-column manifest. `keep` = the SDK surface; `alias` =
 deprecated old names, additive until the next major; `internal` = the
@@ -25,6 +25,7 @@ machinery the SDK deliberately does not expose (see §3).
 | `SessionStore`, `StoreRecord`, `SessionMeta`, `StaleWriterError`, `StoreCorruptionError` | keep | the append-only JSONL store |
 | `PoisonedSessionError`, `ResumeBlockedError` | keep | the two documented session failure modes |
 | `ApprovalRequest`, `CompactInfo`, `ContextPolicy`, `SessionConfig`, `SideQueryOptions`, `SummarizeResult` | keep | session-level types |
+| `CheckpointSection`, `DEFAULT_CHECKPOINT_SECTIONS` | keep | 0.51.0: the sections of a checkpoint, as data (see "Checkpoint sections" below) |
 | `Event` | keep | the durable event union (§2) |
 | `disposeExtensions`, `loadExtensions`, `loadProjectExtensions`, `KisoExtension` | keep | the extension contract |
 | `executionLedger`, `executionForCallId`, `ExecutionRecord`, `ExecutionStatus` | keep | the durable execution ledger |
@@ -36,6 +37,51 @@ machinery the SDK deliberately does not expose (see §3).
 Adjudication detail (review rulings, 2026-08-12): `ledger` and `trust`
 stayed **public**; `lock-adapter`, `recovery`, `compose`, `summarize`, and
 `buildAdapter` moved **internal**.
+
+### Checkpoint sections (`contextPolicy.checkpointSections`, 0.51.0)
+
+Every summary kiso writes (the run-start auto-summary, the in-run tiers, the
+manual compact) is a checkpoint with fixed sections. The default is the coding
+outline: Goal, Constraints, User requests, Files and changes, Errors and fixes,
+Current work, Next steps. A host whose long sessions record something else
+lists its own:
+
+```ts
+createAgent({
+  // ...
+  contextPolicy: {
+    checkpointSections: [
+      { heading: "Story", instruction: "The story so far, in two sentences." },
+      { heading: "Storyboard", instruction: "Every shot decided, one by one." },
+      { heading: "Assets", instruction: "Every asset id and what it is." },
+    ],
+  },
+});
+```
+
+- **Static data.** No callback: two summaries from one configuration send the
+  same bytes. The list is validated and copied when the agent (or a direct
+  `Session`) is constructed; later edits to the host's array change nothing.
+  1 to 16 sections; a heading is one line of at most 80 characters, does not
+  start with `#`, and is unique ignoring case; an instruction is not empty; the
+  rendered sections stay under 8,192 UTF-8 bytes. A violation throws
+  `Invalid contextPolicy.checkpointSections: ...` at construction.
+- **Every listed section must appear**, each as its own `## <heading>` line,
+  or the checkpoint is rejected: the usual route follows (the serialized
+  retry once, then a failure toward the breaker, the context unchanged).
+  Order is requested in the prompt but not checked.
+- **A section with nothing to record** reads as "none recorded": kiso adds one
+  rule to a custom prompt so that strict validation does not push the model to
+  invent content.
+- **Kiso keeps the mechanics:** when a checkpoint is written, its boundary, the
+  tail it keeps, the guard sentence, the identifiers rule, the "plain prose"
+  rules, the budget and the retries. `focus` on the manual compact still adds a
+  per-call instruction and never changes the sections.
+- **Absent, nothing changes:** the coding outline of 0.50.0, byte for byte.
+  Passing `DEFAULT_CHECKPOINT_SECTIONS` explicitly takes the custom path (the
+  one added rule and every-section validation). Extend the default with
+  `[...DEFAULT_CHECKPOINT_SECTIONS, { heading, instruction }]`.
+- The kiso CLI never sets the field.
 
 ## 2. The Event Stream Contract
 

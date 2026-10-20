@@ -882,3 +882,38 @@ checkpoint that ends on `max_tokens` when asked to restate — replacement
 loses what tiling kept. The evidence would be the `SummaryBudgetExhausted`
 rate on long sessions; the answer would be a larger budget or a two-level
 checkpoint, not stacking.
+
+## Amendment 3 (2026-10-20) — the checkpoint's sections are the host's; the mechanics stay kiso's
+
+Every checkpoint used one fixed coding outline, and validation required two
+of its headings. A host whose sessions record something else (a video
+product's story, storyboard and assets) could not change the outline, and a
+host prompt without those two headings would have been rejected every time
+until the breaker switched summaries off.
+
+**Decision.** `contextPolicy.checkpointSections` is a static list of
+`{ heading, instruction }`. The ontology of the checkpoint is the host's; the
+mechanics are kiso's and do not move: when a checkpoint is written, its
+boundary (settled turns only), the tail, the guard sentence, the identifiers
+rule, the plain-prose rules, the output budget, the in-band-then-serialized
+route, the marker rejection, the shrink invariant, the breaker.
+
+- **Static, snapshotted at construction.** No callback (it could read time,
+  state or spend). The runtime, and a directly constructed session, validate and
+  copy the list when built; the host's array is never read again.
+- **Every listed section is required**, as its own `## <heading>` line. A
+  missing one is a rejection on the existing route. Order is asked for, not
+  checked.
+- **One kiso-owned rule on the custom path:** a section with nothing to record
+  says so; content is never invented to fill it.
+- **On `contextPolicy`, not `tiers`.** `tiers` decides when; this decides what.
+  All three entry points use it: the run-start summary, the in-run tiers
+  (in-band and serialized), and the manual compact.
+- **Absent, the default path is unchanged:** the 0.50.0 constants, byte for
+  byte (pinned by sha256). The kiso CLI never sets the field.
+- **No log schema change.** The sections are configuration, not recorded; a
+  session written with custom sections resumes on an older reader.
+
+**When to overturn this.** If hosts find the plain-prose rule or the
+every-section requirement too strict, the rule is relaxed by host evidence, not
+by default; a dynamic list (a callback) is a separate design.
