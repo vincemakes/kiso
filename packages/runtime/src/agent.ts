@@ -17,6 +17,7 @@ import { assessProfileDrift, buildProfile, profilePath, readProfile, writeProfil
 import { EventLog, ToolRegistry, type Adapter, type HookHost, type KisoExtension, type Tool } from "@vincemakes/kiso-core";
 import { AgentSession, type SessionConfig } from "./session.js";
 import type { SessionStore } from "./store.js";
+import { snapshotCheckpointSections } from "./summarize.js";
 
 export interface PermissionRule {
 	readonly tool: string;
@@ -109,11 +110,15 @@ export interface AgentDefinition {
 /** @deprecated the canonical name is `Agent` (root export, 1.1.0); this alias is removed in the next major. */
 export class AgentRuntime {
 	readonly #definition: AgentDefinition;
+	/** 0.51.0: the context policy sessions receive — `checkpointSections` validated and copied at construction (a host that mutates its array afterwards changes nothing); every other field stays the host's own reference, as before. */
+	readonly #contextPolicy: import("./session.js").ContextPolicy | undefined;
 	readonly #registry: ToolRegistry;
 	readonly #adapterPromise: Promise<Adapter>;
 
 	constructor(definition: AgentDefinition) {
 		this.#definition = definition;
+		const sections = snapshotCheckpointSections(definition.contextPolicy?.checkpointSections);
+		this.#contextPolicy = sections === undefined || definition.contextPolicy === undefined ? definition.contextPolicy : { ...definition.contextPolicy, checkpointSections: sections };
 		this.#registry = new ToolRegistry();
 		for (const tool of definition.tools) this.#registry.register(tool);
 		// E1: extension tools join the registry — a collision with a built-in
@@ -273,7 +278,7 @@ export class AgentRuntime {
 			...(this.#definition.maxTokens !== undefined ? { maxTokens: this.#definition.maxTokens } : {}),
 			...(this.#definition.temperature !== undefined ? { temperature: this.#definition.temperature } : {}),
 			...(this.#definition.microcompact !== undefined ? { microcompact: this.#definition.microcompact } : {}),
-			...(this.#definition.contextPolicy !== undefined ? { contextPolicy: this.#definition.contextPolicy } : {}),
+			...(this.#contextPolicy !== undefined ? { contextPolicy: this.#contextPolicy } : {}),
 			...(this.#definition.maxRetries !== undefined ? { maxRetries: this.#definition.maxRetries } : {}),
 			...(this.#definition.streamIdleMs !== undefined ? { streamIdleMs: this.#definition.streamIdleMs } : {}),
 			...(this.#definition.toolRules !== undefined ? { toolRules: this.#definition.toolRules } : {}),

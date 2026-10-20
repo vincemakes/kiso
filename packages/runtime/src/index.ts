@@ -31,6 +31,9 @@ export { AgentSession, AgentSession as Session } from "./session.js";
 export type { SideQueryOptions } from "./session.js";
 export { PoisonedSessionError, ResumeBlockedError } from "./session.js";
 export type { ApprovalRequest, CompactInfo, ContextPolicy, SessionConfig, SummarizeResult } from "./session.js";
+// 0.51.0: host-defined checkpoint sections (the type and the coding outline as data; the prompt machinery stays behind ./internal)
+export { DEFAULT_CHECKPOINT_SECTIONS } from "./summarize.js";
+export type { CheckpointSection } from "./summarize.js";
 
 // run
 export { Run, RunClosedError } from "./run.js";
