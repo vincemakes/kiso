@@ -64,7 +64,7 @@ const DOC = [
 ].join("\n");
 
 describe("§5 — the answer on a known ground", () => {
-	it("headings: `#` gold over a fading rule, `##` blue with `§` in the mark column, `###` bold, `####` dim upper case outside code; no `#` printed", () => {
+	it("headings: `#` gold over a fading rule, `##` gold with `§` in the mark column, `###` bold, `####` dim upper case outside code; no `#` printed", () => {
 		setGround("light");
 		const p = palette();
 		const rows = answer(DOC);
@@ -75,12 +75,21 @@ describe("§5 — the answer on a known ground", () => {
 		const h2 = rows.find((r) => plain(r).endsWith("What changed"))!;
 		expect(plain(h2)).toBe("§ What changed");
 		expect(h2.startsWith(`${p.rail}§`)).toBe(true);
-		expect(h2).toContain(`${p.bold}${p.blue}What changed`);
+		expect(h2).toContain(`${p.bold}${p.gold}What changed`);
 		expect(rows.map(plain)).toContain("  Steps");
 		const h4 = rows.find((r) => plain(r).startsWith("  NOTES FOR"))!;
 		expect(plain(h4)).toBe("  NOTES FOR hosts");
 		expect(h4).toContain(`${p.bold}${p.dim}`);
 		expect(rows.map(plain).join("\n")).not.toMatch(/^\s*#/m);
+	});
+
+	it("a `##` heading that holds a code span: the heading is gold and the span stays blue, so the code can be told from the heading", () => {
+		setGround("light");
+		const p = palette();
+		const row = renderMarkdown("## Call `ctx.invoke` first", 80)[0]!;
+		expect(row).toContain(`${p.bold}${p.gold}Call `);
+		expect(row).toContain(`${p.blue}ctx.invoke${p.fgEnd}`);
+		expect(p.gold).not.toBe(p.blue);
 	});
 
 	it("inline: code blue with no ground, a link blue and underlined with its url dim after it, struck text dim", () => {
