@@ -264,8 +264,8 @@ describe("construction: fail fast, never truncate", () => {
 		const ascii = [{ heading: "A", instruction: "x".repeat(MAX_CHECKPOINT_SECTIONS_BYTES) }];
 		expect(bad(ascii)).toMatch(/bytes, the cap is 8192/);
 		// 3 bytes a character: 3,000 characters is 9,000 bytes
-		expect(bad([{ heading: "A", instruction: "字".repeat(3_000) }])).toMatch(/9\d{3} bytes/);
-		expect(bad([{ heading: "A", instruction: "字".repeat(2_000) }])).toBe("");
+		expect(bad([{ heading: "A", instruction: "€".repeat(3_000) }])).toMatch(/9\d{3} bytes/);
+		expect(bad([{ heading: "A", instruction: "€".repeat(2_000) }])).toBe("");
 	});
 	it("createAgent throws at construction, before any session", () => {
 		expect(() => createAgent({ model: "faux", store: new SessionStore(mkdtempSync(join(tmpdir(), "kiso-cps-bad-"))), tools: [], adapter: createFauxProvider([]), contextPolicy: { checkpointSections: [] } })).toThrow(/Invalid contextPolicy\.checkpointSections/);
