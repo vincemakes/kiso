@@ -6,14 +6,16 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 import { createSessionService, type SessionService } from "@vincemakes/kiso-server";
+import { toWireEvent } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
-import { createDesktopAgent, ALLOW_ALL, ASK_BEFORE_WRITES, type ModelChoice } from "./agent.js";
+import { createDesktopAgent, type ModelChoice, type PermissionMode } from "./agent.js";
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
 import { runTotals, usageFrameAt } from "./usage.js";
 import { desktopSanitize } from "./sanitize.js";
-import type { TasksFrame, ToolOutputFrame } from "../shared/frames.js";
+import { TimeIndex } from "./times.js";
+import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -29,8 +31,9 @@ export interface HostOptions {
 	readonly dataDir: string;
 	readonly workspace: string;
 	readonly model: ModelChoice;
-	/** Run every tool without asking (the spike scripts that do not test approvals). */
-	readonly allowAll?: boolean;
+	/** The permission tier (default: `default`, which asks before writes and commands). */
+	readonly mode?: PermissionMode;
+	readonly secretEnvNames?: readonly string[];
 	/** Default 0: the system picks. */
 	readonly port?: number;
 	readonly token?: string;
@@ -66,23 +69,34 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const service = createSessionService({
 		store,
 		open: async () =>
-			createDesktopAgent(
-				{
-					store,
-					workspace: options.workspace,
-					model: options.model,
-					tasks,
-					...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
-					onSession: (sessionId, session) => {
-						// the model hears how a task ended; nothing wakes an idle session
-						session.useTasks(tasks.managerFor(sessionId), { wake: false });
-					},
+			createDesktopAgent({
+				store,
+				workspace: options.workspace,
+				model: options.model,
+				tasks,
+				mode: options.mode ?? "default",
+				...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
+				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
+				onSession: (sessionId, session) => {
+					// the model hears how a task ended; nothing wakes an idle session
+					session.useTasks(tasks.managerFor(sessionId), { wake: false });
 				},
-				options.allowAll === true ? ALLOW_ALL : ASK_BEFORE_WRITES,
-			),
+			}),
 	});
 
+	const times = new TimeIndex(store);
+	const DELTAS = new Set<Event["type"]>(["thinking", "text_delta"]);
 	const augment: NonNullable<HttpHandlerOptions["augment"]> = (event: Event, sessionId: string): readonly WireFrame[] => {
+		const frames: WireFrame[] = [];
+		// when it happened: for every wire event but the two delta types, which are too many
+		if (!DELTAS.has(event.type) && toWireEvent(event) !== null) {
+			const at: AtFrame = { seq: event.seq, ts: times.at(sessionId, event.seq) };
+			frames.push({ event: "at", data: at });
+		}
+		frames.push(...derived(event, sessionId));
+		return frames;
+	};
+	const derived = (event: Event, sessionId: string): readonly WireFrame[] => {
 		if (event.type === "usage") {
 			const frame = usageFrameAt(service.events(sessionId), event.seq, route);
 			return frame === null ? [] : [{ event: "usage", data: frame }];

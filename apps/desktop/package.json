@@ -9,10 +9,12 @@
 		"build": "tsc -p tsconfig.build.json && node scripts/copy-renderer.mjs",
 		"typecheck": "tsc -p tsconfig.json",
 		"check": "npm run build && npm run typecheck && node scripts/check-imports.mjs",
-		"start": "electron ."
+		"start": "electron .",
+		"proofs": "node scripts/proofs/all.mjs"
 	},
 	"dependencies": {
 		"@vincemakes/kiso-client": "0.51.1",
+		"@vincemakes/kiso-code": "0.51.1",
 		"@vincemakes/kiso-core": "0.51.1",
 		"@vincemakes/kiso-protocol": "0.51.1",
 		"@vincemakes/kiso-provider-openai": "0.51.1",

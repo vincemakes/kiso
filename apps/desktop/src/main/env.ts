@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 import { startHost, type Host } from "./host.js";
-import type { ModelChoice } from "./agent.js";
+import type { ModelChoice, PermissionMode } from "./agent.js";
 
 /**
  * The host's configuration from the environment — shared by the headless
@@ -13,7 +13,7 @@ import type { ModelChoice } from "./agent.js";
  *   KISO_DESKTOP_FAUX        path to a JSON FauxScript (the keyless model)
  *   KISO_DESKTOP_FAUX_SKIP   a session id: skip the script turns its log already consumed
  *   KISO_DESKTOP_PROVIDER    JSON { provider, model, baseUrl? } with KISO_DESKTOP_API_KEY
- *   KISO_DESKTOP_ALLOW_ALL   1: no approvals
+ *   KISO_DESKTOP_MODE        the permission tier: default | accept-edits | plan | full-access
  *   KISO_DESKTOP_SANITIZER   "default" | "desktop"
  *   KISO_DESKTOP_THINKING    0: leave reasoning text off the wire (default: on)
  *   KISO_DESKTOP_KEEPALIVE   keepalive period in ms
@@ -54,7 +54,19 @@ async function modelFromEnv(dataDir: string): Promise<ModelChoice> {
 		return { kind: "adapter", adapter: createFauxProvider(script.slice(skip)), model: "faux", route: "adapter" };
 	}
 	const spec = JSON.parse(need("KISO_DESKTOP_PROVIDER")) as { provider: "anthropic" | "openai-compat" | "openai-responses"; model: string; baseUrl?: string; reasoning?: { thinking: string; effort: string } };
-	return { kind: "provider", ...spec, apiKey: need("KISO_DESKTOP_API_KEY") } as ModelChoice;
+	const apiKey = need("KISO_DESKTOP_API_KEY");
+	delete process.env["KISO_DESKTOP_API_KEY"]; // read once; no child process inherits it
+	return { kind: "provider", ...spec, apiKey } as ModelChoice;
+}
+
+const MODES: readonly PermissionMode[] = ["default", "accept-edits", "plan", "full-access"];
+
+function modeFromEnv(): PermissionMode {
+	const raw = process.env["KISO_DESKTOP_MODE"];
+	if (raw === undefined || raw === "") return "default";
+	const mode = MODES.find((m) => m === raw);
+	if (mode === undefined) throw new Error(`KISO_DESKTOP_MODE must be one of ${MODES.join(", ")}`);
+	return mode;
 }
 
 export async function startFromEnv(): Promise<Host> {
@@ -65,7 +77,8 @@ export async function startFromEnv(): Promise<Host> {
 		dataDir,
 		workspace: need("KISO_DESKTOP_WORKSPACE"),
 		model: await modelFromEnv(dataDir),
-		allowAll: process.env["KISO_DESKTOP_ALLOW_ALL"] === "1",
+		mode: modeFromEnv(),
+		secretEnvNames: ["KISO_DESKTOP_API_KEY"],
 		exposeThinking: process.env["KISO_DESKTOP_THINKING"] !== "0",
 		...(process.env["KISO_DESKTOP_PORT"] !== undefined ? { port: Number(process.env["KISO_DESKTOP_PORT"]) } : {}),
 		...(process.env["KISO_DESKTOP_TOKEN"] !== undefined ? { token: process.env["KISO_DESKTOP_TOKEN"] } : {}),

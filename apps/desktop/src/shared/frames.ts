@@ -33,6 +33,13 @@ export interface ToolOutputFrame {
 	readonly truncated: boolean;
 }
 
+/** `event: at` — beside every wire event except the two delta types: when
+ *  it happened (ms since the epoch). The wire carries no timestamps. */
+export interface AtFrame {
+	readonly seq: number;
+	readonly ts: number;
+}
+
 /** One background task as a card or the rail draws it. */
 export interface TaskRow {
 	readonly id: string;

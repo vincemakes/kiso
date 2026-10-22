@@ -17,7 +17,7 @@ const out = (cls: string, text: string): void => {
 	line.className = cls;
 	line.textContent = `${text}\n`;
 	log.append(line);
-	};
+};
 
 const client = createClient({ baseUrl: `${location.origin}/v1/sessions`, headers: () => ({ authorization: `Bearer ${token}` }) });
 const s = client.session(session);
@@ -29,20 +29,25 @@ interface Probe {
 const probe: Probe = { events: [], frames: [], done: false };
 (window as unknown as { __kiso: Probe }).__kiso = probe; // read by the spike through the debugging port
 
-async function run(input: string): Promise<void> {
-	probe.done = false;
-	for await (const ev of s.runStream(input)) {
+// One long-lived stream for the whole session; a run is a POST. When the
+// host restarts the client reconnects with Last-Event-ID by itself.
+async function watch(): Promise<void> {
+	for await (const ev of s.events({ onReconnect: (n) => out("wire", `-- reconnecting (${n})`) })) {
 		if (ev.kind === "event") {
 			probe.events.push(ev.event);
 			const e = ev.event as WireEvent & { text?: string; name?: string };
 			out("wire", `${e.seq} ${e.type}${e.text !== undefined ? ` ${JSON.stringify(e.text)}` : ""}${e.name !== undefined ? ` ${e.name}` : ""}`);
+			if (e.type === "terminal") probe.done = true;
 		} else if (ev.kind === "frame") {
 			probe.frames.push({ event: ev.event, data: ev.data });
 			out("frame", `frame ${ev.event} ${JSON.stringify(ev.data).slice(0, 160)}`);
 		}
 	}
-	probe.done = true;
-	out("wire", "-- stream ended");
+}
+
+async function run(input: string): Promise<void> {
+	probe.done = false;
+	await s.run(input);
 }
 
 document.getElementById("f")!.addEventListener("submit", (e) => {
@@ -51,4 +56,5 @@ document.getElementById("f")!.addEventListener("submit", (e) => {
 	void run(box.value);
 	box.value = "";
 });
-if (auto !== null && token !== null) void run(auto);
+void watch();
+if (auto !== null && token !== "") void run(auto);
