@@ -8,7 +8,7 @@
   <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square">
 </p>
 
-<p align="center"><b>v0.51.0</b> · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English</a></p>
+<p align="center"><b>v0.51.1</b> · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.md">English</a></p>
 
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/features-zh-dark.png"><img src="assets/readme/features-zh-light.png" width="830" alt="内置，不是外挂：先问清再动手；子代理并行；后台任务；审批模式；崩溃后接着做；随你扩展。"></picture></p>
 
