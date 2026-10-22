@@ -18,6 +18,8 @@ import type { ModelChoice } from "./agent.js";
  *   KISO_DESKTOP_SANITIZER   "default" | "desktop"
  *   KISO_DESKTOP_KEEPALIVE   keepalive period in ms
  *   KISO_DESKTOP_MIN_FG_MS   the shell's least foreground wait (0 keeps the model's value)
+ *   KISO_DESKTOP_PORT        a fixed port, and KISO_DESKTOP_TOKEN a fixed token — the
+ *                            crash script restarts the host where a live client expects it
  *
  * It prints one line, `READY {json}`, once it listens.
  */
@@ -65,6 +67,8 @@ export async function startFromEnv(): Promise<Host> {
 		workspace: need("KISO_DESKTOP_WORKSPACE"),
 		model: await modelFromEnv(dataDir),
 		allowAll: process.env["KISO_DESKTOP_ALLOW_ALL"] === "1",
+		...(process.env["KISO_DESKTOP_PORT"] !== undefined ? { port: Number(process.env["KISO_DESKTOP_PORT"]) } : {}),
+		...(process.env["KISO_DESKTOP_TOKEN"] !== undefined ? { token: process.env["KISO_DESKTOP_TOKEN"] } : {}),
 		sanitizer: process.env["KISO_DESKTOP_SANITIZER"] === "default" ? "default" : "desktop",
 		...(Number.isFinite(keepalive) && keepalive > 0 ? { keepaliveMs: keepalive } : {}),
 		...(process.env["KISO_DESKTOP_MIN_FG_MS"] !== undefined && Number.isFinite(minFg) ? { toolLimits: { minForegroundMs: minFg } } : {}),
