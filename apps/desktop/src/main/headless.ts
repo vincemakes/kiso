@@ -54,8 +54,8 @@ async function modelFromEnv(dataDir: string): Promise<ModelChoice> {
 		const skip = skipFor === undefined || skipFor === "" ? 0 : fauxSkip(dataDir, skipFor);
 		return { kind: "adapter", adapter: createFauxProvider(script.slice(skip)), model: "faux", route: "adapter" };
 	}
-	const spec = JSON.parse(need("KISO_DESKTOP_PROVIDER")) as { provider: "anthropic" | "openai-compat" | "openai-responses"; model: string; baseUrl?: string };
-	return { kind: "provider", ...spec, apiKey: need("KISO_DESKTOP_API_KEY") };
+	const spec = JSON.parse(need("KISO_DESKTOP_PROVIDER")) as { provider: "anthropic" | "openai-compat" | "openai-responses"; model: string; baseUrl?: string; reasoning?: { thinking: string; effort: string } };
+	return { kind: "provider", ...spec, apiKey: need("KISO_DESKTOP_API_KEY") } as ModelChoice;
 }
 
 export async function startFromEnv(): Promise<Host> {

@@ -3,7 +3,6 @@
 // Prints the client's view of every event and frame.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readFileTool } from "@vincemakes/kiso-tools-node";
 import { launch, clientFor, scratch, transcript } from "./lib.mjs";
 
 const out = transcript(process.argv[2] === "default" ? "s6-default-sanitizer" : "s23-stream");
@@ -16,9 +15,6 @@ const longOld = "const retries = 3;\n".repeat(30);
 const longNew = "const retries = 5;\n".repeat(30);
 writeFileSync(join(workspace, "long.js"), longOld);
 
-// the revision token an edit must cite: what a read of the file reports
-const read = await readFileTool({ workspaceRoot: workspace }).execute({ path: "long.js" }, { signal: new AbortController().signal, sessionId: "rev" });
-const rev = /\[rev:([0-9a-f]+)\]/.exec(typeof read.content === "string" ? read.content : "")?.[1];
 const think = (t) => ({ type: "thinking", text: t });
 const script = [
 	{
@@ -32,14 +28,15 @@ const script = [
 			{ type: "text_delta", text: "Reading, editing, then checking." },
 			{ type: "text_end" },
 			{ type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "greeting.txt" } },
+			{ type: "tool_call_end", callId: "c0", name: "read_file", input: { path: "long.js" } },
 			{ type: "usage", inputTokens: 1000, outputTokens: 50, cacheRead: 0, cacheWrite: null, known: true },
 			{ type: "stop", reason: "tool_use" },
 		],
 	},
 	{
 		events: [
-			{ type: "tool_call_end", callId: "c2", name: "edit_file", input: { path: "long.js", edits: [{ oldText: longOld, newText: longNew }], expectedRevision: rev } },
-			{ type: "tool_call_end", callId: "c4", name: "write_file", input: { path: "notes.md", content: "# Notes\n".repeat(60), expectedRevision: "absent" } },
+			{ type: "tool_call_end", callId: "c2", name: "edit_file", input: { path: "long.js", edits: [{ oldText: longOld, newText: longNew }] } },
+			{ type: "tool_call_end", callId: "c4", name: "write_file", input: { path: "notes.md", content: "# Notes\n".repeat(60) } },
 			{ type: "tool_call_end", callId: "c3", name: "shell", input: { command: "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do echo line $i; done" } },
 			{ type: "usage", inputTokens: 1600, outputTokens: 80, cacheRead: 1000, cacheWrite: null, known: true },
 			{ type: "stop", reason: "tool_use" },

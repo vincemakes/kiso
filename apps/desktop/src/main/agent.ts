@@ -1,6 +1,7 @@
 import { Agent, createAgent, type AgentDefinition, type PermissionPolicy, type SessionStore } from "@vincemakes/kiso-runtime";
 import type { Adapter } from "@vincemakes/kiso-core";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
+import { observedRevisionFrom } from "./observed-revision.js";
 import type { TaskHub } from "./tasks.js";
 
 /**
@@ -14,7 +15,7 @@ import type { TaskHub } from "./tasks.js";
 
 export type ModelChoice =
 	| { readonly kind: "adapter"; readonly adapter: Adapter; readonly model: string; readonly route: string }
-	| { readonly kind: "provider"; readonly provider: "anthropic" | "openai-compat" | "openai-responses"; readonly model: string; readonly baseUrl?: string; readonly apiKey: string };
+	| { readonly kind: "provider"; readonly provider: "anthropic" | "openai-compat" | "openai-responses"; readonly model: string; readonly baseUrl?: string; readonly apiKey: string; readonly reasoning?: AgentDefinition["reasoning"] };
 
 export interface DesktopAgentOptions {
 	readonly store: SessionStore;
@@ -68,11 +69,11 @@ export function createDesktopAgent(options: DesktopAgentOptions, policy: Permiss
 		store,
 		workspace,
 		systemPrompt: SYSTEM_PROMPT,
-		tools: [...createCodingTools({ workspaceRoot: workspace, excludeRoots: [], tasks: options.tasks.shellTasks, ...(options.toolLimits !== undefined ? { limits: options.toolLimits } : {}) })],
+		tools: [...createCodingTools({ workspaceRoot: workspace, excludeRoots: [], tasks: options.tasks.shellTasks, observedRevision: observedRevisionFrom(store, workspace), ...(options.toolLimits !== undefined ? { limits: options.toolLimits } : {}) })],
 		permissionPolicy: policy,
 		...(model.kind === "adapter"
 			? { adapter: model.adapter }
-			: { provider: model.provider, apiKey: model.apiKey, ...(model.baseUrl !== undefined ? { baseUrl: model.baseUrl } : {}) }),
+			: { provider: model.provider, apiKey: model.apiKey, ...(model.baseUrl !== undefined ? { baseUrl: model.baseUrl } : {}), ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}) }),
 	};
 	return options.onSession === undefined ? createAgent(definition) : new DesktopAgent(definition, options);
 }
