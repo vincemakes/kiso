@@ -16,6 +16,9 @@
 		}
 	},
 	"include": [
-		"src"
+		"src/main",
+		"src/shared",
+		"src/renderer/state",
+		"src/renderer/i18n"
 	]
 }

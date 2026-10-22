@@ -1,0 +1,32 @@
+/** The interface's strings. English only in v1; a locale is another file of this shape. */
+export const en = {
+	working: "Working",
+	worked: "Worked for {time}",
+	workedSteps: "Worked for {time} · {n} steps",
+	stepsOne: "1 step",
+	thinking: "Thinking",
+	thought: "Thought for {time}",
+	moved: "moved to background",
+	taskRunning: "running",
+	allow: "Allow",
+	deny: "Deny",
+	askTitle: "Allow this?",
+	askWrite: "Allow writing {path}?",
+	askEdit: "Allow editing {path}?",
+	askRun: "Allow running this command?",
+	askOther: "Allow {name}?",
+	approved: "Allowed",
+	denied: "Denied",
+	more: "+{n} lines",
+	inputPlaceholder: "Ask kiso to do something…",
+	inputRunning: "Add a line, or press Esc to stop…",
+	send: "Send",
+	stop: "Stop",
+	footer: "{time} · {fresh} in · {output} out · {cache}% cache",
+	footerNoCache: "{time} · {fresh} in · {output} out",
+	verb: { read_file: "Read", list_dir: "List", search_text: "Search", write_file: "Write", edit_file: "Edit", shell: "Run", task_stop: "Stop task" } as Readonly<Record<string, string>>,
+	failed: "failed",
+	denied_step: "not allowed",
+} as const;
+
+export type Strings = typeof en;
