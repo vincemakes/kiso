@@ -21,8 +21,9 @@
 		"@vincemakes/kiso-tools-node": "0.51.1"
 	},
 	"devDependencies": {
-		"@vincemakes/kiso-evals": "0.51.1",
 		"@types/node": "^26.1.2",
+		"@vincemakes/kiso-evals": "0.51.1",
+		"electron": "44.9.3",
 		"typescript": "^5.7.2"
 	},
 	"engines": {
