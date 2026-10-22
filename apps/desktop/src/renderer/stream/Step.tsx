@@ -29,8 +29,9 @@ export function outputLines(step: StepItem): { text: string; mark: "" | "a" | "d
 	return (step.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l)).map((text) => ({ text, mark: "" as const }));
 }
 
-export function Step({ step, task }: { readonly step: StepItem; readonly task: TaskRow | undefined }): ReactNode {
-	const running = step.status === "running" || step.status === "calling" || step.status === "waiting";
+/** `frozen`: the run was cut off with the host, so nothing here is moving. */
+export function Step({ step, task, frozen = false }: { readonly step: StepItem; readonly task: TaskRow | undefined; readonly frozen?: boolean }): ReactNode {
+	const running = !frozen && (step.status === "running" || step.status === "calling" || step.status === "waiting");
 	const now = useNow(running || (task !== undefined && task.endedAt === null));
 	const began = step.startedAt ?? now;
 	const ms = step.endedAt !== null && step.startedAt !== null ? step.endedAt - step.startedAt : now - began;

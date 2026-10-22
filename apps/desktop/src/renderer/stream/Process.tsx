@@ -60,7 +60,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 										</div>
 									);
 								case "step":
-									return <Step key={item.id} step={item} task={tasks.find((r) => r.id === item.taskId)} />;
+									return <Step key={item.id} step={item} task={tasks.find((r) => r.id === item.taskId)} frozen={interrupted} />;
 								case "ask":
 									return <Approval key={item.id} ask={item} onAnswer={onAnswer} />;
 								case "notice":
