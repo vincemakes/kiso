@@ -24,7 +24,9 @@ export interface TaskHub {
 }
 
 export function createTaskHub(storeRoot: string): TaskHub {
-	const backend = processTaskBackend();
+	// the runner is started with process.execPath, which inside Electron is the Electron binary: told to run as plain node it
+	// is not an application (no Dock icon, and it starts from a utility process); the command it runs does not inherit this
+	const backend = processTaskBackend(process.versions.electron === undefined ? {} : { runnerEnv: { ELECTRON_RUN_AS_NODE: "1" } });
 	const managers = new Map<string, TaskManager>();
 	const managerFor = (sessionId: string): TaskManager => {
 		let manager = managers.get(sessionId);

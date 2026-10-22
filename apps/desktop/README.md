@@ -24,6 +24,6 @@ host through `@vincemakes/kiso-client`. A host crash does not take the window wi
 S1 takes its model from the environment (`KISO_DESKTOP_DATA`, `KISO_DESKTOP_WORKSPACE`, `KISO_DESKTOP_PROVIDER`
 with `KISO_DESKTOP_API_KEY`, or `KISO_DESKTOP_FAUX` for a scripted model); see `src/main/env.ts`. Config and
 credentials shared with the terminal arrive in S2. The permission tier is process-wide (see `DEPS.md`).
-`background: true` commands need the task runner, which fails under Electron until `runnerEnv` is in tools-node.
+`background: true` commands run in the task runner, which the host starts as a plain node process under Electron (`runnerEnv`).
 
 Plans, mocks and screenshots live outside this repository.
