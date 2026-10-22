@@ -1,7 +1,9 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { Composer } from "./stream/Composer.js";
 import { Turn } from "./stream/Turn.js";
+import { isInterrupted, isLive } from "./state/model.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
+import { ResumeCard, VerdictPanel } from "./stream/Interrupt.js";
 
 // opened once, when the page loads: the address fragment can be read only once
 const launch = launchParams();
@@ -14,8 +16,10 @@ let autoSent = false;
 export function App(): ReactNode {
 	const version = useSyncExternalStore(session.subscribe, session.version);
 	const { turns, tasks } = session.state;
-	const last = turns.at(-1);
-	const running = last?.phase === "running";
+	const running = isLive(session.state);
+	const interrupted = isInterrupted(session.state);
+	const uncertain = (session.state.snapshot?.uncertain.length ?? 0) > 0;
+	const message = session.message();
 	// stick to the bottom while the person is at the bottom
 	const scroller = useRef<HTMLDivElement>(null);
 	const pinned = useRef(true);
@@ -47,10 +51,16 @@ export function App(): ReactNode {
 						</div>
 					) : null}
 					{turns.map((turn, i) => (
-						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} onAnswer={(id, allow) => void session.approve(id, allow)} />
+						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={(id, allow) => void session.approve(id, allow)} />
 					))}
+					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}
 				</div>
 			</div>
+			{message !== null ? (
+				<div className="toast" data-kind="message">
+					{message}
+				</div>
+			) : null}
 			<Composer running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
 		</>
 	);

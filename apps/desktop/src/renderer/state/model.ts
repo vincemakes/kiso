@@ -1,4 +1,4 @@
-import type { WireEvent } from "@vincemakes/kiso-protocol";
+import type { SessionState, WireEvent } from "@vincemakes/kiso-protocol";
 import type { AtFrame, TaskRow, TasksFrame, ToolOutputFrame, UsageFrame } from "../../shared/frames.js";
 import { ThinkingPager } from "../../shared/thinking.js";
 
@@ -68,7 +68,15 @@ export interface Steer {
 	readonly text: string;
 }
 
-export type Item = Thinking | Text | Step | Ask | Steer;
+/** A runtime notice the model was given (a task ended): drawn as a quiet line, never as the person's. */
+export interface Notice {
+	readonly kind: "notice";
+	readonly id: string;
+	readonly seq: number;
+	readonly text: string;
+}
+
+export type Item = Thinking | Text | Step | Ask | Steer | Notice;
 
 export interface Footer {
 	readonly fresh: number | null;
@@ -97,17 +105,29 @@ export interface State {
 	lastAt: number | null;
 	/** the event the next `at` frame belongs to */
 	last: { readonly seq: number; readonly type: string; readonly itemId: string | null } | null;
+	/** what the host says about the session: an open run, uncertain executions, whether a run is live */
+	snapshot: SessionState | null;
 	/** a bumped counter the view reads to know something changed */
 	version: number;
 }
 
-export type Input = { readonly kind: "event"; readonly event: WireEvent } | { readonly kind: "frame"; readonly name: string; readonly data: unknown };
+export type Input =
+	| { readonly kind: "event"; readonly event: WireEvent }
+	| { readonly kind: "frame"; readonly name: string; readonly data: unknown }
+	| { readonly kind: "snapshot"; readonly state: SessionState };
 
-export const initialState = (): State => ({ turns: [], tasks: [], lastAt: null, last: null, version: 0 });
+export const initialState = (): State => ({ turns: [], tasks: [], lastAt: null, last: null, snapshot: null, version: 0 });
 
 const pagers = new WeakMap<Thinking, ThinkingPager>();
 
 const currentTurn = (s: State): Turn | undefined => s.turns.at(-1);
+
+/** The line a runtime notice reads as; a task notice becomes "Task t1 exited". */
+export function noticeText(raw: string): string {
+	const task = /<kiso-task id="([^"]+)" status="([^"]+)"(?: code="(-?\d+)")?/.exec(raw);
+	if (task !== null) return `Task ${task[1]} ${task[2]}${task[3] !== undefined && task[3] !== "0" ? ` (exit ${task[3]})` : ""}`;
+	return raw.replace(/<[^>]*>/g, "").trim().split("\n")[0]!.slice(0, 120);
+}
 
 /** The "moved to the background" sentence the shell's result carries. */
 const BACKGROUND = /\bbackground task (t\d+)\b/;
@@ -139,6 +159,10 @@ function stepOf(turn: Turn | undefined, callId: string): Step | undefined {
 /** Apply one input; mutates and returns the state with a new version. */
 export function reduce(s: State, input: Input): State {
 	s.version += 1;
+	if (input.kind === "snapshot") {
+		s.snapshot = input.state;
+		return s;
+	}
 	if (input.kind === "frame") {
 		frame(s, input.name, input.data);
 		return s;
@@ -153,7 +177,15 @@ export function reduce(s: State, input: Input): State {
 	switch (e.type) {
 		case "user_input": {
 			const text = contentText(e.content);
-			if ((e as { source?: string }).source === "system") return s; // a runtime notice, not the person
+			if ((e as { source?: string }).source === "system") {
+				// a runtime notice, not the person: a quiet line inside a live run, nothing otherwise
+				if (turn !== undefined && turn.phase === "running") {
+					const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, text: noticeText(text) };
+					turn.items.push(item);
+					note(item);
+				}
+				return s;
+			}
 			if (turn !== undefined && turn.phase === "running") {
 				const item: Steer = { kind: "steer", id: `u${e.seq}`, seq: e.seq, text };
 				turn.items.push(item);
@@ -326,3 +358,11 @@ export function split(turn: Turn): { process: Item[]; answer: Text | null; openA
 /** The process region is folded when the run has ended, not before: a
  *  streaming answer does not fold it. */
 export const folded = (turn: Turn, userChoice: boolean | undefined): boolean => userChoice ?? turn.phase === "ended";
+
+/** A run is live when the host says so; a turn that never got its terminal after a restart is interrupted. */
+export const isLive = (s: State): boolean => {
+	const last = s.turns.at(-1);
+	return last?.phase === "running" && (s.snapshot === null || s.snapshot.running);
+};
+
+export const isInterrupted = (s: State): boolean => s.turns.at(-1)?.phase === "running" && s.snapshot !== null && !s.snapshot.running && s.snapshot.openRun !== null;

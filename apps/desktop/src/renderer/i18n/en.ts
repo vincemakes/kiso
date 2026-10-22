@@ -25,6 +25,12 @@ export const en = {
 	footer: "{time} · {fresh} in · {output} out · {cache}% cache",
 	footerNoCache: "{time} · {fresh} in · {output} out",
 	verb: { read_file: "Read", list_dir: "List", search_text: "Search", write_file: "Write", edit_file: "Edit", shell: "Run", task_stop: "Stop task" } as Readonly<Record<string, string>>,
+	interrupted: "This run stopped before it finished.",
+	resume: "Resume",
+	verdictTitle: "kiso lost track of whether this ran when it stopped",
+	rerun: "Run it again",
+	abandon: "Skip it",
+	parked: "The run is waiting for your answer. Allow or deny it above first.",
 	failed: "failed",
 	denied_step: "not allowed",
 } as const;

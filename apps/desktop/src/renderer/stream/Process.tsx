@@ -10,6 +10,8 @@ import { Thumb, thumbOf } from "./Thumb.js";
 import { useNow } from "./useNow.js";
 
 interface Props {
+	/** the run was cut off with the host: nothing is moving, so no spinner */
+	readonly interrupted?: boolean;
 	readonly turn: Turn;
 	/** the items of the process: everything but the answer and the approvals still open */
 	readonly items: readonly Item[];
@@ -22,10 +24,10 @@ interface Props {
  * while the run is live and folds to one line when the run ends — not when
  * the answer starts. The person can open or close it at any time.
  */
-export function Process({ turn, items, tasks, onAnswer }: Props): ReactNode {
+export function Process({ turn, items, tasks, onAnswer, interrupted = false }: Props): ReactNode {
 	const [choice, setChoice] = useState<boolean | undefined>(undefined);
-	const isFolded = folded(turn, choice);
-	const live = turn.phase === "running";
+	const isFolded = folded(turn, choice) && !interrupted;
+	const live = turn.phase === "running" && !interrupted;
 	const now = useNow(live);
 	const began = turn.startedAt ?? now;
 	const ms = (turn.endedAt ?? now) - began;
@@ -61,6 +63,12 @@ export function Process({ turn, items, tasks, onAnswer }: Props): ReactNode {
 									return <Step key={item.id} step={item} task={tasks.find((r) => r.id === item.taskId)} />;
 								case "ask":
 									return <Approval key={item.id} ask={item} onAnswer={onAnswer} />;
+								case "notice":
+									return (
+										<div key={item.id} className="note" data-kind="notice">
+											{item.text}
+										</div>
+									);
 								case "steer":
 									return (
 										<div key={item.id} className="steer">
