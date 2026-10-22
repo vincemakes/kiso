@@ -11,23 +11,18 @@ import { fileURLToPath } from "node:url";
 const FAST = ["guard", "stream", "stream default", "model", "usage", "policy", "control", "tasks"];
 const FULL = [...FAST, "crash", "stream-ui", "electron", "electron main", "interrupt"];
 const log = process.env.KISO_DESKTOP_PROOF_LOG ?? join(tmpdir(), "kiso-desktop-proofs.log");
-let logging = true;
-try {
-	mkdirSync(dirname(log), { recursive: true });
-	writeFileSync(log, "");
-} catch {
-	logging = false; // no log is better than no proofs
-}
+/** Append to the log (or start it); false when it cannot be written: no log is better than no proofs. */
+const save = (text, fresh = false) => { try { mkdirSync(dirname(log), { recursive: true }); (fresh ? writeFileSync : appendFileSync)(log, text); return true; } catch { return false; } };
 const arg = process.argv[2] ?? "fast";
 const PROOFS = arg === "fast" ? FAST : arg === "full" ? FULL : FULL.filter((e) => process.argv.slice(2).includes(e.split(" ")[0]));
 let failed = 0;
+const logging = save("", true);
 for (const entry of PROOFS) {
 	const [name, ...args] = entry.split(" ");
 	const t0 = Date.now();
 	const r = spawnSync(process.execPath, [fileURLToPath(new URL(`./${name}.mjs`, import.meta.url)), ...args], { encoding: "utf8" });
-	if (logging) appendFileSync(log, `## ${entry}\n${r.stdout}${r.stderr}\n`);
-	else if (r.status !== 0) console.log(`${r.stdout}${r.stderr}`);
-	if (r.status !== 0) failed += 1;
+	if (logging) save(`## ${entry}\n${r.stdout}${r.stderr}\n`);
+	if (r.status !== 0) (failed += 1, !logging && console.log(`${r.stdout}${r.stderr}`));
 	console.log(`${r.status === 0 ? "PASS" : "FAIL"}  ${entry.padEnd(16)} ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 console.log(failed === 0 ? "all proofs pass" : `${failed} proof(s) failed (see ${logging ? log : "the output above"})`);

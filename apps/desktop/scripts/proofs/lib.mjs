@@ -101,7 +101,6 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 		child.kill("SIGTERM");
 		await new Promise((r) => child.once("exit", r));
 	};
-	/** The text of the first match, or null. */
 	const text = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.textContent ?? null`);
 	const count = (q) => evaluate(`document.querySelectorAll(${JSON.stringify(q)}).length`);
 	const click = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.click() ?? false`);
