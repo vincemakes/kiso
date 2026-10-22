@@ -1,5 +1,5 @@
 // Shared by the proofs: the headless host, the Electron app with its debugging port, and the assertions.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,6 +51,13 @@ export function launch({ data, workspace, fauxScript, env = {} }) {
 
 export const clientFor = (host) => createClient({ baseUrl: `${host.origin}/v1/sessions`, headers: () => ({ authorization: `Bearer ${host.token}` }) });
 
+/** The applications named "Electron" that this checkout's binary has registered with macOS (what the Dock lists): pid and type. */
+export const electronApps = () =>
+	execFileSync("lsappinfo", ["list"], { encoding: "utf8" })
+		.split(/^\d+\) /m)
+		.filter((b) => b.startsWith('"Electron"') && b.includes(fileURLToPath(new URL("../../../../node_modules/electron/dist/", import.meta.url))))
+		.map((b) => ({ pid: Number(/pid = (\d+)/.exec(b)?.[1]), type: /type="(\w+)"/.exec(b)?.[1] }));
+
 /** The Electron app (hidden window) on a faux script, attached to its page over the debugging port. */
 export async function launchElectron({ data, workspace, fauxScript, env = {} }) {
 	writeFileSync(join(data, "faux.json"), JSON.stringify(fauxScript));
@@ -84,7 +91,16 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, `${name}.png`), Buffer.from((await cdp("Page.captureScreenshot", { format: "png" })).data, "base64"));
 	};
-	const close = async () => (ws.close(), child.kill("SIGTERM"), await new Promise((r) => child.once("exit", r)));
+	// a proof run stays out of the Dock and the focus: whatever the binary registered must be this app, background only
+	const close = async () => {
+		const apps = electronApps();
+		const hidden = apps.every((a) => a.pid === ready.pid && a.type === "BackgroundOnly");
+		console.log(`${hidden ? "ok  " : "FAIL"} the proof run is not in the Dock (Electron applications registered: ${JSON.stringify(apps)})`);
+		if (!hidden) process.exitCode = 1;
+		ws.close();
+		child.kill("SIGTERM");
+		await new Promise((r) => child.once("exit", r));
+	};
 	/** The text of the first match, or null. */
 	const text = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.textContent ?? null`);
 	const count = (q) => evaluate(`document.querySelectorAll(${JSON.stringify(q)}).length`);

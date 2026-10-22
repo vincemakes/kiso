@@ -15,7 +15,9 @@ Each proof is a script; its exit code is the verdict. `fast` is the reducer, mar
 control and task proofs (seconds to under a minute). `full` adds the ones that kill the host with `kill -9`
 (headless, and the utility process under Electron) and the Electron window proofs. Rule: a change that only
 touches renderer styles or components needs `fast`; a change to `src/main`, `src/shared`, the state reducer,
-the transport or recovery needs `full`.
+the transport or recovery needs `full`. `proofs:full` shows nothing in the Dock: the Electron apps it starts run
+with `KISO_DESKTOP_PROOF=1`, which makes them background-only on macOS (no icon, no bounce, no focus, no Cmd-Tab
+entry), and the proofs assert it.
 
 How it fits: the Electron main process starts the host in a utility process (session service, loopback
 HTTP + SSE on 127.0.0.1, per-launch token) and opens one window on the host's own page. The page talks to the

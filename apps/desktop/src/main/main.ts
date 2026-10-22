@@ -15,8 +15,12 @@ import type { Host } from "./host.js";
  *   KISO_DESKTOP_DEBUG_PORT=<port>  open the remote debugging port
  *   KISO_DESKTOP_AUTORUN=<text>     send this input when the page loads
  *   KISO_DESKTOP_SESSION=<id>       the session the page drives
- *   KISO_DESKTOP_PROOF=1            print the host pid and token on READY (the proof scripts read them)
+ *   KISO_DESKTOP_PROOF=1            a proof run: print the host pid and token on READY, and stay out of the Dock and the focus
  */
+
+// A proof run is not an application the person should see: no Dock icon, no bouncing, no focus, no Cmd-Tab entry.
+// (macOS; the window is also created hidden. Normal use is unaffected.)
+if (process.env["KISO_DESKTOP_PROOF"] === "1" && process.platform === "darwin") app.setActivationPolicy("prohibited");
 
 const debugPort = process.env["KISO_DESKTOP_DEBUG_PORT"];
 if (debugPort !== undefined) app.commandLine.appendSwitch("remote-debugging-port", debugPort);
