@@ -6,8 +6,9 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
+const root = fileURLToPath(new URL("../..", import.meta.url));
 const repo = resolve(root, "../..");
+const DESKTOP = /(\bapps\/desktop\b|@vincemakes\/kiso-desktop)/;
 
 /** file (relative to apps/desktop) → the internal specifiers it may import. */
 const INTERNAL_ALLOWED = {
@@ -38,6 +39,7 @@ const walk = (dir) => {
 	}
 };
 for (const d of ["src", "scripts"]) walk(join(root, d));
+const gates = "scripts/gates/imports.mjs";
 
 const problems = [];
 const used = new Map();
@@ -61,6 +63,12 @@ for (const file of files) {
 		else if (subpath === "./internal" && !(INTERNAL_ALLOWED[rel] ?? []).includes(spec)) problems.push(`${rel}: ${spec} is an internal door and this file is not allowed to use it`);
 		used.set(spec, (used.get(spec) ?? 0) + 1);
 	}
+}
+// the other half: nothing outside apps/desktop imports from it
+import { execFileSync } from "node:child_process";
+for (const f of execFileSync("git", ["ls-files", "--", "packages", "apps/cli", "extensions"], { cwd: repo, encoding: "utf8" }).split("\n")) {
+	if (!/\.(ts|tsx|js|mjs)$/.test(f) || f.includes("/dist/")) continue;
+	for (const m of readFileSync(join(repo, f), "utf8").matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) if (DESKTOP.test(m[1])) problems.push(`${f}: imports from the desktop app (${m[1]}); the dependency runs one way`);
 }
 for (const [spec, n] of [...used].sort()) console.log(`${String(n).padStart(3)}  ${spec}`);
 if (problems.length > 0) {

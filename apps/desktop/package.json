@@ -8,9 +8,12 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json && vite build",
 		"typecheck": "tsc -p tsconfig.json",
-		"check": "npm run build && npm run typecheck && node scripts/check-imports.mjs",
+		"check": "npm run build && npm run typecheck && npm run gates && npm run proofs:fast",
 		"start": "electron .",
-		"proofs": "node scripts/proofs/all.mjs"
+		"gates": "node scripts/gates/size.mjs && node scripts/gates/deps.mjs && node scripts/gates/imports.mjs && node scripts/gates/names.mjs && node ../../scripts/check-cjk.mjs",
+		"proofs:fast": "node scripts/proofs/all.mjs fast",
+		"proofs:full": "node scripts/proofs/all.mjs full",
+		"check:full": "npm run build && npm run typecheck && npm run gates && npm run proofs:full"
 	},
 	"dependencies": {
 		"@vincemakes/kiso-client": "0.51.1",
