@@ -32,7 +32,9 @@ const reader = (async () => {
 		} else if (ev.kind === "frame") out(`${stamp()}ms FRAME ${ev.event} ${JSON.stringify(ev.data).slice(0, 300)}`);
 		else if (ev.kind === "event") {
 			const { seq, type, ...rest } = ev.event;
-			if (!["tool_execution_started", "tool_execution_succeeded"].includes(type)) out(`${stamp()}ms ${String(seq).padStart(3)} ${type} ${JSON.stringify(rest)}`.slice(0, 260));
+			// a task notice arrives as a user_input whose source says it is not the person
+			if (type === "user_input") out(`${stamp()}ms ${String(seq).padStart(3)} user_input source=${rest.source ?? "(none)"} ${JSON.stringify(rest.content).slice(0, 90)}`);
+			else if (!["tool_execution_started", "tool_execution_succeeded"].includes(type)) out(`${stamp()}ms ${String(seq).padStart(3)} ${type} ${JSON.stringify(rest)}`.slice(0, 260));
 		}
 	}
 })();
