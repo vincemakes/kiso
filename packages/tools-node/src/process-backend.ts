@@ -21,6 +21,11 @@ export interface ProcessTaskBackendOptions {
 	readonly runnerPath?: string;
 	/** How long the runner has to record itself. Default 10 s. */
 	readonly startTimeoutMs?: number;
+	/** Environment for the RUNNER process only. The command the runner starts
+	 *  does not inherit it. A host whose `process.execPath` is not node (an
+	 *  Electron app: `ELECTRON_RUN_AS_NODE=1` makes the runner a plain node
+	 *  process and keeps it out of the Dock) says so here. */
+	readonly runnerEnv?: Readonly<Record<string, string>>;
 }
 
 export interface ProcessTaskBackend {
@@ -35,7 +40,12 @@ export function processTaskBackend(options: ProcessTaskBackendOptions = {}): Pro
 		async spawn({ dir, env }) {
 			const clean: Record<string, string> = {};
 			for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
-			const child = spawn(process.execPath, [runnerPath, dir], { detached: true, windowsHide: true, stdio: "ignore", env: clean });
+			// the runner hands its own environment to the command; the names it
+			// was given for itself are listed so it can take them out again
+			const own = options.runnerEnv ?? {};
+			const ownNames = Object.keys(own);
+			const runnerEnv = ownNames.length === 0 ? clean : { ...clean, ...own, KISO_TASK_RUNNER_OWN_ENV: ownNames.join(",") };
+			const child = spawn(process.execPath, [runnerPath, dir], { detached: true, windowsHide: true, stdio: "ignore", env: runnerEnv });
 			child.unref();
 			const journal = join(dir, "journal.jsonl");
 			const deadline = Date.now() + (options.startTimeoutMs ?? 10_000);
