@@ -7,7 +7,7 @@ the manifest is review-signed and pinned by the surface gate
 (`scripts/api-surface.mjs --check`), so the table below cannot silently
 drift.
 
-## 1. The root manifest (44 names, pinned by the gate)
+## 1. The root manifest (49 names, pinned by the gate)
 
 The curated three-column manifest. `keep` = the SDK surface; `alias` =
 deprecated old names, additive until the next major; `internal` = the
@@ -28,6 +28,7 @@ machinery the SDK deliberately does not expose (see §3).
 | `CheckpointSection`, `DEFAULT_CHECKPOINT_SECTIONS` | keep | 0.51.0: the sections of a checkpoint, as data (see "Checkpoint sections" below) |
 | `Event` | keep | the durable event union (§2) |
 | `disposeExtensions`, `loadExtensions`, `loadProjectExtensions`, `KisoExtension` | keep | the extension contract |
+| `TaskManager`, `TaskInfo`, `TaskState`, `TaskListener`, `TaskTransition` | keep | ADR-0058: the per-session task manager and its types, for a host that wires background tasks (the shell's `ShellTasks` is satisfied by it) |
 | `executionLedger`, `executionForCallId`, `ExecutionRecord`, `ExecutionStatus` | keep | the durable execution ledger |
 | `kisoHome`, `projectArtifacts`, `recordTrust`, `trustFor`, `TrustRecord`, `TrustDecision`, `ProjectArtifact`, `ProjectArtifacts` | keep | trust decisions, durable |
 | `PermissionPolicy`, `PermissionRule` | keep | the permission gate config |
