@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-desktop",
-	"version": "0.51.1",
+	"version": "0.1.0",
 	"private": true,
 	"description": "kiso desktop (spike) \u2014 an Electron shell around the hosted-session service.",
 	"type": "module",
