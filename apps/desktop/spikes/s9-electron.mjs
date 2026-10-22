@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scratch, transcript, sleep } from "./lib.mjs";
 
-const out = transcript("s9-electron");
+const variant = process.argv[2] ?? "stream";
+const out = transcript(variant === "tasks" ? "s9-electron-tasks" : "s9-electron");
 const require = createRequire(import.meta.url);
 const electronCli = require.resolve("electron/cli.js");
 const appDir = fileURLToPath(new URL("..", import.meta.url));
@@ -20,7 +21,12 @@ const script = [
 	{ events: [think("Plan: read the file."), think(" Then answer.\n\n"), think("Second paragraph of the plan."), { type: "text_delta", text: "Looking." }, { type: "tool_call_end", callId: "e1", name: "list_dir", input: {} }, { type: "usage", inputTokens: 900, outputTokens: 40, cacheRead: 0, cacheWrite: null, known: true }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "The workspace is empty." }, { type: "usage", inputTokens: 1000, outputTokens: 20, cacheRead: 800, cacheWrite: null, known: true }, { type: "stop", reason: "end_turn" }] },
 ];
-writeFileSync(join(data, "faux.json"), JSON.stringify(script));
+// "tasks": the task backend spawns process.execPath — inside Electron that is the Electron binary
+const tasksScript = [
+	{ events: [{ type: "tool_call_end", callId: "b1", name: "shell", input: { command: "sleep 3; echo task-done", background: true } }, { type: "stop", reason: "tool_use" }] },
+	{ events: [{ type: "text_delta", text: "started" }, { type: "stop", reason: "end_turn" }] },
+];
+writeFileSync(join(data, "faux.json"), JSON.stringify(variant === "tasks" ? tasksScript : script));
 const debugPort = String(9300 + Math.floor(Math.random() * 600));
 
 const child = spawn(process.execPath, [electronCli, appDir], {
@@ -79,7 +85,12 @@ out(`CDP page state: ${state}`);
 const text = await evaluate("document.getElementById('log').innerText.split('\\n').slice(0, 14).join('\\n')");
 out("page text (first lines):");
 out(text);
-const ok = JSON.parse(state).done === true && JSON.parse(state).types.includes("terminal");
+const parsed = JSON.parse(state);
+if (variant === "tasks") {
+	await sleep(4500);
+	out(`page frames after 4.5 s: ${await evaluate("JSON.stringify(window.__kiso.frames.filter(f => f.event === 'tool_output' || f.event === 'tasks').slice(-3))")}`);
+}
+const ok = parsed.done === true && parsed.types.includes("terminal");
 out(`RESULT electron renderer received a streamed run: ${ok ? "PASS" : "FAIL"}`);
 ws.close();
 child.kill("SIGTERM");
