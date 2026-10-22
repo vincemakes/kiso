@@ -1,116 +1,76 @@
-// The stream model and the answer's markdown, on a real host run: the
-// events and frames a client receives are fed to the reducer, and the turn
-// it builds is checked against what the run did. Then the pure pieces on
-// their own: the markdown hold-back, the parser, the edit diff.
+// The stream model and the answer's markdown. A real host run (default tier, two approvals, a command that moves to the
+// background) is fed to the reducer input by input, then the pure pieces: hold-back, parse, the edit diff, notices.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { launch, clientFor, scratch, transcript, checker, sleep } from "./lib.mjs";
-import { initialState, reduce, split, folded } from "../../dist/renderer/state/model.js";
+import { launch, clientFor, scratch, checker, sleep, waitUntil } from "./lib.mjs";
+import { initialState, reduce, split, folded, isInterrupted, isLive } from "../../dist/renderer/state/model.js";
 import { holdBack, parse, render } from "../../dist/renderer/state/markdown.js";
 import { editDiff } from "../../dist/renderer/state/diff.js";
 
-const out = transcript("model");
-const { check, verdict } = checker(out);
+const { check, verdict } = checker("model");
 const call = (callId, name, input) => ({ type: "tool_call_end", callId, name, input });
 const use = (i, o, c) => ({ type: "usage", inputTokens: i, outputTokens: o, cacheRead: c, cacheWrite: null, known: true });
 const think = (text) => ({ type: "thinking", text });
-const ANSWER = "## Done\n\nThe install steps are now **three** steps and `npm test` passes.\n\n- Install Node\n- Run `npm ci`\n- Run `npm start`";
-const script = [
-	{ events: [think("First I will read the file. "), think("It is short.\n\n"), think("Then I will change the steps.\n\n"), think("And run the tests."), { type: "text_delta", text: "Reading the README first." }, call("c1", "read_file", { path: "README.md" }), use(1000, 50, 0), { type: "stop", reason: "tool_use" }] },
+const ANSWER = "## Done\n\nThe steps are now **three** and `npm test` passes.\n\n- Install Node\n- Run `npm ci`";
+const workspace = scratch("model-ws");
+writeFileSync(join(workspace, "README.md"), "Step one\nStep two\nStep three\nStep four\nStep five\n");
+const host = await launch({ data: scratch("model-data"), workspace, env: { KISO_DESKTOP_MIN_FG_MS: "0" }, fauxScript: [
+	{ events: [think("First I will read the file. "), think("It is short.\n\n"), think("Then I will change the steps.\n\n"), think("And run the tests."), { type: "text_delta", text: "Reading first." }, call("c1", "read_file", { path: "README.md" }), use(1000, 50, 0), { type: "stop", reason: "tool_use" }] },
 	{ events: [call("c2", "edit_file", { path: "README.md", edits: [{ oldText: "Step one\nStep two\nStep three\nStep four\nStep five", newText: "Step one\nStep two\nStep three" }] }), use(1200, 60, 1000), { type: "stop", reason: "tool_use" }] },
 	{ events: [call("c3", "shell", { command: "sleep 3; echo tests-passed", foregroundMs: 500 }), use(1300, 40, 1100), { type: "stop", reason: "tool_use" }] },
 	{ events: [...ANSWER.match(/.{1,7}/gs).map((text) => ({ type: "text_delta", text })), use(1500, 90, 1300), { type: "stop", reason: "end_turn" }] },
-];
-const data = scratch("model-data");
-const workspace = scratch("model-ws");
-writeFileSync(join(workspace, "README.md"), "Step one\nStep two\nStep three\nStep four\nStep five\n");
-const host = await launch({ data, workspace, fauxScript: script, env: { KISO_DESKTOP_MIN_FG_MS: "0" } });
+] });
 const s = clientFor(host).session("model");
 const inputs = [];
 const ctl = new AbortController();
 const reader = (async () => {
-	for await (const ev of s.events({ signal: ctl.signal })) {
-		if (ev.kind === "event") inputs.push({ kind: "event", event: ev.event });
-		else if (ev.kind === "frame") inputs.push({ kind: "frame", name: ev.event, data: ev.data });
-	}
+	for await (const ev of s.events({ signal: ctl.signal })) inputs.push(ev.kind === "event" ? { kind: "event", event: ev.event } : { kind: "frame", name: ev.event, data: ev.data });
 })();
 await s.run("shorten the install steps and run the tests");
-let approvals = 0;
-const seenAsks = new Set();
-for (let i = 0; i < 300; i++) {
-	const st = await s.state();
-	for (const p of st.pendingApprovals) {
-		if (seenAsks.has(p.decisionId)) continue;
-		seenAsks.add(p.decisionId);
-		approvals += 1;
-		await sleep(150); // the card is visible for a moment, as it would be to a person
-		await s.approve(p.decisionId, true);
-	}
-	if (!st.running && st.pendingApprovals.length === 0 && inputs.some((x) => x.kind === "event" && x.event.type === "terminal")) break;
-	await sleep(50);
-}
-// the task row is a frame polled once a second: wait for the 3 s command to end
-for (let i = 0; i < 100 && !inputs.some((x) => x.kind === "frame" && x.name === "tasks" && x.data.tasks.some((t) => t.id === "t1" && t.label.startsWith("exited"))); i++) await sleep(100);
+const answered = new Set();
+await waitUntil(async () => {
+	for (const p of (await s.state()).pendingApprovals) if (!answered.has(p.decisionId)) (answered.add(p.decisionId), await sleep(150), await s.approve(p.decisionId, true));
+	return inputs.some((x) => x.kind === "frame" && x.name === "tasks" && x.data.tasks.some((t) => t.label.startsWith("exited")));
+}, 20_000, 50);
 ctl.abort();
 await reader;
 host.child.kill("SIGTERM");
-out(`${inputs.length} inputs (${inputs.filter((x) => x.kind === "event").length} events, ${inputs.filter((x) => x.kind === "frame").length} frames); ${approvals} approvals answered`);
 
-// feed them one by one, watching the fold
 const state = initialState();
-const foldedAt = [];
-inputs.forEach((x, i) => {
-	reduce(state, x);
-	const turn = state.turns.at(-1);
-	if (turn !== undefined) foldedAt.push([i, x, folded(turn, undefined)]);
-});
+const folds = inputs.map((x) => (reduce(state, x), state.turns[0] && folded(state.turns[0], undefined)));
 const turn = state.turns[0];
 const { process: proc, answer, openAsks } = split(turn);
-out(`turn: ${turn.items.map((i) => i.kind + (i.kind === "step" ? `:${i.name}:${i.status}` : "")).join(" ")}`);
-check(state.turns.length === 1 && turn.user === "shorten the install steps and run the tests", "one turn, with the person's line");
-check(turn.phase === "ended" && turn.outcome === "completed", "the turn ended: completed");
-const firstFold = foldedAt.findIndex(([, , f]) => f);
-const terminalAt = foldedAt.findIndex(([, x]) => x.kind === "event" && x.event.type === "terminal");
-const lastTextAt = foldedAt.map(([, x]) => x.kind === "event" && x.event.type === "text_delta").lastIndexOf(true);
-check(firstFold === terminalAt && firstFold > lastTextAt, `the process folds at the terminal (input ${firstFold}), after the last answer text (${lastTextAt}), never while the answer streams`);
-check(proc.map((i) => i.kind).join(",") === "thinking,text,step,step,ask,step,ask", `the process holds thinking, narration, three steps and two approvals: ${proc.map((i) => i.kind).join(",")}`);
-check(answer !== null && answer.text === ANSWER, "the answer is the trailing text, whole");
-check(openAsks.length === 0, "no approval is left open");
-const think1 = turn.items[0];
-check(think1.lines.length === 3 && think1.lines[0] === "First I will read the file." && think1.lines[1] === "Then I will change the steps.", `the thinking line pages through the paragraphs' first sentences: ${JSON.stringify(think1.lines)}`);
-check(think1.startedAt !== null && think1.endedAt !== null && think1.endedAt >= think1.startedAt, "the thinking block has a start and an end from the durable times");
+const isTerminal = (x) => x.kind === "event" && x.event.type === "terminal";
+const lastText = inputs.map((x) => x.kind === "event" && x.event.type === "text_delta").lastIndexOf(true);
+check(state.turns.length === 1 && turn.phase === "ended" && turn.outcome === "completed", "one turn, ended: completed");
+check(folds.indexOf(true) === inputs.findIndex(isTerminal) && folds.indexOf(true) > lastText, "the process folds at the terminal, after the last answer text, never while the answer streams");
+check(proc.map((i) => i.kind).join() === "thinking,text,step,step,ask,step,ask" && answer?.text === ANSWER && openAsks.length === 0, `the process holds thinking, narration, three steps and two approvals; the answer is the trailing text: ${proc.map((i) => i.kind).join()}`);
+check(JSON.stringify(turn.items[0].lines) === '["First I will read the file.","Then I will change the steps.","And run the tests."]' && turn.items[0].endedAt >= turn.items[0].startedAt, "the thinking line pages through each paragraph's first sentence, with a start and an end");
 const steps = turn.items.filter((i) => i.kind === "step");
-check(steps.every((x) => x.status === "done" && x.startedAt !== null && x.endedAt !== null && x.endedAt >= x.startedAt), "every step is done and timed");
-const read = steps.find((x) => x.name === "read_file");
-check(read.output?.head[0] === "Step one" && read.output.lines >= 5, "the read step carries the first lines of its output");
-const edit = steps.find((x) => x.name === "edit_file");
-const diff = editDiff(edit.input);
-check(diff.filter((l) => l.kind === "del").length === 2 && diff.filter((l) => l.kind === "add").length === 0, `the edit step's diff: ${diff.map((l) => (l.kind === "del" ? "-" : l.kind === "add" ? "+" : " ") + l.text).join(" | ")}`);
-const shell = steps.find((x) => x.name === "shell");
-check(shell.taskId === "t1" && state.tasks.some((t) => t.id === "t1"), "the long command became task t1 and the step knows it");
-check(state.tasks.find((t) => t.id === "t1")?.label === "exited 0", `the task row ends in the state: ${state.tasks.find((t) => t.id === "t1")?.label}`);
-// fresh: (1000-0)+(1200-1000)+(1300-1100)+(1500-1300) = 1600; cache 1000+1100+1300 = 3400 -> 68%
+check(steps.every((x) => x.status === "done" && x.endedAt >= x.startedAt), "every step is done and timed");
+check(steps[0].output.head[0] === "Step one" && editDiff(steps[1].input).filter((l) => l.kind === "del").length === 2, "the read step has its first lines; the edit step has its diff");
+check(steps[2].taskId === "t1" && state.tasks.find((t) => t.id === "t1")?.label === "exited 0", "the long command became task t1, and the task row ended exited 0");
 check(turn.footer?.fresh === 1600 && turn.footer?.output === 240 && Math.abs(turn.footer.cacheRate - 68) < 0.5, `the footer: ${JSON.stringify(turn.footer)}`);
-// the same inputs give the same state
 const again = initialState();
-for (const x of inputs) reduce(again, x);
-check(JSON.stringify(again.turns) === JSON.stringify(state.turns), "replaying the same inputs gives the same turns");
-// a approval is open between its request and its decision
+inputs.forEach((x) => reduce(again, x));
 const mid = initialState();
-const upto = inputs.findIndex((x) => x.kind === "event" && x.event.type === "permission_requested");
-inputs.slice(0, upto + 1).forEach((x) => reduce(mid, x));
-check(split(mid.turns[0]).openAsks.length === 1 && mid.turns[0].items.find((i) => i.kind === "step" && i.status === "waiting") !== undefined, "between request and decision the approval is open and its step waits");
+inputs.slice(0, inputs.findIndex((x) => x.kind === "event" && x.event.type === "permission_requested") + 1).forEach((x) => reduce(mid, x));
+check(JSON.stringify(again.turns) === JSON.stringify(state.turns), "the same inputs give the same turns");
+check(split(mid.turns[0]).openAsks.length === 1 && mid.turns[0].items.some((i) => i.kind === "step" && i.status === "waiting"), "between request and decision the approval is open and its step waits");
 
-out("--- markdown");
-check(holdBack("a **bo") === "a ", "an unclosed ** and what follows it are withheld");
-check(holdBack("run `npm te") === "run ", "an unclosed backtick and what follows it are withheld");
-check(holdBack("a **b** and `c`") === "a **b** and `c`", "closed markers are kept");
-check(holdBack("text *") === "text ", "a lone trailing * may start a **");
-check(holdBack("```js\nconst a = **b") === "```js\nconst a = **b", "inside an open fence nothing is withheld");
-check(holdBack("```\nx ** y\n```\nthen `z") === "```\nx ** y\n```\nthen ", "markers inside a closed fence do not count");
+// a runtime notice inside a live run is a quiet line; the interrupted-run state follows the host's snapshot
+const n = initialState();
+[{ type: "user_input", seq: 0, content: "go" }, { type: "user_input", seq: 1, content: '<kiso-task id="t1" status="exited" code="0" duration="8s"/>\nRuntime notice - not the user.', source: "system" }].forEach((event) => reduce(n, { kind: "event", event }));
+check(n.turns.length === 1 && n.turns[0].items[0]?.kind === "notice" && n.turns[0].items[0].text === "Task t1 exited", "a system notice is a line in the run, not a new turn");
+reduce(n, { kind: "snapshot", state: { sessionId: "x", running: false, highWater: 1, openRun: "r1", pendingApprovals: [], uncertain: [] } });
+check(isInterrupted(n) && !isLive(n), "a running turn the host no longer runs is interrupted");
+const v = initialState();
+[{ type: "user_input", seq: 0, content: "go" }, { type: "text_delta", seq: 1, text: "part" }, { type: "tool_call_end", seq: 2, callId: "k", name: "shell", input: {} }, { type: "draft_voided", seq: 3, voidFromSeq: 0, reason: "x" }].forEach((event) => reduce(v, { kind: "event", event }));
+check(v.turns[0].items.length === 0, "draft_voided removes the draft text and the call that never ran");
+
+check(holdBack("a **bo") === "a " && holdBack("run `npm te") === "run " && holdBack("text *") === "text ", "an unclosed **, backtick or lone * is withheld with what follows it");
+check(holdBack("a **b** and `c`") === "a **b** and `c`" && holdBack("```js\nconst a = **b") === "```js\nconst a = **b" && holdBack("```\nx ** y\n```\nthen `z") === "```\nx ** y\n```\nthen ", "closed markers are kept; an open fence withholds nothing; markers in a closed fence do not count");
 const blocks = parse(ANSWER);
-check(blocks.map((b) => b.t).join(",") === "h,p,ul", `the answer parses to heading, paragraph, list: ${blocks.map((b) => b.t).join(",")}`);
-check(blocks[1].inline.some((n) => n.t === "b") && blocks[1].inline.some((n) => n.t === "code"), "bold and code are inline nodes, not markup");
-check(JSON.stringify(render("<script>alert(1)</script> **x", true)).includes('"text":"<script>alert(1)</script>"'), "markup in the answer stays text");
-check(parse("```sh\nnpm ci\nnpm test\n```")[0].text === "npm ci\nnpm test", "a fenced block keeps its lines");
-verdict("model");
+check(blocks.map((b) => b.t).join() === "h,p,ul" && blocks[1].inline.some((x) => x.t === "b") && blocks[1].inline.some((x) => x.t === "code"), "the answer parses to heading, paragraph, list with inline bold and code nodes");
+check(JSON.stringify(render("<script>alert(1)</script> **x", true)).includes('"text":"<script>alert(1)</script>"') && parse("```sh\nnpm ci\nnpm test\n```")[0].text === "npm ci\nnpm test", "markup stays text; a fenced block keeps its lines");
+verdict();

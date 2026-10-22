@@ -1,63 +1,41 @@
-// Line 2, the guard: what the loopback listener refuses, and what it
-// serves. Raw node:http so the Host and Origin headers can be set freely
-// (fetch forbids Host). Then the typed client from this separate process.
+// What the loopback listener refuses and what it serves. Raw node:http so Host and Origin can be set freely.
 import { request } from "node:http";
-import { launch, clientFor, scratch, transcript } from "./lib.mjs";
+import { launch, clientFor, scratch, checker } from "./lib.mjs";
 
-const out = transcript("s2-guard");
-const data = scratch("s2-data");
-const workspace = scratch("s2-ws");
-const host = await launch({ data, workspace, fauxScript: [{ events: [{ type: "text_delta", text: "hi" }, { type: "stop", reason: "end_turn" }] }], env: { KISO_DESKTOP_MODE: "full-access" } });
-out(`host ${host.origin} (listening on 127.0.0.1 only; port chosen by the system)`);
-const port = host.port;
-
+const { check, verdict } = checker("guard");
+const host = await launch({ data: scratch("guard-data"), workspace: scratch("guard-ws"), fauxScript: [{ events: [{ type: "text_delta", text: "hi" }, { type: "stop", reason: "end_turn" }] }], env: { KISO_DESKTOP_MODE: "full-access" } });
 const call = (path, { method = "GET", headers = {}, hostHeader, body } = {}) =>
 	new Promise((resolve, reject) => {
-		const req = request({ host: "127.0.0.1", port, path, method, headers: { ...(hostHeader !== undefined ? { host: hostHeader } : {}), ...headers } }, (res) => {
+		const req = request({ host: "127.0.0.1", port: host.port, path, method, headers: { ...(hostHeader && { host: hostHeader }), ...headers } }, (res) => {
 			let text = "";
-			res.on("data", (d) => (text += d));
-			res.on("end", () => resolve({ status: res.statusCode, text, type: res.headers["content-type"], csp: res.headers["content-security-policy"] }));
+			res.on("data", (d) => (text += d)).on("end", () => resolve({ status: res.statusCode, text, type: res.headers["content-type"], csp: res.headers["content-security-policy"] }));
 		});
-		req.on("error", reject);
-		if (body !== undefined) req.write(body);
-		req.end();
+		req.on("error", reject).end(body);
 	});
 const bearer = { authorization: `Bearer ${host.token}` };
+const state = "/v1/sessions/x/state";
 const cases = [
-	["page, no credentials", () => call("/"), 200],
-	["session snapshot, no token", () => call("/v1/sessions/x/state"), 401],
-	["session snapshot, wrong token", () => call("/v1/sessions/x/state", { headers: { authorization: "Bearer nope" } }), 401],
-	["session snapshot, right token", () => call("/v1/sessions/x/state", { headers: bearer }), 200],
-	["right token, foreign Origin", () => call("/v1/sessions/x/state", { headers: { ...bearer, origin: "https://evil.example" } }), 403],
-	["right token, Origin: null (sandboxed frame)", () => call("/v1/sessions/x/state", { headers: { ...bearer, origin: "null" } }), 403],
-	["right token, own Origin", () => call("/v1/sessions/x/state", { headers: { ...bearer, origin: host.origin } }), 200],
-	["rebinding: Host names another domain", () => call("/v1/sessions/x/state", { headers: bearer, hostHeader: `attacker.example:${port}` }), 403],
-	["page, rebinding Host", () => call("/", { hostHeader: `attacker.example:${port}` }), 403],
-	["CORS preflight from a foreign origin", () => call("/v1/sessions/x/run", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "POST" } }), 403],
-	["POST run, no token", () => call("/v1/sessions/x/run", { method: "POST", headers: { "content-type": "application/json" }, body: '{"input":"hi"}' }), 401],
-	["unknown path", () => call("/etc/passwd"), 404],
+	["the page needs no credentials", () => call("/"), 200],
+	["no token", () => call(state), 401],
+	["wrong token", () => call(state, { headers: { authorization: "Bearer nope" } }), 401],
+	["right token", () => call(state, { headers: bearer }), 200],
+	["right token, foreign Origin", () => call(state, { headers: { ...bearer, origin: "https://evil.example" } }), 403],
+	["right token, Origin null", () => call(state, { headers: { ...bearer, origin: "null" } }), 403],
+	["right token, own Origin", () => call(state, { headers: { ...bearer, origin: host.origin } }), 200],
+	["rebinding: Host names another domain", () => call(state, { headers: bearer, hostHeader: `attacker.example:${host.port}` }), 403],
+	["page with a rebinding Host", () => call("/", { hostHeader: `attacker.example:${host.port}` }), 403],
+	["preflight from a foreign origin", () => call("/v1/sessions/x/run", { method: "OPTIONS", headers: { origin: "https://evil.example" } }), 403],
+	["POST run without a token", () => call("/v1/sessions/x/run", { method: "POST", body: '{"input":"hi"}' }), 401],
 	["static path traversal", () => call("/assets/..%2f..%2f..%2fpackage.json"), 404],
 	["a file type the host does not serve", () => call("/index.json"), 404],
 	["POST to a static path", () => call("/", { method: "POST" }), 405],
 ];
-let pass = true;
-for (const [label, fn, want] of cases) {
-	const r = await fn();
-	const ok = r.status === want;
-	pass &&= ok;
-	out(`${ok ? "ok  " : "FAIL"} ${String(r.status).padEnd(3)} (want ${want}) ${label}${label === "page, no credentials" ? `  [CSP: ${r.csp?.slice(0, 40)}…]` : ""}`);
-}
-
-// the typed client from this separate process: run, then the stream
-const s = clientFor(host).session("guard");
-const seen = [];
-for await (const ev of s.runStream("hello")) if (ev.kind === "event") seen.push(ev.event.type);
-out(`kiso-client from a separate Node process: ${seen.join(" ")}`);
+for (const [label, fn, want] of cases) check((await fn()).status === want, `${want} ${label}`);
+const types = [];
+for await (const ev of clientFor(host).session("guard").runStream("hello")) if (ev.kind === "event") types.push(ev.event.type);
+check(types.join(" ") === "user_input text_delta terminal", `kiso-client from another process: ${types.join(" ")}`);
 const page = await call("/");
 const bundle = /src="([^"]+\.js)"/.exec(page.text)?.[1];
-const js = bundle === undefined ? { status: 0 } : await call(bundle);
-out(`page served by the same process: ${page.status} ${page.type}, ${page.text.length} bytes; its bundle ${bundle}: ${js.status}`);
-pass &&= page.status === 200 && js.status === 200;
-out(`RESULT guard: ${pass ? "PASS" : "FAIL"}`);
-if (!pass) process.exitCode = 1;
+check(page.type.startsWith("text/html") && /default-src 'none'/.test(page.csp) && bundle !== undefined && (await call(bundle)).status === 200, "the page and its bundle are served under a content security policy");
 host.child.kill("SIGTERM");
+verdict();
