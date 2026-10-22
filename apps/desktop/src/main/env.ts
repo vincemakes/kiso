@@ -87,4 +87,3 @@ export async function startFromEnv(): Promise<Host> {
 		...(process.env["KISO_DESKTOP_MIN_FG_MS"] !== undefined && Number.isFinite(minFg) ? { toolLimits: { minForegroundMs: minFg } } : {}),
 	});
 }
-
