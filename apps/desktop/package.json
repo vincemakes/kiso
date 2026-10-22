@@ -10,7 +10,7 @@
 		"typecheck": "tsc -p tsconfig.json",
 		"check": "npm run build && npm run typecheck && npm run gates && npm run proofs:fast",
 		"start": "electron .",
-		"gates": "node scripts/gates/size.mjs && node scripts/gates/deps.mjs && node scripts/gates/imports.mjs && node scripts/gates/names.mjs && node ../../scripts/check-cjk.mjs",
+		"gates": "node scripts/gates/size.mjs && node scripts/gates/deps.mjs && node scripts/gates/imports.mjs && node scripts/gates/names.mjs && node scripts/gates/paths.mjs && node ../../scripts/check-cjk.mjs",
 		"proofs:fast": "node scripts/proofs/all.mjs fast",
 		"proofs:full": "node scripts/proofs/all.mjs full",
 		"check:full": "npm run build && npm run typecheck && npm run gates && npm run proofs:full"

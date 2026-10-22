@@ -85,9 +85,9 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 	ws.onmessage = (m) => pending.get(JSON.parse(m.data).id)?.(JSON.parse(m.data));
 	const cdp = (method, params) => new Promise((resolve) => (pending.set(++id, (msg) => resolve(msg.result)), ws.send(JSON.stringify({ id, method, params }))));
 	const evaluate = async (expression) => (await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }))?.result?.value;
-	/** A PNG of the window, written outside the repository. */
+	/** A PNG of the window, written outside the repository (KISO_DESKTOP_SHOTS, else the temporary directory). */
 	const shot = async (name) => {
-		const dir = join(process.env.HOME, "kiso-worktrees", "desktop-s1-shots");
+		const dir = process.env.KISO_DESKTOP_SHOTS ?? join(tmpdir(), "kiso-desktop-shots");
 		mkdirSync(dir, { recursive: true });
 		writeFileSync(join(dir, `${name}.png`), Buffer.from((await cdp("Page.captureScreenshot", { format: "png" })).data, "base64"));
 	};
