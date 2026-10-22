@@ -151,7 +151,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 
 	const refuse = (res: ServerResponse, status: number, message: string): void => {
 		res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-		res.end(JSON.stringify({ code: status === 401 ? "forbidden" : "forbidden", message }));
+		res.end(JSON.stringify({ code: "forbidden", message }));
 	};
 	const bearerOk = (req: IncomingMessage): boolean => {
 		const header = req.headers.authorization ?? "";
@@ -162,7 +162,13 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const serveFile = (res: ServerResponse, path: string, type: string): void => {
 		try {
 			const body = readFileSync(path);
-			res.writeHead(200, { "content-type": type, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+			// the page runs its own script and talks to its own origin, nothing else
+			res.writeHead(200, {
+				"content-type": type,
+				"cache-control": "no-store",
+				"x-content-type-options": "nosniff",
+				"content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+			});
 			res.end(body);
 		} catch {
 			res.writeHead(404);
