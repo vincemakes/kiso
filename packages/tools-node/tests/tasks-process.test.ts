@@ -56,6 +56,34 @@ const journalTypes = (root: string, id: string) =>
 		.filter((l) => l !== "")
 		.map((l) => (JSON.parse(l) as { type: string }).type);
 
+describe("processTaskBackend runnerEnv — environment for the runner alone", () => {
+	it("the runner sees it and the command does not", async () => {
+		const base = realpathSync(mkdtempSync(join(tmpdir(), "kiso-tasks-")));
+		const cwd = join(base, "ws");
+		mkdirSync(cwd);
+		// the runner proves it saw the variable: a preload it is told about only
+		// through runnerEnv writes a marker when the runner process starts
+		const marker = join(base, "runner-saw");
+		const preload = join(base, "preload.cjs");
+		writeFileSync(preload, 'require("node:fs").writeFileSync(process.env.KISO_RUNNER_ONLY_MARKER, process.env.KISO_RUNNER_ONLY_PROBE ?? "");');
+		const withEnv = processTaskBackend({
+			runnerPath: RUNNER,
+			runnerEnv: { NODE_OPTIONS: `--require ${preload}`, KISO_RUNNER_ONLY_MARKER: marker, KISO_RUNNER_ONLY_PROBE: "1" },
+		});
+		const manager = new TaskManager({ root: join(base, "s.tasks"), backend: withEnv, pollMs: 50 });
+		// the command prints what it inherited: none of the runner-only names, nor the bookkeeping name
+		const task = await manager.start({
+			command: 'echo "probe=[$KISO_RUNNER_ONLY_PROBE] marker=[$KISO_RUNNER_ONLY_MARKER] node=[$NODE_OPTIONS] own=[$KISO_TASK_RUNNER_OWN_ENV]"',
+			cwd,
+			env: process.env,
+		});
+		await until(() => manager.get(task.id)?.state.kind, (k) => k === "ended");
+		expect(readFileSync(marker, "utf8"), "the runner itself saw the variable").toBe("1");
+		expect(readFileSync(join(base, "s.tasks", task.id, "output.log"), "utf8")).toContain("probe=[] marker=[] node=[] own=[]");
+		manager.close();
+	});
+});
+
 describe("ADR-0058 — a task outlives its caller and ends with the truth", () => {
 	it("a one-shot ends with its real exit code and output; the records land in write-ahead order", async () => {
 		const { root, cwd, manager } = setup();

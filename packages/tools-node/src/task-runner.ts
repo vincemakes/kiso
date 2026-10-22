@@ -110,6 +110,9 @@ function main(dir: string): void {
 	delete env.KISO_TASK_RUNNER_PAUSE_AFTER;
 	delete env.KISO_TASK_RUNNER_STOP_UNCONFIRMED;
 	delete env.KISO_TASK_OUTPUT_CAP;
+	// names the backend set for the runner alone (processTaskBackend runnerEnv)
+	for (const name of (env.KISO_TASK_RUNNER_OWN_ENV ?? "").split(",")) if (name !== "") delete env[name];
+	delete env.KISO_TASK_RUNNER_OWN_ENV;
 
 	// "" when the start time cannot be read: the identity is then the pid
 	// alone, and the backend treats it as unverifiable, never as dead
