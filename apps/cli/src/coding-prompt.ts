@@ -4,7 +4,6 @@
  * 2026-09-23): the entry module keeps no prompt text of its own.
  */
 
-import { protectedFiles } from "./state.js";
 import { isProtectedPath, protectedIdentity } from "@vincemakes/kiso-tools-node";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
