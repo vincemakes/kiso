@@ -46,6 +46,11 @@ export type { Event, SessionMeta, StoreRecord } from "./store.js";
 export { disposeExtensions, loadExtensions, loadProjectExtensions } from "./extensions.js";
 export type { KisoExtension } from "./extensions.js";
 
+// tasks (ADR-0058): a host that wires background tasks needs the manager
+export { TaskManager } from "./tasks/manager.js";
+export type { TaskInfo, TaskListener, TaskTransition } from "./tasks/manager.js";
+export type { TaskState } from "./tasks/journal.js";
+
 // ledger
 export { executionForCallId, executionLedger } from "./ledger.js";
 export type { ExecutionRecord, ExecutionStatus } from "./ledger.js";
