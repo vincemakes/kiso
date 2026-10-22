@@ -124,18 +124,26 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 		const msg = JSON.parse(m.data);
 		pending.get(msg.id)?.(msg);
 	};
-	const evaluate = (expression) =>
+	const cdp = (method, params) =>
 		new Promise((resolve) => {
 			const n = ++id;
-			pending.set(n, (msg) => resolve(msg.result?.result?.value));
-			ws.send(JSON.stringify({ id: n, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
+			pending.set(n, (msg) => resolve(msg.result));
+			ws.send(JSON.stringify({ id: n, method, params }));
 		});
+	const evaluate = async (expression) => (await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }))?.result?.value;
+	/** A PNG of the window, written outside the repository. */
+	const shot = async (name) => {
+		const dir = join(process.env.HOME, "kiso-worktrees", "desktop-s1-shots");
+		mkdirSync(dir, { recursive: true });
+		const { data } = await cdp("Page.captureScreenshot", { format: "png" });
+		writeFileSync(join(dir, `${name}.png`), Buffer.from(data, "base64"));
+	};
 	const close = async () => {
 		ws.close();
 		child.kill("SIGTERM");
 		await new Promise((r) => child.once("exit", r));
 	};
-	return { child, ready, lines, evaluate, close, page, startupMs: Date.now() - t0 };
+	return { child, ready, lines, evaluate, cdp, shot, close, page, startupMs: Date.now() - t0 };
 }
 
 export async function waitUntil(pred, ms = 15_000, step = 100) {

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { SessionStore } from "@vincemakes/kiso-runtime";
@@ -156,8 +156,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 	});
 
-	const rendererDir = fileURLToPath(new URL("../renderer/", import.meta.url));
-	const clientDir = dirname(fileURLToPath(import.meta.resolve("@vincemakes/kiso-client")));
+	const rendererDir = fileURLToPath(new URL("../../out/renderer/", import.meta.url));
 	const tokenBytes = Buffer.from(token);
 
 	let origins: ReadonlySet<string> = new Set();
@@ -173,15 +172,20 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		const given = Buffer.from(header.slice(7));
 		return given.length === tokenBytes.length && timingSafeEqual(given, tokenBytes);
 	};
-	const serveFile = (res: ServerResponse, path: string, type: string): void => {
+	const TYPES: Readonly<Record<string, string>> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".woff2": "font/woff2" };
+	/** A file of the bundled renderer, by URL path; nothing outside its folder is served. */
+	const serveStatic = (res: ServerResponse, pathname: string): void => {
+		const full = resolve(rendererDir, pathname === "/" ? "index.html" : `.${pathname}`);
+		const type = TYPES[extname(full)];
 		try {
-			const body = readFileSync(path);
-			// the page runs its own script and talks to its own origin, nothing else
+			if (type === undefined || !full.startsWith(rendererDir)) throw new Error("not served");
+			const body = readFileSync(full);
+			// the page runs its own bundle and talks to its own origin, nothing else
 			res.writeHead(200, {
 				"content-type": type,
 				"cache-control": "no-store",
 				"x-content-type-options": "nosniff",
-				"content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+				"content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'",
 			});
 			res.end(body);
 		} catch {
@@ -195,13 +199,12 @@ export async function startHost(options: HostOptions): Promise<Host> {
 			// DNS rebinding: a name that resolves to 127.0.0.1 but is not ours
 			if (!hosts.has(req.headers.host ?? "")) return refuse(res, 403, "unknown Host");
 			const url = new URL(req.url ?? "/", "http://localhost");
-			if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) return serveFile(res, join(rendererDir, "index.html"), "text/html; charset=utf-8");
-			if (req.method === "GET" && url.pathname === "/renderer.js") return serveFile(res, join(rendererDir, "renderer.js"), "text/javascript; charset=utf-8");
-			const vendor = /^\/vendor\/client\/([a-z]+\.js)$/.exec(url.pathname);
-			if (req.method === "GET" && vendor !== null) return serveFile(res, join(clientDir, vendor[1]!), "text/javascript; charset=utf-8");
 			if (!url.pathname.startsWith("/v1/")) {
-				res.writeHead(404);
-				return void res.end();
+				if (req.method !== "GET") {
+					res.writeHead(405);
+					return void res.end();
+				}
+				return serveStatic(res, url.pathname);
 			}
 			const origin = req.headers.origin;
 			if (origin !== undefined && !origins.has(origin)) return refuse(res, 403, "Origin not allowed");

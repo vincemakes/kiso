@@ -8,12 +8,7 @@
 		"lib": [
 			"ES2022",
 			"DOM"
-		],
-		"paths": {
-			"/vendor/client/index.js": [
-				"../../node_modules/@vincemakes/kiso-client/dist/index.d.ts"
-			]
-		}
+		]
 	},
 	"include": [
 		"src/main",

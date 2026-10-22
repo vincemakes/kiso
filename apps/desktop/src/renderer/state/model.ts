@@ -245,6 +245,13 @@ export function reduce(s: State, input: Input): State {
 			note(step);
 			return s;
 		}
+		case "draft_voided": {
+			if (turn === undefined) return s;
+			// model output after voidFromSeq was never committed; a step that began executing is a fact and stays
+			const keep = turn.items.filter((i) => !(i.seq > e.voidFromSeq && (i.kind === "thinking" || i.kind === "text" || (i.kind === "step" && i.startedAt === null && i.status === "calling"))));
+			turn.items.splice(0, turn.items.length, ...keep);
+			return s;
+		}
 		case "terminal": {
 			if (turn === undefined) return s;
 			turn.phase = "ended";

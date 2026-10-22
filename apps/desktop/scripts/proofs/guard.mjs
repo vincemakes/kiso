@@ -36,7 +36,9 @@ const cases = [
 	["CORS preflight from a foreign origin", () => call("/v1/sessions/x/run", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "POST" } }), 403],
 	["POST run, no token", () => call("/v1/sessions/x/run", { method: "POST", headers: { "content-type": "application/json" }, body: '{"input":"hi"}' }), 401],
 	["unknown path", () => call("/etc/passwd"), 404],
-	["vendor path traversal", () => call("/vendor/client/..%2f..%2fpackage.json"), 404],
+	["static path traversal", () => call("/assets/..%2f..%2f..%2fpackage.json"), 404],
+	["a file type the host does not serve", () => call("/index.json"), 404],
+	["POST to a static path", () => call("/", { method: "POST" }), 405],
 ];
 let pass = true;
 for (const [label, fn, want] of cases) {
@@ -52,7 +54,10 @@ const seen = [];
 for await (const ev of s.runStream("hello")) if (ev.kind === "event") seen.push(ev.event.type);
 out(`kiso-client from a separate Node process: ${seen.join(" ")}`);
 const page = await call("/");
-out(`page served by the same process: ${page.status} ${page.type}, ${page.text.length} bytes, imports the client from /vendor/client/index.js: ${(await call("/vendor/client/index.js")).status === 200}`);
+const bundle = /src="([^"]+\.js)"/.exec(page.text)?.[1];
+const js = bundle === undefined ? { status: 0 } : await call(bundle);
+out(`page served by the same process: ${page.status} ${page.type}, ${page.text.length} bytes; its bundle ${bundle}: ${js.status}`);
+pass &&= page.status === 200 && js.status === 200;
 out(`RESULT guard: ${pass ? "PASS" : "FAIL"}`);
 if (!pass) process.exitCode = 1;
 host.child.kill("SIGTERM");
