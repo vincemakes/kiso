@@ -1,0 +1,15 @@
+:root {
+	--ink: #1c1c1e;
+	--mute: #8a8a8e;
+	--faint: #b4b4ba;
+	--line: #ececee;
+	--blue: #2f6bff;
+	--green: #1f9d57;
+	--red: #d94a4a;
+	--amber: #d98a1a;
+	--sunk: #f6f6f8;
+	--ease: cubic-bezier(0.22, 0.9, 0.24, 1);
+	--spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+	--mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+	--sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+}

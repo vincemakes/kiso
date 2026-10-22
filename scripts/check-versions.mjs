@@ -63,11 +63,16 @@ function manifestPaths() {
 const manifests = manifestPaths();
 const problems = [];
 
+/** Workspaces that are not published with the lockstep and carry their own version
+ *  (apps/desktop: its own tag, `desktop-v*`). The exemption is the version
+ *  alone: their `@vincemakes/*` pins are still held to the lockstep below. */
+const OWN_VERSION = new Set(["apps/desktop/package.json"]);
+
 // the version the WORKSPACE packages agree on — the published artifacts
 // are the source of truth; the root manifest and the READMEs follow.
 const tally = new Map();
 for (const { rel, pkg } of manifests) {
-	if (rel === "package.json") continue;
+	if (rel === "package.json" || OWN_VERSION.has(rel)) continue;
 	tally.set(pkg.version, (tally.get(pkg.version) ?? 0) + 1);
 }
 const expected = [...tally.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -78,7 +83,7 @@ if (expected === undefined) {
 
 // 1. one version across all manifests
 for (const { rel, pkg } of manifests) {
-	if (pkg.version !== expected) {
+	if (!OWN_VERSION.has(rel) && pkg.version !== expected) {
 		problems.push(`${rel}: version "${pkg.version}" — the lockstep is "${expected}"`);
 	}
 }
