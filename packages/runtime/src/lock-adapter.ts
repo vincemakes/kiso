@@ -210,6 +210,17 @@ function unavailable(err: unknown): LockUnavailableError {
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * The tokens of the lock handles THIS process holds, or is in the middle of
+ * publishing. A lock naming our pid is a same-process writer's residue only
+ * when its token is in here; any other token was left by a PREVIOUS process
+ * that had the same pid — in a container node is pid 1, so a SIGKILLed
+ * container's lock names the next container's pid too. Kept on globalThis so
+ * a second copy of this module in the same process shares one answer.
+ */
+const HELD_KEY = Symbol.for("kiso.lock-adapter.held-tokens");
+const held: Set<string> = ((globalThis as Record<symbol, unknown>)[HELD_KEY] ??= new Set<string>()) as Set<string>;
+
 class NativeLockHandle implements LockHandle {
 	readonly pid: number;
 	readonly token: string;
@@ -233,6 +244,7 @@ class NativeLockHandle implements LockHandle {
 	release(): void {
 		if (this.#released) return;
 		this.#released = true;
+		held.delete(this.token);
 		try {
 			renameSync(this.#lockPath, this.#tombstone);
 		} catch (err) {
@@ -282,8 +294,20 @@ class NativeLock implements LockAdapter {
 	readonly name = "link-lock";
 
 	async acquire(lockPath: string, sessionId: string, cancelled: () => void): Promise<LockHandle> {
-		const pid = process.pid;
+		// Our token is registered before any file can name it; a handle's
+		// release drops it, and a failed acquire drops it here.
 		const token = randomUUID();
+		held.add(token);
+		try {
+			return await this.#take(lockPath, sessionId, cancelled, token);
+		} catch (err) {
+			held.delete(token);
+			throw err;
+		}
+	}
+
+	async #take(lockPath: string, sessionId: string, cancelled: () => void, token: string): Promise<LockHandle> {
+		const pid = process.pid;
 		// The staging name is PER-ATTEMPT: a later rename-away in the same
 		// acquire must never atomically overwrite an earlier attempt's
 		// abandoned staging (that would clobber the displacement residue,
@@ -301,7 +325,11 @@ class NativeLock implements LockAdapter {
 			cancelled();
 			const staging = `${lockPath}.staging-${pid}-${token}-${attempt}`;
 			const seen = readLockIdentity(lockPath);
-			if (seen === null || seen.pid === undefined || !isAlive(seen.pid)) {
+			// A lock naming OUR pid with a token this process never issued is a
+			// previous process's (a killed container's node was pid 1 too): a
+			// dead holder, however alive the pid looks.
+			const stalePid = seen !== null && seen.pid === pid && seen.token !== undefined && !held.has(seen.token);
+			if (seen === null || seen.pid === undefined || stalePid || !isAlive(seen.pid)) {
 				// Fresh path, dead holder, or stale residue — take it over
 				// by identity confirmation: rename-away → verify → link.
 				if (readyDir !== undefined) writeFileSync(join(readyDir, `read-${pid}`), "");
@@ -378,8 +406,8 @@ class NativeLock implements LockAdapter {
 				return new NativeLockHandle(lockPath, tombstone, { pid, token });
 			}
 			if (seen.pid === pid && seen.token !== undefined) {
-				// Same-process writer's residue (round 5): another store in
-				// THIS process holds the lock — it will release; retry until
+				// Same-process writer (round 5): another store in THIS process
+				// holds the lock (its token is in `held`) — it will release; retry until
 				// it does (never a spurious self-conflict). A legacy
 				// bare-pid lock naming our own process is refused like any
 				// live foreign owner.
