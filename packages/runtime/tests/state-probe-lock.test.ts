@@ -37,7 +37,9 @@ const FAKE_PS_DIR = join(fileURLToPath(new URL("../../../tests/fixtures", import
  * this process never issued is a previous process's residue and is taken
  * over before any probe: see lock-stale-same-pid.test.ts.) */
 function liveForeignPid(): { pid: number; stop: () => void } {
-	const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+	// `sleep` starts instantly: a node child's cold start can pass the 5 s test
+	// budget on a loaded machine.
+	const child = spawn("sleep", ["60"], { stdio: "ignore" });
 	return { pid: child.pid as number, stop: () => child.kill() };
 }
 
