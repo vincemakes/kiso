@@ -7,7 +7,7 @@ import { launch, clientFor, scratch, transcript } from "./lib.mjs";
 const out = transcript("s2-guard");
 const data = scratch("s2-data");
 const workspace = scratch("s2-ws");
-const host = await launch({ data, workspace, fauxScript: [{ events: [{ type: "text_delta", text: "hi" }, { type: "stop", reason: "end_turn" }] }], env: { KISO_DESKTOP_ALLOW_ALL: "1" } });
+const host = await launch({ data, workspace, fauxScript: [{ events: [{ type: "text_delta", text: "hi" }, { type: "stop", reason: "end_turn" }] }], env: { KISO_DESKTOP_MODE: "full-access" } });
 out(`host ${host.origin} (listening on 127.0.0.1 only; port chosen by the system)`);
 const port = host.port;
 
@@ -54,4 +54,5 @@ out(`kiso-client from a separate Node process: ${seen.join(" ")}`);
 const page = await call("/");
 out(`page served by the same process: ${page.status} ${page.type}, ${page.text.length} bytes, imports the client from /vendor/client/index.js: ${(await call("/vendor/client/index.js")).status === 200}`);
 out(`RESULT guard: ${pass ? "PASS" : "FAIL"}`);
+if (!pass) process.exitCode = 1;
 host.child.kill("SIGTERM");

@@ -37,7 +37,7 @@ const walk = (dir) => {
 		else if (/\.(ts|mjs|js)$/.test(name)) files.push(p);
 	}
 };
-for (const d of ["src", "spikes", "scripts"]) walk(join(root, d));
+for (const d of ["src", "scripts"]) walk(join(root, d));
 
 const problems = [];
 const used = new Map();

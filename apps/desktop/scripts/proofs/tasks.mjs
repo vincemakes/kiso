@@ -2,7 +2,7 @@
 // and becomes a task; a second is started with background:true and stopped
 // with task_stop. The tasks frame (host-made, from the TaskManager) lists
 // state and elapsed time; the stream stays open after the run ended.
-import { launch, clientFor, scratch, transcript, sleep } from "./lib.mjs";
+import { launch, clientFor, scratch, transcript, sleep, checker } from "./lib.mjs";
 
 const out = transcript("s5-tasks");
 const data = scratch("s5-data");
@@ -14,16 +14,22 @@ const script = [
 	{ events: [{ type: "tool_call_end", callId: "t3", name: "task_stop", input: { id: "t2" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "Stopped." }, { type: "stop", reason: "end_turn" }] },
 ];
-const host = await launch({ data, workspace, fauxScript: script, env: { KISO_DESKTOP_ALLOW_ALL: "1", KISO_DESKTOP_MIN_FG_MS: "0" } });
+const host = await launch({ data, workspace, fauxScript: script, env: { KISO_DESKTOP_MODE: "full-access", KISO_DESKTOP_MIN_FG_MS: "0" } });
 out(`host ${host.origin}`);
 const s = clientFor(host).session("s5");
 const t0 = Date.now();
 const stamp = () => String(Date.now() - t0).padStart(6);
 const ctl = new AbortController();
 let lastTasks = "";
+const taskFrames = [];
+const notices = [];
+const outputs = [];
 const reader = (async () => {
 	for await (const ev of s.events({ signal: ctl.signal })) {
+		if (ev.kind === "frame" && ev.event === "tool_output") outputs.push(ev.data);
+		if (ev.kind === "event" && ev.event.type === "user_input" && ev.event.source === "system") notices.push(ev.event);
 		if (ev.kind === "frame" && ev.event === "tasks") {
+			taskFrames.push(ev.data);
 			// print only when a state changed, plus a sample of the elapsed counter
 			const rows = ev.data.tasks.map((t) => `${t.id}:${t.label}:${Math.round(t.elapsedMs / 100) / 10}s`).join("  ");
 			const key = ev.data.tasks.map((t) => `${t.id}:${t.label}`).join();
@@ -57,3 +63,16 @@ out("--- journal files the host read these from (a host that cannot import the m
 const { execSync } = await import("node:child_process");
 out(execSync(`ls ${data}/sessions/s5.tasks/*; echo; cat ${data}/sessions/s5.tasks/t1/journal.jsonl | cut -c1-200`).toString());
 host.child.kill("SIGTERM");
+
+const { check, verdict } = checker(out);
+const at = (id, label) => taskFrames.some((f) => f.tasks.some((t) => t.id === id && t.label === label));
+check(outputs.some((o) => o.callId === "t1" && /continued as background task t1/.test(o.head.join(" "))), "the foreground command that outlived its wait says it became task t1 (tool_output frame)");
+check(at("t1", "running") && at("t2", "running"), "tasks frame: t1 and t2 running");
+const t1 = taskFrames.flatMap((f) => f.tasks).filter((t) => t.id === "t1");
+check(t1.some((t) => t.label === "exited 0" && t.elapsedMs >= 7500 && t.elapsedMs <= 9500), "tasks frame: t1 exited 0 after about 8 s (counted from the spawn)");
+const running = t1.filter((t) => t.label === "running").map((t) => t.elapsedMs);
+check(running.length >= 5 && running.every((v, i) => i === 0 || v >= running[i - 1]), `tasks frame: t1's elapsed time grows while running (${running.length} samples)`);
+check(at("t2", "stopped"), "tasks frame: t2 stopped after task_stop");
+check(outputs.some((o) => o.callId === "t3" && /stopped task t2/.test(o.head.join(" "))), "task_stop reports the stop");
+check(notices.length === 1 && /<kiso-task id="t1"/.test(notices[0].content), 'the model is told t1 ended through one user_input with source "system"');
+verdict("tasks");

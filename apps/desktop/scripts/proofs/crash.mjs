@@ -13,7 +13,7 @@ const token = "spike-token-for-the-crash-test";
 async function scenario(name, killAfterMs, firstScript, secondScript, afterRestart) {
 	out(`=== scenario: ${name}`);
 	const session = `s8-${name}`;
-	const h1 = await launch({ data, workspace, fauxScript: firstScript, env: { KISO_DESKTOP_ALLOW_ALL: "1", KISO_DESKTOP_TOKEN: token } });
+	const h1 = await launch({ data, workspace, fauxScript: firstScript, env: { KISO_DESKTOP_MODE: "full-access", KISO_DESKTOP_TOKEN: token } });
 	const port = h1.port;
 	out(`host1 pid ${h1.pid} port ${port}`);
 	const client = createClient({ baseUrl: `http://127.0.0.1:${port}/v1/sessions`, headers: () => ({ authorization: `Bearer ${token}` }), reconnect: { initialMs: 200, maxMs: 1000 } });
@@ -43,7 +43,7 @@ async function scenario(name, killAfterMs, firstScript, secondScript, afterResta
 	process.kill(h1.pid, "SIGKILL");
 	await new Promise((r) => h1.child.once("exit", r));
 	await sleep(700); // the client is retrying against a closed port
-	const h2 = await launch({ data, workspace, fauxScript: secondScript, fauxSkip: session, env: { KISO_DESKTOP_ALLOW_ALL: "1", KISO_DESKTOP_TOKEN: token, KISO_DESKTOP_PORT: String(port) } });
+	const h2 = await launch({ data, workspace, fauxScript: secondScript, fauxSkip: session, env: { KISO_DESKTOP_MODE: "full-access", KISO_DESKTOP_TOKEN: token, KISO_DESKTOP_PORT: String(port) } });
 	out(`${stamp()}ms host2 pid ${h2.pid} up on the same port; openRuns ${JSON.stringify(h2.openRuns)}`);
 	out(`${stamp()}ms state ${JSON.stringify(await s.state())}`);
 	await afterRestart(s, stamp);
@@ -61,7 +61,9 @@ async function scenario(name, killAfterMs, firstScript, secondScript, afterResta
 	const extra = seen.filter((q) => !durable.includes(q));
 	const ordered = seen.every((q, i) => i === 0 || q > seen[i - 1]);
 	out(`RESULT ${name}: client saw ${seen.length} events, durable log has ${durable.length}; duplicates [${dups}] missing [${missing}] extra [${extra}] strictly-increasing ${ordered}`);
-	out(`RESULT ${name}: ${dups.length === 0 && missing.length === 0 && extra.length === 0 && ordered ? "PASS" : "FAIL"}`);
+	const pass = dups.length === 0 && missing.length === 0 && extra.length === 0 && ordered;
+	out(`RESULT ${name}: ${pass ? "PASS" : "FAIL"}`);
+	if (!pass) process.exitCode = 1;
 	for (const o of orphans) {
 		try {
 			process.kill(Number(o), "SIGKILL");

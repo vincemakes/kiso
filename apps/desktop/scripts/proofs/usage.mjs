@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { launch, clientFor, scratch, transcript } from "./lib.mjs";
 
 const out = transcript("s4-usage");
-const CLI = fileURLToPath(new URL("../../cli/dist/index.js", import.meta.url));
+const CLI = fileURLToPath(new URL("../../../cli/dist/index.js", import.meta.url));
 
 const use = (inputTokens, outputTokens, cacheRead) => ({ type: "usage", inputTokens, outputTokens, cacheRead, cacheWrite: null, known: true });
 const scenarios = {
@@ -55,7 +55,7 @@ for (const [name, script] of Object.entries(scenarios)) {
 	// the desktop host
 	const data = scratch("s4-data");
 	const workspace = scratch("s4-ws");
-	const host = await launch({ data, workspace, fauxScript: script, env: { KISO_DESKTOP_ALLOW_ALL: "1" } });
+	const host = await launch({ data, workspace, fauxScript: script, env: { KISO_DESKTOP_MODE: "full-access" } });
 	let total;
 	const perCall = [];
 	for await (const ev of clientFor(host).session("s4").runStream("go")) {
@@ -72,3 +72,4 @@ for (const [name, script] of Object.entries(scenarios)) {
 	allPass &&= same;
 }
 out(`ALL ${allPass ? "PASS" : "FAIL"}`);
+if (!allPass) process.exitCode = 1;

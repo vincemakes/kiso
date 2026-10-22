@@ -3,7 +3,7 @@
 // calls are made from the main flow and logged between them.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { launch, clientFor, scratch, transcript, sleep } from "./lib.mjs";
+import { launch, clientFor, scratch, transcript, sleep, checker } from "./lib.mjs";
 
 const out = transcript("s7-control");
 const data = scratch("s7-data");
@@ -12,10 +12,10 @@ writeFileSync(join(workspace, "a.txt"), "alpha\n");
 
 const script = [
 	// run 1: shell asks; approved
-	{ events: [{ type: "text_delta", text: "Running a command." }, { type: "tool_call_end", callId: "a1", name: "shell", input: { command: "echo approved-run" } }, { type: "stop", reason: "tool_use" }] },
+	{ events: [{ type: "text_delta", text: "Running a command." }, { type: "tool_call_end", callId: "a1", name: "shell", input: { command: "touch approved-run.txt" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "It ran." }, { type: "stop", reason: "end_turn" }] },
 	// run 2: write_file asks; denied with a reason
-	{ events: [{ type: "tool_call_end", callId: "b1", name: "write_file", input: { path: "b.txt", content: "x", expectedRevision: "absent" } }, { type: "stop", reason: "tool_use" }] },
+	{ events: [{ type: "tool_call_end", callId: "b1", name: "write_file", input: { path: "b.txt", content: "x" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "Understood, not writing." }, { type: "stop", reason: "end_turn" }] },
 	// run 3: steer lands while the model is "thinking" (1.5 s delay)
 	{ events: [{ type: "delay", ms: 1500 }, { type: "tool_call_end", callId: "c1", name: "read_file", input: { path: "a.txt" } }, { type: "stop", reason: "tool_use" }] },
@@ -39,17 +39,23 @@ const reader = (async () => {
 			continue;
 		}
 		const { seq, type, ...rest } = ev.event;
+		wire.push(ev.event);
 		if (type === "permission_requested") lastApproval = ev.event;
 		out(`${stamp()}ms ${String(seq).padStart(3)} ${type} ${JSON.stringify(rest)}`.slice(0, 220));
 	}
 })();
+const results = {};
 const call = async (label, fn) => {
 	try {
-		out(`${stamp()}ms >>> ${label} => ${JSON.stringify(await fn())}`);
+		const value = await fn();
+		results[label] = { value };
+		out(`${stamp()}ms >>> ${label} => ${JSON.stringify(value)}`);
 	} catch (e) {
+		results[label] = { error: { status: e.status, code: e.code } };
 		out(`${stamp()}ms >>> ${label} => ERROR ${e.status ?? ""} ${e.code ?? ""} ${e.message}`);
 	}
 };
+const wire = [];
 const waitFor = async (pred, ms = 8000) => {
 	const end = Date.now() + ms;
 	while (Date.now() < end) {
@@ -96,3 +102,17 @@ await call("abort (idle)", () => s.abort());
 ctl.abort();
 await reader;
 host.child.kill("SIGTERM");
+
+const { check, verdict } = checker(out);
+const types = wire.map((e) => e.type);
+check(results["abort (parked)"]?.value?.kind === "parked" && results["abort (parked)"].value.approvals.length === 1, "abort while parked is a refusal naming the approval, not an abort");
+check(results["approve(allow)"]?.value?.needsResume === false, "approve resolves the live run (needsResume false)");
+check(wire.some((e) => e.type === "permission_decided" && e.decision === "approved") && wire.some((e) => e.type === "permission_decided" && e.decision === "denied"), "both decisions are on the stream");
+check(results["steer while idle"]?.error?.status === 409 && results["steer while idle"].error.code === "idle", "steer with no run is refused: 409 idle");
+check(results.steer?.value?.runId !== undefined, "steer during a run is accepted");
+const steerAt = wire.findIndex((e) => e.type === "user_input" && e.content === "only the first line please");
+check(steerAt > 0 && wire[steerAt].source === "user" && wire.slice(0, steerAt).some((e) => e.type === "tool_result"), "the steer is admitted as a user line after the tool result");
+check(results.abort?.value?.kind === "stopped", "abort of a running turn: stopped");
+check(wire.at(-1).type === "terminal" && wire.at(-1).outcome.kind === "aborted", "the aborted run ends in an aborted terminal");
+check(results["abort (idle)"]?.value?.kind === "idle", "abort with nothing running: idle");
+verdict("control");
