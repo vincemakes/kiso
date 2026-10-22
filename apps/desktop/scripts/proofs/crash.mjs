@@ -35,7 +35,8 @@ async function scenario(name, killAfterMs, first, second, afterRestart) {
 	ctl.abort();
 	await reader;
 	const durable = (await s.replay()).events.map((e) => e.seq);
-	check(JSON.stringify(seen) === JSON.stringify(durable), `${name}: the client saw each of the ${durable.length} durable wire events exactly once, in order (no duplicate, no gap)`);
+	const same = JSON.stringify(seen) === JSON.stringify(durable);
+	check(same, `${name}: the client saw each of the ${durable.length} durable wire events exactly once, in order (no duplicate, no gap)${same ? "" : `: saw [${seen}], durable [${durable}]`}`);
 	for (const pid of orphans) try { process.kill(Number(pid), "SIGKILL"); } catch { /* gone */ }
 	h2.child.kill("SIGTERM");
 	await new Promise((r) => h2.child.once("exit", r));
