@@ -21,6 +21,7 @@
  * probe (state[0] = "?" — LockedError, red) and passes against the
  * whole-string match (green).
  */
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,13 +31,22 @@ import { LockedError, nativeLockAdapter } from "../src/lock-adapter.js";
 
 const FAKE_PS_DIR = join(fileURLToPath(new URL("../../../tests/fixtures", import.meta.url)), "fake-ps");
 
-/** The lock names the test's OWN pid: kill(pid, 0) must succeed so the
- * probe actually runs — the fake ps then supplies the state shape. */
+/** A real, live process that is NOT this one: the lock names its pid, so
+ * kill(pid, 0) succeeds and the probe actually runs — the fake ps then
+ * supplies the state shape. (A lock naming the test's OWN pid with a token
+ * this process never issued is a previous process's residue and is taken
+ * over before any probe: see lock-stale-same-pid.test.ts.) */
+function liveForeignPid(): { pid: number; stop: () => void } {
+	const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+	return { pid: child.pid as number, stop: () => child.kill() };
+}
+
 async function probeState(state: string | null): Promise<LockedError | null> {
+	const holder = liveForeignPid();
 	const dir = mkdtempSync(join(tmpdir(), "kiso-probe-lock-"));
 	mkdirSync(join(dir, "sessions"), { recursive: true });
 	const lockPath = join(dir, "sessions", "probe.lock");
-	writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: "probe" }), "utf8");
+	writeFileSync(lockPath, JSON.stringify({ pid: holder.pid, token: "probe" }), "utf8");
 	const savedPath = process.env.PATH;
 	const savedState = process.env.FAKE_PS_STATE;
 	const savedFail = process.env.FAKE_PS_FAIL;
@@ -58,6 +68,7 @@ async function probeState(state: string | null): Promise<LockedError | null> {
 			return err as LockedError;
 		}
 	} finally {
+		holder.stop();
 		if (savedPath === undefined) delete process.env.PATH;
 		else process.env.PATH = savedPath;
 		if (savedState === undefined) delete process.env.FAKE_PS_STATE;
@@ -78,18 +89,20 @@ describe("R-I-p-3: the state-letters matching (the whole string, not the first c
 	});
 
 	it("a live process (STAT S) is still ALIVE — refused, the lock untouched (the live pin)", async () => {
+		const holder = liveForeignPid();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-probe-live-"));
 		mkdirSync(join(dir, "sessions"), { recursive: true });
 		const lockPath = join(dir, "sessions", "probe.lock");
-		writeFileSync(lockPath, JSON.stringify({ pid: process.pid, token: "live" }), "utf8");
+		writeFileSync(lockPath, JSON.stringify({ pid: holder.pid, token: "live" }), "utf8");
 		const savedPath = process.env.PATH;
 		const savedState = process.env.FAKE_PS_STATE;
 		process.env.PATH = `${FAKE_PS_DIR}:${savedPath ?? ""}`;
 		process.env.FAKE_PS_STATE = "S";
 		try {
 			await expect(nativeLockAdapter.acquire(lockPath, "probe", () => {})).rejects.toThrow(LockedError);
-			expect(readFileSync(lockPath, "utf8")).toContain(String(process.pid));
+			expect(readFileSync(lockPath, "utf8")).toContain(String(holder.pid));
 		} finally {
+			holder.stop();
 			if (savedPath === undefined) delete process.env.PATH;
 			else process.env.PATH = savedPath;
 			if (savedState === undefined) delete process.env.FAKE_PS_STATE;
