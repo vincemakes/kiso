@@ -7,11 +7,12 @@ import type { AddressInfo } from "node:net";
 import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@vincemakes/kiso-code/config";
 import { kisoHome, type SessionStore } from "@vincemakes/kiso-runtime";
 import type { SessionService } from "@vincemakes/kiso-server";
-import type { ModelChoice, PermissionMode } from "./agent.js";
+import type { Settings } from "./settings.js";
 import { History } from "./history.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
+import type { SettingsPatch } from "../shared/settings.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -29,10 +30,8 @@ export interface HostOptions {
 	readonly home?: string;
 	/** The folder a new task starts in. */
 	readonly workspace: string;
-	readonly model: ModelChoice;
-	/** The permission tier (default: `default`, which asks before writes and commands). */
-	readonly mode?: PermissionMode;
-	readonly secretEnvNames?: readonly string[];
+	/** The model, the sign-in, the effort and the tier: read when a Work opens (settings.ts). */
+	readonly settings: Settings;
 	/** Default 0: the system picks. */
 	readonly port?: number;
 	readonly token?: string;
@@ -67,11 +66,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		workspace,
 		dir,
 		prefix,
-		model: options.model,
-		mode: options.mode ?? "default",
+		model: () => options.settings.model(),
+		checkRunners: () => options.settings.checks(),
+		secretEnvNames: options.settings.secretEnvNames(),
 		exposeThinking: options.exposeThinking ?? true,
 		sanitizer: options.sanitizer ?? "desktop",
-		...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 	});
@@ -143,7 +142,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 			if (!hosts.has(req.headers.host ?? "")) return refuse(res, 403, "unknown Host");
 			const url = new URL(req.url ?? "/", "http://localhost");
 			const other = /^\/w\/([A-Za-z0-9._-]+)\/v1\//.exec(url.pathname);
-			if (!url.pathname.startsWith("/v1/") && other === null && url.pathname !== "/desk/history") {
+			if (!url.pathname.startsWith("/v1/") && other === null && url.pathname !== "/desk/history" && url.pathname !== "/desk/settings") {
 				if (req.method !== "GET") {
 					res.writeHead(405);
 					return void res.end();
@@ -153,6 +152,23 @@ export async function startHost(options: HostOptions): Promise<Host> {
 			const origin = req.headers.origin;
 			if (origin !== undefined && !origins.has(origin)) return refuse(res, 403, "Origin not allowed");
 			if (!bearerOk(req)) return refuse(res, 401, "missing or wrong token");
+			if (url.pathname === "/desk/settings") {
+				if (req.method === "POST") {
+					let body = "";
+					for await (const chunk of req) body += chunk;
+					try {
+						options.settings.apply(JSON.parse(body) as SettingsPatch);
+					} catch {
+						res.writeHead(400);
+						return void res.end();
+					}
+				} else if (req.method !== "GET") {
+					res.writeHead(405);
+					return void res.end();
+				}
+				res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+				return void res.end(JSON.stringify(options.settings.snapshot()));
+			}
 			if (url.pathname === "/desk/history") {
 				if (req.method !== "GET") {
 					res.writeHead(405);

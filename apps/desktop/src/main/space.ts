@@ -3,7 +3,7 @@ import { createSessionService, toWireEvent, type SessionService } from "@vincema
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
-import { createDesktopAgent, type ModelChoice, type PermissionMode } from "./agent.js";
+import { createDesktopAgent, routeOf, type ModelChoice } from "./agent.js";
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
 import { runTotals, usageFrameAt } from "./usage.js";
 import { desktopSanitize } from "./sanitize.js";
@@ -25,8 +25,9 @@ export interface SpaceOptions {
 	/** The session directory of that folder (`projects/<enc>/`). */
 	readonly dir: string;
 	readonly prefix: string;
-	readonly model: ModelChoice;
-	readonly mode: PermissionMode;
+	/** Read when a Work is opened, so a change in Settings reaches the Works opened after it; throws, in words, when no model can run. */
+	readonly model: () => ModelChoice;
+	readonly checkRunners: () => readonly string[];
 	readonly secretEnvNames?: readonly string[];
 	readonly exposeThinking: boolean;
 	readonly sanitizer: "default" | "desktop";
@@ -51,20 +52,26 @@ const HEAD_LINES = 12;
 const DELTAS = new Set<Event["type"]>(["thinking", "text_delta"]);
 
 export function createSpace(options: SpaceOptions): Space {
-	const { model } = options;
 	const store = new SessionStore(options.dir);
 	const tasks = createTaskHub(options.dir);
-	const route = model.kind === "adapter" ? model.route : model.provider;
+	const route = (): string => {
+		try {
+			return routeOf(options.model());
+		} catch {
+			return "unknown";
+		}
+	};
 
 	const service = createSessionService({
 		store,
-		open: async () =>
+		open: async (sessionId) =>
 			createDesktopAgent({
 				store,
 				workspace: options.workspace,
-				model,
+				model: options.model(),
+				sessionId,
+				checkRunners: options.checkRunners(),
 				tasks,
-				mode: options.mode,
 				...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
 				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 				onSession: (sessionId, session) => {
@@ -87,11 +94,11 @@ export function createSpace(options: SpaceOptions): Space {
 	};
 	const derived = (event: Event, sessionId: string): readonly WireFrame[] => {
 		if (event.type === "usage") {
-			const frame = usageFrameAt(service.events(sessionId), event.seq, route);
+			const frame = usageFrameAt(service.events(sessionId), event.seq, route());
 			return frame === null ? [] : [{ event: "usage", data: frame }];
 		}
 		if (event.type === "terminal") {
-			const totals = runTotals(service.events(sessionId), event.seq, route);
+			const totals = runTotals(service.events(sessionId), event.seq, route());
 			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals } }];
 		}
 		if (event.type === "tool_result") {

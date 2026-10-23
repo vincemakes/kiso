@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Agent, createAgent, kisoHome, type AgentDefinition, type SessionStore } from "@vincemakes/kiso-runtime";
+import { Agent, createAgent, kisoHome, runsACheck, type AgentDefinition, type SessionStore } from "@vincemakes/kiso-runtime";
+import { adapterOptionsFor, type AdapterAuth, type ModelProfile } from "@vincemakes/kiso-code/config";
 import type { Adapter } from "@vincemakes/kiso-core";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import {
@@ -25,13 +26,28 @@ import type { TaskHub } from "./tasks.js";
  * guard, the read-only shell allow, the loop breaker and the mode tiers are
  * the terminal's own, in the terminal's own chain order.
  *
- * Not carried yet: config and credential resolution (S2; S1 takes the
- * provider and key from the environment) and the context-compaction tiers.
+ * The model, the sign-in and the effort come from the terminal's own
+ * configuration (settings.ts, through the `./config` door). The in-run
+ * compaction tiers are on, drawn from the profile's window, with the
+ * person's configured `checks` in front of the built-in test runners.
  */
 
 export type ModelChoice =
 	| { readonly kind: "adapter"; readonly adapter: Adapter; readonly model: string; readonly route: string }
-	| { readonly kind: "provider"; readonly provider: "anthropic" | "openai-compat" | "openai-responses"; readonly model: string; readonly baseUrl?: string; readonly apiKey: string; readonly reasoning?: AgentDefinition["reasoning"] };
+	| {
+			readonly kind: "profile";
+			readonly name: string;
+			readonly profile: ModelProfile;
+			readonly auth: AdapterAuth;
+			/** the window the profile or the configuration states; absent: nobody does */
+			readonly contextWindow?: number | undefined;
+			readonly reasoning?: AgentDefinition["reasoning"];
+	  };
+
+/** The adapter identity a model is routed by (what pricing is looked up on). */
+export const routeOf = (model: ModelChoice): string => (model.kind === "adapter" ? model.route : model.profile.kind);
+
+const DEFAULT_WINDOW = 200_000;
 
 /** The permission tiers the terminal offers; `default` asks before writes and commands. */
 export type PermissionMode = Parameters<typeof setMode>[0];
@@ -40,9 +56,11 @@ export interface DesktopAgentOptions {
 	readonly store: SessionStore;
 	readonly workspace: string;
 	readonly model: ModelChoice;
+	/** The id of the session this agent serves (the endpoint's cache key and `{session}` headers are drawn from it). */
+	readonly sessionId: string;
+	/** The person's own test-runner commands, in front of the built-in ones, for the compaction phase rule. */
+	readonly checkRunners?: readonly string[];
 	readonly tasks: TaskHub;
-	/** The tier; process-wide, as in the terminal (the policy modules keep it as module state). */
-	readonly mode: PermissionMode;
 	/** Env var names that hold a secret and must not reach a shell child. */
 	readonly secretEnvNames?: readonly string[];
 	/** The shell's foreground bounds (ADR-0058); the defaults are 60 s and 5 min. */
@@ -74,7 +92,6 @@ class DesktopAgent extends Agent {
 
 export function createDesktopAgent(options: DesktopAgentOptions): Agent {
 	const { store, workspace, model } = options;
-	setMode(options.mode);
 	const root = (): string => workspace;
 	const toolOptions = {
 		workspaceRoot: workspace,
@@ -85,10 +102,11 @@ export function createDesktopAgent(options: DesktopAgentOptions): Agent {
 		observedRevision: observedRevisionFrom(store, workspace),
 		...(options.toolLimits !== undefined ? { limits: options.toolLimits } : {}),
 	};
+	const window = model.kind === "profile" ? model.contextWindow : undefined;
 	const prompt = composeSystemPrompt(workspace, protectedFiles());
 	const modeNote = modeSystemPrompt();
 	const definition: AgentDefinition = {
-		model: model.model,
+		model: model.kind === "adapter" ? model.model : model.profile.model,
 		store,
 		workspace,
 		systemPrompt: modeNote === undefined ? prompt : `${prompt}\n\n${modeNote}`,
@@ -102,9 +120,22 @@ export function createDesktopAgent(options: DesktopAgentOptions): Agent {
 			...modeExtensions(root),
 			readOnlyShellExtension(() => ({ workspaceRoot: workspace, excludeRoots: toolOptions.excludeRoots })),
 		],
+		// in-run compaction, as the terminal turns it on (ADR-0055): only a window someone stated arms the overflow belt
+		contextPolicy: {
+			tiers: {
+				windowTokens: window ?? DEFAULT_WINDOW,
+				isCheck: (command: string) => runsACheck(command, options.checkRunners ?? []),
+				statedWindow: () => window ?? null,
+			},
+		},
 		...(model.kind === "adapter"
 			? { adapter: model.adapter }
-			: { provider: model.provider, apiKey: model.apiKey, ...(model.baseUrl !== undefined ? { baseUrl: model.baseUrl } : {}), ...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}) }),
+			: {
+					provider: model.profile.kind,
+					...adapterOptionsFor(model.profile, model.auth, options.sessionId),
+					...(model.profile.streamIdleMs !== undefined ? { streamIdleMs: model.profile.streamIdleMs } : {}),
+					...(model.reasoning !== undefined ? { reasoning: model.reasoning } : {}),
+				}),
 	};
 	return options.onSession === undefined ? createAgent(definition) : new DesktopAgent(definition, options);
 }

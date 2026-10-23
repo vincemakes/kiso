@@ -23,9 +23,11 @@ How it fits: the Electron main process starts the host in a utility process (ses
 HTTP + SSE on 127.0.0.1, per-launch token) and opens one window on the host's own page. The page talks to the
 host through `@vincemakes/kiso-client`. A host crash does not take the window with it.
 
-S1 takes its model from the environment (`KISO_DESKTOP_DATA`, `KISO_DESKTOP_WORKSPACE`, `KISO_DESKTOP_PROVIDER`
-with `KISO_DESKTOP_API_KEY`, or `KISO_DESKTOP_FAUX` for a scripted model); see `src/main/env.ts`. Config and
-credentials shared with the terminal arrive in S2. The permission tier is process-wide (see `DEPS.md`).
+The model, the effort and the sign-in come from the terminal's own configuration (`~/.kiso/config.json`, `auth.json`), read through
+the `./config` door of `@vincemakes/kiso-code`: one login serves both products, and no key is read from the desktop's own environment.
+Works live where the terminal keeps sessions (`~/.kiso/projects/<enc>/`), so the history lists the Works of every folder. The folder
+a new task starts in is `KISO_DESKTOP_WORKSPACE`, else the one used last, else the working directory; see `src/main/env.ts` for the
+rest (`KISO_DESKTOP_FAUX` runs a scripted model, for the proofs). The permission tier is process-wide (see `DEPS.md`).
 `background: true` commands run in the task runner, which the host starts as a plain node process under Electron (`runnerEnv`).
 
 Plans, mocks and screenshots live outside this repository.
