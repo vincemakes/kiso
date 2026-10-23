@@ -54,7 +54,7 @@ describe("the config door", () => {
 			}
 		};
 		walk(join(src, "config-door.ts"));
-		const names = [...seen].map((f) => f.slice(src.length + 1)).sort();
+		const names = [...seen].map((f) => f.slice(src.length + 1).replace(/\\/g, "/")).sort();
 		expect(names).not.toContain("state.ts");
 		expect(names).toEqual(CLOSURE);
 		expect([...packages].filter((p) => p.startsWith("@vincemakes/")).sort()).toEqual(PACKAGES);
