@@ -16,7 +16,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { lookupModelMetadata, resolveReasoning, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import type { ModelProfile } from "./config.js";
-import { kisoHome } from "./state.js";
+import { kisoHome } from "@vincemakes/kiso-runtime";
 
 export interface Preferences {
 	/** ctrl+t: the thinking blocks as one italic line each. Absent = shown. */

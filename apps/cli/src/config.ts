@@ -35,7 +35,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, win32 } from "node:path";
-import { kisoHome } from "./state.js";
+import { kisoHome } from "@vincemakes/kiso-runtime";
 import { MODE_VALUES, parseMode, type Mode } from "./mode.js";
 import { AuthError, effectiveBaseUrl, endpointCredentialId, getCredential, providerIdOf } from "./auth/credentials.js";
 import { BUILTIN_MANIFESTS, declareEffort } from "@vincemakes/kiso-runtime/internal";
