@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
 import { projectMessages, type Event, type Message } from "@vincemakes/kiso-core";
-import type { KisoExtension, StoreRecord } from "@vincemakes/kiso-runtime";
+import { kisoHome, type KisoExtension, type StoreRecord } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
@@ -26,9 +26,7 @@ import { taskNoticeLines, taskWhat } from "./task-notice.js";
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
  *  env vars (KISO_EXTENSIONS_DIR / KISO_MCP_CONFIG / KISO_SKILLS_DIR)
  *  still override their own path; nothing hard-codes ~/.kiso anymore. */
-export function kisoHome(): string {
-	return process.env.KISO_HOME ?? join(homedir(), ".kiso");
-}
+export { kisoHome };
 
 /** DC-49 — the workspace the coding tools may touch, and the one place it
  *  is decided. The session's own tool set and the `!` command's runner both

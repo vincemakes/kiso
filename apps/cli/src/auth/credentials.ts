@@ -21,7 +21,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { kisoHome } from "../state.js";
+import { kisoHome } from "@vincemakes/kiso-runtime";
 
 export type Credential =
 	| { readonly type: "api-key"; readonly key: string; readonly savedAt: number }

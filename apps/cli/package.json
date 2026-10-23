@@ -8,6 +8,10 @@
 		"kiso": "dist/index.js"
 	},
 	"exports": {
+		"./config": {
+			"types": "./dist/config-door.d.ts",
+			"default": "./dist/config-door.js"
+		},
 		"./policy": {
 			"types": "./dist/policy.d.ts",
 			"default": "./dist/policy.js"
