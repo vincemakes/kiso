@@ -8,7 +8,7 @@ gate compares this list with `package.json`.
 | Package | Why |
 |---|---|
 | `@vincemakes/kiso-client` | the typed client the page and the proofs use over the loopback |
-| `@vincemakes/kiso-code` | the terminal product's `./policy` door: prompt, tool rules, floor, guards, mode tiers |
+| `@vincemakes/kiso-code` | the terminal product's doors: `./policy` (prompt, tool rules, floor, guards, mode tiers) and `./config` (profiles, sign-in, session folders) |
 | `@vincemakes/kiso-core` | event and tool types, `projectMessages` |
 | `@vincemakes/kiso-protocol` | the wire types |
 | `@vincemakes/kiso-provider-openai` | the model adapter the runtime loads for an OpenAI-compatible endpoint |

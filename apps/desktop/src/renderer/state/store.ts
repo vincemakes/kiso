@@ -124,8 +124,8 @@ export function openSession(options: { readonly baseUrl: string; readonly token:
 }
 
 /** What the page was opened with: the token in the address fragment is read once and removed. */
-export function launchParams(): { token: string; sessionId: string; auto: string | null } {
+export function launchParams(): { token: string; sessionId: string | null; auto: string | null } {
 	const params = new URLSearchParams(location.hash.slice(1));
 	history.replaceState(null, "", location.pathname);
-	return { token: params.get("token") ?? "", sessionId: params.get("session") ?? "main", auto: params.get("input") };
+	return { token: params.get("token") ?? "", sessionId: params.get("session"), auto: params.get("input") };
 }

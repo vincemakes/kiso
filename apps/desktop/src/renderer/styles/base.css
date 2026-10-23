@@ -15,7 +15,7 @@ svg { display: block; }
 @keyframes in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 /* composer */
-.comp { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(680px, calc(100% - 40px)); }
+.comp { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(680px, calc(100% - 40px)); }
 .box { background: #fff; border-radius: 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.04); padding: 11px 12px 11px 18px; display: flex; align-items: flex-end; gap: 10px; }
 .box textarea { flex: 1; border: 0; outline: 0; resize: none; background: none; line-height: 1.5; max-height: 160px; padding: 4px 0; }
 .box textarea::placeholder { color: #a5a5a8; }

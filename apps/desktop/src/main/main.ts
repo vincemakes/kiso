@@ -103,6 +103,9 @@ app.whenReady().then(async () => {
 		width: 1100,
 		height: 760,
 		show: process.env["KISO_DESKTOP_SHOW"] === "1",
+		// the page draws its own top edge: the traffic lights sit on it, at the place the sidebar toggle expects
+		titleBarStyle: "hiddenInset",
+		trafficLightPosition: { x: 18, y: 18 },
 		webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
 	});
 	// the page is ours alone: nothing navigates away, nothing opens another window
@@ -111,7 +114,9 @@ app.whenReady().then(async () => {
 	});
 	win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 	win.webContents.on("console-message", (e) => process.stdout.write(`RENDERER ${e.message}\n`));
-	const params = new URLSearchParams({ token: ready.token, session: process.env["KISO_DESKTOP_SESSION"] ?? "desktop-spike" });
+	const params = new URLSearchParams({ token: ready.token });
+	const named = process.env["KISO_DESKTOP_SESSION"];
+	if (named !== undefined) params.set("session", named);
 	const auto = process.env["KISO_DESKTOP_AUTORUN"];
 	if (auto !== undefined) params.set("input", auto);
 	await win.loadURL(`${ready.origin}/#${params.toString()}`);
