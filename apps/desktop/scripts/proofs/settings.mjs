@@ -22,7 +22,7 @@ const origin = `http://127.0.0.1:${endpoint.address().port}`;
 const home = scratch("settings-home");
 mkdirSync(home, { recursive: true });
 const profile = { kind: "openai-compat", model: "mock-1", baseUrl: `${origin}/v1`, apiKeyEnv: "MOCK_ENDPOINT_KEY" };
-writeFileSync(join(home, "config.json"), JSON.stringify({ model: "mock", models: { mock: profile, nokey: { ...profile, baseUrl: "http://127.0.0.1:9/v1", apiKeyEnv: "ABSENT_KEY_NAME" } } }));
+writeFileSync(join(home, "config.json"), JSON.stringify({ model: "mock", models: { mock: { ...profile, contextWindow: 6000 }, nokey: { ...profile, baseUrl: "http://127.0.0.1:9/v1", apiKeyEnv: "ABSENT_KEY_NAME" } } }));
 writeFileSync(join(home, "auth.json"), JSON.stringify({ version: 1, credentials: { [`endpoint:${origin}`]: { type: "api-key", key: "sk-shared-login-0000", savedAt: 1 } } }));
 const env = { ...process.env };
 delete env.MOCK_ENDPOINT_KEY;
@@ -42,6 +42,12 @@ await c.run("say hello");
 await waitUntil(async () => !(await c.state()).running, 10_000);
 check(seen.length > 0 && seen.every((r) => r.auth === "Bearer sk-shared-login-0000"), "a run sends the stored key, with none in the environment");
 check(wire.some((e) => e.type === "text_delta" && e.text.includes("Hello from the endpoint.")) && !JSON.stringify(wire).includes("sk-shared-login-0000"), "the answer arrives and the key is nowhere on the stream");
+const big = clientFor(host).session("big");
+for (let i = 0; i < 4; i++) {
+	await big.run(`part ${i} ${"lorem ipsum dolor sit amet ".repeat(500)}`);
+	await waitUntil(async () => !(await big.state()).running, 20_000);
+}
+check(seen.some((r) => JSON.stringify(r.body).includes("Only output the summary")), "a long Work is compacted by the in-run tiers drawn from the profile's window, as in the terminal");
 s = JSON.parse(await api({ mode: "plan", profile: "no-such-profile" }));
 check(s.mode === "plan" && s.profile === "mock" && JSON.parse(readFileSync(join(home, "desktop.json"), "utf8")).mode === "plan", "the tier changes and is remembered; an unknown profile is ignored");
 s = JSON.parse(await api({ profile: "nokey" }));

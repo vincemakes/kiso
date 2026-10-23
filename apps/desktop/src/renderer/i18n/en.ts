@@ -53,6 +53,7 @@ export const en = {
 	settingsTier: "Permissions",
 	settingsTierNote: "Applies to every Work, at once",
 	settingsSignIn: "Sign-in",
+	notSent: "Not sent, the run was stopped: {line}",
 	failed: "failed",
 	denied_step: "not allowed",
 } as const;

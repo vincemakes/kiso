@@ -1,6 +1,8 @@
 import { ClientError, createClient, type SessionClient } from "@vincemakes/kiso-client";
+import type { WireInput } from "@vincemakes/kiso-protocol";
 import { initialState, reduce, type Input, type State } from "./model.js";
-import { t } from "../i18n/index.js";
+import { fmt, t } from "../i18n/index.js";
+import { unadmittedInput } from "./unadmitted.js";
 
 /**
  * The page's one connection to the host: a long-lived event stream into the
@@ -67,12 +69,34 @@ export function openSession(options: { readonly baseUrl: string; readonly token:
 	};
 	const ctl = new AbortController();
 	void refresh();
+	const handedBack = new Set<string>();
+	/** Input a steer handed to a run that never admitted it is the person's next message: a new run. A frame can be replayed
+	 *  (a reconnect, a reload), so it counts only while its terminal is still the last event on the log. */
+	const startUnadmitted = async (data: { readonly runId: string; readonly items: readonly WireInput[] }, terminalSeq: number, stopped: boolean): Promise<void> => {
+		const input = unadmittedInput(data.items);
+		if (input === null || handedBack.has(data.runId)) return;
+		handedBack.add(data.runId);
+		// a stop is not a send: the person's added line is not run behind their back, and not lost silently either
+		if (stopped) return say(fmt(t.notSent, { line: typeof input === "string" ? input : "" }));
+		try {
+			if ((await api.state()).highWater === terminalSeq) await act(() => api.run(input));
+		} catch {
+			handedBack.delete(data.runId);
+		}
+	};
 	void (async () => {
+		let lastSeq = -1;
+		let stopped = false;
 		for await (const ev of api.events({ signal: ctl.signal, onReconnect: () => void setTimeout(refresh, 600) })) {
 			if (ev.kind === "event") {
+				lastSeq = ev.event.seq;
+				if (ev.event.type === "terminal") stopped = ev.event.outcome.kind === "aborted";
 				push({ kind: "event", event: ev.event });
 				if (ev.event.type === "terminal" || ev.event.type === "user_input") void refresh();
-			} else if (ev.kind === "frame") push({ kind: "frame", name: ev.event, data: ev.data });
+			} else if (ev.kind === "frame") {
+				push({ kind: "frame", name: ev.event, data: ev.data });
+				if (ev.event === "unadmitted") void startUnadmitted(ev.data as Parameters<typeof startUnadmitted>[0], lastSeq, stopped);
+			}
 		}
 	})();
 	const act = async (fn: () => Promise<unknown>): Promise<void> => {
