@@ -31,6 +31,7 @@ machinery the SDK deliberately does not expose (see §3).
 | `TaskManager`, `TaskInfo`, `TaskState`, `TaskListener`, `TaskTransition` | keep | ADR-0058: the per-session task manager and its types, for a host that wires background tasks (the shell's `ShellTasks` is satisfied by it) |
 | `executionLedger`, `executionForCallId`, `ExecutionRecord`, `ExecutionStatus` | keep | the durable execution ledger |
 | `kisoHome`, `projectArtifacts`, `recordTrust`, `trustFor`, `TrustRecord`, `TrustDecision`, `ProjectArtifact`, `ProjectArtifacts` | keep | trust decisions, durable |
+| `runsACheck` | keep | whether a shell command line runs a check (test runner); a host that sets `contextPolicy.tiers.isCheck` passes its configured runners as the second argument, as the terminal does |
 | `PermissionPolicy`, `PermissionRule` | keep | the permission gate config |
 | `estimateTokens` | keep | the chars/4 context estimate — runtime policy since ADR-0043 Amendment 13 (moved from `@vincemakes/kiso-core`) |
 | `canonicalizeUsage` | keep | the canonical usage derivation (E2/1.3.0): provider-raw in, canonical out — `input` is FRESH-ONLY, cost at the versioned pricing table (R4b-1: additive minor, signed 2026-08-13) |

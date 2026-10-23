@@ -59,6 +59,11 @@ export type { ExecutionRecord, ExecutionStatus } from "./ledger.js";
 export { kisoHome, projectArtifacts, recordTrust, trustFor } from "./trust.js";
 export type { ProjectArtifact, ProjectArtifacts, TrustDecision, TrustRecord } from "./trust.js";
 
+// compaction — the phase rule's test-runner check, for a host that sets its
+// own `contextPolicy.tiers.isCheck` (the terminal puts the person's configured
+// `checks` in front of the built-in runner table).
+export { runsACheck } from "./compaction-policy.js";
+
 // usage — the canonical accounting schema (E2/1.3.0, R4b-1 ruling:
 // additive minor, one function; the signature is frozen the moment this
 // line lands — changing it is a MAJOR ritual). R5b-④a set the final

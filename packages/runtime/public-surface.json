@@ -47,5 +47,6 @@
 	"loadProjectExtensions",
 	"projectArtifacts",
 	"recordTrust",
+	"runsACheck",
 	"trustFor"
 ]
