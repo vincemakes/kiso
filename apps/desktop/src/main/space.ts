@@ -81,6 +81,14 @@ export function createSpace(options: SpaceOptions): Space {
 			}),
 	});
 
+	const windowOf = (): number | null => {
+		try {
+			const m = options.model();
+			return m.kind === "profile" ? (m.contextWindow ?? null) : null;
+		} catch {
+			return null;
+		}
+	};
 	const times = new TimeIndex(store);
 	const augment: NonNullable<HttpHandlerOptions["augment"]> = (event: Event, sessionId: string): readonly WireFrame[] => {
 		const frames: WireFrame[] = [];
@@ -95,7 +103,7 @@ export function createSpace(options: SpaceOptions): Space {
 	const derived = (event: Event, sessionId: string): readonly WireFrame[] => {
 		if (event.type === "usage") {
 			const frame = usageFrameAt(service.events(sessionId), event.seq, route());
-			return frame === null ? [] : [{ event: "usage", data: frame }];
+			return frame === null ? [] : [{ event: "usage", data: { ...frame, window: windowOf() } }];
 		}
 		if (event.type === "terminal") {
 			const totals = runTotals(service.events(sessionId), event.seq, route());

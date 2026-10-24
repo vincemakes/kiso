@@ -6,6 +6,7 @@ import "./styles/base.css";
 import "./styles/stream.css";
 import "./styles/sidebar.css";
 import "./styles/settings.css";
+import "./styles/rail.css";
 
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>

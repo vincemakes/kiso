@@ -21,6 +21,14 @@ export interface SettingsReply {
 	readonly signIn: { readonly ok: boolean; readonly text: string };
 }
 
+/** What `GET /desk/env?key=` answers: where a Work runs. `mode` is the permission tier's value. */
+export interface EnvReply {
+	readonly folder: string;
+	readonly path: string;
+	readonly branch: string | null;
+	readonly mode: string;
+}
+
 export interface SettingsPatch {
 	readonly profile?: string;
 	readonly effort?: string;

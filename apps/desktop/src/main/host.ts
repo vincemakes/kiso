@@ -8,6 +8,7 @@ import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@
 import { kisoHome, type SessionStore } from "@vincemakes/kiso-runtime";
 import type { SessionService } from "@vincemakes/kiso-server";
 import type { Settings } from "./settings.js";
+import { folderInfo } from "./folder-info.js";
 import { History } from "./history.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
@@ -142,7 +143,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 			if (!hosts.has(req.headers.host ?? "")) return refuse(res, 403, "unknown Host");
 			const url = new URL(req.url ?? "/", "http://localhost");
 			const other = /^\/w\/([A-Za-z0-9._-]+)\/v1\//.exec(url.pathname);
-			if (!url.pathname.startsWith("/v1/") && other === null && url.pathname !== "/desk/history" && url.pathname !== "/desk/settings") {
+			if (!url.pathname.startsWith("/v1/") && other === null && url.pathname !== "/desk/history" && url.pathname !== "/desk/settings" && url.pathname !== "/desk/env") {
 				if (req.method !== "GET") {
 					res.writeHead(405);
 					return void res.end();
@@ -168,6 +169,16 @@ export async function startHost(options: HostOptions): Promise<Host> {
 				}
 				res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 				return void res.end(JSON.stringify(options.settings.snapshot()));
+			}
+			if (url.pathname === "/desk/env") {
+				const where = url.searchParams.get("key");
+				const space = where === null || where === "" ? current : spaceFor(where);
+				if (space === null || req.method !== "GET") {
+					res.writeHead(space === null ? 404 : 405);
+					return void res.end();
+				}
+				res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+				return void res.end(JSON.stringify(folderInfo(space.workspace, options.settings.mode())));
 			}
 			if (url.pathname === "/desk/history") {
 				if (req.method !== "GET") {

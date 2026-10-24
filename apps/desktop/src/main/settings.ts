@@ -65,6 +65,10 @@ export class Settings {
 		}
 	}
 
+	mode(): string {
+		return getMode();
+	}
+
 	lastFolder(): string | undefined {
 		return this.#read().lastFolder;
 	}

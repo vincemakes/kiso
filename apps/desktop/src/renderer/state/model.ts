@@ -82,6 +82,9 @@ export interface Footer {
 	readonly fresh: number | null;
 	readonly output: number | null;
 	readonly cacheRate: number | null;
+	readonly cacheRead: number | null;
+	readonly costUsd: number | null;
+	readonly calls: number;
 }
 
 export interface Turn {
@@ -101,6 +104,8 @@ export interface Turn {
 export interface State {
 	readonly turns: Turn[];
 	readonly tasks: readonly TaskRow[];
+	/** the latest request's size as the log reports it (fresh + cached input), and the window the profile states */
+	context: { readonly tokens: number | null; readonly window: number | null };
 	/** the time of the latest `at` frame: where a thinking block starts */
 	lastAt: number | null;
 	/** the event the next `at` frame belongs to */
@@ -116,7 +121,7 @@ export type Input =
 	| { readonly kind: "frame"; readonly name: string; readonly data: unknown }
 	| { readonly kind: "snapshot"; readonly state: SessionState };
 
-export const initialState = (): State => ({ turns: [], tasks: [], lastAt: null, last: null, snapshot: null, version: 0 });
+export const initialState = (): State => ({ turns: [], tasks: [], context: { tokens: null, window: null }, lastAt: null, last: null, snapshot: null, version: 0 });
 
 const pagers = new WeakMap<Thinking, ThinkingPager>();
 
@@ -319,14 +324,16 @@ function frame(s: State, name: string, data: unknown): void {
 		}
 		case "usage": {
 			if (turn === undefined) return;
-			const u = (data as UsageFrame).turn;
-			turn.live = { fresh: u.fresh, output: u.output, cacheRate: u.cacheRate };
+			const f = data as UsageFrame;
+			const u = f.turn;
+			turn.live = { fresh: u.fresh, output: u.output, cacheRate: u.cacheRate, cacheRead: u.cacheRead, costUsd: u.costUsd, calls: u.calls };
+			s.context = { tokens: f.call.fresh === null || f.call.cacheRead === null ? null : f.call.fresh + f.call.cacheRead, window: f.window };
 			return;
 		}
 		case "run_usage": {
 			if (turn === undefined) return;
-			const u = data as { fresh: number | null; output: number | null; cacheRate: number | null };
-			turn.footer = { fresh: u.fresh, output: u.output, cacheRate: u.cacheRate };
+			const u = data as Footer;
+			turn.footer = { fresh: u.fresh, output: u.output, cacheRate: u.cacheRate, cacheRead: u.cacheRead, costUsd: u.costUsd, calls: u.calls };
 			return;
 		}
 		case "tool_output": {
