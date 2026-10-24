@@ -10,8 +10,8 @@
  * reaches the terminal's state or UI; a test holds that line.
  */
 
-import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
-import type { ModelProfile } from "./config.js";
+import { lookupContextWindow, lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
+import { resolveContextWindow, type KisoConfig, type ModelProfile } from "./config.js";
 
 export {
 	ConfigError,
@@ -33,6 +33,16 @@ export type { Credential } from "./auth/credentials.js";
 export { preferences, rememberEffort, startingEffort } from "./preferences.js";
 export { canonicalPath, claimProjectDir, projectDirFor, projectLayoutActive, sessionFolders } from "./projects.js";
 export type { SessionFolder } from "./projects.js";
+
+/**
+ * The context window someone stated for a profile, or null when nobody has: the window the person set (the environment, the profile,
+ * the configuration, in that order), else the metadata registry's for the profile's endpoint, else for the model's own identity.
+ * The terminal's own chain, less what only a running terminal knows (a window an endpoint's refusal taught it).
+ */
+export function contextWindowOf(profile: Pick<ModelProfile, "model" | "baseUrl" | "contextWindow">, config?: KisoConfig): number | null {
+	const set = resolveContextWindow(config ?? {}, profile as ModelProfile);
+	return set ?? lookupContextWindow(profile.model, profile.baseUrl)?.tokens ?? null;
+}
 
 /** The reasoning levels a profile's route accepts, and the one it uses when none is sent; null when nobody states them. */
 export function effortOptions(profile: Pick<ModelProfile, "model" | "baseUrl">): { readonly levels: readonly string[]; readonly default: string | null } | null {
