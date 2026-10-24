@@ -117,4 +117,4 @@
 .ask.resume .btn { margin-top: 8px; }
 .verdict { margin-top: 8px; }
 .verdict pre { margin: 0 0 8px; }
-.toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%); background: rgba(28, 28, 30, 0.9); color: #fff; font-size: 12.5px; padding: 6px 14px; border-radius: 14px; animation: in 0.3s var(--ease) both; }
+.toast { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); background: rgba(28, 28, 30, 0.9); color: #fff; font-size: 12.5px; padding: 6px 14px; border-radius: 14px; animation: in 0.3s var(--ease) both; }

@@ -34,7 +34,7 @@ export function launch({ data, workspace, fauxScript, env = {} }) {
 	const scriptPath = join(data, "faux.json");
 	if (fauxScript !== undefined) writeFileSync(scriptPath, JSON.stringify(fauxScript));
 	const child = spawn(process.execPath, [fileURLToPath(new URL("../../dist/main/headless.js", import.meta.url))], {
-		env: { ...process.env, KISO_DESKTOP_DATA: data, KISO_DESKTOP_WORKSPACE: workspace, ...(fauxScript !== undefined ? { KISO_DESKTOP_FAUX: scriptPath } : {}), ...env },
+		env: { ...process.env, KISO_HOME: data, KISO_DESKTOP_DATA: data, KISO_DESKTOP_WORKSPACE: workspace, ...(fauxScript !== undefined ? { KISO_DESKTOP_FAUX: scriptPath } : {}), ...env },
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	return new Promise((resolve, reject) => {
@@ -63,7 +63,7 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 	writeFileSync(join(data, "faux.json"), JSON.stringify(fauxScript));
 	const debugPort = String(9300 + Math.floor(Math.random() * 600));
 	const child = spawn(process.execPath, [createRequire(import.meta.url).resolve("electron/cli.js"), fileURLToPath(new URL("../..", import.meta.url))], {
-		env: { ...process.env, KISO_DESKTOP_DATA: data, KISO_DESKTOP_WORKSPACE: workspace, KISO_DESKTOP_FAUX: join(data, "faux.json"), KISO_DESKTOP_DEBUG_PORT: debugPort, KISO_DESKTOP_PROOF: "1", ...env },
+		env: { ...process.env, KISO_HOME: data, KISO_DESKTOP_DATA: data, KISO_DESKTOP_WORKSPACE: workspace, KISO_DESKTOP_FAUX: join(data, "faux.json"), KISO_DESKTOP_DEBUG_PORT: debugPort, KISO_DESKTOP_PROOF: "1", ...env },
 		stdio: ["ignore", "pipe", "ignore"],
 	});
 	const lines = [];

@@ -13,6 +13,9 @@ export const Spark = (): ReactNode => (
 	</svg>
 );
 export const Warn = (): ReactNode => svg(<path d="M12 4 2.5 20h19L12 4ZM12 10v4M12 17.5v.01" />, 16);
+export const Plus = (): ReactNode => svg(<path d="M12 5v14M5 12h14" />, 16);
+export const Sliders = (): ReactNode => svg(<><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" /><circle cx="16" cy="6" r="2" /><circle cx="10" cy="12" r="2" /><circle cx="18" cy="18" r="2" /></>, 16);
+export const Sidebar = (): ReactNode => svg(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></>, 17);
 export const ArrowUp = (): ReactNode => svg(<path d="M12 19V5M6 11l6-6 6 6" />, 16);
 
 const ICONS: Readonly<Record<string, ReactNode>> = {
