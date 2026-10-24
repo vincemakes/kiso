@@ -1,4 +1,5 @@
 import type { HistoryReply, WorkRow } from "../../shared/history.js";
+import type { EnvReply } from "../../shared/settings.js";
 import { t } from "../i18n/index.js";
 
 /**
@@ -34,6 +35,13 @@ export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[]
 	for (const w of works) buckets[w.updatedAt >= midnight ? 0 : w.updatedAt >= midnight - day ? 1 : 2]!.push(w);
 	const labels = [t.today, t.yesterday, t.earlier];
 	return buckets.flatMap((rows, i) => (rows.length === 0 ? [] : [{ label: labels[i]!, works: rows }]));
+}
+
+/** Where a Work runs: its folder, branch and permission tier (key null: the folder in use). */
+export async function fetchEnv(token: string, key: string | null): Promise<EnvReply> {
+	const response = await fetch(`/desk/env${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { headers: { authorization: `Bearer ${token}` } });
+	if (!response.ok) throw new Error(`env ${response.status}`);
+	return (await response.json()) as EnvReply;
 }
 
 export async function fetchHistory(token: string, fresh?: string): Promise<HistoryReply> {

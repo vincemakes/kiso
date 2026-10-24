@@ -6,6 +6,7 @@
  * today. scripts/check-imports.mjs allows exactly this file to do so, and
  * the spike report proposes the root export that removes the exception.
  */
+import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
 import { TaskManager, type TaskInfo } from "@vincemakes/kiso-runtime/internal";
 import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
@@ -69,6 +70,24 @@ export function stateLabel(task: TaskInfo): string {
 	}
 }
 
+/** The last lines of a task's output file (read from its end, never whole). */
+function tailOf(path: string, lines = 4): string[] {
+	try {
+		const fd = openSync(path, "r");
+		try {
+			const size = fstatSync(fd).size;
+			const length = Math.min(size, 2048);
+			const buf = Buffer.alloc(length);
+			readSync(fd, buf, 0, length, size - length);
+			return buf.toString("utf8").split("\n").filter((l) => l !== "").slice(-lines);
+		} finally {
+			closeSync(fd);
+		}
+	} catch {
+		return [];
+	}
+}
+
 export function rowsOf(manager: TaskManager, now = Date.now()): TaskRow[] {
 	return manager.list().map((t) => ({
 		id: t.id,
@@ -77,5 +96,6 @@ export function rowsOf(manager: TaskManager, now = Date.now()): TaskRow[] {
 		startedAt: t.startedAt,
 		endedAt: t.endedAt ?? null,
 		elapsedMs: (t.endedAt ?? now) - t.startedAt,
+		tail: tailOf(t.outputPath),
 	}));
 }

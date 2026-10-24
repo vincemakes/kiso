@@ -4,7 +4,7 @@
 .drag { position: absolute; left: 0; right: 0; top: 0; height: 40px; -webkit-app-region: drag; z-index: 5; }
 .sidetoggle { position: absolute; left: 82px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); -webkit-app-region: no-drag; }
 .sidetoggle:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
-.main { position: absolute; inset: 0; left: 0; transition: left 0.6s var(--ease); }
+.main { position: absolute; inset: 0; left: 0; }
 .win[data-side="1"] .main { left: var(--sw); }
 
 .side { position: absolute; left: 0; top: 0; bottom: 0; width: var(--sw); background: var(--side); transform: translateX(-100%); transition: transform 0.6s var(--ease); z-index: 50; display: flex; flex-direction: column; padding: 54px 10px 10px; }

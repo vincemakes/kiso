@@ -104,5 +104,5 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 	const text = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.textContent ?? null`);
 	const count = (q) => evaluate(`document.querySelectorAll(${JSON.stringify(q)}).length`);
 	const click = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.click() ?? false`);
-	return { ready, lines, evaluate, shot, close, text, count, click, startupMs: 0 };
+	return { ready, lines, evaluate, shot, close, text, count, click, cdp, startupMs: 0 };
 }

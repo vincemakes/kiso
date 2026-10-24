@@ -10,6 +10,8 @@ export interface UsageNumbers {
 	readonly fresh: number | null;
 	readonly output: number | null;
 	readonly cacheRead: number | null;
+	/** USD at the runtime's versioned pricing table; null when a call has no rate or is unmeasured */
+	readonly costUsd: number | null;
 	readonly known: boolean;
 }
 
@@ -17,6 +19,8 @@ export interface UsageNumbers {
  *  far: settled calls plus the latest report of the call in flight. */
 export interface UsageFrame {
 	readonly seq: number;
+	/** the context window the model's profile states, or null when nobody does (the ring then reads `?`) */
+	readonly window: number | null;
 	readonly call: UsageNumbers;
 	readonly turn: UsageNumbers & { readonly cacheRate: number | null; readonly calls: number };
 }
@@ -48,6 +52,8 @@ export interface TaskRow {
 	readonly startedAt: number;
 	readonly endedAt: number | null;
 	readonly elapsedMs: number;
+	/** the last lines of its output, for the rail's hover */
+	readonly tail: readonly string[];
 }
 
 /** `event: tasks` — pushed when the set or a state changes (not durable). */

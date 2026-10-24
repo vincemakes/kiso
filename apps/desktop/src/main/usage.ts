@@ -18,14 +18,14 @@ const sum = (a: number | null, b: number | null): number | null => (a === null |
 function fold(a: UsageNumbers | null, b: UsageNumbers | null): UsageNumbers | null {
 	if (a === null) return b;
 	if (b === null) return a;
-	return { fresh: sum(a.fresh, b.fresh), output: sum(a.output, b.output), cacheRead: sum(a.cacheRead, b.cacheRead), known: a.known && b.known };
+	return { fresh: sum(a.fresh, b.fresh), output: sum(a.output, b.output), cacheRead: sum(a.cacheRead, b.cacheRead), costUsd: sum(a.costUsd, b.costUsd), known: a.known && b.known };
 }
 
 /** One durable usage event as numbers; `route` is the adapter identity the
  *  canonical mapping keys on ("openai-compat", "anthropic", "adapter"). */
 export function callNumbers(route: string, ev: Extract<Event, { type: "usage" }>): UsageNumbers {
 	const c = canonicalizeUsage(route, ev);
-	return { fresh: c.input, output: c.output, cacheRead: ev.cacheRead === null ? null : c.cacheRead, known: ev.known };
+	return { fresh: c.input, output: c.output, cacheRead: ev.cacheRead === null ? null : c.cacheRead, costUsd: c.costUsd, known: ev.known };
 }
 
 /** The frame for the usage event at `seq`: the call, and the run so far. */
@@ -47,7 +47,7 @@ export function usageFrameAt(events: readonly Event[], seq: number, route: strin
 			inFlight = callNumbers(route, ev);
 			if (ev.seq === seq) {
 				const turn = fold(settled, inFlight)!;
-				return { seq, call: inFlight, turn: { ...turn, cacheRate: cacheRate(turn.fresh, turn.cacheRead), calls } };
+				return { seq, window: null, call: inFlight, turn: { ...turn, cacheRate: cacheRate(turn.fresh, turn.cacheRead), calls } };
 			}
 		}
 	}
