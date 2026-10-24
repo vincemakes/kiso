@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { adapterOptionsFor, applyEffortDeclarations, authForProfile, effortOptions, loadUserConfig, mergeConfigs, projectDirFor, resolveModel, sessionFolders, claimProjectDir } from "../src/config-door.js";
+import { adapterOptionsFor, applyEffortDeclarations, authForProfile, contextWindowOf, effortOptions, loadUserConfig, mergeConfigs, projectDirFor, resolveModel, sessionFolders, claimProjectDir } from "../src/config-door.js";
 
 const src = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const saved = { home: process.env.KISO_HOME, openai: process.env.OPENAI_API_KEY, anthropic: process.env.ANTHROPIC_API_KEY, deepseek: process.env.DEEPSEEK_API_KEY, sessions: process.env.KISO_SESSIONS_DIR };
@@ -97,6 +97,13 @@ describe("the config door", () => {
 		const folders = sessionFolders(home);
 		expect(folders.filter((f) => f.kind === "project").map((f) => f.workspace).sort()).toEqual(["/work/a-b", "/work/a/b"]);
 		expect(folders.some((f) => f.kind === "unknown")).toBe(true);
+	});
+
+	it("states a profile's context window: the person's own first, then the registry's, else null", () => {
+		expect(contextWindowOf({ model: "gw-model", baseUrl: "https://gw.example/v1", contextWindow: 300_000 })).toBe(300_000);
+		expect(contextWindowOf({ model: "gw-model", baseUrl: "https://gw.example/v1" }, { contextWindow: 150_000 })).toBe(150_000);
+		expect(contextWindowOf({ model: "gpt-5.5", baseUrl: "https://api.openai.com" })).toBe(1_050_000);
+		expect(contextWindowOf({ model: "no-such-model-anywhere" })).toBeNull();
 	});
 
 	it("lists a profile's effort levels, the declared ones for an unknown route, and nothing for an unstated one", () => {
