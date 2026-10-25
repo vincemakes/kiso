@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	applyEffortDeclarations,
+	contextWindowOf,
 	authForProfile,
 	effortOptions,
 	loadUserConfig,
@@ -9,7 +10,6 @@ import {
 	preferences,
 	profileAvailable,
 	rememberEffort,
-	resolveContextWindow,
 	startingEffort,
 	type KisoConfig,
 	type ModelProfile,
@@ -101,7 +101,7 @@ export class Settings {
 			name,
 			profile,
 			auth: auth.type === "oauth" ? { type: "oauth", providerId: auth.providerId } : { type: "api-key", apiKey: auth.apiKey },
-			contextWindow: resolveContextWindow(config, profile),
+			contextWindow: contextWindowOf(profile, config) ?? undefined,
 			...(effort !== null ? { reasoning: { thinking: "default", effort } as NonNullable<Extract<ModelChoice, { kind: "profile" }>["reasoning"]> } : {}),
 		};
 	}
