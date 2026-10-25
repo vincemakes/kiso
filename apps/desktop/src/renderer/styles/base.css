@@ -1,6 +1,7 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: #fff; font: 14px/1.6 var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input, select, textarea { -webkit-app-region: no-drag; }
 button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
 textarea { font: inherit; color: inherit; }
 svg { display: block; }

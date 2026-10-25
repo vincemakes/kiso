@@ -1,14 +1,12 @@
-/* the rail: one slim column, glanceable; hover for detail. It takes width from the Work beside it, or overlays it in a narrow window. */
-.win { --rw: 0px; }
-.win[data-rail="1"] { --rw: 244px; }
-.main { right: var(--rw); transition: left 0.6s var(--ease), right 0.7s var(--ease); }
+/* the rail: one slim column, glanceable; hover for detail. A column of the window row: 244 px when open, shown only by the overview key. */
 .railtoggle { position: absolute; right: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); -webkit-app-region: no-drag; }
 .railtoggle:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 .railtoggle.on { background: #efeff1; color: var(--ink); }
 .tbadge { position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; border-radius: 8px; background: var(--blue); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
 
-.rail { position: absolute; top: 0; right: 0; bottom: 0; width: 244px; background: #fbfbfc; border-left: 1px solid var(--line); display: flex; flex-direction: column; z-index: 27; transform: translateX(100%); transition: transform 0.7s var(--ease); }
-.win[data-rail="1"] .rail { transform: none; }
+.rail { flex: none; width: 0; overflow: hidden; background: #fbfbfc; transition: width 0.5s var(--ease); }
+.win[data-rail="1"] .rail { width: 244px; }
+.rail-in { width: 244px; height: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--line); }
 .rail-h { height: 56px; flex: none; }
 .rail-b { flex: 1; overflow-y: auto; padding: 0 14px 8px; scrollbar-width: thin; }
 .rail-f { flex: none; padding: 10px 14px 14px; border-top: 1px solid var(--line); }
@@ -61,7 +59,3 @@
 .tip .big { height: 92px; border-radius: 10px; margin-bottom: 8px; box-shadow: 0 0 0 1px var(--line); display: grid; place-items: center; background: #f4f4f6; }
 .tip .big .mt { zoom: 2.6; box-shadow: none; }
 .tip .tnote { color: var(--mute); margin-top: 6px; }
-@media (max-width: 900px) {
-	.win[data-rail="1"] { --rw: 0px; }
-	.win[data-rail="1"] .rail { box-shadow: -12px 0 40px rgba(0, 0, 0, 0.12); }
-}

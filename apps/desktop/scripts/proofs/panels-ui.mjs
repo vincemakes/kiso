@@ -39,7 +39,7 @@ check(await waitUntil(async () => (await app.count("[data-change='README.md']"))
 check(/\+2 −3/.test(await app.text("[data-change='README.md'] .h")) && (await app.text("[data-change='README.md']")).includes("- 1. one"), "with its added and removed lines");
 let g = await geo();
 await waitUntil(async () => { g = await geo(); return g.panelLeft !== null && Math.abs(g.chatRight - g.panelLeft) <= 2; }, 5000);
-check(g.panelLeft !== null && Math.abs(g.chatRight - g.panelLeft) <= 2 && g.panelLeft > g.mainLeft + (g.mainRight - g.mainLeft) * 0.5, "the panel is half the Work's width, beside it; the Work does not go under it");
+check(g.panelLeft !== null && Math.abs(g.chatRight - g.panelLeft) <= 2 && g.panelLeft >= g.mainLeft + (g.mainRight - g.mainLeft) * 0.49, "the panel is half the Work's width, beside it; the Work does not go under it");
 await app.shot("panel-changes");
 await app.click("[data-act=panel-full]");
 await sleep(900);

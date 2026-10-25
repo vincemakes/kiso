@@ -19,6 +19,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings }
 	const [fold, setFold] = useState(false);
 	return (
 		<aside className="side" data-kind="sidebar">
+			<div className="side-in">
 			<button className="newbtn" onClick={onNew} data-act="new">
 				<Plus />
 				{t.newTask}
@@ -52,6 +53,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings }
 						</button>
 					</div>
 				</div>
+			</div>
 			</div>
 		</aside>
 	);

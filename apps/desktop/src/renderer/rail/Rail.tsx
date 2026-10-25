@@ -49,6 +49,7 @@ export function Rail({ state, env }: { readonly state: State; readonly env: EnvR
 	};
 	return (
 		<aside className="rail" data-kind="rail">
+			<div className="rail-in">
 			<div className="rail-h" />
 			<div className="rail-b">
 				<div className="r-status" data-field="status" {...over(usageTip)}>
@@ -130,6 +131,7 @@ export function Rail({ state, env }: { readonly state: State; readonly env: EnvR
 						</span>
 					</div>
 				)}
+			</div>
 			</div>
 			<Tip tip={hover?.tip ?? null} {...(hover?.top !== undefined ? { top: hover.top } : {})} {...(hover?.bottom !== undefined ? { bottom: hover.bottom } : {})} />
 		</aside>
