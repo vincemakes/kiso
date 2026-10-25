@@ -4,8 +4,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 
-// scripts/proofs is 1,000 lines from S2 on (owner ruling 2026-10-23, S2); it was 700. The other budgets are unchanged.
-const BUDGETS = { "src/main": 2500, "src/preload": 150, "src/shared": 400, "src/renderer": 6500, "scripts/gates": 800, "scripts/proofs": 1000 };
+// scripts/proofs is 1,300 lines from S4 on (owner ruling 2026-10-25, S4); it was 1,000 from S2 (owner ruling 2026-10-23, S2) and 700 before. The other budgets are unchanged.
+const BUDGETS = { "src/main": 2500, "src/preload": 150, "src/shared": 400, "src/renderer": 6500, "scripts/gates": 800, "scripts/proofs": 1300 };
 const FILE_CAP = 400;
 const TOP = new Set([".gitignore", "DEPS.md", "README.md", "package.json", "resources", "scripts", "src", "tsconfig.build.json", "tsconfig.json", "vite.config.ts"]);
 const CODE = /\.(ts|tsx|css|html|mjs)$/;
