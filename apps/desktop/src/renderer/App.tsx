@@ -2,6 +2,10 @@ import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode 
 import { Sidebar } from "./sidebar/Sidebar.js";
 import { Overview, Sidebar as SidebarIcon } from "./stream/Icons.js";
 import { Rail } from "./rail/Rail.js";
+import { PanelContext } from "./panels/context.js";
+import { Panels } from "./panels/Panels.js";
+import { PanelMenu } from "./panels/Menu.js";
+import type { PanelKind, PanelMode } from "./state/panels.js";
 import { railOf } from "./rail/derive.js";
 import { WorkView } from "./stream/WorkView.js";
 import { Settings } from "./settings/Settings.js";
@@ -14,7 +18,6 @@ import type { EnvReply } from "../shared/settings.js";
 // read once, when the page loads: the address fragment can be read only once
 const launch = launchParams();
 const POLL_MS = 3_000;
-const NARROW = "(max-width: 900px)";
 const NO_SUBSCRIPTION = (): (() => void) => () => undefined;
 const NO_VERSION = (): number => 0;
 
@@ -31,15 +34,10 @@ export function App(): ReactNode {
 	const session = opened !== null && opened.target === target ? opened.session : null;
 	const [history, setHistory] = useState<HistoryReply | null>(null);
 	const [env, setEnv] = useState<EnvReply | null>(null);
-	// the person's choice for the rail; unchosen, it is open in a wide window and closed in a narrow one (where it overlays the Work)
-	const [railChoice, setRailChoice] = useState<boolean | null>(null);
-	const [narrow, setNarrow] = useState(() => matchMedia(NARROW).matches);
-	useEffect(() => {
-		const query = matchMedia(NARROW);
-		const on = (): void => setNarrow(query.matches);
-		query.addEventListener("change", on);
-		return () => query.removeEventListener("change", on);
-	}, []);
+	// the big panel: which, how wide, and the task a click in the rail asked for
+	const [panel, setPanel] = useState<{ readonly kind: PanelKind; readonly mode: PanelMode; readonly focus: string | null } | null>(null);
+	// the rail is open unless the person closes it with the overview key; no window width closes it
+	const [railChoice, setRailChoice] = useState(true);
 
 	useEffect(() => {
 		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), token: launch.token, sessionId: target.sessionId });
@@ -73,8 +71,9 @@ export function App(): ReactNode {
 		if (view === "work") void fetchEnv(launch.token, target.key).then(setEnv, () => undefined);
 	}, [target, view]);
 	const railOn = started && view === "work";
-	const railOpen = railOn && (railChoice ?? !narrow);
+	const railOpen = railOn && railChoice;
 	const attention = session === null ? 0 : railOf(session.state).attention;
+	const openPanel = useCallback((kind: PanelKind, focus?: string): void => setPanel((p) => ({ kind, mode: p?.mode ?? "half", focus: focus ?? null })), []);
 	const activeKey = target.key ?? history?.current.key ?? "";
 	const rows: readonly WorkRow[] = history?.works ?? [];
 	const openWork = (row: WorkRow): void => {
@@ -82,7 +81,8 @@ export function App(): ReactNode {
 		setTarget({ key: row.key === history?.current.key ? null : row.key, sessionId: row.id });
 	};
 	return (
-		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"}>
+		<PanelContext.Provider value={openPanel}>
+		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			<div className="drag" />
 			<button className="sidetoggle" onClick={() => setOpen(!open)} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
@@ -98,8 +98,9 @@ export function App(): ReactNode {
 				}}
 				onSettings={() => setView("settings")}
 			/>
+			{railOn ? <PanelMenu onPick={openPanel} /> : null}
 			{railOn ? (
-				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => setRailChoice(!railOpen)} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
+				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => setRailChoice(!railChoice)} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
 					<Overview />
 					{attention > 0 ? (
 						<span className="tbadge" data-field="badge">
@@ -108,8 +109,31 @@ export function App(): ReactNode {
 					) : null}
 				</button>
 			) : null}
+			<main className="main">
+				{view === "settings" ? (
+					<Settings token={launch.token} />
+				) : (
+					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
+						<div className="chat">{session === null ? null : <WorkView key={`${target.key ?? ""}/${target.sessionId}`} session={session} auto={launch.auto} />}</div>
+						{railOn && panel !== null && session !== null ? (
+							<Panels
+								kind={panel.kind}
+								mode={panel.mode}
+								state={session.state}
+								token={launch.token}
+								wkey={target.key}
+								sessionId={target.sessionId}
+								focus={panel.focus}
+								sidebarOpen={open}
+								onFull={() => setPanel({ ...panel, mode: panel.mode === "full" ? "half" : "full" })}
+								onClose={() => setPanel(null)}
+							/>
+						) : null}
+					</div>
+				)}
+			</main>
 			{railOn && session !== null ? <Rail state={session.state} env={env} /> : null}
-			<main className="main">{view === "settings" ? <Settings token={launch.token} /> : session === null ? null : <WorkView key={`${target.key ?? ""}/${target.sessionId}`} session={session} auto={launch.auto} />}</main>
 		</div>
+		</PanelContext.Provider>
 	);
 }

@@ -6,7 +6,7 @@ import { Approval } from "./Approval.js";
 import { Chevron } from "./Icons.js";
 import { Step } from "./Step.js";
 import { Thinking } from "./Thinking.js";
-import { Thumb, thumbOf } from "./Thumb.js";
+import { ThumbLink, thumbOf } from "./Thumb.js";
 import { useNow } from "./useNow.js";
 
 interface Props {
@@ -42,7 +42,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 				{live ? <span className="clk">{clock(ms)}</span> : null}
 				<span className="pthumbs">
 					{thumbs.map((k, i) => (
-						<Thumb key={i} kind={k} />
+						<ThumbLink key={i} kind={k} />
 					))}
 				</span>
 			</button>

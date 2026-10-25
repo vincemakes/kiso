@@ -1,7 +1,7 @@
 // The rail in the Electron window: every number it shows equals the same number recomputed from the durable log by this script
 // (a call is its latest report, a run the sum of its calls), the steps and outputs match the log's tool calls, the background
 // task's last output line is in its hover, the environment names the folder, branch and tier, and the rail takes width from the
-// Work in a wide window and overlays it in a narrow one. Screenshots go outside the repository.
+// Work (also in a narrow window: it is a column of the row, never laid over the Work). Screenshots go outside the repository.
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalizeUsage, SessionStore } from "@vincemakes/kiso-runtime";
@@ -68,8 +68,8 @@ await app.click("[data-act=rail]");
 check(await waitUntil(async () => (await width()) === wide), "closing it gives the width back");
 await app.cdp("Emulation.setDeviceMetricsOverride", { width: 820, height: 700, deviceScaleFactor: 1, mobile: false });
 await app.click("[data-act=rail]");
-await waitUntil(async () => (await q(`getComputedStyle(document.querySelector('.rail')).transform`)) === "none");
-check((await width()) === 820, "in a narrow window an open rail overlays the Work instead of taking its width");
+await waitUntil(async () => (await width()) === 820 - 244);
+check((await width()) === 820 - 244 && ["static", "relative"].includes(await q(`getComputedStyle(document.querySelector('.rail')).position`)), "in a narrow window the rail is still a column of the row, 244 wide, not laid over the Work");
 await app.shot("rail-narrow");
 await app.close();
 verdict();

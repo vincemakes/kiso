@@ -4,7 +4,7 @@ import { editDiff } from "../state/diff.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
 import { toolIcon } from "./Icons.js";
-import { Thumb, thumbOf } from "./Thumb.js";
+import { ThumbLink, thumbOf } from "./Thumb.js";
 import { useNow } from "./useNow.js";
 
 const MAX_LINES = 8;
@@ -48,7 +48,7 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 				<code className="s-obj">{objectOf(step)}</code>
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
-				{thumb !== null ? <Thumb kind={thumb} /> : null}
+				{thumb !== null ? <ThumbLink kind={thumb} /> : null}
 				<span className="s-time">{(ms / 1000).toFixed(1)}s</span>
 			</div>
 			{step.taskId !== null ? (
