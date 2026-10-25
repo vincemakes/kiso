@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { EnvReply } from "../../shared/settings.js";
 import { clock, t, tokens } from "../i18n/index.js";
 import type { State } from "../state/model.js";
+import { useOpenPanel } from "../panels/context.js";
 import { Thumb } from "../stream/Thumb.js";
 import { useNow } from "../stream/useNow.js";
 import { railOf, type RailStatus } from "./derive.js";
@@ -21,6 +22,7 @@ const pct = (n: number | null): string => (n === null ? "—" : `${Math.round(n)
  */
 export function Rail({ state, env }: { readonly state: State; readonly env: EnvReply | null }): ReactNode {
 	const rail = railOf(state);
+	const openPanel = useOpenPanel();
 	const [hover, setHover] = useState<{ readonly tip: TipData; readonly top?: number; readonly bottom?: number } | null>(null);
 	const over = (tip: TipData) => ({
 		onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
@@ -82,7 +84,7 @@ export function Rail({ state, env }: { readonly state: State; readonly env: EnvR
 				<div className="r-sec">{t.railTasks}</div>
 				{state.tasks.length === 0 ? <div className="empty">{t.railNoTasks}</div> : null}
 				{state.tasks.map((task) => (
-					<div className="tli" key={task.id} data-field="task" {...over({ head: task.command, log: task.tail, rows: [[t.railState, task.label]] })}>
+					<div className="tli click" key={task.id} data-field="task" onClick={() => openPanel("term", task.id)} {...over({ head: task.command, log: task.tail, rows: [[t.railState, task.label]] })}>
 						<div className="t1">
 							<b>{task.command}</b>
 							<small>{clock(task.elapsedMs)}</small>
@@ -109,7 +111,7 @@ export function Rail({ state, env }: { readonly state: State; readonly env: EnvR
 				{rail.outputs.length === 0 ? <div className="empty">{t.railNoOutputs}</div> : null}
 				<div className="outs">
 					{rail.outputs.map((o) => (
-						<div className="out" key={o.id} data-field="output" {...over({ head: o.name, note: o.sub, big: <Thumb kind={o.kind} /> })}>
+						<div className="out click" key={o.id} data-field="output" onClick={() => openPanel(o.kind === "diff" ? "diff" : "term")} {...over({ head: o.name, note: o.sub, big: <Thumb kind={o.kind} /> })}>
 							<div className="oprev">
 								<Thumb kind={o.kind} />
 							</div>

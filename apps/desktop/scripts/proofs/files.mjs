@@ -1,0 +1,60 @@
+// The read-only doors to a Work's folder: what a page can read, and what no request can make it read. A temporary folder with
+// a link out, a link in, a binary, a big file, an image, dependencies and a dot folder; the kiso home sits inside the folder.
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { launch, scratch, checker } from "./lib.mjs";
+
+const { check, verdict } = checker("files");
+const ws = scratch("fs-ws");
+const outside = scratch("fs-outside");
+const khome = join(ws, "khome");
+mkdirSync(khome);
+writeFileSync(join(khome, "auth.json"), '{"credentials":{"x":"DECOY-SECRET"}}');
+writeFileSync(join(outside, "secret.txt"), "OUTSIDE-SECRET");
+writeFileSync(join(ws, "README.md"), "# hello\n");
+writeFileSync(join(ws, "bin.dat"), Buffer.from([1, 2, 0, 3, 4]));
+writeFileSync(join(ws, "big.txt"), "x".repeat(300 * 1024));
+writeFileSync(join(ws, "pic.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
+mkdirSync(join(ws, "src"));
+writeFileSync(join(ws, "src", "a.ts"), "export const a = 1;\n");
+mkdirSync(join(ws, "node_modules", "dep"), { recursive: true });
+writeFileSync(join(ws, "node_modules", "dep", "i.js"), "1");
+mkdirSync(join(ws, ".git"));
+writeFileSync(join(ws, ".git", "config"), "[credential] token = DECOY-GIT-TOKEN");
+writeFileSync(join(ws, ".gitignore"), "out\n");
+symlinkSync(join(outside, "secret.txt"), join(ws, "link-out.txt"));
+symlinkSync(outside, join(ws, "link-dir"));
+symlinkSync(join(ws, "README.md"), join(ws, "link-in.md"));
+symlinkSync(join(khome, "auth.json"), join(ws, "link-auth.json"));
+
+const host = await launch({ data: khome, workspace: ws, fauxScript: [], env: { KISO_HOME: khome } });
+const get = (path, init = {}) => fetch(`${host.origin}${path}`, { ...init, headers: { authorization: `Bearer ${host.token}`, ...(init.headers ?? {}) } });
+const tree = async (p = "") => (await (await get(`/desk/fs/tree?path=${encodeURIComponent(p)}`)).json());
+const file = async (p) => {
+	const r = await get(`/desk/fs/file?path=${encodeURIComponent(p)}`);
+	return { status: r.status, body: await r.json() };
+};
+const root = await tree();
+const named = (n) => root.entries.find((e) => e.name === n);
+check(["README.md", "src", "node_modules", ".git", ".gitignore", "pic.png"].every((n) => named(n) !== undefined), "the tree lists the folder's files and folders");
+check(named("node_modules").folded === true && named(".git").folded === true && named("src").folded === undefined, "dependencies and dot folders are listed as not listed (folded); a dot file is listed");
+check(named("link-out.txt").outside === true && named("link-dir").outside === true && named("link-in.md").kind === "link" && named("link-in.md").outside === undefined, "a link out of the folder is marked outside; a link inside is a plain link");
+check(named("khome") === undefined && named("link-auth.json") === undefined && JSON.stringify(root).indexOf("DECOY") === -1, "the kiso home inside the folder and a link to its credentials are not listed");
+check((await tree("src")).entries.map((e) => e.name).join() === "a.ts", "a sub folder opens");
+check((await file("README.md")).body.kind === "markdown" && (await file("src/a.ts")).body.text.includes("export const a"), "markdown and text are read");
+const png = (await file("pic.png")).body;
+check(png.kind === "image" && png.dataUrl.startsWith("data:image/png;base64,"), "an image comes as a data URL");
+check((await file("bin.dat")).body.kind === "binary" && (await file("bin.dat")).body.text === undefined, "a file with a NUL byte is never read as text");
+const big = (await file("big.txt")).body;
+check(big.truncated === true && big.text.length === 256 * 1024 && big.size === 300 * 1024, "a big text file is cut at the cap and says so");
+const refused = async (p, status) => (await file(p)).status === status;
+check((await refused("../x", 403)) && (await refused("src/../../x", 403)) && (await refused(join(outside, "secret.txt"), 400)) && (await refused("a\0b", 400)), "paths that climb out, absolute paths and NUL are refused");
+check((await refused("link-out.txt", 403)) && (await get(`/desk/fs/tree?path=link-dir`)).status === 403, "a link out is never followed, as a file or as a folder");
+check((await refused("khome/auth.json", 403)) && (await refused("link-auth.json", 403)), "the kiso home's credentials are refused, directly and through a link");
+check((await get(`/desk/fs/tree?path=khome`)).status === 403 && (await refused(".git/config", 403)) && (await get("/desk/fs/tree?path=node_modules")).status === 403 && (await refused("node_modules/dep/i.js", 403)), "folded folders are not read through");
+check((await refused("nope.txt", 404)) && (await get("/desk/fs/file?path=src")).status === 400, "a missing file is 404, a folder is not a file");
+check((await get("/desk/fs/file?path=README.md", { method: "POST", body: "{}" })).status === 405 && (await get("/desk/fs/tree", { method: "PUT" })).status === 405, "the doors take GET only");
+const bare = (p, h = {}) => fetch(`${host.origin}${p}`, { headers: h }).then((r) => r.status);
+check((await bare("/desk/fs/file?path=README.md")) === 401 && (await bare("/desk/fs/file?path=README.md", { authorization: `Bearer ${host.token}`, origin: "https://evil.example" })) === 403 && (await get("/desk/fs/tree?key=nope")).status === 404, "no token is 401, a foreign origin 403, an unknown folder key 404");
+host.child.kill("SIGTERM");
+verdict();

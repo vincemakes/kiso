@@ -54,6 +54,11 @@ function block(b: Block, i: number): ReactNode {
 	}
 }
 
+/** Markdown drawn from a tree, without the answer's frame (the file preview uses it). */
+export function Markdown({ text }: { readonly text: string }): ReactNode {
+	return <>{render(text, false).map(block)}</>;
+}
+
 /** The answer: markdown drawn from a tree, with unclosed markers held back while it streams. */
 export function Answer({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode {
 	return (
