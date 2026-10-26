@@ -4,12 +4,23 @@ import { Turn } from "./Turn.js";
 import { isInterrupted, isLive } from "../state/model.js";
 import type { Session } from "../state/store.js";
 import { ResumeCard, VerdictPanel } from "./Interrupt.js";
+import { t } from "../i18n/index.js";
 
 // the input handed to the page at launch is sent once, into the first Work that opens
 let autoSent = false;
 
+interface Props {
+	readonly session: Session;
+	readonly auto: string | null;
+	/** what an empty Work shows under its title: the tray under the input box, or the first-run guide in its place */
+	readonly home?: { readonly tray: ReactNode; readonly guide: ReactNode | null };
+	/** an approval a notification pointed at: scrolled to and focused once its card is there */
+	readonly focusDecision?: string | null;
+	readonly onFocused?: () => void;
+}
+
 /** One Work: its stream and its input. A Work whose run died offers the resume card. */
-export function WorkView({ session, auto }: { readonly session: Session; readonly auto: string | null }): ReactNode {
+export function WorkView({ session, auto, home, focusDecision, onFocused }: Props): ReactNode {
 	const version = useSyncExternalStore(session.subscribe, session.version);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
@@ -23,6 +34,20 @@ export function WorkView({ session, auto }: { readonly session: Session; readonl
 		const el = scroller.current;
 		if (el !== null && pinned.current) el.scrollTo({ top: el.scrollHeight });
 	}, [version]);
+	useEffect(() => {
+		if (focusDecision === null || focusDecision === undefined) return;
+		let tries = 0;
+		const timer = setInterval(() => {
+			const card = document.querySelector(`[data-decision="${CSS.escape(focusDecision)}"]`);
+			if (card !== null) {
+				card.scrollIntoView({ block: "center" });
+				(card.querySelector("[data-act=allow]") as HTMLElement | null)?.focus();
+				clearInterval(timer);
+				onFocused?.();
+			} else if ((tries += 1) > 40) clearInterval(timer);
+		}, 200);
+		return () => clearInterval(timer);
+	}, [focusDecision, onFocused]);
 	useEffect(() => {
 		if (auto !== null && !autoSent) {
 			autoSent = true;
@@ -41,7 +66,7 @@ export function WorkView({ session, auto }: { readonly session: Session; readonl
 				}}
 			>
 				<div className="col">
-					{turns.length === 0 ? (
+					{turns.length === 0 && home === undefined ? (
 						<div className="empty">
 							<b>kiso</b>
 						</div>
@@ -57,7 +82,18 @@ export function WorkView({ session, auto }: { readonly session: Session; readonl
 					{message}
 				</div>
 			) : null}
-			<Composer running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
+			{turns.length === 0 && home !== undefined ? (
+				<div className="homebox" data-kind="home">
+					<h1>{t.homeTitle}</h1>
+					{home.guide ?? (
+						<Composer inline running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()}>
+							{home.tray}
+						</Composer>
+					)}
+				</div>
+			) : (
+				<Composer running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
+			)}
 		</>
 	);
 }

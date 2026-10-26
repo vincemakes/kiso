@@ -60,3 +60,27 @@
 .browser iframe { border: 0; flex: 1; width: 100%; background: #fff; }
 .thl { display: inline-flex; cursor: pointer; }
 .click { cursor: pointer; }
+
+/* the home screen: a title, the input box in the middle, the tray under it; the first-run guide takes the box's place */
+.homebox { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 20px 60px; gap: 28px; }
+.homebox h1 { margin: 0; font-size: 40px; font-weight: 300; letter-spacing: -0.02em; text-align: center; }
+.comp.inline { position: static; transform: none; width: min(680px, 100%); }
+.tray { display: flex; align-items: center; gap: 8px; padding: 10px 4px 0; }
+.trayfold { position: relative; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 15px; background: #f3f3f5; color: #444; font-size: 13px; border: 0; }
+.chip:hover { background: #ebebee; }
+select.chip { appearance: none; padding-right: 14px; cursor: pointer; font: inherit; font-size: 13px; }
+.tray .hint { margin-left: auto; color: var(--mute); font-size: 12px; }
+.fmenu { top: auto; bottom: 36px; right: auto; left: 0; min-width: 220px; }
+.mlabel { padding: 6px 10px 2px; color: var(--mute); font-size: 11.5px; }
+.guide { width: min(560px, 100%); text-align: left; background: #fff; border-radius: 18px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.04); padding: 22px 24px; display: flex; flex-direction: column; gap: 10px; }
+.guide h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.guide p { margin: 0 0 6px; color: #555; }
+.guide label { color: var(--mute); font-size: 12.5px; }
+.guide input { font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); outline: 0; width: 100%; }
+.gprofile { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; border-radius: 10px; background: #f6f6f8; text-align: left; }
+.gprofile:hover { background: #ededf1; }
+.gprofile span { color: var(--mute); font-size: 12.5px; }
+.gprofile small { margin-left: auto; color: var(--amber); }
+.gdemo { align-self: flex-start; margin-top: 4px; color: var(--blue); }
+.grow-row { display: flex; gap: 8px; }

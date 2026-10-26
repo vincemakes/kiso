@@ -56,6 +56,8 @@ export interface DesktopAgentOptions {
 	readonly store: SessionStore;
 	readonly workspace: string;
 	readonly model: ModelChoice;
+	/** The tier in force for this session, read on every decision: each Work has its own (the policy reads it through the getter). */
+	readonly tier: () => PermissionMode;
 	/** The id of the session this agent serves (the endpoint's cache key and `{session}` headers are drawn from it). */
 	readonly sessionId: string;
 	/** The person's own test-runner commands, in front of the built-in ones, for the compaction phase rule. */
@@ -104,7 +106,7 @@ export function createDesktopAgent(options: DesktopAgentOptions): Agent {
 	};
 	const window = model.kind === "profile" ? model.contextWindow : undefined;
 	const prompt = composeSystemPrompt(workspace, protectedFiles());
-	const modeNote = modeSystemPrompt();
+	const modeNote = modeSystemPrompt(options.tier());
 	const definition: AgentDefinition = {
 		model: model.kind === "adapter" ? model.model : model.profile.model,
 		store,
@@ -117,7 +119,7 @@ export function createDesktopAgent(options: DesktopAgentOptions): Agent {
 			protectedShellExtension({ files: protectedFiles, workspaceRoot: root, env: () => ({ home: homedir(), kisoHome: kisoHome() }) }),
 			floorExtension(() => true, root),
 			breakerExtension(),
-			...modeExtensions(root),
+			...modeExtensions(root, options.tier),
 			readOnlyShellExtension(() => ({ workspaceRoot: workspace, excludeRoots: toolOptions.excludeRoots })),
 		],
 		// in-run compaction, as the terminal turns it on (ADR-0055): only a window someone stated arms the overflow belt

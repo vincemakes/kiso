@@ -9,11 +9,14 @@ import type { PanelKind, PanelMode } from "./state/panels.js";
 import { railOf } from "./rail/derive.js";
 import { WorkView } from "./stream/WorkView.js";
 import { Settings } from "./settings/Settings.js";
+import { Guide } from "./home/Guide.js";
+import { Tray } from "./home/Tray.js";
+import { chooseFolder, fetchSettings, pickFolder, saveSettings, sendPresence, type OpenWork } from "./state/desk.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
 import { fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
 import { t } from "./i18n/index.js";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
-import type { EnvReply } from "../shared/settings.js";
+import type { EnvReply, SettingsReply } from "../shared/settings.js";
 
 // read once, when the page loads: the address fragment can be read only once
 const launch = launchParams();
@@ -36,6 +39,10 @@ export function App(): ReactNode {
 	const [env, setEnv] = useState<EnvReply | null>(null);
 	// the big panel: which, how wide, and the task a click in the rail asked for
 	const [panel, setPanel] = useState<{ readonly kind: PanelKind; readonly mode: PanelMode; readonly focus: string | null } | null>(null);
+	const [settings, setSettings] = useState<SettingsReply | null>(null);
+	const [settingsBump, setSettingsBump] = useState(0);
+	// an approval a system notification pointed at: its card is scrolled to and focused once the Work shows it
+	const [focusDecision, setFocusDecision] = useState<string | null>(null);
 	// the rail is open unless the person closes it with the overview key; no window width closes it
 	const [railChoice, setRailChoice] = useState(true);
 
@@ -74,6 +81,58 @@ export function App(): ReactNode {
 	const railOpen = railOn && railChoice;
 	const attention = session === null ? 0 : railOf(session.state).attention;
 	const openPanel = useCallback((kind: PanelKind, focus?: string): void => setPanel((p) => ({ kind, mode: p?.mode ?? "half", focus: focus ?? null })), []);
+	useEffect(() => {
+		if (view === "work") void fetchSettings(launch.token, target.sessionId).then(setSettings, () => undefined);
+	}, [target, view, settingsBump]);
+	const currentKey = history?.current.key ?? null;
+	/** Open a Work (a fresh one, or an existing one) in whichever folder it belongs to. */
+	const goTo = useCallback(
+		(key: string, sessionId: string): void => {
+			setView("work");
+			setTarget({ key: key === currentKey ? null : key, sessionId });
+		},
+		[currentKey],
+	);
+	const openFolder = useCallback(
+		(path: string): void => {
+			void chooseFolder(launch.token, path).then((r) => goTo(r.key, newWorkId()), () => undefined);
+		},
+		[goTo],
+	);
+	const pick = useCallback((): void => {
+		void pickFolder().then((path) => path !== null && openFolder(path));
+	}, [openFolder]);
+	// ⌘K: another folder
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent): void => {
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+				e.preventDefault();
+				pick();
+			}
+		};
+		addEventListener("keydown", onKey);
+		return () => removeEventListener("keydown", onKey);
+	}, [pick]);
+	// a click on a system notification: that Work, at that approval
+	useEffect(() => {
+		const open = (w: OpenWork): void => {
+			goTo(w.key, w.sessionId);
+			setFocusDecision(w.decisionId);
+		};
+		window.kisoDesktop?.onOpenWork(open);
+		(window as unknown as { __kisoOpenWork?: (w: OpenWork) => void }).__kisoOpenWork = open; // the same entry, for the proof scripts
+	}, [goTo]);
+	// where the person is, so the host can tell an approval that waits in front of them from one that waits out of sight
+	useEffect(() => {
+		const report = (): void => void sendPresence(launch.token, target.key, target.sessionId, document.hasFocus() && document.visibilityState === "visible").catch(() => undefined);
+		report();
+		const timer = setInterval(report, 5_000);
+		for (const type of ["focus", "blur", "visibilitychange"]) addEventListener(type, report);
+		return () => {
+			clearInterval(timer);
+			for (const type of ["focus", "blur", "visibilitychange"]) removeEventListener(type, report);
+		};
+	}, [target]);
 	const activeKey = target.key ?? history?.current.key ?? "";
 	const rows: readonly WorkRow[] = history?.works ?? [];
 	const openWork = (row: WorkRow): void => {
@@ -114,7 +173,26 @@ export function App(): ReactNode {
 					<Settings token={launch.token} />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{session === null ? null : <WorkView key={`${target.key ?? ""}/${target.sessionId}`} session={session} auto={launch.auto} />}</div>
+						<div className="chat">{session === null ? null : <WorkView
+								key={`${target.key ?? ""}/${target.sessionId}`}
+								session={session}
+								auto={launch.auto}
+								home={{
+									tray: (
+										<Tray
+											env={env}
+											settings={settings}
+											token={launch.token}
+											onPick={pick}
+											onOpen={openFolder}
+											onTier={(mode) => void saveSettings(launch.token, { mode, session: target.sessionId }).then(() => setSettingsBump((n) => n + 1))}
+										/>
+									),
+									guide: settings !== null && (settings.setup === "signin" || settings.setup === "noprofile") ? <Guide settings={settings} token={launch.token} onChanged={() => setSettingsBump((n) => n + 1)} /> : null,
+								}}
+								focusDecision={focusDecision}
+								onFocused={() => setFocusDecision(null)}
+							/>}</div>
 						{railOn && panel !== null && session !== null ? (
 							<Panels
 								kind={panel.kind}

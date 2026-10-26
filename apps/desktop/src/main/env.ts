@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalPath, projectDirFor } from "@vincemakes/kiso-code/config";
-import { kisoHome, SessionStore } from "@vincemakes/kiso-runtime";
+import { kisoHome } from "@vincemakes/kiso-runtime";
+import { fauxSkip } from "./faux.js";
 import { startHost, type Host } from "./host.js";
 import type { ModelChoice, PermissionMode } from "./agent.js";
 import { Settings } from "./settings.js";
+import type { ApprovalNotice } from "./approvals.js";
 
 /**
  * The host's configuration from the environment — shared by the headless
@@ -15,6 +17,7 @@ import { Settings } from "./settings.js";
  *   KISO_DESKTOP_FAUX        path to a JSON FauxScript (the keyless model)
  *   KISO_DESKTOP_FAUX_SKIP   a session id: skip the script turns its log already consumed
  *   KISO_DESKTOP_MODE        the permission tier: default | accept-edits | plan | full-access
+ *   KISO_DESKTOP_NOTIFY_LOG  a file: approval notices are appended to it (JSON lines) instead of reaching the system (the proofs)
  *   KISO_DESKTOP_SANITIZER   "default" | "desktop"
  *   KISO_DESKTOP_THINKING    0: leave reasoning text off the wire (default: on)
  *   KISO_DESKTOP_KEEPALIVE   keepalive period in ms
@@ -23,21 +26,6 @@ import { Settings } from "./settings.js";
  *                            crash script restarts the host where a live client expects it
  *
  */
-
-/** How many faux-script turns a session's log has consumed (the same rule
- *  the terminal's fauxSkip states: a turn is consumed by a tool result or an
- *  end_turn stop, or by an unfinished call the recovery completes). */
-function fauxSkip(sessionsDir: string, sessionId: string): number {
-	const store = new SessionStore(sessionsDir);
-	const events = store.load(sessionId).map((r) => r.event);
-	store.closeAll();
-	const results = new Set(events.filter((e) => e.type === "tool_result").map((e) => e.callId));
-	return (
-		events.filter((e) => e.type === "tool_result").length +
-		events.filter((e) => e.type === "stop" && e.reason === "end_turn").length +
-		events.filter((e) => e.type === "tool_call_end" && !results.has(e.callId)).length
-	);
-}
 
 /** A scripted model, for the proofs; otherwise null: the model comes from the shared configuration (settings.ts). */
 async function fauxFromEnv(sessionsDir: string): Promise<ModelChoice | null> {
@@ -67,7 +55,16 @@ function workspaceFor(settings: Settings): string {
 	return settings.lastFolder() ?? process.cwd();
 }
 
-export async function startFromEnv(): Promise<Host> {
+/** Where an approval notice goes: a file in a proof, else the main process (from a utility process), else the caller's own channel. */
+function notifier(own?: (n: ApprovalNotice) => void): ((n: ApprovalNotice) => void) | undefined {
+	const log = process.env["KISO_DESKTOP_NOTIFY_LOG"];
+	if (log !== undefined && log !== "") return (n) => appendFileSync(log, `${JSON.stringify(n)}\n`);
+	const port = (process as { parentPort?: { postMessage(message: unknown): void } }).parentPort;
+	if (port !== undefined) return (n) => port.postMessage({ type: "notify", notice: n });
+	return own;
+}
+
+export async function startFromEnv(options: { readonly notify?: (n: ApprovalNotice) => void } = {}): Promise<Host> {
 	const home = process.env["KISO_DESKTOP_DATA"] ?? kisoHome();
 	// the terminal's configuration and sign-in are read from the one root the terminal uses
 	process.env["KISO_HOME"] ??= home;
@@ -83,6 +80,7 @@ export async function startFromEnv(): Promise<Host> {
 		home,
 		workspace,
 		settings,
+		...(notifier(options.notify) !== undefined ? { notify: notifier(options.notify)! } : {}),
 		exposeThinking: process.env["KISO_DESKTOP_THINKING"] !== "0",
 		...(process.env["KISO_DESKTOP_PORT"] !== undefined ? { port: Number(process.env["KISO_DESKTOP_PORT"]) } : {}),
 		...(process.env["KISO_DESKTOP_TOKEN"] !== undefined ? { token: process.env["KISO_DESKTOP_TOKEN"] } : {}),

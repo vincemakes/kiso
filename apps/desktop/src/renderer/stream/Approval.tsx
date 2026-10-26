@@ -41,7 +41,7 @@ export function Approval({ ask, onAnswer }: { readonly ask: Ask; readonly onAnsw
 		onAnswer(ask.decisionId, allow);
 	};
 	return (
-		<div className="ask" data-kind="ask">
+		<div className="ask" data-kind="ask" data-decision={ask.decisionId}>
 			<div className="h">
 				<Warn />
 				{title}
