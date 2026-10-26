@@ -10,7 +10,7 @@
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { kisoHome } from "./state.js";
+import { kisoHome } from "@vincemakes/kiso-runtime";
 
 /** The sentinel: present = the home has seen the 0.1.45 first-run
  *  sequence (its config surface exists — no re-scaffold, no re-note). */
