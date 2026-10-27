@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 // fast: no Electron, no kill -9 (a few seconds to a minute); full: everything, for the end of a milestone, before a push, before a release
 const FAST = ["guard", "history", "desk", "files", "panels", "settings", "stream", "stream default", "model", "usage", "policy", "control", "tasks"];
-const FULL = [...FAST, "crash", "stream-ui", "sidebar-ui", "rail-ui", "panels-ui", "layout-ui", "home-ui", "unadmitted", "electron", "electron main", "interrupt"];
+const FULL = [...FAST, "crash", "stream-ui", "sidebar-ui", "rail-ui", "panels-ui", "layout-ui", "home-ui", "unadmitted", "electron", "electron main", "electron packaged", "interrupt"];
 const log = process.env.KISO_DESKTOP_PROOF_LOG ?? join(tmpdir(), "kiso-desktop-proofs.log");
 /** Append to the log (or start it); false when it cannot be written: no log is better than no proofs. */
 const save = (text, fresh = false) => { try { mkdirSync(dirname(log), { recursive: true }); (fresh ? writeFileSync : appendFileSync)(log, text); return true; } catch { return false; } };

@@ -1,0 +1,103 @@
+name: desktop-release
+
+# The desktop app as a macOS Apple Silicon .dmg: an UNSIGNED, NOT NOTARIZED test build (ad-hoc signed, so the system
+# accepts the bundle once the person allows it). Two triggers:
+#   - a pushed `desktop-v*` tag builds the .dmg and creates a GitHub prerelease with the .dmg and its checksum;
+#   - a manual run (workflow_dispatch) builds the same .dmg and only uploads it as a workflow artifact: no tag, no Release.
+# Nothing here signs, notarizes or updates anything. Whether a tag is pushed is the owner's decision.
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15 # Apple Silicon
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # the packages the app bundles, built from source
+      - run: npm run build
+
+      - name: build the desktop app
+        run: npm run build -w @vincemakes/kiso-desktop
+
+      - name: package the .dmg
+        run: npm run pack -w @vincemakes/kiso-desktop
+
+      - name: checksum
+        working-directory: apps/desktop/release
+        run: |
+          ls -l *.dmg
+          shasum -a 256 *.dmg | tee SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kiso-desktop-mac-arm64
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/SHA256SUMS.txt
+          if-no-files-found: error
+
+  release:
+    # only a pushed desktop-v* tag makes a Release; a manual run stops after the artifact
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kiso-desktop-mac-arm64
+          path: dist
+
+      - name: release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          **This is an unsigned test build of the kiso desktop app.** macOS Apple Silicon only.
+
+          ## Open it the first time
+
+          1. Open the `.dmg` and drag **kiso** into **Applications**.
+          2. Open **kiso** once. macOS will say it cannot verify the developer: close that message.
+          3. Open **System Settings, Privacy & Security**, scroll to the message about "kiso", and choose **Open Anyway**. Confirm with your password.
+          4. From then on it opens like any other app.
+
+          If macOS says the app is "damaged", run `xattr -dr com.apple.quarantine /Applications/kiso.app` in Terminal and open it again.
+
+          ## Verify the download
+
+          `shasum -a 256` of the `.dmg` must equal the line in `SHA256SUMS.txt`.
+
+          ## Known gaps
+
+          - Not signed and not notarized (hence the steps above).
+          - No automatic update: a new version is a new download.
+          - No plugin, skill or scheduled-task screens.
+          - No "commit and create PR" button.
+          - The interface is English only.
+          - macOS Apple Silicon only: no Intel build, no Windows, no Linux.
+          NOTES
+
+      - name: create the Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/*.dmg dist/SHA256SUMS.txt \
+            --repo "${{ github.repository }}" \
+            --title "kiso desktop ${{ github.ref_name }} (unsigned test build)" \
+            --notes-file notes.md \
+            --prerelease

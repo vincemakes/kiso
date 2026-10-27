@@ -13,7 +13,9 @@
 		"gates": "node scripts/gates/size.mjs && node scripts/gates/deps.mjs && node scripts/gates/imports.mjs && node scripts/gates/names.mjs && node scripts/gates/paths.mjs && node ../../scripts/check-cjk.mjs",
 		"proofs:fast": "node scripts/proofs/all.mjs fast",
 		"proofs:full": "node scripts/proofs/all.mjs full",
-		"check:full": "npm run build && npm run typecheck && npm run gates && npm run proofs:full"
+		"check:full": "npm run build && npm run typecheck && npm run gates && npm run proofs:full",
+		"pack:dir": "electron-builder --dir --mac --arm64",
+		"pack": "electron-builder --mac dmg --arm64"
 	},
 	"dependencies": {
 		"@vincemakes/kiso-client": "0.51.1",
@@ -32,6 +34,7 @@
 		"@vincemakes/kiso-evals": "0.51.1",
 		"@vitejs/plugin-react": "6.1.2",
 		"electron": "44.9.3",
+		"electron-builder": "26.18.0",
 		"react": "19.3.1",
 		"react-dom": "19.3.1",
 		"typescript": "^5.7.2",
@@ -39,5 +42,39 @@
 	},
 	"engines": {
 		"node": ">=22"
+	},
+	"build": {
+		"appId": "com.vincemakes.kiso.desktop",
+		"productName": "kiso",
+		"asar": false,
+		"npmRebuild": false,
+		"publish": null,
+		"artifactName": "kiso-${version}-mac-${arch}.${ext}",
+		"directories": {
+			"output": "release"
+		},
+		"files": [
+			"dist/**",
+			"out/renderer/**",
+			"package.json"
+		],
+		"mac": {
+			"icon": "resources/icon.png",
+			"category": "public.app-category.developer-tools",
+			"target": [
+				{
+					"target": "dmg",
+					"arch": [
+						"arm64"
+					]
+				}
+			],
+			"identity": "-",
+			"hardenedRuntime": false,
+			"gatekeeperAssess": false
+		},
+		"dmg": {
+			"title": "kiso"
+		}
 	}
 }
