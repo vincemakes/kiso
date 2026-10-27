@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
 	applyEffortDeclarations,
 	contextWindowOf,
+	demoScript,
 	authForProfile,
 	effortOptions,
 	loadUserConfig,
@@ -14,8 +15,10 @@ import {
 	type KisoConfig,
 	type ModelProfile,
 } from "@vincemakes/kiso-code/config";
-import { MODE_LABEL, OFFERED_MODES, getMode, setMode } from "@vincemakes/kiso-code/policy";
+import { MODE_LABEL, OFFERED_MODES } from "@vincemakes/kiso-code/policy";
 import type { ModelChoice, PermissionMode } from "./agent.js";
+import { fauxSkip } from "./faux.js";
+import { storeKey } from "./login.js";
 import type { SettingsPatch, SettingsReply } from "../shared/settings.js";
 
 /**
@@ -32,19 +35,51 @@ import type { SettingsPatch, SettingsReply } from "../shared/settings.js";
 interface Own {
 	readonly lastFolder?: string;
 	readonly profile?: string;
+	/** the tier new Works start with */
 	readonly mode?: string;
+	/** a tier per Work (session id), for Works whose tier was set */
+	readonly tiers?: Readonly<Record<string, string>>;
+	readonly recent?: readonly string[];
 }
+
+const MAX_RECENT = 10;
+const isTier = (value: unknown): value is PermissionMode => OFFERED_MODES.some((m) => m === value);
 
 export class Settings {
 	readonly #file: string;
 	/** a scripted model (the proofs); the shared configuration is then not read */
 	readonly #fixed: ModelChoice | null;
+	/** the tier a Work starts with when nothing was set for it */
+	#default: PermissionMode;
+	/** the scripted tour, once started: a factory for its model (the demo script after the turns a Work has used) */
+	#demo: ((skip: number) => ModelChoice) | null = null;
 
 	constructor(home: string, fixed: ModelChoice | null, mode: PermissionMode) {
 		this.#file = join(home, "desktop.json");
 		this.#fixed = fixed;
 		const saved = this.#read().mode;
-		setMode(saved !== undefined && OFFERED_MODES.some((m) => m === saved) ? (saved as PermissionMode) : mode);
+		this.#default = isTier(saved) ? saved : mode;
+	}
+
+	/** The tier of one Work (read by the policy on every decision), else the one new Works start with. */
+	tierOf(sessionId?: string): PermissionMode {
+		const own = sessionId === undefined ? undefined : this.#read().tiers?.[sessionId];
+		return isTier(own) ? own : this.#default;
+	}
+
+	/** Folders the person picked, newest first; and one more picked now. */
+	recents(): readonly string[] {
+		return this.#read().recent ?? [];
+	}
+
+	addRecent(path: string): void {
+		this.write({ recent: [path, ...this.recents().filter((p) => p !== path)].slice(0, MAX_RECENT) });
+	}
+
+	/** Start the scripted tour: no key, the terminal's own demo script, for Works opened from now on. */
+	async startDemo(): Promise<void> {
+		const { createFauxProvider } = await import("@vincemakes/kiso-evals");
+		this.#demo = (skip) => ({ kind: "adapter", adapter: createFauxProvider(demoScript().slice(skip)), model: "demo", route: "adapter" });
 	}
 
 	#read(): Own {
@@ -63,10 +98,6 @@ export class Settings {
 		} catch {
 			// a read-only home only loses the memory
 		}
-	}
-
-	mode(): string {
-		return getMode();
 	}
 
 	lastFolder(): string | undefined {
@@ -88,8 +119,9 @@ export class Settings {
 	}
 
 	/** The model a Work opened now runs on; throws, in words, when none can. */
-	model(): ModelChoice {
+	model(ctx?: { readonly sessionId: string; readonly sessionsDir: string }): ModelChoice {
 		if (this.#fixed !== null) return this.#fixed;
+		if (this.#demo !== null) return this.#demo(ctx === undefined ? 0 : fauxSkip(ctx.sessionsDir, ctx.sessionId));
 		const config = this.#config();
 		const name = this.#chosen(config);
 		if (name === null) throw new Error("no model is configured: add a profile to ~/.kiso/config.json (see the terminal's docs) and choose it in Settings");
@@ -116,7 +148,23 @@ export class Settings {
 		return Object.values(this.#config().models ?? {}).flatMap((p) => (p.apiKeyEnv === undefined ? [] : [p.apiKeyEnv]));
 	}
 
-	snapshot(): SettingsReply {
+	/** What the home screen should offer: nothing, a key for a profile, a profile to add, or the tour already on. */
+	#setup(config: KisoConfig, name: string | null): SettingsReply["setup"] {
+		if (this.#fixed !== null) return "ready";
+		if (this.#demo !== null) return "demo";
+		const models = config.models ?? {};
+		if (Object.keys(models).length === 0) return "noprofile";
+		return name !== null && profileAvailable(models[name]!) ? "ready" : "signin";
+	}
+
+	/** Store a key for a profile (the terminal's credential file); a sign-in ends the tour. */
+	saveKey(profile: string, key: unknown): void {
+		storeKey(this.#config().models?.[profile], key);
+		this.#demo = null;
+		if (this.#read().profile === undefined) this.write({ profile });
+	}
+
+	snapshot(session?: string): SettingsReply {
 		const config = this.#config();
 		const models = config.models ?? {};
 		const name = this.#chosen(config);
@@ -126,7 +174,8 @@ export class Settings {
 			profiles: Object.entries(models).map(([n, p]) => ({ name: n, model: p.model, available: profileAvailable(p) })),
 			profile: name,
 			effort: levels === null || name === null ? null : { ...levels, current: startingEffort(profile!, preferences().effort?.[name]) },
-			mode: getMode(),
+			mode: this.tierOf(session),
+			setup: this.#setup(config, name),
 			modes: OFFERED_MODES.map((value) => ({ value, label: MODE_LABEL[value] })),
 			signIn: name === null ? { ok: false, text: "No model is configured." } : signInOf(name, profile!),
 		};
@@ -134,13 +183,19 @@ export class Settings {
 
 	apply(patch: SettingsPatch): void {
 		const config = this.#config();
-		if (patch.profile !== undefined && config.models?.[patch.profile] !== undefined) this.write({ profile: patch.profile });
+		if (patch.profile !== undefined && config.models?.[patch.profile] !== undefined) {
+			this.write({ profile: patch.profile });
+			// choosing a profile that can run ends the tour
+			if (profileAvailable(config.models[patch.profile]!)) this.#demo = null;
+		}
 		const name = patch.profile ?? this.#chosen(config);
 		const profile = name === null ? undefined : config.models?.[name];
 		if (patch.effort !== undefined && name !== null && profile !== undefined && effortOptions(profile)?.levels.includes(patch.effort) === true) rememberEffort(name, patch.effort);
-		if (patch.mode !== undefined && OFFERED_MODES.some((m) => m === patch.mode)) {
-			setMode(patch.mode as PermissionMode);
-			this.write({ mode: patch.mode });
+		if (isTier(patch.mode)) {
+			if (patch.session === undefined) {
+				this.#default = patch.mode;
+				this.write({ mode: patch.mode });
+			} else if (/^[A-Za-z0-9._-]+$/.test(patch.session)) this.write({ tiers: { ...this.#read().tiers, [patch.session]: patch.mode } });
 		}
 	}
 }

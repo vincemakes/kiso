@@ -14,8 +14,10 @@ export interface SettingsReply {
 	readonly profile: string | null;
 	/** the levels the profile's route accepts, the one it uses when none is sent, and the one new Works start at */
 	readonly effort: { readonly levels: readonly string[]; readonly default: string | null; readonly current: string | null } | null;
-	/** the permission tier, and the tiers on offer; process-wide */
+	/** the permission tier: this Work's when a Work is asked about, else the one new Works start with; and the tiers on offer */
 	readonly mode: string;
+	/** ready: a profile can run; signin: profiles exist but the chosen one has no sign-in; noprofile: none configured; demo: the scripted tour is on */
+	readonly setup: "ready" | "signin" | "noprofile" | "demo";
 	readonly modes: readonly { readonly value: string; readonly label: string }[];
 	/** the sign-in of the chosen profile, in words that name where it comes from and never carry a secret */
 	readonly signIn: { readonly ok: boolean; readonly text: string };
@@ -32,5 +34,7 @@ export interface EnvReply {
 export interface SettingsPatch {
 	readonly profile?: string;
 	readonly effort?: string;
+	/** with `session`, that Work's tier; without, the tier new Works start with */
 	readonly mode?: string;
+	readonly session?: string;
 }

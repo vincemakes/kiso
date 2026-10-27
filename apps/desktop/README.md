@@ -30,6 +30,6 @@ a new task starts in is `KISO_DESKTOP_WORKSPACE`, else the one used last, else t
 rest (`KISO_DESKTOP_FAUX` runs a scripted model, for the proofs). The permission tier is process-wide (see `DEPS.md`).
 `background: true` commands run in the task runner, which the host starts as a plain node process under Electron (`runnerEnv`).
 
-The proofs budget (`scripts/proofs`) is 1,300 lines from S4 on, by an owner ruling of 2026-10-25 (it was 1,000 from S2 by a ruling of 2026-10-23, and 700 before); the other budgets are unchanged.
+The proofs budget (`scripts/proofs`) is 1,600 lines from S5 on, by an owner ruling of 2026-10-26 (it was 1,300 from S4 by a ruling of 2026-10-25, 1,000 from S2 by a ruling of 2026-10-23, and 700 before); the other budgets are unchanged.
 
 Plans, mocks and screenshots live outside this repository.

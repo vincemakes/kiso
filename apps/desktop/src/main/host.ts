@@ -8,13 +8,12 @@ import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@
 import { kisoHome, type SessionStore } from "@vincemakes/kiso-runtime";
 import type { SessionService } from "@vincemakes/kiso-server";
 import type { Settings } from "./settings.js";
-import { deskRead } from "./fs-routes.js";
-import { folderInfo } from "./folder-info.js";
+import { ApprovalWatch, type ApprovalNotice, type Presence } from "./approvals.js";
+import { deskApi, type DeskContext } from "./desk-api.js";
 import { History } from "./history.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
-import type { SettingsPatch } from "../shared/settings.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -34,6 +33,8 @@ export interface HostOptions {
 	readonly workspace: string;
 	/** The model, the sign-in, the effort and the tier: read when a Work opens (settings.ts). */
 	readonly settings: Settings;
+	/** Told once of an approval that waits while the person is elsewhere (a system notification in the app). */
+	readonly notify?: (notice: ApprovalNotice) => void;
 	/** Default 0: the system picks. */
 	readonly port?: number;
 	readonly token?: string;
@@ -68,7 +69,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		workspace,
 		dir,
 		prefix,
-		model: () => options.settings.model(),
+		model: (ctx) => options.settings.model(ctx),
+		tierOf: (sessionId) => options.settings.tierOf(sessionId),
 		checkRunners: () => options.settings.checks(),
 		secretEnvNames: options.settings.secretEnvNames(),
 		exposeThinking: options.exposeThinking ?? true,
@@ -102,6 +104,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
 
 	const rendererDir = fileURLToPath(new URL("../../out/renderer/", import.meta.url));
 	const tokenBytes = Buffer.from(token);
+
+	let presence: Presence | null = null;
+	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p) };
+	const watch = options.notify === undefined ? null : new ApprovalWatch(() => spaces.values(), options.notify, () => presence);
+	watch?.start();
 
 	let origins: ReadonlySet<string> = new Set();
 	let hosts: ReadonlySet<string> = new Set();
@@ -154,52 +161,10 @@ export async function startHost(options: HostOptions): Promise<Host> {
 			const origin = req.headers.origin;
 			if (origin !== undefined && !origins.has(origin)) return refuse(res, 403, "Origin not allowed");
 			if (!bearerOk(req)) return refuse(res, 401, "missing or wrong token");
-			if (url.pathname === "/desk/settings") {
-				if (req.method === "POST") {
-					let body = "";
-					for await (const chunk of req) body += chunk;
-					try {
-						options.settings.apply(JSON.parse(body) as SettingsPatch);
-					} catch {
-						res.writeHead(400);
-						return void res.end();
-					}
-				} else if (req.method !== "GET") {
-					res.writeHead(405);
-					return void res.end();
-				}
-				res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-				return void res.end(JSON.stringify(options.settings.snapshot()));
-			}
-			if (url.pathname === "/desk/fs/tree" || url.pathname === "/desk/fs/file" || url.pathname === "/desk/task-log") {
-				const where = url.searchParams.get("key");
-				const space = where === null || where === "" ? current : spaceFor(where);
-				if (space === null || req.method !== "GET") {
-					res.writeHead(space === null ? 404 : 405);
-					return void res.end();
-				}
-				const answer = deskRead(url, space);
+			if (url.pathname.startsWith("/desk/")) {
+				const answer = await deskApi(desk, req, url);
 				res.writeHead(answer.status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 				return void res.end(JSON.stringify(answer.body));
-			}
-			if (url.pathname === "/desk/env") {
-				const where = url.searchParams.get("key");
-				const space = where === null || where === "" ? current : spaceFor(where);
-				if (space === null || req.method !== "GET") {
-					res.writeHead(space === null ? 404 : 405);
-					return void res.end();
-				}
-				res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-				return void res.end(JSON.stringify(folderInfo(space.workspace, options.settings.mode())));
-			}
-			if (url.pathname === "/desk/history") {
-				if (req.method !== "GET") {
-					res.writeHead(405);
-					return void res.end();
-				}
-				const reply = await history.snapshot({ key: current.key, dir: current.dir }, url.searchParams.get("fresh") ?? undefined);
-				res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-				return void res.end(JSON.stringify(reply));
 			}
 			const space = other === null ? current : spaceFor(other[1]!);
 			if (space === null || !(await space.handler.handle(req, res))) {
@@ -229,6 +194,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		await Promise.all([...spaces.values()].map((space) => space.drain(graceMs)));
 		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
+		watch?.stop();
 		history.close();
 		for (const space of spaces.values()) await space.close();
 	};

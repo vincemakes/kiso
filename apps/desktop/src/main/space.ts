@@ -3,7 +3,7 @@ import { createSessionService, toWireEvent, type SessionService } from "@vincema
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
-import { createDesktopAgent, routeOf, type ModelChoice } from "./agent.js";
+import { createDesktopAgent, routeOf, type ModelChoice, type PermissionMode } from "./agent.js";
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
 import { runTotals, usageFrameAt } from "./usage.js";
 import { desktopSanitize } from "./sanitize.js";
@@ -26,7 +26,9 @@ export interface SpaceOptions {
 	readonly dir: string;
 	readonly prefix: string;
 	/** Read when a Work is opened, so a change in Settings reaches the Works opened after it; throws, in words, when no model can run. */
-	readonly model: () => ModelChoice;
+	readonly model: (ctx?: { readonly sessionId: string; readonly sessionsDir: string }) => ModelChoice;
+	/** The permission tier of a Work. */
+	readonly tierOf: (sessionId: string) => PermissionMode;
 	readonly checkRunners: () => readonly string[];
 	readonly secretEnvNames?: readonly string[];
 	readonly exposeThinking: boolean;
@@ -43,6 +45,8 @@ export interface Space {
 	readonly service: SessionService;
 	readonly tasks: TaskHub;
 	readonly handler: ReturnType<typeof createHttpHandler>;
+	/** The Works this host has opened since it started (the ones that can be running). */
+	readonly opened: () => ReadonlySet<string>;
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -62,13 +66,16 @@ export function createSpace(options: SpaceOptions): Space {
 		}
 	};
 
+	const opened = new Set<string>();
 	const service = createSessionService({
 		store,
-		open: async (sessionId) =>
-			createDesktopAgent({
+		open: async (sessionId) => {
+			opened.add(sessionId);
+			return createDesktopAgent({
 				store,
 				workspace: options.workspace,
-				model: options.model(),
+				model: options.model({ sessionId, sessionsDir: options.dir }),
+				tier: () => options.tierOf(sessionId),
 				sessionId,
 				checkRunners: options.checkRunners(),
 				tasks,
@@ -78,7 +85,8 @@ export function createSpace(options: SpaceOptions): Space {
 					// the model hears how a task ended; nothing wakes an idle session
 					session.useTasks(tasks.managerFor(sessionId), { wake: false });
 				},
-			}),
+			});
+		},
 	});
 
 	const windowOf = (): number | null => {
@@ -169,6 +177,7 @@ export function createSpace(options: SpaceOptions): Space {
 		service,
 		tasks,
 		handler,
+		opened: () => opened,
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {
 			await tasks.close();
