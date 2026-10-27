@@ -18,3 +18,7 @@ assets/*.png -text
 # The README's feature strip, lockup and terminal screenshot (2026-10-10):
 # rendered PNGs, binary for the same reason as the row above.
 assets/readme/*.png -text
+
+# The desktop app's icon (2026-10-27): the one image the app ships (about 100 KB, the kiso mark on a rounded square), a true binary, declared so the
+# whitespace / CJK / control-byte gates skip it by this row alone.
+apps/desktop/resources/*.png -text

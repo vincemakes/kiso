@@ -149,7 +149,7 @@ app.whenReady().then(async () => {
 	if (auto !== undefined) params.set("input", auto);
 	await win.loadURL(`${ready.origin}/#${params.toString()}`);
 	const proof = process.env["KISO_DESKTOP_PROOF"] === "1" ? { hostPid: ready.pid, token: ready.token, port: ready.port } : {};
-	say(`READY ${JSON.stringify({ origin: ready.origin, pid: process.pid, electron: process.versions.electron, debugPort: debugPort ?? null, hosting: inMain !== undefined ? "main" : "utility", ...proof })}`);
+	say(`READY ${JSON.stringify({ origin: ready.origin, pid: process.pid, electron: process.versions.electron, execPath: process.execPath, debugPort: debugPort ?? null, hosting: inMain !== undefined ? "main" : "utility", ...proof })}`);
 });
 
 app.on("window-all-closed", () => void stop(0));

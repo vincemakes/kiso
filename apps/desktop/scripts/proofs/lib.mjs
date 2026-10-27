@@ -52,17 +52,19 @@ export function launch({ data, workspace, fauxScript, env = {} }) {
 export const clientFor = (host) => createClient({ baseUrl: `${host.origin}/v1/sessions`, headers: () => ({ authorization: `Bearer ${host.token}` }) });
 
 /** The applications named "Electron" that this checkout's binary has registered with macOS (what the Dock lists): pid and type. */
-export const electronApps = () =>
+export const electronApps = (root = fileURLToPath(new URL("../../../../node_modules/electron/dist/", import.meta.url))) =>
 	execFileSync("lsappinfo", ["list"], { encoding: "utf8" })
 		.split(/^\d+\) /m)
-		.filter((b) => b.startsWith('"Electron"') && b.includes(fileURLToPath(new URL("../../../../node_modules/electron/dist/", import.meta.url))))
+		.filter((b) => b.includes(root))
 		.map((b) => ({ pid: Number(/pid = (\d+)/.exec(b)?.[1]), type: /type="(\w+)"/.exec(b)?.[1] }));
 
 /** The Electron app (hidden window) on a faux script, attached to its page over the debugging port. */
-export async function launchElectron({ data, workspace, fauxScript, env = {} }) {
+export async function launchElectron({ data, workspace, fauxScript, env = {}, packaged }) {
 	writeFileSync(join(data, "faux.json"), JSON.stringify(fauxScript));
 	const debugPort = String(9300 + Math.floor(Math.random() * 600));
-	const child = spawn(process.execPath, [createRequire(import.meta.url).resolve("electron/cli.js"), fileURLToPath(new URL("../..", import.meta.url))], {
+	const [file, ...args] = packaged !== undefined ? [packaged] : [process.execPath, createRequire(import.meta.url).resolve("electron/cli.js"), fileURLToPath(new URL("../..", import.meta.url))];
+	const root = packaged !== undefined ? packaged.replace(/\/Contents\/MacOS\/[^/]+$/, "") : undefined;
+	const child = spawn(file, args, {
 		env: { ...process.env, KISO_HOME: data, KISO_DESKTOP_DATA: data, KISO_DESKTOP_WORKSPACE: workspace, KISO_DESKTOP_FAUX: join(data, "faux.json"), KISO_DESKTOP_DEBUG_PORT: debugPort, KISO_DESKTOP_PROOF: "1", ...env },
 		stdio: ["ignore", "pipe", "ignore"],
 	});
@@ -93,7 +95,7 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 	};
 	// a proof run stays out of the Dock and the focus: whatever the binary registered must be this app, background only
 	const close = async () => {
-		const apps = electronApps();
+		const apps = electronApps(root);
 		const hidden = apps.every((a) => a.pid === ready.pid && a.type === "BackgroundOnly");
 		console.log(`${hidden ? "ok  " : "FAIL"} the proof run is not in the Dock (Electron applications registered: ${JSON.stringify(apps)})`);
 		if (!hidden) process.exitCode = 1;
@@ -104,5 +106,5 @@ export async function launchElectron({ data, workspace, fauxScript, env = {} }) 
 	const text = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.textContent ?? null`);
 	const count = (q) => evaluate(`document.querySelectorAll(${JSON.stringify(q)}).length`);
 	const click = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.click() ?? false`);
-	return { ready, lines, evaluate, shot, close, text, count, click, cdp, startupMs: 0 };
+	return { ready, lines, evaluate, shot, close, text, count, click, cdp, apps: () => electronApps(root), startupMs: 0 };
 }

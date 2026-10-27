@@ -1,5 +1,5 @@
 import { statSync } from "node:fs";
-import { isAbsolute, sep } from "node:path";
+import { isAbsolute, parse, sep } from "node:path";
 import { canonicalPath } from "@vincemakes/kiso-code/config";
 import { kisoHome } from "@vincemakes/kiso-runtime";
 import { Refusal } from "./files.js";
@@ -14,6 +14,7 @@ export function validateFolder(raw: unknown): string {
 	} catch {
 		throw new Refusal(400, "that is not a folder that exists");
 	}
+	if (real === parse(real).root) throw new Refusal(400, "the whole disk is not a project folder");
 	const home = canonicalPath(kisoHome());
 	if (real === home || real.startsWith(home + sep)) throw new Refusal(400, "the kiso home holds credentials and sessions: pick a project folder");
 	return real;

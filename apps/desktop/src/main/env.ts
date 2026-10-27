@@ -1,4 +1,5 @@
 import { appendFileSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { canonicalPath, projectDirFor } from "@vincemakes/kiso-code/config";
 import { kisoHome } from "@vincemakes/kiso-runtime";
@@ -52,7 +53,9 @@ function modeFromEnv(): PermissionMode {
 function workspaceFor(settings: Settings): string {
 	const named = process.env["KISO_DESKTOP_WORKSPACE"];
 	if (named !== undefined && named !== "") return named;
-	return settings.lastFolder() ?? process.cwd();
+	// an app started from Finder or the Dock has "/" as its working directory: never a place to work, so it starts in the home folder
+	const cwd = process.cwd();
+	return settings.lastFolder() ?? (cwd === "/" ? homedir() : cwd);
 }
 
 /** Where an approval notice goes: a file in a proof, else the main process (from a utility process), else the caller's own channel. */

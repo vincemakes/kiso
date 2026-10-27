@@ -23,12 +23,12 @@ const api = (path, body, init = {}) => fetch(`${host.origin}${path}`, { method: 
 const settled = async (s) => waitUntil(async () => !(await s.state()).running, 10_000);
 
 // folders
-const bad = [undefined, "", "relative/dir", join(wsA, "nope"), join(wsA, "..", "..", "etc", "passwd\0x"), data, join(data, "projects")];
+const bad = [undefined, "", "/", "relative/dir", join(wsA, "nope"), join(wsA, "..", "..", "etc", "passwd\0x"), data, join(data, "projects")];
 const statuses = [];
 for (const p of bad) statuses.push((await api("/desk/folder", { path: p })).status);
 writeFileSync(join(wsB, "afile"), "x");
 statuses.push((await api("/desk/folder", { path: join(wsB, "afile") })).status);
-check(statuses.every((s) => s === 400), `a folder is judged by the host: ${bad.length + 1} bad picks (missing, relative, NUL, a file, the kiso home and inside it) are 400`);
+check(statuses.every((s) => s === 400), `a folder is judged by the host: ${bad.length + 1} bad picks (missing, relative, NUL, a file, the whole disk, the kiso home and inside it) are 400`);
 const picked = await api("/desk/folder", { path: wsB });
 check(picked.status === 200 && picked.body.key !== undefined && picked.body.folder === wsB.split("/").pop(), "a real folder is accepted, canonical, and named");
 const recent = (await api("/desk/recent")).body.recent;

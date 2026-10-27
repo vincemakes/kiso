@@ -26,6 +26,7 @@ gate compares this list with `package.json`.
 | `react`, `react-dom` | the renderer's UI |
 | `@types/react`, `@types/react-dom` | types for the two above (no runtime code) |
 | `vite`, `@vitejs/plugin-react` | bundles the renderer into `out/renderer`, which the host serves |
+| `electron-builder` | packages the app into a macOS `.dmg` (S6). Dev only, exact version; used by the `pack` scripts and the release workflow, never by the root build, typecheck or check. Brings about 240 packages (measured in the S6 note) |
 
 ## Reminder for S5
 
