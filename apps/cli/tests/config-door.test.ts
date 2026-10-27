@@ -110,7 +110,8 @@ describe("the config door", () => {
 		expect(KNOWN_PROVIDERS).toContain("deepseek");
 		setCredential("deepseek", { type: "api-key", key: "sk-written-0000", savedAt: 1 });
 		expect(readFileSync(join(home, "auth.json"), "utf8")).toContain("sk-written-0000");
-		expect(statSync(join(home, "auth.json")).mode & 0o777).toBe(0o600);
+		// Windows has no POSIX file modes (it reports 0o666): the private mode is asserted where modes exist
+		if (process.platform !== "win32") expect(statSync(join(home, "auth.json")).mode & 0o777).toBe(0o600);
 		writeConfig({ model: "ds", models: { ds: PROFILE } });
 		expect(authForProfile("ds", PROFILE as never)).toMatchObject({ type: "api-key", apiKey: "sk-written-0000", source: "store" });
 	});
