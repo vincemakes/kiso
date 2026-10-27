@@ -218,9 +218,9 @@ export function applyModeState(s: ModeState): void {
 	dontAsk = s.dontAsk;
 }
 
-/** The per-tier verdict for a tool call — only when this tier is current. */
-function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string): PolicyVerdict {
-	if (tier !== current) return { action: "abstain" }; // not our tier — no opinion
+/** The per-tier verdict for a tool call — only when this tier is current (`now`: the tier in force, the process's own by default). */
+function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string, now: Mode): PolicyVerdict {
+	if (tier !== now) return { action: "abstain" }; // not our tier — no opinion
 	switch (tier) {
 		case "manual":
 			return { action: "ask" }; // every tool asks
@@ -262,12 +262,13 @@ function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string):
  *  deny>allow>ask over the SPEAKING verdicts (abstain = no opinion), so a
  *  user extension's deny wins over any mode tier, full-access included
  *  (the monotonicity e2e pins it). */
-export function modeExtensions(workspaceRoot: () => string = () => process.cwd()): readonly KisoExtension[] {
-	return [...MODES.filter((m) => m === current), ...MODES.filter((m) => m !== current)].map((m) => ({
+export function modeExtensions(workspaceRoot: () => string = () => process.cwd(), currentTier: () => Mode = getMode): readonly KisoExtension[] {
+	// the tier in force is read on every decision, so a host that holds several sessions can give each its own (the terminal passes none)
+	return [...MODES.filter((m) => m === currentTier()), ...MODES.filter((m) => m !== currentTier())].map((m) => ({
 		name: `mode:${m}`,
 		approvals: [
 			{
-				decide: async (payload) => tierVerdict(m, { name: payload.name, input: payload.input ?? {} }, workspaceRoot),
+				decide: async (payload) => tierVerdict(m, { name: payload.name, input: payload.input ?? {} }, workspaceRoot, currentTier()),
 			},
 		],
 	}));
@@ -276,8 +277,8 @@ export function modeExtensions(workspaceRoot: () => string = () => process.cwd()
 /** The plan tier's system prompt addition — injected at startup when the
  *  initial mode is plan (the session prompt is fixed at creation; runtime
  *  switches are guided by the deny reason). */
-export function modeSystemPrompt(): string | undefined {
-	if (current !== "plan") return undefined;
+export function modeSystemPrompt(tier: Mode = current): string | undefined {
+	if (tier !== "plan") return undefined;
 	return (
 		"plan mode: read-only. You may inspect the workspace (read_file, list_dir, search_text, " +
 		"read_skill) but every write/edit/shell call is DENIED with 'plan mode: read-only'. " +
