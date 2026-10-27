@@ -5,8 +5,9 @@
  * per-project session folders. A host that is not the terminal (the desktop
  * app) reads the same login and the same Works as the terminal does.
  *
- * Read-only on purpose: no sign-in flow, no credential setter, and no
- * project config (it needs the terminal's trust prompt). Nothing here
+ * Almost read-only: the one write is `setCredential`, the terminal's own single
+ * credential write path (an API key; no OAuth flow), and `scaffoldFirstRun`, the
+ * terminal's first-run files. No project config (it needs the terminal's trust prompt). Nothing here
  * reaches the terminal's state or UI; a test holds that line.
  */
 
@@ -28,9 +29,11 @@ export {
 export type { KisoConfig, ModelProfile, ProfileAuth, ProfileKind, ResolvedModel } from "./config.js";
 export { adapterOptionsFor } from "./auth/adapter-options.js";
 export type { AdapterAuth, AdapterOptions } from "./auth/adapter-options.js";
-export { AuthError, maskSecret, providerIdOf } from "./auth/credentials.js";
+export { AuthError, KNOWN_PROVIDERS, endpointCredentialId, maskSecret, providerIdOf, setCredential } from "./auth/credentials.js";
 export type { Credential } from "./auth/credentials.js";
 export { preferences, rememberEffort, startingEffort } from "./preferences.js";
+export { isFirstRun, scaffoldFirstRun } from "./first-run.js";
+export { fauxScript as demoScript } from "./demo-script.js";
 export { canonicalPath, claimProjectDir, projectDirFor, projectLayoutActive, sessionFolders } from "./projects.js";
 export type { SessionFolder } from "./projects.js";
 

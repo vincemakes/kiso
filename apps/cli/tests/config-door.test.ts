@@ -6,12 +6,12 @@
  * real home and the real environment keys are never read.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { adapterOptionsFor, applyEffortDeclarations, authForProfile, contextWindowOf, effortOptions, loadUserConfig, mergeConfigs, projectDirFor, resolveModel, sessionFolders, claimProjectDir } from "../src/config-door.js";
+import { adapterOptionsFor, applyEffortDeclarations, authForProfile, contextWindowOf, demoScript, effortOptions, isFirstRun, scaffoldFirstRun, setCredential, KNOWN_PROVIDERS, loadUserConfig, mergeConfigs, projectDirFor, resolveModel, sessionFolders, claimProjectDir } from "../src/config-door.js";
 
 const src = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const saved = { home: process.env.KISO_HOME, openai: process.env.OPENAI_API_KEY, anthropic: process.env.ANTHROPIC_API_KEY, deepseek: process.env.DEEPSEEK_API_KEY, sessions: process.env.KISO_SESSIONS_DIR };
@@ -106,6 +106,30 @@ describe("the config door", () => {
 		expect(contextWindowOf({ model: "no-such-model-anywhere" })).toBeNull();
 	});
 
+	it("stores a key through the terminal's own write path, and a profile then resolves it with none in the environment", () => {
+		expect(KNOWN_PROVIDERS).toContain("deepseek");
+		setCredential("deepseek", { type: "api-key", key: "sk-written-0000", savedAt: 1 });
+		expect(readFileSync(join(home, "auth.json"), "utf8")).toContain("sk-written-0000");
+		// Windows has no POSIX file modes (it reports 0o666): the private mode is asserted where modes exist
+		if (process.platform !== "win32") expect(statSync(join(home, "auth.json")).mode & 0o777).toBe(0o600);
+		writeConfig({ model: "ds", models: { ds: PROFILE } });
+		expect(authForProfile("ds", PROFILE as never)).toMatchObject({ type: "api-key", apiKey: "sk-written-0000", source: "store" });
+	});
+
+	it("scaffolds the first-run files once and never over a config that is there", () => {
+		expect(isFirstRun()).toBe(true);
+		writeConfig({ model: "mine", models: {} });
+		scaffoldFirstRun();
+		expect(isFirstRun()).toBe(false);
+		expect(JSON.parse(readFileSync(join(home, "config.json"), "utf8")).model).toBe("mine");
+	});
+
+	it("hands out the demo script: four scripted turns, the first a tool call", () => {
+		const script = demoScript();
+		expect(script).toHaveLength(4);
+		expect(script[0]!.events.some((e) => e.type === "tool_call_end" && e.name === "list_dir")).toBe(true);
+	});
+
 	it("lists a profile's effort levels, the declared ones for an unknown route, and nothing for an unstated one", () => {
 		expect(effortOptions({ model: "no-such-model-anywhere" })).toBeNull();
 		writeConfig({ models: { gw: { kind: "openai-compat", model: "gw-model", baseUrl: "https://gw.example/v1", effort: { levels: ["low", "high"], default: "low" } } } });
@@ -125,6 +149,8 @@ const CLOSURE = [
 	"auth/token.ts",
 	"config-door.ts",
 	"config.ts",
+	"demo-script.ts",
+	"first-run.ts",
 	"floor.ts",
 	"mode.ts",
 	"preferences.ts",
