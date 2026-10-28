@@ -17,7 +17,7 @@
  *    the partial-effects note over an edit that wrote nothing.
  */
 
-import { chmodSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -230,5 +230,60 @@ describe("WR-1E — the protocol is ENCODED, not taught (the encoding pass after
 		);
 		expect(r.isError).toBe(true);
 		expect(r.content).toContain("read it again");
+	});
+});
+
+describe("write_file creates the missing parent directories of a NEW file (the 2026-10-26 real-session report)", () => {
+	it("creates a nested tail inside the workspace and reports success", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wf-mkdir-"));
+		const write = writeFileTool({ workspaceRoot: dir });
+		const r = await write.execute({ path: "a/b/c.txt", content: "hi", expectedRevision: "absent" }, undefined as never);
+		expect(r.isError).toBe(false);
+		expect(readFileSync(join(dir, "a/b/c.txt"), "utf8")).toBe("hi");
+	});
+
+	it("an escaping path still refuses and creates nothing", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wf-mkdir-"));
+		const write = writeFileTool({ workspaceRoot: dir });
+		const r = await write.execute({ path: "../outside-dir/x.txt", content: "x", expectedRevision: "absent" }, undefined as never);
+		expect(r.isError).toBe(true);
+		expect(existsSync(join(dir, "..", "outside-dir"))).toBe(false);
+	});
+
+	it("a parent that is a file refuses as a precondition naming the path, with no temp name and nothing left behind", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wf-mkdir-"));
+		writeFileSync(join(dir, "blocker"), "x");
+		const write = writeFileTool({ workspaceRoot: dir });
+		const r = await write.execute({ path: "blocker/c.txt", content: "hi", expectedRevision: "absent" }, undefined as never);
+		expect(r.isError).toBe(true);
+		expect(kindOf(r)).toBe("precondition");
+		expect(String(r.content)).toContain("blocker/c.txt");
+		expect(String(r.content)).not.toContain(".kiso-tmp-");
+	});
+
+	it("a failure while staging is a precondition (nothing changed), names the file, and removes the directories it made", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wf-mkdir-"));
+		mkdirSync(join(dir, "ro"));
+		const write = writeFileTool({ workspaceRoot: dir });
+		chmodSync(join(dir, "ro"), 0o555);
+		const r = await write.execute({ path: "ro/new/c.txt", content: "hi", expectedRevision: "absent" }, undefined as never);
+		chmodSync(join(dir, "ro"), 0o755);
+		expect(r.isError).toBe(true);
+		expect(kindOf(r)).toBe("precondition");
+		expect(String(r.content)).not.toContain(".kiso-tmp-");
+		expect(readdirSync(join(dir, "ro"))).toEqual([]);
+	});
+
+	it("a staging failure on an existing file names the file, not the temp, and is not fatal", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "kiso-wf-mkdir-"));
+		writeFileSync(join(dir, "f.ts"), "OLD");
+		const write = writeFileTool({ workspaceRoot: dir });
+		chmodSync(dir, 0o555);
+		const r = await write.execute({ path: "f.ts", content: "NEW", expectedRevision: rev("OLD") }, undefined as never);
+		chmodSync(dir, 0o755);
+		expect(r.isError).toBe(true);
+		expect(kindOf(r)).toBe("precondition");
+		expect(String(r.content)).toContain("f.ts");
+		expect(String(r.content)).not.toContain(".kiso-tmp-");
 	});
 });
