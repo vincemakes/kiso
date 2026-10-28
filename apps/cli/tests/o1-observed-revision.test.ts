@@ -121,7 +121,7 @@ describe("O1: write_file", () => {
 		writeFileSync(join(process.cwd(), "src", "unseen.js"), "export const x = 1;\n");
 		const r = await call("write_file", { path: "src/unseen.js", content: "zz" });
 		expect(r.isError).toBe(true);
-		expect(r.content).toBe("write_file: src/unseen.js already exists — to replace it, first read the whole file (read_file with no offset or limit; a ranged read is not enough), or change part of it with edit_file");
+		expect(r.content).toBe("write_file: src/unseen.js already exists — to replace it, first read the whole file from its first line (a read that starts later or stops early is not enough; for a long file pass a limit that covers it), or change part of it with edit_file");
 		expect(readFileSync(join(process.cwd(), "src", "unseen.js"), "utf8")).toBe("export const x = 1;\n");
 	});
 
@@ -132,19 +132,105 @@ describe("O1: write_file", () => {
 		expect(r.content).toMatch(/^wrote src\/brand-new\.js/);
 	});
 
-	it("a replace after a whole read binds; after a RANGED read it does not (edit still does)", async () => {
-		await call("read_file", { path: "src/range.js", offset: 1, limit: 1 });
-		expect(observedRevisionFromLog(SID, F(), "edit")).toBe(rev(F()));
-		expect(observedRevisionFromLog(SID, F(), "write")).toBeUndefined();
-		// the refusal says why: a ranged read does not let it replace the file
-		const refused = await call("write_file", { path: "src/range.js", content: "export {};\n" });
+	it("a replace after a whole read binds; after a read that stops early or starts later it does not (edit still does)", async () => {
+		writeFileSync(join(process.cwd(), "src", "five.js"), "a\nb\nc\nd\ne\n");
+		const FIVE = join(process.cwd(), "src", "five.js");
+		await call("read_file", { path: "src/five.js", offset: 1, limit: 2 }); // stops early: the continuation note is there
+		expect(observedRevisionFromLog(SID, FIVE, "edit")).toBe(rev(FIVE));
+		expect(observedRevisionFromLog(SID, FIVE, "write")).toBeUndefined();
+		const refused = await call("write_file", { path: "src/five.js", content: "export {};\n" });
 		expect(refused).toMatchObject({ isError: true, errorKind: "precondition" });
-		expect(refused.content).toMatch(/read the whole file \(read_file with no offset or limit; a ranged read is not enough\), or change part of it with edit_file$/);
-		await call("read_file", { path: "src/range.js" });
-		expect(observedRevisionFromLog(SID, F(), "write")).toBe(rev(F()));
-		const r = await call("write_file", { path: "src/range.js", content: "export {};\n" });
+		expect(refused.content).toMatch(/read the whole file from its first line \(a read that starts later or stops early is not enough; for a long file pass a limit that covers it\), or change part of it with edit_file$/);
+		await call("read_file", { path: "src/five.js" });
+		expect(observedRevisionFromLog(SID, FIVE, "write")).toBe(rev(FIVE));
+		const r = await call("write_file", { path: "src/five.js", content: "export {};\n" });
 		expect(r.isError).toBe(false);
 		expect(r.tags).toBeUndefined();
+	});
+});
+
+describe("WR-1 whole-file observation: what counts as having seen the whole file", () => {
+	const make = (n: number, name = "long.txt"): string => {
+		const f = join(process.cwd(), name);
+		writeFileSync(f, Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+		return f;
+	};
+	const whole = (f: string): string | undefined => observedRevisionFromLog(SID, f, "write");
+
+	it("a default read of a file over 200 lines is NOT whole (the continuation note)", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt" });
+		expect(whole(f)).toBeUndefined();
+	});
+
+	it("one read from line 1 whose limit covers the file IS whole, with or without offset 1", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt", limit: 600 });
+		expect(whole(f)).toBe(rev(f));
+		const g = make(500, "long2.txt");
+		await call("read_file", { path: "long2.txt", offset: 1, limit: 500 });
+		expect(whole(g)).toBe(rev(g));
+		const r = await call("write_file", { path: "long2.txt", content: "REWRITTEN\n" });
+		expect(r.isError).toBe(false);
+	});
+
+	it("a limit one short of the file is NOT whole", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt", offset: 1, limit: 499 });
+		expect(whole(f)).toBeUndefined();
+	});
+
+	it("a read that starts after line 1 is never whole, even if it reaches the end", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt", offset: 2, limit: 600 });
+		expect(whole(f)).toBeUndefined();
+	});
+
+	it("segments are not added up (no union of ranges in this fix)", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt" });
+		await call("read_file", { path: "long.txt", offset: 201, limit: 200 });
+		await call("read_file", { path: "long.txt", offset: 401, limit: 200 });
+		expect(whole(f)).toBeUndefined();
+	});
+
+	it("the output cap and the over-long-line cap are not whole", async () => {
+		const f = join(process.cwd(), "wide.txt");
+		writeFileSync(f, "x".repeat(150_000) + "\n");
+		await call("read_file", { path: "wide.txt", limit: 10 });
+		expect(whole(f)).toBeUndefined();
+		const g = join(process.cwd(), "tall.txt");
+		writeFileSync(g, Array.from({ length: 150 }, () => "y".repeat(900)).join("\n") + "\n");
+		await call("read_file", { path: "tall.txt", limit: 200 });
+		expect(whole(g)).toBeUndefined();
+	});
+
+	it("a partial read of the SAME revision after a whole read keeps the whole-file knowledge", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt", limit: 600 });
+		await call("read_file", { path: "long.txt", offset: 100, limit: 20 });
+		expect(whole(f)).toBe(rev(f));
+	});
+
+	it("after the file changed, a partial read of the NEW revision does not inherit the old knowledge", async () => {
+		const f = make(500);
+		await call("read_file", { path: "long.txt", limit: 600 });
+		writeFileSync(f, "changed\n" + readFileSync(f, "utf8"));
+		await call("read_file", { path: "long.txt", offset: 100, limit: 20 });
+		expect(observedRevisionFromLog(SID, f, "edit")).toBe(rev(f));
+		expect(whole(f)).toBeUndefined();
+		const r = await call("write_file", { path: "long.txt", content: "REWRITTEN\n" });
+		expect(r.isError).toBe(true);
+	});
+
+	it("the revision is still checked at write time: a whole read, then an outside change, is refused as stale", async () => {
+		const f = make(150);
+		await call("read_file", { path: "long.txt" });
+		expect(whole(f)).toBe(rev(f));
+		writeFileSync(f, "outside\n");
+		const r = await call("write_file", { path: "long.txt", content: "REWRITTEN\n" });
+		expect(r.isError).toBe(true);
+		expect(r.content).toMatch(/changed since you last observed/);
 	});
 });
 
