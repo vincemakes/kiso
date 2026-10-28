@@ -20,7 +20,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, linkSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, fstatSync, linkSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import type { GlobReply, GlobRequest, SearchReply, SearchRequest } from "./search-worker.js";
@@ -1032,8 +1032,35 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 					return precondition(opts.observedRevision !== undefined ? `write_file: ${path} changed since you last observed it — read it again, then re-apply the change` : `write_file: ${path} changed since ${expectedRevision} — read it again and cite its [rev:…] line, then re-apply the change`);
 				}
 			}
+			// A new file may sit under directories that do not exist yet. The
+			// containment check above already walked the missing tail up to its
+			// deepest existing ancestor, so creating the tail cannot leave the
+			// workspace; the directories this call creates are removed again
+			// if the file never lands.
+			let createdDirs: string | undefined;
+			if (!exists) {
+				try {
+					createdDirs = mkdirSync(dirname(full), { recursive: true });
+				} catch (err) {
+					return precondition(`write_file: cannot create the directory for ${path} — ${describeFsError(err, path)}`);
+				}
+			}
+			const dropCreatedDirs = (): void => {
+				if (createdDirs === undefined) return;
+				for (let dir = dirname(full); dir.length >= createdDirs.length; dir = dirname(dir)) {
+					try {
+						rmdirSync(dir);
+					} catch {
+						return; // not empty or not ours — leave it
+					}
+					if (dir === createdDirs) return;
+				}
+			};
 			const tmp = `${full}.kiso-tmp-${process.pid}-${crypto.randomUUID()}`;
 			let preservedMode: number | undefined;
+			// Nothing reaches the target before the commit step below, so a
+			// failure while staging the temp file leaves the world as it was.
+			let committing = false;
 			try {
 				// E group: SAFE REPLACEMENT — write a temp file next to the
 				// target and rename it over the directory entry. A hard link
@@ -1046,11 +1073,15 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				if (exists) preservedMode = statSync(full).mode & 0o7777;
 				writeFileSync(tmp, content, "utf8");
 				if (preservedMode !== undefined) chmodSync(tmp, preservedMode);
+				committing = true;
 				if (!exists) {
 					// WR-1A ②: link(2) or refusal — atomic no-clobber, fail
 					// closed. No rename fallback: "absent" is a contract.
 					const refused = publishNewFile(tmp, full, path);
-					if (refused !== null) return refused;
+					if (refused !== null) {
+						dropCreatedDirs();
+						return refused;
+					}
 				} else {
 					// WR-1A ③: the world must STILL match the citation right
 					// before the replacement commits (the staging took time).
@@ -1091,10 +1122,21 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 					// already renamed or never created
 				}
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
-				return { content: `write_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
+				if (!committing) {
+					dropCreatedDirs();
+					return precondition(`write_file: could not write ${path} — ${describeFsError(err, path)}; nothing was changed`);
+				}
+				return { content: `write_file failed: ${describeFsError(err, path)}`, isError: true, errorKind: "fatal" };
 			}
 		},
 	});
+}
+
+/** An fs error as the model should read it: the file it asked for, not the
+ *  `.kiso-tmp-*` staging name the failing syscall happened to see. */
+function describeFsError(err: unknown, path: string): string {
+	const message = err instanceof Error ? err.message : String(err);
+	return message.replace(/'[^']*\.kiso-tmp-[^']*'/g, `'${path}'`);
 }
 
 /** ACI-2: every offset where `search` occurs, OVERLAPPING ones included —
@@ -1277,7 +1319,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 			// O1: bind the observed revision (never the disk's latest)
 			if (expectedRevision === undefined && opts.observedRevision !== undefined) {
 				expectedRevision = opts.observedRevision(ctx?.sessionId, full);
-				if (expectedRevision === undefined) return precondition(`edit_file: ${path} — read it first; there is no observation of it in this session`);
+				if (expectedRevision === undefined) return precondition(`edit_file: ${path} — read it first with read_file; there is no observation of it in this session (shell output does not count)`);
 			}
 			// WR-1: edits always target an existing file — the revision is
 			// not optional here, and the refusal teaches the protocol.
@@ -1414,7 +1456,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 				} catch {
 					// already renamed or never created
 				}
-				return { content: `edit_file failed: ${(err as Error).message}`, isError: true, errorKind: "fatal" };
+				return { content: `edit_file failed: ${describeFsError(err, path)}`, isError: true, errorKind: "fatal" };
 			}
 		},
 	});
