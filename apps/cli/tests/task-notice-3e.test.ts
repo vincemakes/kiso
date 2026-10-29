@@ -85,6 +85,15 @@ describe("Amendment 8 — why kiso lost track, read from the journal", () => {
 		expect(lostReason(task({ outputPath: gone, state: { kind: "unknown" } }))).toBe("its runner is gone without recording its end");
 		expect(lostReason(task({ state: { kind: "running", ready: false } }))).toBeUndefined();
 	});
+
+	it("an unconfirmed stop that could name nothing, and a failed hand-over (the command was running)", () => {
+		const none = journal([{ type: "planned", ts: 1, taskId: "t3", backend: "foreground", command: "x", cwd: "/", profile: "oneshot" }, { type: "command_started", ts: 2 }, { type: "stop_unconfirmed", ts: 4, pids: [] }]);
+		expect(lostReason(task({ backend: "foreground", outputPath: none, state: { kind: "unknown" } }))).toBe("its stop could not be confirmed (what still held it could not be named)");
+		const failed = journal([{ type: "planned", ts: 1, taskId: "t3", backend: "foreground", command: "x", cwd: "/", profile: "oneshot" }, { type: "command_started", ts: 2 }, { type: "handover_failed", ts: 4, reason: "EACCES: output.log" }]);
+		expect(lostReason(task({ backend: "foreground", outputPath: failed, state: { kind: "unknown" } }))).toBe(
+			"its hand-over to a task failed (EACCES: output.log); the command was running and its end is not known",
+		);
+	});
 });
 
 describe("finding 0480-F9 — a spent chain budget, in the person's words", () => {

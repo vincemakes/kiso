@@ -1280,3 +1280,89 @@ printed was captured and then dropped. Both verdicts now end with that output
 - Not changed: the schema, the descriptions, the default timeouts, the
   ceiling and floor, `killTree`, the kill-on-timeout and the abort semantics,
   and the promotion of a task-aware call.
+
+## Amendment 18 — the shell's exit is not `close`; a hand-over to the manager (2026-10-29, owner-approved as a correctness fix)
+
+A command that starts a daemon without redirecting its stdout/stderr leaves a
+descendant holding the pipes: the shell has exited with its code, but `close`
+waits for the descendant. The foreground path settled only on `close`, so
+such a call returned a timeout error that held none of the output already
+captured, or "still running" for a command that had finished.
+
+1. **A timeout or an abort carries the output captured so far** (Amendment 17).
+   When the command had already exited, the verdict also says so: `shell timed
+   out after Nms; the command itself had already exited (code 0, after M ms)
+   but processes it started still held its output`, then the output.
+2. **The shell's own exit is recorded** (`exit` event, never its own kill).
+   A `close` that follows is settled as before.
+3. **With a manager and no `close` within `EXIT_DRAIN_MS` (300 ms) of the
+   exit or of the last byte after it,** the existing promotion hands the
+   pipes and the descendants to the manager. The renewal is bounded: no later
+   than `EXIT_DRAIN_MAX_MS` (2 s) after the exit, so a descendant that writes
+   every 100 ms cannot keep a finished command in the foreground. The result
+   says what is true: `the command exited (code 0, after 120 ms), but
+   processes it started are still running and hold its output; they continue
+   as background task tN …`. A non-zero exit or a signal is an error
+   (`fatal`) and says `… and FAILED, but processes it started are still
+   running and hold its output — its side effects may be incomplete; …`. The
+   task ends at `close` with the command's own exit code.
+4. **A hand-over that cannot be made is not reported.** If `adopt` throws,
+   or the output sink cannot be prepared after the task was recorded, the call
+   keeps waiting for `close` under its timeout. A task already recorded is
+   NOT closed as ended, and it is not `not_run` either: the command was
+   running and still runs under this call. The owner writes
+   `handover_failed { reason }` (new record, `AdoptedTask.handoverFailed`),
+   which is not a terminal. The task reads `unknown`, with the reason in its
+   `/tasks` line and in the one notice it produces.
+5. **A stop of a hand-over is never confirmed.** The root has exited, so
+   `killTree` reaches the descendants still in its process group or found by
+   parent, and nothing else; a descendant that left the group and was
+   reparented (`setsid`) is invisible to it. The pipes closing proves nothing
+   about such a descendant either: it may have closed its stdout/stderr and
+   lived on. So the sweep kills what it can see and the owner records
+   `stop_unconfirmed` (no pids: none can be named), never a terminal. The task
+   output stays open for whatever still holds the pipes and closes with them.
+   A hand-over that ends by itself (the last holder lets go) ends normally,
+   with the command's own exit code.
+5a. **`unknown` is what the journal says, whoever is alive.** `verdictOf`
+   reads a task that has `command_started` and a `stop_unconfirmed` or
+   `handover_failed` and no terminal as `unknown`, also while its owner (an
+   adopted task's owner is this kiso) lives. Before, such a task kept reading
+   `running`, so `task_stop` ran out its 8 s wait. Now:
+   - `task_stop`'s wait settles on the unknown, answers `task tN could not be
+     confirmed stopped — some of its processes may still be running` (an
+     error) and claims the transition for its own execution, so the watcher
+     adds no second notice; one `stop_requested` is written;
+   - a stop nobody waits for, and a failed hand-over, are announced once, as
+     `unknown`;
+   - the exit-time `stopAll` does not wait out its grace for a stop that
+     answered `unknown`, and still lists it;
+   - a `stop_unconfirmed` written by a task runner (a process task) reads
+     `unknown` as before: its runner is gone then, too.
+6. **With no manager,** the call is never reported as complete while a
+   descendant holds the output. It keeps its kill timeout and abort; the
+   verdict adds the exit fact (item 1).
+7. **win32 is not handed over.** `taskkill /T` walks from a live root, so a
+   stop could not reach the descendants of an exited one. There the call
+   behaves as in 6 until a Windows run shows otherwise.
+8. **The pipes are never destroyed:** a descendant that keeps writing gets no
+   SIGPIPE, and everything it writes lands in the task's output.
+9. **Not changed:** the schema, the descriptions, the default timeouts, the
+   ceiling and floor, `killTree`, `task_stop`, the notices and the journal.
+   A pipeline whose shell is itself blocked (`cmd | tail`) is not an exit and
+   keeps the existing wait/promotion.
+
+**Known limits.** (a) A hand-over whose descendant escaped its group cannot
+be stopped by `task_stop`; the stop ends `unknown`, and a later `close` does
+not write the terminal. (b) For the same reason every `task_stop` of a
+hand-over answers "could not be confirmed", even when every descendant was in
+the group and is gone: the absence of an escapee cannot be shown. Confirming
+it would take the pipe holders' pids at hand-over time (Linux `/proc`, `lsof`
+elsewhere), which is not built. (c) A stop of a hand-over waits for the sweep
+(up to its 2 s close fallback) before the unknown is recorded. (d) If the
+journal write fails inside `adopt` itself (after `planned` and
+`runner_started`), the manager's record reads `starting` while this process
+lives; that is the runtime's `adopt`, unchanged here, and the same for every
+promotion. (e) The 300 ms window cannot name the holder: a stalled event loop
+can hand over a command whose pipes were about to close; the task then ends at
+once, with no output lost.

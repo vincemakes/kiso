@@ -94,6 +94,12 @@ const DEFAULT_MAX_FOREGROUND_MS = 300_000;
 const TASK_OUTPUT_CAP = 64 * 1024 * 1024;
 /** A task's stop: SIGTERM, this long, then the confirmed sweep. */
 const TASK_STOP_GRACE_MS = 5_000;
+/** The shell exited but its pipes did not close: how long after the exit (or
+ *  the last byte that followed it) before a descendant is taken to hold them. */
+const EXIT_DRAIN_MS = 300;
+/** ...and the most it may be renewed: a descendant that writes every few
+ *  hundred ms must not keep a finished command in the foreground. */
+const EXIT_DRAIN_MAX_MS = 2_000;
 /** ADR-0058 Amendment 7: how long task_stop waits for the end it reports —
  *  the runner's journal poll, TERM, the grace, KILL and the sweep. */
 const TASK_STOP_WAIT_MS = 8_000;
@@ -1510,6 +1516,8 @@ export interface ShellTasks {
 		ready(match: string): void;
 		ended(exitCode: number | null, signal: string | null): void;
 		unconfirmed(pids: readonly number[]): void;
+		/** the hand-over failed after the task was recorded; absent in a manager that predates it */
+		handoverFailed?(reason: string): void;
 	};
 	stop(id: string, by: "model"): boolean;
 	get(id: string): { readonly state: { readonly kind: string } } | undefined;
@@ -1685,6 +1693,21 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				let promoted: { readonly task: ReturnType<ShellTasks["adopt"]>; readonly out: RotatingOutput } | null = null;
 				let stopping = false;
 				let readySeen = false;
+				/** the top-level shell's own exit, once seen: `close` waits for every holder of its pipes */
+				let exitSeen: { readonly code: number | null; readonly signal: NodeJS.Signals | null; readonly afterMs: number } | null = null;
+				let drainTimer: ReturnType<typeof setTimeout> | undefined;
+				let exitAtMs = 0;
+				/** the command had exited when the manager took its pipes: its root is gone, so a stop can reach only the descendants it can find */
+				let rootGone = false;
+				/** the stop of a hand-over was recorded unconfirmed: the sink stays open for whatever still holds the pipes, and closes with them */
+				let stopLeftHolders = false;
+				/** after the shell's exit: one more drain window from now (a byte that follows the exit renews it) */
+				const armDrain = (): void => {
+					if (exitSeen === null) return;
+					clearTimeout(drainTimer);
+					drainTimer = setTimeout(onDrainExpired, Math.max(0, Math.min(EXIT_DRAIN_MS, exitAtMs + EXIT_DRAIN_MAX_MS - Date.now())));
+					drainTimer.unref?.();
+				};
 				/** 3e: the unregister of this command's detach — while it runs in the foreground */
 				let undetachable = (): void => {};
 				let recent = ""; // the tail readyWhen is matched against
@@ -1730,6 +1753,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					undetachable();
 					dropProgress();
 					clearTimeout(timer);
+					clearTimeout(drainTimer);
 					// E group: the abort listener is removed once settled — it
 					// must not accumulate across runs.
 					ctx.signal.removeEventListener("abort", onAbort);
@@ -1744,6 +1768,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					const r = capAccumulate(stdout, text);
 					stdout = r.text;
 					stdoutDropped += r.dropped;
+					armDrain();
 					if (tasks !== undefined && matchReady(text)) promote("ready");
 				});
 				child.stderr?.on("data", (d: Buffer) => {
@@ -1753,6 +1778,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					const r = capAccumulate(stderr, text);
 					stderr = r.text;
 					stderrDropped += r.dropped;
+					armDrain();
 					if (tasks !== undefined && matchReady(text)) promote("ready");
 				});
 				child.on("error", (err) => {
@@ -1780,6 +1806,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 						if (!stopping) {
 							promoted.out.close();
 							promoted.task.ended(code, signal);
+						} else if (stopLeftHolders) {
+							promoted.out.close();
 						}
 						return;
 					}
@@ -1792,6 +1820,39 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					);
 				});
 
+				// The shell's own exit arrives before `close` whenever a descendant keeps
+				// its stdout/stderr open (a daemon started by the command): `close` then
+				// waits for the descendant, not for the command. The exit is recorded;
+				// after a short drain window with no `close`, a manager takes the
+				// descendants over (below). It is never read as "done" on its own.
+				child.on("exit", (code, signal) => {
+					// our own kill (timeout, abort) is not the command's exit
+					if (killing) return;
+					exitAtMs = Date.now();
+					exitSeen = { code, signal, afterMs: exitAtMs - spawnedAt };
+					if (settled || promoted !== null) return;
+					armDrain();
+				});
+				const exitHow = (): string => (exitSeen === null ? "" : exitSeen.signal !== null ? `signal ${exitSeen.signal}` : `code ${exitSeen.code}`);
+				/** a timeout/abort verdict on a command that had already exited says so */
+				const exitNote = (): string =>
+					exitSeen === null ? "" : `; the command itself had already exited (${exitHow()}, after ${exitSeen.afterMs} ms) but processes it started still held its output`;
+				const onDrainExpired = (): void => {
+					if (settled || killing || promoted !== null || exitSeen === null) return;
+					// No manager: nothing can own the descendants, so the call is NOT complete
+					// and is not reported as such — it keeps waiting for `close` under the
+					// same kill timeout and abort.
+					if (tasks === undefined) return;
+					// win32: `taskkill /T` walks from a live root, so a stop could not reach
+					// the descendants of an exited one. Not handed over there until it can.
+					if (process.platform === "win32") return;
+					try {
+						promote("exited");
+					} catch {
+						// the hand-over was refused: keep waiting. Success is never reported for
+						// work no manager owns.
+					}
+				};
 				// The kernel's abort reaches the command AND its whole tree.
 				// The listener is removed by settle (E group).
 				const uncertainVerdict = (unconfirmed: number[]): string =>
@@ -1802,7 +1863,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					killing = true;
 					void killTree(child).then(({ unconfirmed }) =>
 						settle({
-							content: `shell aborted${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}${partialOutput()}`,
+							content: `shell aborted${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}${exitNote()}${partialOutput()}`,
 							isError: true,
 							errorKind: "fatal",
 						}),
@@ -1811,7 +1872,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 				ctx.signal.addEventListener("abort", onAbort);
 				/** ADR-0058 §3: the wait is over — the command continues as a
 				 *  task this process owns; nothing is killed. */
-				const promote = (reason: "waited" | "ready" | "person" | "steer"): void => {
+				const promote = (reason: "waited" | "ready" | "person" | "steer" | "exited"): void => {
 					if (settled || killing || promoted !== null || tasks === undefined) return;
 					const task = tasks.adopt({
 						command,
@@ -1823,11 +1884,43 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 						startedAt: spawnedAt,
 						stop: () => stopPromoted(),
 					});
-					const out = new RotatingOutput(task.outputPath, TASK_OUTPUT_CAP);
+					// the task is in the journal from here. If its output cannot be prepared the
+					// hand-over failed and NOTHING about the command ended: it still runs under
+					// this call. The record says only that the task's outcome is not known (no
+					// terminal is invented: the journal has no record for a failed hand-over, see
+					// ADR-0058 Amendment 17); the failure is the caller's to see.
+					let out: RotatingOutput | undefined;
 					const sofar = combinedOutput();
-					if (sofar !== "") out.write(Buffer.from(`${sofar}\n`));
+					try {
+						out = new RotatingOutput(task.outputPath, TASK_OUTPUT_CAP);
+						if (sofar !== "") out.write(Buffer.from(`${sofar}\n`));
+					} catch (err) {
+						try {
+							out?.close();
+						} catch {
+							// nothing more to release
+						}
+						if (task.handoverFailed !== undefined) task.handoverFailed(err instanceof Error ? err.message : String(err));
+						else task.unconfirmed([]);
+						throw err;
+					}
+					rootGone = reason === "exited";
 					promoted = { task, out };
 					const tail = sofar.length > 2048 ? `…${sofar.slice(-2048)}` : sofar;
+					if (reason === "exited" && exitSeen !== null) {
+						// the command is done; what the manager now owns is whatever it left running on its pipes
+						const failed = exitSeen.signal !== null || exitSeen.code !== 0;
+						settle({
+							content:
+								`the command exited (${exitHow()}, after ${exitSeen.afterMs} ms)${failed ? " and FAILED" : ""}, but processes it started are still running and hold its output` +
+								`${failed ? " — its side effects may be incomplete" : ""}; ` +
+								`they continue as background task ${task.id} (not killed — it keeps running). ${taskNote(task.outputPath)}` +
+								(tail !== "" ? `\nOutput so far:\n${tail}` : ""),
+							isError: failed,
+							...(failed ? { errorKind: "fatal" as const } : {}),
+						});
+						return;
+					}
 					settle({
 						content:
 							(reason === "ready"
@@ -1858,6 +1951,17 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 							promoted.task.unconfirmed(unconfirmed);
 							return;
 						}
+						// A root that had already exited leaves nothing to enumerate a descendant
+						// from if that descendant left its group and was reparented, and the pipes
+						// closing proves nothing about it: it may have closed its stdout/stderr and
+						// lived on. What the sweep found is gone; that nothing else is left cannot be
+						// shown, so the stop is recorded as unconfirmed and never as stopped.
+						if (rootGone) {
+							promoted.task.unconfirmed([]);
+							stopLeftHolders = true;
+							if (exitInfo !== null) promoted.out.close();
+							return;
+						}
 						const waitClose = Date.now() + 1_000;
 						while (exitInfo === null && Date.now() < waitClose) await new Promise((r) => setTimeout(r, 25));
 						promoted.out.close();
@@ -1878,7 +1982,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					killing = true;
 					void killTree(child).then(({ unconfirmed }) =>
 						settle({
-							content: `shell timed out after ${timeout}ms${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}${partialOutput()}`,
+							content: `shell timed out after ${timeout}ms${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}${exitNote()}${partialOutput()}`,
 							isError: true,
 							errorKind: "fatal",
 						}),
