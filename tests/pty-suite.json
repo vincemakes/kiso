@@ -216,6 +216,7 @@
   "packages/tools-node/tests/shell-foreground-ceiling.test.ts",
   "packages/tools-node/tests/shell-foreground-floor.test.ts",
   "packages/tools-node/tests/shell-tasks.test.ts",
+  "packages/tools-node/tests/shell-timeout-output.test.ts",
   "packages/tools-node/tests/tasks-process.test.ts",
   "packages/tools-node/tests/tools.test.ts",
   "packages/tools-node/tests/tui2-r1-progress-probe.test.ts",
