@@ -17,7 +17,7 @@ import { projectMessages, type Event, type Message } from "@vincemakes/kiso-core
 import { kisoHome, type KisoExtension, type StoreRecord } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
-import { processTaskBackend, type ShellTasks } from "@vincemakes/kiso-tools-node";
+import { processTaskBackend, readShowsWholeFile, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { collectWriter } from "@vincemakes/kiso-subagent-ext";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 import { taskNoticeLines, taskWhat } from "./task-notice.js";
@@ -866,14 +866,14 @@ export function observedRevisionFromLog(sessionId: string | undefined, full: str
 	let messages: readonly Message[];
 	try { messages = projectMessages(events); } catch { return undefined; }
 	const target = realOrResolved(full);
-	const calls = new Map<string, { readonly name: string; readonly full: string; readonly ranged: boolean }>();
+	const calls = new Map<string, { readonly name: string; readonly full: string; readonly input: Record<string, unknown> }>();
 	let rev: string | undefined;
 	let wholeKnown = false;
 	for (const m of messages) {
 		if (m.role === "assistant") {
 			for (const b of m.blocks) {
 				if (b.type === "tool_use" && typeof b.input.path === "string") {
-					calls.set(b.callId, { name: b.name, full: realOrResolved(resolve(process.cwd(), b.input.path)), ranged: b.input.offset !== undefined || b.input.limit !== undefined });
+					calls.set(b.callId, { name: b.name, full: realOrResolved(resolve(process.cwd(), b.input.path)), input: b.input });
 				}
 			}
 		} else if (m.role === "tool") {
@@ -883,8 +883,10 @@ export function observedRevisionFromLog(sessionId: string | undefined, full: str
 			const hit = [...body.matchAll(/\[(rev:[0-9a-f]{16})\]/g)].pop();
 			if (hit === undefined) continue;
 			if (!m.isError && (c.name === "read_file" || c.name === "edit_file" || c.name === "write_file")) {
+				const sameRevision = hit[1] === rev;
 				rev = hit[1];
-				if (c.name === "read_file") wholeKnown = !c.ranged && !body.includes("(call again with offset=") && !body.includes("[output capped at");
+				// a later partial read of the SAME revision keeps what the model already saw whole; another revision starts over
+				if (c.name === "read_file") wholeKnown = readShowsWholeFile(c.input, body) || (wholeKnown && sameRevision);
 				else if (c.name === "write_file") wholeKnown = true;
 			} else if (m.isError && c.name === "edit_file" && body.includes(" changed since ")) {
 				rev = hit[1];
