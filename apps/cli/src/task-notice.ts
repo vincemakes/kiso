@@ -90,7 +90,11 @@ export function lostReason(task: TaskInfo): string | undefined {
 		// an unreadable journal: the general reason below
 	}
 	const unconfirmed = records.find((r): r is Extract<TaskRecord, { type: "stop_unconfirmed" }> => r.type === "stop_unconfirmed");
-	if (unconfirmed !== undefined) return `its stop could not be confirmed (pids ${unconfirmed.pids.join(", ")})`;
+	if (unconfirmed !== undefined) {
+		return unconfirmed.pids.length > 0 ? `its stop could not be confirmed (pids ${unconfirmed.pids.join(", ")})` : "its stop could not be confirmed (what still held it could not be named)";
+	}
+	const failed = records.find((r): r is Extract<TaskRecord, { type: "handover_failed" }> => r.type === "handover_failed");
+	if (failed !== undefined) return `its hand-over to a task failed (${failed.reason}); the command was running and its end is not known`;
 	if (task.backend === "foreground") return "the kiso that held it ended without recording its end";
 	return "its runner is gone without recording its end";
 }

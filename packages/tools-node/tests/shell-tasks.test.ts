@@ -233,7 +233,10 @@ describe("ADR-0058 Amendment 7 — task_stop waits for the end and says how it e
 		// misses its deadline on a loaded machine reports
 		const { manager, shell, stop } = setup({ KISO_TASK_RUNNER_STOP_UNCONFIRMED: "1" });
 		await shell.execute({ command: "sleep 30", background: true }, ctx());
-		await stop.execute({ id: "t1" }, escAfter(100, { executionId: "ex-stop" } as Partial<ToolContext>));
+		// Esc at once: since Amendment 18 an unconfirmed stop reads `unknown` the moment the
+		// runner records it (the verdict no longer waits for the runner's identity check),
+		// so a later Esc would find the end already seen and claim it, as it should
+		await stop.execute({ id: "t1" }, escAfter(0, { executionId: "ex-stop" } as Partial<ToolContext>));
 		// wait for the FACT this case is about — the runner's stop_unconfirmed
 		// record — not merely a settled reading: on a loaded machine the
 		// runner's identity check (every 5 s) can read `unknown` a moment
@@ -243,6 +246,18 @@ describe("ADR-0058 Amendment 7 — task_stop waits for the end and says how it e
 		const t = await until(() => manager.get("t1")!, settled, 5_000);
 		expect(t.state.kind).toBe("unknown");
 		expect(claimsOf(manager, "t1")).toEqual([]);
+	}, 20_000);
+
+	it("the same stop, waited for: task_stop answers that it could not be confirmed, at once, and claims that unknown for its own call", async () => {
+		const { manager, shell, stop } = setup({ KISO_TASK_RUNNER_STOP_UNCONFIRMED: "1" });
+		await shell.execute({ command: "sleep 30", background: true }, ctx());
+		const t0 = Date.now();
+		const s = await stop.execute({ id: "t1" }, ctx({ executionId: "ex-stop" } as Partial<ToolContext>));
+		expect(Date.now() - t0).toBeLessThan(6_000); // not the fixed 8 s wait
+		expect(s).toMatchObject({ isError: true });
+		expect(s.content).toMatch(/^task t1 could not be confirmed stopped/);
+		expect(manager.get("t1")!.state.kind).toBe("unknown");
+		expect(claimsOf(manager, "t1")).toEqual([expect.objectContaining({ transition: "unknown", executionId: "ex-stop" })]);
 	}, 20_000);
 });
 

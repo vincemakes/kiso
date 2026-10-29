@@ -141,8 +141,13 @@ export interface AdoptedTask {
 	readonly outputPath: string;
 	ready(match: string): void;
 	ended(exitCode: number | null, signal: string | null): void;
-	/** A stop left these pids alive: no terminal — the task stays `unknown`. */
+	/** A stop left these pids alive: no terminal — the task is `unknown`. An
+	 *  empty list means survivors that could not be named. */
 	unconfirmed(pids: readonly number[]): void;
+	/** The hand-over failed after the task was recorded: the command still
+	 *  runs, under the caller. No terminal — the task is `unknown`, with the
+	 *  reason on record. */
+	handoverFailed(reason: string): void;
 }
 
 /** Who moved a running foreground command to the background (3e). */
@@ -342,6 +347,10 @@ export class TaskManager {
 				if (!this.#local.delete(id)) return;
 				appendRecord(journal, { type: "stop_unconfirmed", ts: Date.now(), pids });
 			},
+			handoverFailed: (reason) => {
+				if (!this.#local.delete(id)) return;
+				appendRecord(journal, { type: "handover_failed", ts: Date.now(), reason });
+			},
 		};
 	}
 
@@ -502,9 +511,12 @@ export class TaskManager {
 		const asked = live.filter((id) => this.stop(id, by));
 		const deadline = Date.now() + graceMs;
 		let left = asked;
-		while (left.length > 0 && Date.now() < deadline) {
+		// a stop answered "unknown" will not change: not waited for any more, still reported
+		let waiting = asked;
+		while (waiting.length > 0 && Date.now() < deadline) {
 			await new Promise((r) => setTimeout(r, 100));
 			left = left.filter((id) => kindOf(id) !== "ended");
+			waiting = waiting.filter((id) => kindOf(id) !== "ended" && kindOf(id) !== "unknown");
 		}
 		return left;
 	}
