@@ -1767,6 +1767,11 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 						: `\n… [${stream} capped at ${OUTPUT_CAP} chars — ${dropped} more chars dropped; capture to a file and read it with read_file, or narrow the command]`;
 				const combinedOutput = (): string =>
 					(stdout + overflowNote(stdoutDropped, "stdout") + (stderr ? `\n[stderr] ${stderr}` : "") + overflowNote(stderrDropped, "stderr")).trim();
+				/** the output captured so far, for a timeout or abort verdict: bounded like a normal result (the same caps and notes) */
+				const partialOutput = (): string => {
+					const o = combinedOutput();
+					return o === "" ? "" : `\n${o}`;
+				};
 				let exitInfo: { code: number | null; signal: NodeJS.Signals | null } | null = null;
 				child.on("close", (code, signal) => {
 					if (promoted !== null) {
@@ -1797,7 +1802,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					killing = true;
 					void killTree(child).then(({ unconfirmed }) =>
 						settle({
-							content: `shell aborted${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}`,
+							content: `shell aborted${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}${partialOutput()}`,
 							isError: true,
 							errorKind: "fatal",
 						}),
@@ -1873,7 +1878,7 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					killing = true;
 					void killTree(child).then(({ unconfirmed }) =>
 						settle({
-							content: `shell timed out after ${timeout}ms${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}`,
+							content: `shell timed out after ${timeout}ms${uncertainVerdict(unconfirmed) ? ` — ${uncertainVerdict(unconfirmed)}` : ""}${partialOutput()}`,
 							isError: true,
 							errorKind: "fatal",
 						}),
