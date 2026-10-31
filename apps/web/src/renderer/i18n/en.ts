@@ -130,6 +130,8 @@ export const en = {
 	guideRefused: "That key was not accepted.",
 	settingsTierNote: "The tier new Works start with; each Work can set its own under its input box",
 	failed: "failed",
+	loading: "Loading…",
+	latest: "↓ Latest",
 	signedOut: "Not signed in. Run kiso web in a terminal: it opens this page signed in.",
 	foldersTitle: "Choose a folder",
 	foldersHome: "Home",

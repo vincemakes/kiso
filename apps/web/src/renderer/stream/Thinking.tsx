@@ -30,13 +30,11 @@ export function Thinking({ item }: { readonly item: ThinkingItem }): ReactNode {
 	}, [latest]);
 	return (
 		<div className={`think ${live ? "thinking" : "done"}${open ? " open" : ""}`} data-kind="thinking">
-			<button className="th-h" onClick={() => setOpen(!open)}>
+			<button className="th-h" onClick={() => setOpen(!open)} aria-expanded={open}>
+				<Chevron />
 				<Spark />
-				<span className="lab">{live ? t.thinking : fmt(t.thought, { time: span(Math.max(1000, elapsed)) })}</span>
+				<span className={`lab${live ? " shimmer" : ""}`}>{live ? t.thinking : fmt(t.thought, { time: span(Math.max(1000, elapsed)) })}</span>
 				{live ? <span className="t">{Math.round(elapsed / 1000)}s</span> : null}
-				<span className="chev-wrap">
-					<Chevron />
-				</span>
 				<span className="pv1">
 					{leaving !== "" ? <span className="out">{leaving}</span> : null}
 					{latest !== "" ? (

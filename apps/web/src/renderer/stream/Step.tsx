@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { clock, fmt, t } from "../i18n/index.js";
 import { editDiff } from "../state/diff.js";
 import type { Step as StepItem } from "../state/model.js";
@@ -6,6 +6,7 @@ import type { TaskRow } from "../../shared/frames.js";
 import { toolIcon } from "./Icons.js";
 import { ThumbLink, thumbOf } from "./Thumb.js";
 import { useNow } from "./useNow.js";
+import { useRelative } from "./root.js";
 
 const MAX_LINES = 8;
 
@@ -40,12 +41,17 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 	const lines = all.slice(0, MAX_LINES);
 	const total = step.name === "edit_file" || step.name === "write_file" ? all.length : (step.output?.lines ?? all.length);
 	const more = Math.max(0, total - lines.length);
+	const rel = useRelative();
+	// a line that runs past the edge: the edge fades
+	const box = useRef<HTMLDivElement>(null);
+	const [wide, setWide] = useState(false);
+	useLayoutEffect(() => setWide((box.current?.scrollWidth ?? 0) > (box.current?.clientWidth ?? 0) + 1), [lines.length, step.status]);
 	return (
 		<div className={`step ${step.status}`} data-kind="step" data-tool={step.name}>
 			<div className="s-row">
 				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
 				<span className="s-verb">{t.verb[step.name] ?? step.name}</span>
-				<code className="s-obj">{objectOf(step)}</code>
+				<code className="s-obj">{rel(objectOf(step))}</code>
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
 				{thumb !== null ? <ThumbLink kind={thumb} /> : null}
@@ -61,17 +67,21 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 					{task.id} · {task.label} · {clock(task.elapsedMs)}
 				</div>
 			) : null}
-			{lines.length > 0 && step.taskId === null ? (
+			{/* a failed step says what went wrong once, in red: its output (the same message) is not repeated above it */}
+			{lines.length > 0 && step.taskId === null && step.status !== "failed" ? (
 				<div className="s-out">
-					{lines.map((l, i) => (
-						<div key={i} className={l.mark}>
-							{l.text || " "}
-						</div>
-					))}
-					{more > 0 ? <span className="more">{fmt(t.more, { n: more })}</span> : null}
+					{/* long lines are not wrapped (a diff or a table keeps its columns): the right edge fades where a line goes on */}
+					<div className="s-lines" ref={box} data-wide={wide}>
+						{lines.map((l, i) => (
+							<div key={i} className={l.mark}>
+								{rel(l.text) || " "}
+							</div>
+						))}
+					</div>
+					{more > 0 ? <div className="more">{fmt(t.more, { n: more })}</div> : null}
 				</div>
 			) : null}
-			{step.status === "failed" && step.error !== null ? <div className="s-err">{step.error}</div> : null}
+			{step.status === "failed" && step.error !== null ? <div className="s-err">{rel(step.error)}</div> : null}
 			{step.status === "denied" ? <div className="s-err">{t.denied_step}</div> : null}
 		</div>
 	);

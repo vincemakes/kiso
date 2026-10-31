@@ -81,7 +81,17 @@ export function holdBack(raw: string): string {
 	const prev = outside.slice(outside.lastIndexOf("\n", start - 2) + 1, Math.max(0, start - 1));
 	const inTable = start > 0 && PIPE.test(prev);
 	const rowDone = endsWithPipe(last) && last.trim().length > 1 && !(inTable && /^[\s|:-]+$/.test(last));
-	if (last.trim() !== "" && (last.trimStart().startsWith("|") || inTable) && !rowDone) cut = Math.min(cut, start);
+	if (last.trim() !== "" && (last.trimStart().startsWith("|") || inTable) && (!rowDone || !inTable)) cut = Math.min(cut, start);
+	// a line that is only a block marker so far (a list, a quote, a heading) becomes that block once its text starts: shown then, not as a paragraph first
+	if (/^\s*([-*+>#|]|\d+[.)]?)\s?$/.test(last)) cut = Math.min(cut, start);
+	// a header row is drawn once the line under it says whether it heads a table: never as a paragraph that turns into one
+	const kept = outside.slice(0, cut);
+	if (kept.endsWith("\n")) {
+		const lines = kept.slice(0, -1).split("\n");
+		const header = lines.at(-1)!;
+		const above = lines.at(-2);
+		if (header.trimStart().startsWith("|") && (above === undefined || !PIPE.test(above))) cut = kept.length - header.length - 1;
+	}
 	return raw.slice(0, cut);
 }
 
