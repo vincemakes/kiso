@@ -79,5 +79,14 @@ check(holdBack("a **bo") === "a " && holdBack("run `npm te") === "run " && holdB
 check(holdBack("a **b** and `c`") === "a **b** and `c`" && holdBack("```js\nconst a = **b") === "```js\nconst a = **b" && holdBack("```\nx ** y\n```\nthen `z") === "```\nx ** y\n```\nthen ", "closed markers are kept; an open fence withholds nothing; markers in a closed fence do not count");
 const blocks = parse(ANSWER);
 check(blocks.map((b) => b.t).join() === "h,p,ul" && blocks[1].inline.some((x) => x.t === "b") && blocks[1].inline.some((x) => x.t === "code"), "the answer parses to heading, paragraph, list with inline bold and code nodes");
+const tb = parse("| a | b | c |\n|:--|:-:|--:|\n| `x|y` | **z** | a \\| b |\n| 1 |")[0];
+check(tb.t === "table" && tb.align.join() === "left,center,right" && JSON.stringify(tb.rows[0][0]) === '[{"t":"code","text":"x|y"}]' && tb.rows[0][1][0].t === "b" && tb.rows[0][2][0].text === "a | b" && tb.rows[1].length === 3, "a table: alignment, inline code (with a pipe) in a cell, bold, an escaped pipe stays text, a short row is padded");
+check(parse("| a | b |\nno delimiter")[0].t === "p" && parse("| a | b |\n|---|")[0].t === "p", "a header with no delimiter row, or one of another width, is a paragraph");
+check(parse("> one **b**\n> two\n\n---\n~~old~~ new").map((b) => b.t).join() === "quote,hr,p" && parse("> x")[0].children[0].t === "p" && parse("~~old~~")[0].inline[0].t === "s", "a blockquote, a horizontal rule, strikethrough");
+check(holdBack("| a | b |\n|---|---|\n| 1 | 2") === "| a | b |\n|---|---|\n" && holdBack("| a | b |\n|--") === "| a | b |\n" && holdBack("| a | b |\n|---|---|") === "| a | b |\n" && holdBack("| a |\n|---|\n| 1 |") === "| a |\n|---|\n| 1 |" && holdBack("a ~~b") === "a ", "streaming: a row with no closing pipe and a delimiter row with no newline yet are withheld; a whole row is shown; an open ~~ is withheld");
+const TABLE = "Here:\n\n| Name | Size |\n|:--|--:|\n| `a.txt` | 12 |\n| b.txt | 7 |\n\nDone.";
+const forms = [...TABLE].map((_, i) => render(TABLE.slice(0, i + 1), true));
+const firstTable = forms.findIndex((f) => f.some((b) => b.t === "table"));
+check(firstTable > 0 && forms.slice(firstTable).every((f) => f.some((b) => b.t === "table")) && !forms.some((f) => JSON.stringify(f).includes("--")) && JSON.stringify(forms.at(-1)) === JSON.stringify(render(TABLE, false)), "every prefix while streaming: the delimiter is never text, a table once drawn stays a table, and the last live form equals the final render");
 check(JSON.stringify(render("<script>alert(1)</script> **x", true)).includes('"text":"<script>alert(1)</script>"') && parse("```sh\nnpm ci\nnpm test\n```")[0].text === "npm ci\nnpm test", "markup stays text; a fenced block keeps its lines");
 verdict();

@@ -8,7 +8,7 @@ import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
 const { check, verdict } = checker("stream-ui");
 const P = ["First I will read the README to see what the install section says.", "Then I will cut it down to three steps and keep the line about needing no key.", "Last I will run the tests and report."];
 const THINK = `${P[0]} It is short.\n\n${P[1]} That is the plan.\n\n${P[2]}`;
-const ANSWER = "## Done\n\nThe install section is now **three steps**, and `npm test` passes: 12 tests.\n\n- Install Node 22\n- Run `npm ci`\n- Run `npm start`\n\nThe line about needing no key is still there.";
+const ANSWER = "## Done\n\nThe install section is now **three steps**, and `npm test` passes: 12 tests.\n\n- Install Node 22\n- Run `npm ci`\n- Run `npm start`\n\nThe line about needing no key is still there.\n\n| Step | Command | Note |\n|:--|:--|--:|\n" + ["Install", "Run `npm ci`", "Start"].map((c, i) => `| ${i + 1} | ${c} | ${"packages_runtime_src_a_long_name_that_cannot_wrap".repeat(5)} |`).join("\n");
 const slow = (text, size, ms, type) => text.match(new RegExp(`[\\s\\S]{1,${size}}`, "g")).flatMap((chunk) => [{ type, text: chunk }, { type: "delay", ms }]);
 const call = (callId, name, input) => ({ type: "tool_call_end", callId, name, input });
 const use = (i, o, c) => ({ type: "usage", inputTokens: i, outputTokens: o, cacheRead: c, cacheWrite: null, known: true });
@@ -25,7 +25,7 @@ const app = await launchApp({ data: scratch("ui-data"), workspace, env: { KISO_W
 await app.evaluate(`window.__snaps = []; new MutationObserver(() => {
 	const q = (s) => document.querySelector(s);
 	window.__snaps.push({ answer: q('[data-kind=answer]')?.textContent ?? null, folded: q('[data-kind=process]')?.dataset.folded ?? null, asks: document.querySelectorAll('[data-kind=ask]').length,
-		live: !!q('.think.thinking'), line: q('.pv1 .on')?.textContent ?? null, footer: q('[data-kind=footer]') !== null, place: q('textarea')?.placeholder ?? null });
+		live: !!q('.think.thinking'), delim: [...document.querySelectorAll('[data-kind=answer] p')].some((p) => p.textContent.includes('|:--')), line: q('.pv1 .on')?.textContent ?? null, footer: q('[data-kind=footer]') !== null, place: q('textarea')?.placeholder ?? null });
 }).observe(document.getElementById('root'), { subtree: true, childList: true, characterData: true, attributes: true }); true`);
 await app.evaluate(`window.__kiso.send("Shorten the install steps in README.md, then run the tests")`);
 let approved = 0;
@@ -47,6 +47,9 @@ check(streaming.length > 5 && streaming.every((s) => s.folded === "false"), `the
 check(snaps.at(-1).folded === "true" && snaps.at(-1).footer && snaps.at(-1).asks === 0, "when the run ended the process folded, the footer appeared and no approval was left");
 check(snaps.every((s) => s.answer === null || (!s.answer.includes("**") && (s.answer.match(/`/g) ?? []).length % 2 === 0 && !s.answer.endsWith("*"))) && new Set(snaps.map((s) => s.answer?.length)).size > 8, "the answer grew in small steps and never showed an unclosed ** or backtick");
 check(snaps.filter((s) => s.asks > 0).every((s) => s.folded === "false"), "while an approval card was open the process was not folded");
+// the wide table: it scrolls inside its own box, and nothing between it and the page scrolls sideways
+const wide = await app.evaluate(`(() => { const t = document.querySelector('[data-kind=answer] [data-kind=table]'); const up = []; for (let e = t?.parentElement; e; e = e.parentElement) up.push(e.scrollWidth - e.clientWidth); return JSON.stringify({ rows: t?.querySelectorAll('tbody tr').length, inner: t ? t.scrollWidth - t.clientWidth : -1, up: Math.max(...up), code: t?.querySelectorAll('td code').length, right: t ? getComputedStyle(t.querySelector('th:last-child')).textAlign : null }); })()`).then(JSON.parse);
+check(wide.rows === 3 && wide.code === 1 && wide.right === "right" && wide.inner > 0 && wide.up <= 0 && !snaps.some((s) => s.delim), `a wide table is drawn (3 rows, code in a cell, right-aligned column), scrolls inside its own box (${wide.inner} px) and the page never scrolls sideways (${wide.up} px); its delimiter row never showed as text`);
 check(snaps.some((s) => s.place === "Add a line, or press Esc to stop…") && snaps.at(-1).place === "Ask kiso to do something…", "the input box changes its placeholder while a run is live, and back");
 await app.click(".ph");
 await sleep(900);

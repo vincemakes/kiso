@@ -10,6 +10,8 @@ function inlines(nodes: readonly Inline[]): ReactNode[] {
 				return <b key={i}>{inlines(n.children)}</b>;
 			case "i":
 				return <em key={i}>{inlines(n.children)}</em>;
+			case "s":
+				return <s key={i}>{inlines(n.children)}</s>;
 			case "code":
 				return <code key={i}>{n.text}</code>;
 			case "link":
@@ -51,6 +53,38 @@ function block(b: Block, i: number): ReactNode {
 					<code>{b.text}</code>
 				</pre>
 			);
+		case "table":
+			// a wide table scrolls inside its own box; the page never scrolls sideways
+			return (
+				<div key={i} className="tbl" data-kind="table">
+					<table>
+						<thead>
+							<tr>
+								{b.head.map((c, j) => (
+									<th key={j} style={{ textAlign: b.align[j] ?? undefined }}>
+										{inlines(c)}
+									</th>
+								))}
+							</tr>
+						</thead>
+						<tbody>
+							{b.rows.map((row, r) => (
+								<tr key={r}>
+									{row.map((c, j) => (
+										<td key={j} style={{ textAlign: b.align[j] ?? undefined }}>
+											{inlines(c)}
+										</td>
+									))}
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			);
+		case "quote":
+			return <blockquote key={i}>{b.children.map(block)}</blockquote>;
+		case "hr":
+			return <hr key={i} />;
 	}
 }
 

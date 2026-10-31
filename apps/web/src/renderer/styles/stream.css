@@ -108,6 +108,12 @@
 .ans pre { background: var(--sunk); border-radius: 10px; padding: 10px 14px; overflow: auto; font: 12.5px/1.6 var(--mono); }
 .ans pre code { background: none; padding: 0; }
 .ans .lk { color: var(--blue); text-decoration: underline; }
+.ans .tbl { max-width: 100%; overflow-x: auto; margin: 10px 0; }
+.ans table { border-collapse: collapse; font-size: 13.5px; line-height: 1.5; }
+.ans th, .ans td { border: 1px solid var(--line); padding: 5px 10px; vertical-align: top; }
+.ans th { background: #f7f7f8; font-weight: 600; white-space: nowrap; }
+.ans blockquote { margin: 8px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
+.ans hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .live { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 12.5px; margin-top: 2px; }
 .live .mk { width: 16px; height: 16px; border-radius: 5px; background: var(--ink); color: #fff; font-size: 10px; display: grid; place-items: center; font-weight: 700; }
 .live .tx { font-variant-numeric: tabular-nums; }

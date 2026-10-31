@@ -1,17 +1,19 @@
 /**
  * The answer's markdown, small on purpose: headings, paragraphs, lists,
- * fenced code, and inline bold, italic, code and link text. It produces a
- * tree (no HTML strings, so nothing the model writes becomes markup) that
- * the Answer component draws.
+ * fenced code, GFM tables, blockquotes, horizontal rules, and inline bold,
+ * italic, strikethrough, code and link text. It produces a tree (no HTML
+ * strings, so nothing the model writes becomes markup) that the Answer
+ * component draws.
  *
  * While the answer streams, `holdBack` withholds what is not yet a whole
- * construct: an unclosed `**` or backtick and everything after it, so the
- * reader never sees stray markers flash in and out.
+ * construct: an unclosed `**`, `~~` or backtick and everything after it, and
+ * a table row still being written, so the reader never sees stray markers
+ * flash in and out.
  */
 
 export type Inline =
 	| { readonly t: "text"; readonly text: string }
-	| { readonly t: "b" | "i"; readonly children: readonly Inline[] }
+	| { readonly t: "b" | "i" | "s"; readonly children: readonly Inline[] }
 	| { readonly t: "code"; readonly text: string }
 	| { readonly t: "link"; readonly text: string; readonly href: string };
 
@@ -19,9 +21,46 @@ export type Block =
 	| { readonly t: "h"; readonly level: 1 | 2 | 3; readonly inline: readonly Inline[] }
 	| { readonly t: "p"; readonly inline: readonly Inline[] }
 	| { readonly t: "ul" | "ol"; readonly items: readonly (readonly Inline[])[] }
-	| { readonly t: "code"; readonly lang: string; readonly text: string };
+	| { readonly t: "code"; readonly lang: string; readonly text: string }
+	| { readonly t: "table"; readonly align: readonly Align[]; readonly head: readonly (readonly Inline[])[]; readonly rows: readonly (readonly (readonly Inline[])[])[] }
+	| { readonly t: "quote"; readonly children: readonly Block[] }
+	| { readonly t: "hr" };
+
+export type Align = "left" | "center" | "right" | null;
 
 const FENCE = /^```(\S*)\s*$/;
+const HR = /^ {0,3}([-*_])( *\1){2,} *$/;
+const DELIM_CELL = /^:?-+:?$/;
+/** a `|` that is not escaped */
+const PIPE = /(?<!\\)\|/;
+const endsWithPipe = (line: string): boolean => /(?<!\\)\|\s*$/.test(line);
+
+/** The cells of a table row: the outer pipes are optional; an escaped `\|`, or a pipe inside inline code, stays in its cell. */
+export function cells(line: string): string[] {
+	let row = line.trim();
+	if (row.startsWith("|")) row = row.slice(1);
+	if (endsWithPipe(row)) row = row.replace(/\|\s*$/, "");
+	const out: string[] = [];
+	let cell = "";
+	let code = false;
+	for (let i = 0; i < row.length; i++) {
+		const ch = row[i]!;
+		if (ch === "`") code = !code;
+		if (ch === "|" && !code && row[i - 1] !== "\\") {
+			out.push(cell.trim());
+			cell = "";
+		} else cell += ch;
+	}
+	return [...out, cell.trim()];
+}
+
+/** A delimiter row (`|---|:--:|`) with as many cells as the header: its alignments, else null. */
+function delimiter(line: string, width: number): Align[] | null {
+	if (!PIPE.test(line)) return null;
+	const parts = cells(line);
+	if (parts.length !== width || !parts.every((c) => DELIM_CELL.test(c))) return null;
+	return parts.map((c) => (c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : c.startsWith(":") ? "left" : null));
+}
 
 /** Split off the part of a still-streaming answer that is not yet whole. */
 export function holdBack(raw: string): string {
@@ -33,8 +72,16 @@ export function holdBack(raw: string): string {
 	let cut = raw.length;
 	if ((outside.match(/`/g) ?? []).length % 2 === 1) cut = Math.min(cut, outside.lastIndexOf("`"));
 	if ((outside.match(/\*\*/g) ?? []).length % 2 === 1) cut = Math.min(cut, outside.lastIndexOf("**"));
-	// a lone trailing "*" may be the start of "**"
-	if (cut === raw.length && outside.endsWith("*") && !outside.endsWith("**")) cut = raw.length - 1;
+	if ((outside.match(/~~/g) ?? []).length % 2 === 1) cut = Math.min(cut, outside.lastIndexOf("~~"));
+	// a lone trailing "*" or "~" may be the start of "**" or "~~"
+	if (cut === raw.length && /(^|[^*])\*$|(^|[^~])~$/.test(outside)) cut = raw.length - 1;
+	// a table row still being written (no closing pipe, no newline yet), or a delimiter row under a header: withheld until its line is whole
+	const start = outside.lastIndexOf("\n") + 1;
+	const last = outside.slice(start);
+	const prev = outside.slice(outside.lastIndexOf("\n", start - 2) + 1, Math.max(0, start - 1));
+	const inTable = start > 0 && PIPE.test(prev);
+	const rowDone = endsWithPipe(last) && last.trim().length > 1 && !(inTable && /^[\s|:-]+$/.test(last));
+	if (last.trim() !== "" && (last.trimStart().startsWith("|") || inTable) && !rowDone) cut = Math.min(cut, start);
 	return raw.slice(0, cut);
 }
 
@@ -49,13 +96,20 @@ export function inline(raw: string): Inline[] {
 	while (i < raw.length) {
 		const rest = raw.slice(i);
 		let m: RegExpExecArray | null;
-		if ((m = /^`([^`]+)`/.exec(rest)) !== null) {
+		if ((m = /^\\([|\\`*_~[\]])/.exec(rest)) !== null) {
+			buf += m[1];
+			i += 2;
+		} else if ((m = /^`([^`]+)`/.exec(rest)) !== null) {
 			flush();
 			out.push({ t: "code", text: m[1]! });
 			i += m[0].length;
 		} else if ((m = /^\*\*(.+?)\*\*/s.exec(rest)) !== null) {
 			flush();
 			out.push({ t: "b", children: inline(m[1]!) });
+			i += m[0].length;
+		} else if ((m = /^~~(?!\s)(.+?)~~/s.exec(rest)) !== null) {
+			flush();
+			out.push({ t: "s", children: inline(m[1]!) });
 			i += m[0].length;
 		} else if ((m = /^\*([^*\s][^*]*?)\*(?!\*)/.exec(rest)) !== null) {
 			flush();
@@ -90,6 +144,32 @@ export function parse(raw: string): Block[] {
 			const body: string[] = [];
 			for (i += 1; i < lines.length && !FENCE.test(lines[i]!); i++) body.push(lines[i]!);
 			blocks.push({ t: "code", lang: fence[1]!, text: body.join("\n") });
+			continue;
+		}
+		const head = PIPE.test(line) ? cells(line) : null;
+		const align = head === null || i + 1 >= lines.length ? null : delimiter(lines[i + 1]!, head.length);
+		if (head !== null && align !== null) {
+			endPara();
+			const rows: Inline[][][] = [];
+			for (i += 2; i < lines.length && lines[i]!.trim() !== "" && PIPE.test(lines[i]!); i++) {
+				const row = cells(lines[i]!);
+				rows.push(head.map((_, c) => inline(row[c] ?? "")));
+			}
+			i -= 1;
+			blocks.push({ t: "table", align, head: head.map((c) => inline(c)), rows });
+			continue;
+		}
+		if (/^ {0,3}>/.test(line)) {
+			endPara();
+			const body: string[] = [];
+			for (; i < lines.length && /^ {0,3}>/.test(lines[i]!); i++) body.push(lines[i]!.replace(/^ {0,3}> ?/, ""));
+			i -= 1;
+			blocks.push({ t: "quote", children: parse(body.join("\n")) });
+			continue;
+		}
+		if (HR.test(line)) {
+			endPara();
+			blocks.push({ t: "hr" });
 			continue;
 		}
 		const h = /^(#{1,3})\s+(.*)$/.exec(line);
