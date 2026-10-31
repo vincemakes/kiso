@@ -24,11 +24,13 @@ const app = await launchApp({ data: scratch("ui-data"), workspace, env: { KISO_W
 	// the answer: small deltas, then the rest in one burst of hundreds of characters
 	{ events: [...slow(ANSWER.slice(0, 90), 6, 20, "text_delta"), { type: "text_delta", text: ANSWER.slice(90) }, use(1500, 120, 1400), { type: "stop", reason: "end_turn" }] },
 	{ events: [...slow("Nothing to run for this, the answer is in what I read.", 9, 60, "thinking"), { type: "text_delta", text: "Yes." }, { type: "stop", reason: "end_turn" }] },
+	{ events: [call("c4", "read_file", { path: join(workspace, "missing/notes.txt") }), stop] },
+	{ events: [{ type: "text_delta", text: "Not there." }, { type: "stop", reason: "end_turn" }] },
 ] });
 // every frame: how much answer text is drawn, how many live indicators, and whether the process header is covered by anything
 await app.evaluate(`window.__frames = []; (function f() {
 	const ph = document.querySelector('.ph'), r = ph?.getBoundingClientRect(), at = r && r.height > 0 ? document.elementFromPoint(r.left + 40, r.top + r.height / 2) : null;
-	window.__frames.push({ n: [...document.querySelectorAll('[data-kind=answer] > :not(.tbl)')].reduce((sum, e) => sum + e.textContent.length, 0), lives: document.querySelectorAll('[data-kind=live]').length, live: !!window.__kiso?.state.turns.at(-1)?.phase.startsWith('run'), covered: at !== null && !ph.contains(at) });
+	window.__frames.push({ n: [...document.querySelectorAll('[data-kind=answer] > :not(.tbl)')].reduce((sum, e) => sum + e.textContent.length, 0), lives: document.querySelectorAll('[data-kind=live]').length, carets: [...document.querySelectorAll('.caret *')].filter((e) => getComputedStyle(e, '::after').animationName === 'bl').length, early: !!document.querySelector('[data-kind=footer]') && [...document.querySelectorAll('[data-kind=answer]')].some((a) => a.dataset.settled !== 'true'), live: !!window.__kiso?.state.turns.at(-1)?.phase.startsWith('run'), covered: at !== null && !ph.contains(at) });
 	requestAnimationFrame(f);
 })(); true`);
 const sc = (js) => app.evaluate(`(() => { const el = document.querySelector('.scroll'); ${js} })()`);
@@ -58,7 +60,7 @@ const snaps = JSON.parse(await app.evaluate("JSON.stringify(window.__snaps)"));
 const lines = [...new Set(snaps.map((s) => s.line).filter((l) => l !== null))];
 check(approved === 2, "two approvals were asked and answered through the cards");
 check(JSON.stringify(lines) === JSON.stringify(P) && snaps.some((s) => s.live && s.line !== null), "the thinking line paged through the three paragraphs' first sentences, in order, never a half sentence, while the model was still thinking");
-const streaming = snaps.filter((s) => s.answer !== null && !s.footer);
+const streaming = snaps.filter((s) => s.answer !== null && s.place === "Add a line, or press Esc to stop…");
 check(streaming.length > 5 && streaming.every((s) => s.folded === "false"), `the process stayed open through ${streaming.length} samples of the streaming answer`);
 check(snaps.at(-1).folded === "true" && snaps.at(-1).footer && snaps.at(-1).asks === 0, "when the run ended the process folded, the footer appeared and no approval was left");
 check(snaps.every((s) => s.answer === null || (!s.answer.includes("**") && (s.answer.match(/`/g) ?? []).length % 2 === 0 && !s.answer.endsWith("*"))) && new Set(snaps.map((s) => s.answer?.length)).size > 8, "the answer grew in small steps and never showed an unclosed ** or backtick");
@@ -87,6 +89,7 @@ const jumps = frames.slice(1).map((f, i) => f.n - frames[i].n);
 // (a table row is drawn whole once its closing pipe has arrived: rows are held back, not paced, so the pace is measured on the prose)
 check(Math.max(...jumps) <= 30 && frames.at(-1).n === (await app.evaluate("[...document.querySelectorAll('[data-kind=answer] > :not(.tbl)')].reduce((s, e) => s + e.textContent.length, 0)")), `the answer's text, a burst of ${ANSWER.length - 90} characters included, appeared at most ${Math.max(...jumps)} characters a frame (cap 30), over ${jumps.filter((j) => j > 0).length} frames`);
 check(frames.every((f) => f.lives <= 1) && frames.some((f) => f.live && f.lives === 1), "one live indicator at a time, never two");
+check(frames.every((f) => f.carets <= 1) && frames.some((f) => f.carets === 1) && !frames.some((f) => f.early), "one caret at a time while text streams, and no footer before its answer is drawn to the end");
 check(!frames.some((f) => f.covered), `nothing was ever drawn over the process header, in ${frames.length} frames (opening and folding included)`);
 check((await app.evaluate("document.querySelector('.say code')?.textContent")) === "README.md" && !(await app.text(".say")).includes("`"), "narration gets inline markdown: code, no backticks");
 const chev = (q) => app.evaluate(`(() => { const b = document.querySelector('${q}'), c = b.querySelector('.chev'); return [b.getAttribute('aria-expanded'), getComputedStyle(c).transform, !!(c.compareDocumentPosition(b.querySelector('.lab')) & 4)].join(); })()`);
@@ -108,5 +111,11 @@ check(/^Worked for \d+ s$/.test(await app.evaluate("[...document.querySelectorAl
 const bottom = await sc("return el.scrollHeight - el.scrollTop - el.clientHeight");
 check(bottom < 2, `a run the person followed at the bottom ends at the bottom, fold included (${bottom} px above it)`);
 await app.shot("6-zero-steps-sidebar-idle");
+// a step that fails on a path in the Work's folder: its message once, in red, with the folder's paths relative and its root by name, here and in the rail
+await app.evaluate(`window.__kiso.send("read the notes")`);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) === 3, 20_000);
+const failed = await app.evaluate("JSON.stringify({ out: document.querySelectorAll('.step.failed .s-out').length, err: document.querySelector('.step.failed .s-err')?.textContent, obj: document.querySelector('.step.failed .s-obj')?.textContent, rail: [...document.querySelectorAll('[data-field=step] b')].map((b) => b.textContent) })").then(JSON.parse);
+const name = workspace.split("/").pop();
+check(failed.out === 0 && failed.err.includes("missing/notes.txt") && !failed.err.includes("/folders/") && failed.obj === "missing/notes.txt" && failed.rail.includes("Read missing/notes.txt") && (!failed.err.includes("root") || failed.err.includes(name)), `a failed step shows its message once, in red, without the folder's absolute path, here and in the rail: ${failed.err}`);
 await app.close();
 verdict();

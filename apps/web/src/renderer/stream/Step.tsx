@@ -67,7 +67,8 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 					{task.id} · {task.label} · {clock(task.elapsedMs)}
 				</div>
 			) : null}
-			{lines.length > 0 && step.taskId === null ? (
+			{/* a failed step says what went wrong once, in red: its output (the same message) is not repeated above it */}
+			{lines.length > 0 && step.taskId === null && step.status !== "failed" ? (
 				<div className="s-out">
 					{/* long lines are not wrapped (a diff or a table keeps its columns): the right edge fades where a line goes on */}
 					<div className="s-lines" ref={box} data-wide={wide}>

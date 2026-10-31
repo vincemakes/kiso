@@ -45,8 +45,8 @@
 .say p + p, .say ul, .say ol, .say pre, .say .tbl { margin-top: 6px; }
 .say code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 12.5px var(--mono); }
 .say ul, .say ol { padding-left: 20px; margin-bottom: 0; }
-.caret::after, .ans.caret > :last-child::after, .ans.caret > ul:last-child > li:last-child::after { content: ""; display: inline-block; width: 6px; height: 14px; background: var(--ink); margin-left: 2px; vertical-align: -2px; animation: bl 0.9s steps(1) infinite; }
-.ans.caret::after { content: none; }
+/* one caret, at the end of the last text released: after the last block, or inside the last item when that block is a list */
+.caret > :last-child:not(ul, ol, pre, hr, .tbl)::after, .caret > :is(ul, ol):last-child > li:last-child::after { content: ""; display: inline-block; width: 6px; height: 14px; background: var(--ink); margin-left: 2px; vertical-align: -2px; animation: bl 0.9s steps(1) infinite; }
 @keyframes bl { 50% { opacity: 0; } }
 .steer { align-self: flex-end; background: #f3f3f5; padding: 5px 12px; border-radius: 14px; font-size: 13px; }
 

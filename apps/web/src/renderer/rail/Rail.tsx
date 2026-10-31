@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { EnvReply } from "../../shared/settings.js";
+import { relativeTo } from "../stream/root.js";
 import { clock, t, tokens } from "../i18n/index.js";
 import type { State } from "../state/model.js";
 import { useOpenPanel } from "../panels/context.js";
@@ -21,7 +22,7 @@ const pct = (n: number | null): string => (n === null ? "—" : `${Math.round(n)
  * stream's state, which is built from the durable log.
  */
 export function Rail({ state, env }: { readonly state: State; readonly env: EnvReply | null }): ReactNode {
-	const rail = railOf(state);
+	const rail = railOf(state, (text) => relativeTo(text, env?.root ?? ""));
 	const openPanel = useOpenPanel();
 	const [hover, setHover] = useState<{ readonly tip: TipData; readonly top?: number; readonly bottom?: number } | null>(null);
 	const over = (tip: TipData) => ({

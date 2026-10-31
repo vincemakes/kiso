@@ -126,9 +126,10 @@ function useSteady(text: string): string {
 }
 
 /** Markdown that may still be streaming: released steadily, unclosed markers and unfinished rows held back until whole. */
-export function Blocks({ text, live, className, kind }: { readonly text: string; readonly live: boolean; readonly className: string; readonly kind: string }): ReactNode {
+export function Blocks({ text, live, className, kind, onSettled }: { readonly text: string; readonly live: boolean; readonly className: string; readonly kind: string; readonly onSettled?: (drawn: boolean) => void }): ReactNode {
 	const shown = useSteady(text);
 	const settled = shown === text;
+	useEffect(() => onSettled?.(settled && !live), [settled, live, onSettled]);
 	return (
 		<div className={`${className}${live || !settled ? " caret" : ""}`} data-kind={kind} data-settled={settled && !live}>
 			{render(shown, live || !settled).map(block)}
@@ -137,4 +138,4 @@ export function Blocks({ text, live, className, kind }: { readonly text: string;
 }
 
 /** The answer: markdown drawn from a tree, released steadily, with unclosed markers held back while it streams. */
-export const Answer = ({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode => <Blocks className="ans" kind="answer" text={text} live={live} />;
+export const Answer = ({ text, live, onSettled }: { readonly text: string; readonly live: boolean; readonly onSettled?: (drawn: boolean) => void }): ReactNode => <Blocks className="ans" kind="answer" text={text} live={live} {...(onSettled !== undefined ? { onSettled } : {})} />;

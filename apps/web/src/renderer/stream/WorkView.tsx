@@ -48,14 +48,18 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 	const room = (px: number): void => void (spacer.current !== null && (spacer.current.style.height = `${Math.max(0, px)}px`));
 	const pinned = useRef(true);
 	const anchor = useRef<{ readonly el: Element; readonly top: number } | null>(null);
-	// the content height the last scroll was judged at: a scroll that comes with another height is the browser clamping after a change, not the person
-	const height = useRef(0);
+	// where the view and the content were at the last look: the person's scroll is told from the page's own moves by its direction
+	const last = useRef({ top: 0, height: 0 });
+	const mark = (el: HTMLElement): void => void (last.current = { top: el.scrollTop, height: el.scrollHeight });
 	const [behind, setBehind] = useState(false);
 	const toBottom = (smooth = false): void => {
 		pinned.current = true;
 		setBehind(false);
 		room(0);
-		scroller.current?.scrollTo({ top: scroller.current.scrollHeight, ...(smooth ? { behavior: "smooth" } : {}) });
+		const el = scroller.current;
+		if (el === null) return;
+		el.scrollTo({ top: el.scrollHeight, ...(smooth ? { behavior: "smooth" } : {}) });
+		if (!smooth) mark(el);
 	};
 	const remember = (): void => {
 		const el = scroller.current;
@@ -70,8 +74,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 		const col = column.current;
 		if (el === null || col === null) return;
 		const follow = new ResizeObserver(() => {
-			height.current = el.scrollHeight;
-			if (pinned.current) return void el.scrollTo({ top: el.scrollHeight });
+			if (pinned.current) return void (el.scrollTo({ top: el.scrollHeight }), mark(el));
 			const a = anchor.current;
 			if (a !== null && a.el.isConnected) {
 				const want = el.scrollTop + a.el.getBoundingClientRect().top - a.top;
@@ -80,7 +83,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 				el.scrollTop = want;
 			}
 			remember();
-			height.current = el.scrollHeight;
+			mark(el);
 			if (el.scrollHeight - el.scrollTop - el.clientHeight > 40) setBehind(true);
 		});
 		follow.observe(col);
@@ -112,18 +115,21 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 				className="scroll"
 				ref={scroller}
 				onScroll={(e) => {
-					// the person scrolled up: stop following until they come back to the bottom
+					// The person moved up (and the content did not shrink, which is the browser pulling the view after a fold): stop following,
+					// and keep a screen of room below so a fold under them has somewhere to go. They moved down to the end: follow again.
 					const el = e.currentTarget;
-					if (el.scrollHeight !== height.current && height.current !== 0) return;
-					const was = pinned.current;
-					pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-					if (pinned.current) (setBehind(false), room(0));
-					else {
-						// a screen of room the moment they leave the bottom: a fold below them has somewhere to go without pulling the page
-						if (was) room(el.clientHeight);
-						remember();
-						height.current = el.scrollHeight;
+					const up = el.scrollTop < last.current.top - 1 && el.scrollHeight >= last.current.height;
+					const down = el.scrollTop > last.current.top + 1;
+					if (up) {
+						if (pinned.current) room(el.clientHeight);
+						pinned.current = false;
+					} else if (down && el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+						pinned.current = true;
+						setBehind(false);
+						room(0);
 					}
+					if (!pinned.current) remember();
+					mark(el);
 				}}
 			>
 				<div className="col" ref={column}>
