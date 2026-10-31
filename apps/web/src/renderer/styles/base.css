@@ -1,0 +1,25 @@
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: #fff; font: 14px/1.6 var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; padding: 0; }
+textarea { font: inherit; color: inherit; }
+svg { display: block; }
+.ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.scroll { position: absolute; inset: 0 0 112px 0; overflow-y: auto; padding: 48px 0 40px; scrollbar-width: none; }
+.col { width: 680px; max-width: calc(100% - 40px); margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.empty { margin: 22vh auto 0; text-align: center; color: var(--mute); font-size: 15px; }
+.empty b { display: block; color: var(--ink); font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }
+
+.me { align-self: flex-end; background: #f3f3f5; padding: 9px 14px; border-radius: 18px; max-width: 82%; white-space: pre-wrap; animation: in 0.5s var(--ease) both; }
+@keyframes in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* composer */
+.comp { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(680px, calc(100% - 40px)); }
+.box { background: #fff; border-radius: 24px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.04); padding: 11px 12px 11px 18px; display: flex; align-items: flex-end; gap: 10px; }
+.box textarea { flex: 1; border: 0; outline: 0; resize: none; background: none; line-height: 1.5; max-height: 160px; padding: 4px 0; }
+.box textarea::placeholder { color: #a5a5a8; }
+.sendb { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #d7d7d5; display: grid; place-items: center; color: #fff; transition: 0.3s; }
+.sendb.ready { background: var(--ink); }
+.sendb.run { background: var(--ink); }
+.sendb i { display: block; width: 10px; height: 10px; background: #fff; border-radius: 2px; }
