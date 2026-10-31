@@ -64,9 +64,9 @@ const manifests = manifestPaths();
 const problems = [];
 
 /** Workspaces that are not published with the lockstep and carry their own version
- *  (apps/desktop: its own tag, `desktop-v*`). The exemption is the version
+ *  (apps/web: private, its own version until it joins the lockstep). The exemption is the version
  *  alone: their `@vincemakes/*` pins are still held to the lockstep below. */
-const OWN_VERSION = new Set(["apps/desktop/package.json"]);
+const OWN_VERSION = new Set(["apps/web/package.json"]);
 
 // the version the WORKSPACE packages agree on — the published artifacts
 // are the source of truth; the root manifest and the READMEs follow.
