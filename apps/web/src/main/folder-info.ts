@@ -32,5 +32,5 @@ function branchOf(workspace: string): string | null {
 /** What the rail's footer says about a Work's folder: its name, its path (the home shortened), its branch. */
 export function folderInfo(workspace: string, mode: string): EnvReply {
 	const home = homedir();
-	return { folder: basename(workspace), path: workspace.startsWith(`${home}/`) ? `~${workspace.slice(home.length)}` : workspace, branch: branchOf(workspace), mode };
+	return { folder: basename(workspace), path: workspace.startsWith(`${home}/`) ? `~${workspace.slice(home.length)}` : workspace, root: workspace, branch: branchOf(workspace), mode };
 }

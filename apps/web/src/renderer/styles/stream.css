@@ -1,14 +1,16 @@
 /* process: everything the agent does, one region */
 .proc { animation: in 0.5s var(--ease) both; }
 .ph { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--mute); font-size: 13px; padding: 4px 0; }
-.ph .chev { transition: transform 0.35s var(--ease); }
-.proc:not(.folded) .ph .chev { transform: rotate(90deg); }
+/* a chevron left of its label, turned down while its row is open */
+.chev { flex: none; color: var(--faint); transition: transform 0.15s ease; }
+.proc:not(.folded) .ph .chev, .think.open .th-h .chev { transform: rotate(90deg); }
 .ph .lab { color: #555; font-weight: 500; }
 .ph .clk { font-variant-numeric: tabular-nums; }
 .ph .pthumbs { margin-left: auto; display: flex; gap: 6px; }
-.pw { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.7s var(--ease); }
+/* opening and folding animate the height of a clipped box (0fr to 1fr): nothing inside is drawn outside it, so no row ever lies over the header */
+.pw { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
 .proc.folded .pw { grid-template-rows: 0fr; }
-.pb { overflow: hidden; min-height: 0; }
+.pb { overflow: clip; min-height: 0; min-width: 0; }
 .pb-in { display: flex; flex-direction: column; gap: 12px; padding: 6px 0 4px 2px; }
 .proc.folded .ph { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .dotpulse { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); position: relative; flex: none; }
@@ -20,11 +22,10 @@
 .think { animation: in 0.5s var(--ease) both; }
 .th-h { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 13px; width: 100%; text-align: left; }
 .th-h .spark { width: 14px; height: 14px; color: #9a8cff; }
-.think.thinking .th-h .lab { background: linear-gradient(90deg, #8a8a8e 20%, #1c1c1e 50%, #8a8a8e 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 1.8s linear infinite; }
+/* the live label (Working, Thinking): a light passes over it */
+.ph .lab.shimmer, .th-h .lab.shimmer { background: linear-gradient(90deg, #8a8a8e 20%, #1c1c1e 50%, #8a8a8e 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 1.8s linear infinite; }
 @keyframes sh { to { background-position: -200% 0; } }
 .th-h .t { font-variant-numeric: tabular-nums; color: var(--faint); }
-.th-h .chev { margin-left: 2px; transition: transform 0.3s var(--ease); color: var(--faint); }
-.think.open .th-h .chev { transform: rotate(90deg); }
 .pv1 { flex: 1; min-width: 0; height: 20px; position: relative; overflow: hidden; margin-left: 4px; transition: opacity 0.3s; }
 .pv1 span { position: absolute; left: 0; right: 0; top: 0; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #a0a0a6; font-size: 12.5px; }
 .pv1 .on { animation: lineIn 0.4s var(--ease) both; }
@@ -33,13 +34,17 @@
 @keyframes lineOut { from { transform: none; opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
 .think.thinking .pv1 span { background: linear-gradient(90deg, #a0a0a6 25%, #3a3a40 50%, #a0a0a6 75%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation-name: sh; animation-duration: 2.2s; animation-timing-function: linear; animation-iteration-count: infinite; }
 .think.done .pv1, .think.open .pv1 { opacity: 0; }
-.th-full { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.55s var(--ease); }
+.th-full { display: grid; grid-template-rows: 0fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
 .think.open .th-full { grid-template-rows: 1fr; }
-.th-full > div { overflow: hidden; min-height: 0; }
+.th-full > div { overflow: clip; min-height: 0; min-width: 0; }
 .th-text { margin: 6px 0 2px 7px; padding: 2px 0 2px 14px; border-left: 2px solid #e8e6f6; color: #7c7c84; font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; }
 
 /* narration between steps */
-.say { color: #2b2b2e; animation: in 0.4s var(--ease) both; }
+.say { color: #2b2b2e; animation: in 0.4s var(--ease) both; line-height: 1.65; }
+.say p { margin: 0; }
+.say p + p, .say ul, .say ol, .say pre, .say .tbl { margin-top: 6px; }
+.say code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 12.5px var(--mono); }
+.say ul, .say ol { padding-left: 20px; margin-bottom: 0; }
 .caret::after, .ans.caret > :last-child::after, .ans.caret > ul:last-child > li:last-child::after { content: ""; display: inline-block; width: 6px; height: 14px; background: var(--ink); margin-left: 2px; vertical-align: -2px; animation: bl 0.9s steps(1) infinite; }
 .ans.caret::after { content: none; }
 @keyframes bl { 50% { opacity: 0; } }
@@ -61,8 +66,11 @@
 .s-bar b { display: block; height: 100%; width: 100%; background: var(--green); }
 .s-bar.live b { width: 35%; background: var(--blue); animation: slide 1.4s var(--ease) infinite; }
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-.s-out { margin: 4px 0 0 25px; background: var(--sunk); border-radius: 8px; padding: 7px 11px; font: 11.5px/1.6 var(--mono); color: #4a4a52; white-space: pre; overflow: hidden; position: relative; }
-.s-out .more { position: absolute; right: 8px; bottom: 5px; color: var(--blue); font: 11px var(--sans); background: var(--sunk); padding-left: 8px; }
+.s-out { margin: 4px 0 0 25px; background: var(--sunk); border-radius: 8px; padding: 7px 11px; font: 11.5px/1.6 var(--mono); color: #4a4a52; }
+/* lines are never wrapped (a diff, a table or a log keeps its columns); where one goes on past the edge, the edge fades */
+.s-lines { white-space: pre; overflow: hidden; }
+.s-lines[data-wide="true"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
+.s-out .more { margin-top: 3px; color: var(--blue); font: 11px var(--sans); }
 .s-out .a { color: #176b3a; }
 .s-out .d { color: #a33636; }
 .s-req { margin: 3px 0 0 25px; font: 11px var(--mono); color: var(--mute); font-variant-numeric: tabular-nums; }
@@ -114,9 +122,6 @@
 .ans th { background: #f7f7f8; font-weight: 600; white-space: nowrap; }
 .ans blockquote { margin: 8px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
 .ans hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
-.live { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 12.5px; margin-top: 2px; }
-.live .mk { width: 16px; height: 16px; border-radius: 5px; background: var(--ink); color: #fff; font-size: 10px; display: grid; place-items: center; font-weight: 700; }
-.live .tx { font-variant-numeric: tabular-nums; }
 .acts { color: var(--mute); font: 11.5px var(--mono); animation: in 0.4s var(--ease) both; }
 
 /* interruptions */
@@ -124,3 +129,17 @@
 .verdict { margin-top: 8px; }
 .verdict pre { margin: 0 0 8px; }
 .toast { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); background: rgba(28, 28, 30, 0.9); color: #fff; font-size: 12.5px; padding: 6px 14px; border-radius: 14px; animation: in 0.3s var(--ease) both; }
+
+/* the "Latest" pill: the person scrolled up while the stream goes on */
+.latest { position: absolute; left: 50%; bottom: 124px; transform: translateX(-50%); background: #fff; color: var(--ink); font-size: 12.5px; padding: 5px 13px; border-radius: 15px; box-shadow: 0 0 0 1px var(--line), 0 6px 18px rgba(0, 0, 0, 0.1); animation: in 0.25s var(--ease) both; }
+/* a Work being opened: shown after a moment, so a quick one never flashes it */
+.loading { color: var(--mute); font-size: 13px; display: flex; flex-direction: column; gap: 10px; animation: in 0.3s var(--ease) 0.15s both; }
+.loading i { display: block; height: 12px; border-radius: 6px; background: #f1f1f3; }
+.loading i:nth-child(2) { width: 70%; }
+.loading i:nth-child(3) { width: 45%; }
+
+@media (prefers-reduced-motion: reduce) {
+	.ph .lab.shimmer, .th-h .lab.shimmer { animation: none; color: var(--mute); background: none; }
+	.dotpulse::after, .pv1 span, .ask { animation: none !important; }
+	.pw, .th-full, .chev { transition: none; }
+}

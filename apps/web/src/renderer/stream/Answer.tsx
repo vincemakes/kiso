@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { render, type Block, type Inline } from "../state/markdown.js";
 
 function inlines(nodes: readonly Inline[]): ReactNode[] {
@@ -93,11 +93,48 @@ export function Markdown({ text }: { readonly text: string }): ReactNode {
 	return <>{render(text, false).map(block)}</>;
 }
 
-/** The answer: markdown drawn from a tree, with unclosed markers held back while it streams. */
-export function Answer({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode {
+/** At most this many characters appear in one frame, however large the delta that brought them. */
+export const STEADY_CAP = 24;
+
+/**
+ * Streamed text released at a steady pace: what arrives is buffered and shown a little each frame (an eighth of what is behind, at
+ * least 2 and at most STEADY_CAP characters, ending on a word where one ends close by), so a burst of deltas reads as an even flow.
+ * Text already there when it mounts (a replay, a reopened page) is shown whole at once; a shrink (a voided draft) is followed at once.
+ */
+function useSteady(text: string): string {
+	const [shown, setShown] = useState(text);
+	const goal = useRef(text);
+	goal.current = text;
+	const behind = shown !== text;
+	useEffect(() => {
+		if (!behind) return;
+		let id = requestAnimationFrame(function tick() {
+			setShown((prev) => {
+				const target = goal.current;
+				if (!target.startsWith(prev)) return target;
+				const step = Math.min(STEADY_CAP, Math.max(2, Math.ceil((target.length - prev.length) / 8)));
+				let end = Math.min(target.length, prev.length + step);
+				const space = target.indexOf(" ", end);
+				if (space !== -1 && space + 1 - prev.length <= STEADY_CAP) end = space + 1;
+				return target.slice(0, end);
+			});
+			id = requestAnimationFrame(tick);
+		});
+		return () => cancelAnimationFrame(id);
+	}, [behind]);
+	return behind && !text.startsWith(shown) ? text : shown;
+}
+
+/** Markdown that may still be streaming: released steadily, unclosed markers and unfinished rows held back until whole. */
+export function Blocks({ text, live, className, kind }: { readonly text: string; readonly live: boolean; readonly className: string; readonly kind: string }): ReactNode {
+	const shown = useSteady(text);
+	const settled = shown === text;
 	return (
-		<div className={`ans${live ? " caret" : ""}`} data-kind="answer">
-			{render(text, live).map(block)}
+		<div className={`${className}${live || !settled ? " caret" : ""}`} data-kind={kind} data-settled={settled && !live}>
+			{render(shown, live || !settled).map(block)}
 		</div>
 	);
 }
+
+/** The answer: markdown drawn from a tree, released steadily, with unclosed markers held back while it streams. */
+export const Answer = ({ text, live }: { readonly text: string; readonly live: boolean }): ReactNode => <Blocks className="ans" kind="answer" text={text} live={live} />;

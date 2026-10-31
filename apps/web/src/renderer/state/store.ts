@@ -16,6 +16,8 @@ export interface Session {
 	readonly state: State;
 	readonly subscribe: (listener: () => void) => () => void;
 	readonly version: () => number;
+	/** the log as the host had it when the Work opened has been drawn (until then the page shows that it is loading) */
+	readonly loaded: () => boolean;
 	/** a short message for the person (a refused stop), or null */
 	readonly message: () => string | null;
 	readonly send: (text: string) => Promise<void>;
@@ -60,10 +62,22 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		push({ kind: "frame", name: "message", data: text });
 	};
 	/** Ask the host what it knows: an open run, uncertain executions, whether a run is live. */
+	// the replay is caught up once the stream has reached the last event the host had when the Work opened
+	let lastSeq = -1;
+	let target: number | null = null;
+	let loaded = false;
 	const refresh = async (): Promise<void> => {
 		try {
-			push({ kind: "snapshot", state: await api.state() });
-		} catch {
+			const snapshot = await api.state();
+			target ??= snapshot.highWater;
+			loaded ||= lastSeq >= target;
+			push({ kind: "snapshot", state: snapshot });
+		} catch (error) {
+			// the host answered with a refusal (no model is set up yet): there is nothing to load, and the page shows why
+			if (error instanceof ClientError && !loaded) {
+				loaded = true;
+				push({ kind: "frame", name: "message", data: message });
+			}
 			// the host is away; the stream reconnects and asks again
 		}
 	};
@@ -85,11 +99,11 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		}
 	};
 	void (async () => {
-		let lastSeq = -1;
 		let stopped = false;
 		for await (const ev of api.events({ signal: ctl.signal, onReconnect: () => void setTimeout(refresh, 600) })) {
 			if (ev.kind === "event") {
 				lastSeq = ev.event.seq;
+				loaded ||= target !== null && lastSeq >= target;
 				if (ev.event.type === "terminal") stopped = ev.event.outcome.kind === "aborted";
 				push({ kind: "event", event: ev.event });
 				if (ev.event.type === "terminal" || ev.event.type === "user_input") void refresh();
@@ -114,6 +128,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 			return () => listeners.delete(l);
 		},
 		version: () => state.version,
+		loaded: () => loaded,
 		message: () => message,
 		// an open run is resumed to its end first: the new line is not lost and the old run is not abandoned
 		send: (text) => act(() => api.run(text, state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),

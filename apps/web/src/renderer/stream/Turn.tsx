@@ -16,15 +16,6 @@ interface Props {
 	readonly onAnswer: (decisionId: string, allow: boolean) => void;
 }
 
-function Live({ turn }: { readonly turn: TurnModel }): ReactNode {
-	return (
-		<div className="live" data-kind="live">
-			<span className="mk">k</span>
-			<span className="tx">{turn.live?.output != null ? `${t.working} · ${tokens(turn.live.output)} out` : t.working}</span>
-		</div>
-	);
-}
-
 function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
 	const time = turn.startedAt !== null && turn.endedAt !== null ? span(turn.endedAt - turn.startedAt) : "";
 	const f = turn.footer;
@@ -52,7 +43,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} /> : null}
-			{live ? <Live turn={turn} /> : turn.phase === "ended" ? <Footer turn={turn} /> : null}
+			{turn.phase === "ended" && !live ? <Footer turn={turn} /> : null}
 		</>
 	);
 }, (a, b) => a.turn === b.turn && a.rev === b.rev && a.tasks === b.tasks && a.interrupted === b.interrupted);

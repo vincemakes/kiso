@@ -1,7 +1,7 @@
 // The page's own doors: picking a folder (validation, recents, a Work in it), a permission tier per Work, approval notices (once, only
 // when the person is elsewhere, never the command), and the first-run guide's doors (a key stored through the terminal's file and never
 // shown anywhere; the demo).
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch, clientFor, scratch, checker, waitUntil, sleep } from "./lib.mjs";
 
@@ -29,10 +29,13 @@ for (const p of bad) statuses.push((await api("/desk/folder", { path: p })).stat
 writeFileSync(join(wsB, "afile"), "x");
 statuses.push((await api("/desk/folder", { path: join(wsB, "afile") })).status);
 check(statuses.every((s) => s === 400), `a folder is judged by the host: ${bad.length + 1} bad picks (missing, relative, NUL, a file, the whole disk, the kiso home and inside it) are 400`);
+const remembered = () => { try { return JSON.parse(readFileSync(join(data, "desktop.json"), "utf8")).lastFolder; } catch { return undefined; } };
+const before = remembered();
 const picked = await api("/desk/folder", { path: wsB });
 check(picked.status === 200 && picked.body.key !== undefined && picked.body.folder === wsB.split("/").pop(), "a real folder is accepted, canonical, and named");
 const recent = (await api("/desk/recent")).body.recent;
 check(recent.length === 1 && recent[0].key === picked.body.key && JSON.parse(readFileSync(join(data, "desktop.json"), "utf8")).recent.length === 1, "it is remembered as a recent folder in desktop.json");
+check(before === undefined && remembered() === realpathSync(wsB), "the folder the host started in (named by the environment) is not remembered; the one the person chose is");
 const inB = clientFor(host);
 
 // tiers

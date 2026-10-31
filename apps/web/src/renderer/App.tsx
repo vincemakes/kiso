@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Sidebar } from "./sidebar/Sidebar.js";
-import { Overview, Sidebar as SidebarIcon } from "./stream/Icons.js";
+import { Mark, Overview, Sidebar as SidebarIcon } from "./stream/Icons.js";
 import { Rail } from "./rail/Rail.js";
 import { PanelContext } from "./panels/context.js";
 import { Panels } from "./panels/Panels.js";
 import { PanelMenu } from "./panels/Menu.js";
 import type { PanelKind, PanelMode } from "./state/panels.js";
 import { railOf } from "./rail/derive.js";
-import { WorkView } from "./stream/WorkView.js";
+import { isLive } from "./state/model.js";
+import { RootContext } from "./stream/root.js";
+import { Loading, WorkView } from "./stream/WorkView.js";
 import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
@@ -142,7 +144,13 @@ export function App(): ReactNode {
 		};
 	}, [target, signedIn]);
 	const activeKey = target.key ?? history?.current.key ?? "";
-	const rows: readonly WorkRow[] = history?.works ?? [];
+	// the Work on the page knows its own state first: its row follows the run's end at once, the host's list catches up on the next read
+	const liveNow = session !== null && isLive(session.state);
+	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 ? "waiting" : "running";
+	useEffect(() => {
+		if (!liveNow && signedIn === true) refresh();
+	}, [liveNow, signedIn, refresh]);
+	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey ? { ...w, state: ownState } : w));
 	const openWork = (row: WorkRow): void => {
 		setView("work");
 		setTarget({ key: row.key === history?.current.key ? null : row.key, sessionId: row.id });
@@ -152,6 +160,11 @@ export function App(): ReactNode {
 		<PanelContext.Provider value={openPanel}>
 		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
+			{/* the brand: the mark and the word with the sidebar open, the mark alone beside the toggle with it closed; a click does nothing (New task is the button below it) */}
+			<div className="brand" data-kind="brand">
+				<Mark />
+				<span className="word">kiso</span>
+			</div>
 			<button className="sidetoggle" onClick={() => setOpen(!open)} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
 			</button>
@@ -182,7 +195,7 @@ export function App(): ReactNode {
 					<Settings />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{session === null ? null : <WorkView
+						<div className="chat">{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><WorkView
 								key={`${target.key ?? ""}/${target.sessionId}`}
 								session={session}
 								auto={launch.auto}
@@ -200,7 +213,7 @@ export function App(): ReactNode {
 								}}
 								focusDecision={focusDecision}
 								onFocused={() => setFocusDecision(null)}
-							/>}</div>
+							/></RootContext.Provider>}</div>
 						{railOn && panel !== null && session !== null ? (
 							<Panels
 								kind={panel.kind}
