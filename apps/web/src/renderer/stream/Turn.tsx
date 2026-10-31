@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react";
+import { memo, useState, type ReactNode } from "react";
 import type { TaskRow } from "../../shared/frames.js";
 import { fmt, span, t, tokens } from "../i18n/index.js";
 import { split, type Ask, type Turn as TurnModel } from "../state/model.js";
@@ -14,15 +14,6 @@ interface Props {
 	/** the run was cut off with the host */
 	readonly interrupted: boolean;
 	readonly onAnswer: (decisionId: string, allow: boolean) => void;
-}
-
-function Live({ turn }: { readonly turn: TurnModel }): ReactNode {
-	return (
-		<div className="live" data-kind="live">
-			<span className="mk">k</span>
-			<span className="tx">{turn.live?.output != null ? `${t.working} · ${tokens(turn.live.output)} out` : t.working}</span>
-		</div>
-	);
 }
 
 function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
@@ -42,6 +33,8 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	const { process: items, answer, openAsks } = split(turn);
 	const inProcess = items.filter((i) => !(i.kind === "ask" && i.decision === "open"));
 	const live = turn.phase === "running" && !interrupted;
+	// the footer closes a run once its answer is drawn to the end, not while the steady release is still writing it
+	const [drawn, setDrawn] = useState(true);
 	return (
 		<>
 			<div className="me" data-kind="me">
@@ -51,8 +44,8 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 			{openAsks.map((ask: Ask) => (
 				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />
 			))}
-			{answer !== null ? <Answer text={answer.text} live={live} /> : null}
-			{live ? <Live turn={turn} /> : turn.phase === "ended" ? <Footer turn={turn} /> : null}
+			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
+			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Footer turn={turn} /> : null}
 		</>
 	);
 }, (a, b) => a.turn === b.turn && a.rev === b.rev && a.tasks === b.tasks && a.interrupted === b.interrupted);

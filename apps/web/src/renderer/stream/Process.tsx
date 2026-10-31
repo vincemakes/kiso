@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 import type { TaskRow } from "../../shared/frames.js";
 import { clock, fmt, span, t } from "../i18n/index.js";
 import { folded, type Item, type Step as StepItem, type Turn } from "../state/model.js";
+import { tokens } from "../i18n/index.js";
+import { Blocks } from "./Answer.js";
 import { Approval } from "./Approval.js";
 import { Chevron } from "./Icons.js";
 import { Step } from "./Step.js";
@@ -35,11 +37,15 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 	const thumbs = steps.map((s) => (s.status === "done" ? thumbOf(s.name) : null)).filter((k): k is "diff" | "term" => k !== null);
 	return (
 		<div className={`proc${isFolded ? " folded" : ""}${live ? "" : " ended"}`} data-kind="process" data-folded={isFolded}>
-			<button className="ph" onClick={() => setChoice(!isFolded)}>
-				<span className="dotpulse" />
+			<button className="ph" onClick={() => setChoice(!isFolded)} aria-expanded={!isFolded}>
 				<Chevron />
-				<span className="lab">{live ? t.working : fmt(steps.length === 1 ? t.workedSteps.replace("{n} steps", t.stepsOne) : t.workedSteps, { time: span(ms), n: steps.length })}</span>
+				<span className="dotpulse" />
+				{/* the one live indicator of a run: its label shimmers while it works */}
+				<span className={`lab${live ? " shimmer" : ""}`} {...(live ? { "data-kind": "live" } : {})}>
+					{live ? t.working : fmt(steps.length === 0 ? t.worked : steps.length === 1 ? t.workedSteps.replace("{n} steps", t.stepsOne) : t.workedSteps, { time: span(ms), n: steps.length })}
+				</span>
 				{live ? <span className="clk">{clock(ms)}</span> : null}
+				{live && turn.live?.output != null ? <span className="clk">{`${tokens(turn.live.output)} out`}</span> : null}
 				<span className="pthumbs">
 					{thumbs.map((k, i) => (
 						<ThumbLink key={i} kind={k} />
@@ -54,11 +60,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 								case "thinking":
 									return <Thinking key={item.id} item={item} />;
 								case "text":
-									return (
-										<div key={item.id} className="say">
-											{item.text}
-										</div>
-									);
+									return <Blocks key={item.id} className="say" kind="say" text={item.text} live={live && item === items.at(-1)} />;
 								case "step":
 									return <Step key={item.id} step={item} task={tasks.find((r) => r.id === item.taskId)} frozen={interrupted} />;
 								case "ask":

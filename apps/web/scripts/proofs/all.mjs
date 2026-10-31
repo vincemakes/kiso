@@ -22,7 +22,8 @@ for (const entry of PROOFS) {
 	const t0 = Date.now();
 	const r = spawnSync(process.execPath, [fileURLToPath(new URL(`./${name}.mjs`, import.meta.url)), ...args], { encoding: "utf8" });
 	if (logging) save(`## ${entry}\n${r.stdout}${r.stderr}\n`);
-	if (r.status !== 0) (failed += 1, !logging && console.log(`${r.stdout}${r.stderr}`));
+	// a failure is told where it is read (a CI log has no access to the log file): its FAIL lines, or everything when nothing was logged
+	if (r.status !== 0) (failed += 1, console.log(logging ? `${r.stdout}${r.stderr}`.split("\n").filter((l) => /^FAIL|Error/.test(l)).join("\n") : `${r.stdout}${r.stderr}`));
 	console.log(`${r.status === 0 ? "PASS" : "FAIL"}  ${entry.padEnd(16)} ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 console.log(failed === 0 ? "all proofs pass" : `${failed} proof(s) failed (see ${logging ? log : "the output above"})`);

@@ -44,17 +44,18 @@ export interface Rail {
 
 const base = (path: string): string => path.split("/").filter((p) => p !== "").pop() ?? path;
 
-function outputOf(step: Step): RailOutput | null {
+function outputOf(step: Step, rel: (text: string) => string): RailOutput | null {
 	const kind = thumbOf(step.name);
 	if (kind === null || step.status !== "done") return null;
-	if (kind === "term") return { id: step.id, kind, name: objectOf(step).slice(0, 24), sub: `${step.output?.lines ?? 0} lines` };
+	if (kind === "term") return { id: step.id, kind, name: rel(objectOf(step)).slice(0, 24), sub: `${step.output?.lines ?? 0} lines` };
 	const diff = editDiff(step.input);
 	const added = step.name === "write_file" && typeof step.input?.["content"] === "string" ? (step.input["content"] as string).split("\n").length : diff.filter((l) => l.kind === "add").length;
 	const removed = step.name === "write_file" ? 0 : diff.filter((l) => l.kind === "del").length;
-	return { id: step.id, kind, name: base(objectOf(step)), sub: `+${added} −${removed}` };
+	return { id: step.id, kind, name: base(rel(objectOf(step))), sub: `+${added} −${removed}` };
 }
 
-export function railOf(state: State): Rail {
+/** `rel` writes a path inside the Work's folder relative to it (display only). */
+export function railOf(state: State, rel: (text: string) => string = (text) => text): Rail {
 	const turn = state.turns.at(-1);
 	if (turn === undefined) return { status: "idle", startedAt: null, endedAt: null, usage: null, steps: [], outputs: [], attention: 0 };
 	const open = split(turn).openAsks.length;
@@ -68,13 +69,13 @@ export function railOf(state: State): Rail {
 		usage: turn.footer ?? turn.live,
 		steps: steps.map((s) => ({
 			id: s.id,
-			title: `${t.verb[s.name] ?? s.name} ${objectOf(s)}`.trim(),
+			title: `${t.verb[s.name] ?? s.name} ${rel(objectOf(s))}`.trim(),
 			status: s.status,
 			at: s.startedAt !== null && turn.startedAt !== null ? s.startedAt - turn.startedAt : null,
 			ms: s.startedAt !== null && s.endedAt !== null ? s.endedAt - s.startedAt : null,
-			lines: s.error !== null ? [s.error] : (s.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l)).slice(0, 4),
+			lines: (s.error !== null ? [s.error] : (s.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l)).slice(0, 4)).map(rel),
 		})),
-		outputs: steps.flatMap((s) => outputOf(s) ?? []),
+		outputs: steps.flatMap((s) => outputOf(s, rel) ?? []),
 		attention: state.tasks.filter((x) => x.endedAt === null).length + open,
 	};
 }

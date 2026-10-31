@@ -86,7 +86,8 @@ export async function startFromEnv(options: { readonly port?: number } = {}): Pr
 	const workspace = canonicalPath(workspaceFor(probe));
 	const faux = await fauxFromEnv(projectDirFor(home, workspace));
 	const settings = faux === null ? probe : new Settings(home, faux, modeFromEnv());
-	settings.write({ lastFolder: workspace });
+	// the folder used last is only ever one the person chose (POST /desk/folder): a folder named by the environment, a proof's or a
+	// scratch run's, is not remembered for them
 	return startHost({
 		home,
 		workspace,

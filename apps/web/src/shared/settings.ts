@@ -27,6 +27,8 @@ export interface SettingsReply {
 export interface EnvReply {
 	readonly folder: string;
 	readonly path: string;
+	/** the folder's full real path: the stream shows paths inside it relative to it */
+	readonly root: string;
 	readonly branch: string | null;
 	readonly mode: string;
 }
