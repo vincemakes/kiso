@@ -56,7 +56,8 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 	const ms = step.endedAt !== null && step.startedAt !== null ? step.endedAt - step.startedAt : now - began;
 	const all = outputLines(step);
 	const lines = all.slice(0, MAX_LINES);
-	const total = step.name === "edit_file" || step.name === "write_file" ? all.length : (step.output?.lines ?? all.length);
+	// lines the row leaves out on purpose (a revision tag, an image's stand-in) are not counted as more to see
+	const total = step.name === "edit_file" || step.name === "write_file" ? all.length : (step.output?.lines ?? all.length) - ((step.output?.head.length ?? 0) - all.length);
 	const more = Math.max(0, total - lines.length);
 	const rel = useRelative();
 	// a line that runs past the edge: the edge fades
@@ -76,7 +77,8 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 				{images ? <Chevron /> : null}
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
-				<Thumbs items={artifactsOf(step)} />
+				{/* while its images are open in place, the row does not repeat them */}
+				{images && shown ? null : <Thumbs items={artifactsOf(step)} />}
 				<span className="s-time">{(ms / 1000).toFixed(1)}s</span>
 			</div>
 			{images && shown ? <InPlace step={step} /> : null}

@@ -29,7 +29,7 @@ const app = await launchApp({ data: scratch("ui-data"), workspace, env: { KISO_W
 ] });
 // every frame: how much answer text is drawn, how many live indicators, and whether the process header is covered by anything
 await app.evaluate(`window.__frames = []; (function f() {
-	const ph = document.querySelector('.ph'), r = ph?.getBoundingClientRect(), at = r && r.height > 0 ? document.elementFromPoint(r.left + 40, r.top + r.height / 2) : null;
+	const ph = document.querySelector('.ph'), r = ph?.getBoundingClientRect(), top = document.querySelector('.scroll')?.getBoundingClientRect().top ?? 0, at = r && r.height > 0 && r.top >= top ? document.elementFromPoint(r.left + 40, r.top + r.height / 2) : null;
 	window.__frames.push({ n: [...document.querySelectorAll('[data-kind=answer] > :not(.tbl)')].reduce((sum, e) => sum + e.textContent.length, 0), lives: document.querySelectorAll('[data-kind=live]').length, carets: [...document.querySelectorAll('.caret *')].filter((e) => getComputedStyle(e, '::after').animationName === 'bl').length, early: !!document.querySelector('[data-kind=footer]') && [...document.querySelectorAll('[data-kind=answer]')].some((a) => a.dataset.settled !== 'true'), live: !!window.__kiso?.state.turns.at(-1)?.phase.startsWith('run'), covered: at !== null && !ph.contains(at) });
 	requestAnimationFrame(f);
 })(); true`);

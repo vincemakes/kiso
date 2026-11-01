@@ -103,7 +103,7 @@
 .ans pre { background: var(--sunk); border-radius: 10px; padding: 10px 14px; overflow: auto; font: 12.5px/1.6 var(--mono); }
 .ans pre code { background: none; padding: 0; }
 /* links and file chips in narration and the answer: a link's address shows on hover; a chip opens its file. Both are inline
-   boxes, so their text sits on the line's baseline; icons drop a little below it, and a chip that wraps keeps its padding. */
+   boxes, so their text sits on the line's baseline; icons drop a little below it. */
 .lk { position: relative; display: inline; color: var(--blue); text-decoration: none; border-bottom: 1px dashed transparent; cursor: pointer; }
 .lk:hover { border-bottom-color: var(--blue); }
 .lk.plain { cursor: default; color: inherit; text-decoration: underline; text-decoration-color: var(--line); border-bottom: 0; }
@@ -111,7 +111,8 @@
 .hov { display: none; position: absolute; left: 0; top: calc(100% + 4px); z-index: 5; align-items: center; gap: 10px; min-width: 240px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1); color: var(--mute); font-size: 13px; white-space: nowrap; }
 .lk:hover .hov, .lk:focus-visible .hov { display: flex; }
 .hov .o { margin-left: auto; color: var(--ink); }
-.fchip { display: inline; padding: 1px 6px; border-radius: 6px; background: #f3f4f6; color: var(--ink); -webkit-box-decoration-break: clone; box-decoration-break: clone; cursor: pointer; }
+/* a chip moves to the next line whole (its icon with its text); only one wider than the column breaks inside */
+.fchip { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: baseline; padding: 1px 6px; border-radius: 6px; background: #f3f4f6; color: var(--ink); cursor: pointer; }
 .fchip:hover { background: #e9ebef; }
 .ans .tbl { max-width: 100%; overflow-x: auto; margin: 10px 0; }
 .ans table { border-collapse: collapse; font-size: 13.5px; line-height: 1.5; }

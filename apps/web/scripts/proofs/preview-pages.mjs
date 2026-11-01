@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
-import { checker, launchApp, png, scratch, sleep, waitUntil } from "./lib.mjs";
+import { checker, launchApp, png, scratch, sleep, waitUntil, CHIP_LINES } from "./lib.mjs";
 
 const { check, verdict } = checker("preview-pages");
 const workspace = scratch("pp-ws");
@@ -31,6 +31,7 @@ const q = (js) => app.evaluate(js);
 await q(`window.__msgs = []; addEventListener("message", (e) => window.__msgs.push({ origin: e.origin, ...e.data })); true`);
 await q(`window.__kiso.send("make three pages")`);
 await waitUntil(async () => (await app.count("[data-chip]")) === 3, 20_000);
+const chips = () => q(CHIP_LINES);
 const said = async (page) => {
 	await waitUntil(async () => (await q(`window.__msgs.some((m) => m.page === "${page}")`)), 15_000);
 	return JSON.parse(await q(`JSON.stringify(window.__msgs.find((m) => m.page === "${page}") ?? null)`));
@@ -51,6 +52,7 @@ await open("app/dist/index.html");
 const react = await said("react");
 check(react?.text === "A React page" && react.color === "rgb(183, 121, 31)", "a Vite-built React page runs its module scripts and its stylesheet from /assets/");
 await sleep(400);
+check(!(await chips()).includes("split"), `with the panel open the answer wraps, and each chip moves to the next line whole: icon and text on one line (${await chips()})`);
 await app.shot("preview-pages-react");
 await app.click("[data-mode=source]");
 check(await waitUntil(async () => (await q("document.querySelector('[data-panel-body=open] pre')?.textContent ?? ''")).includes('type="module"')), "Source shows the page's text");

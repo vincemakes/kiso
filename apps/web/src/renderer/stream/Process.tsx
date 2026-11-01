@@ -86,7 +86,8 @@ function Group({ id, items, turn, tasks, onAnswer, interrupted, live }: Omit<Pro
 				<Delta d={groupDelta(steps)} />
 				{live ? <span className="clk">{clock(now - (turn.startedAt ?? now))}</span> : null}
 				{live && turn.live?.output != null ? <span className="clk">{`${tokens(turn.live.output)} out`}</span> : null}
-				<Thumbs items={steps.flatMap(artifactsOf)} />
+				{/* a group line sums up a closed group: its pictures show on it only while it is folded */}
+				{isFolded ? <Thumbs items={steps.flatMap(artifactsOf)} /> : null}
 			</button>
 			<div className="pw">
 				<div className="pb">

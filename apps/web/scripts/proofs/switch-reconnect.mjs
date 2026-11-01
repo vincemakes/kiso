@@ -23,13 +23,13 @@ const other = clientFor(app.host()).session("w2");
 await other.run("another task");
 await waitUntil(async () => !(await other.state()).running);
 await q(`window.__kiso.send("save two pictures")`);
-await waitUntil(async () => (await q("document.querySelector('.step[data-tool=shell] [data-artifact=\"b.png\"] img')?.naturalWidth ?? 0")) === 160, 20_000);
+await waitUntil(async () => (await q("[...document.querySelectorAll('.inplace img')].some((i) => i.naturalWidth === 160)")), 20_000);
 await app.click("[data-kind=group] .ph");
 await sleep(300);
 const seen = () => q(`JSON.stringify({
 	live: window.__kiso.state.turns.at(-1)?.phase,
 	groups: [...document.querySelectorAll('[data-kind=group]')].map((g) => g.dataset.folded + '/' + (g.dataset.hand ?? '-')),
-	rows: [...document.querySelectorAll('.step[data-tool=shell]')].map((s) => s.querySelector('.s-obj')?.textContent.split(' ')[1] + '=' + [...s.querySelectorAll('[data-thumb] img')].map((i) => i.dataset.w = i.naturalWidth).join('+') + (s.dataset.shown === 'true' ? ':shown' : '')),
+	rows: [...document.querySelectorAll('.step[data-tool=shell]')].map((s) => s.querySelector('.s-obj')?.textContent.split(' ')[1] + '=' + [...s.querySelectorAll('[data-thumb] img, .inplace img')].map((i) => i.naturalWidth).join('+') + (s.dataset.shown === 'true' ? ':shown' : '')),
 })`).then(JSON.parse);
 const right = (s) => s.rows.join() === "a.bin=200:shown,b.bin=160:shown,10;=";
 const now = await seen();

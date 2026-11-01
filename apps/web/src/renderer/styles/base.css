@@ -6,7 +6,8 @@ textarea { font: inherit; color: inherit; }
 svg { display: block; }
 .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-.scroll { position: absolute; inset: 0 0 112px 0; overflow-y: auto; overflow-anchor: none; padding: 48px 0 40px; scrollbar-width: none; }
+/* the stream starts below the row of the sidebar toggle, so scrolled text never draws under it; its top edge fades */
+.scroll { position: absolute; inset: 54px 0 112px 0; overflow-y: auto; overflow-anchor: none; padding: 0 0 40px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px); mask-image: linear-gradient(to bottom, transparent, #000 14px); }
 .col { width: 680px; max-width: calc(100% - 40px); margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .empty { margin: 22vh auto 0; text-align: center; color: var(--mute); font-size: 15px; }
 .empty b { display: block; color: var(--ink); font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 6px; }

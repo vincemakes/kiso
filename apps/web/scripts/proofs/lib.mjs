@@ -158,3 +158,6 @@ export function png(w, h, colors) {
 	const rows = Array.from({ length: h }, (_, y) => Buffer.from([0, ...Array.from({ length: w }, () => colors[Math.floor((y * colors.length) / h)]).flat()]));
 	return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", head), chunk("IDAT", deflateSync(Buffer.concat(rows))), chunk("IEND", Buffer.alloc(0))]);
 }
+
+/** In the page: each chip's icon and text on one line (its text in one line box, the icon within it), as "path:ok" or "path:split". */
+export const CHIP_LINES = `[...document.querySelectorAll('[data-chip]')].map((c) => { const t = [...c.childNodes].find((n) => n.nodeType === 3), r = document.createRange(); r.selectNodeContents(t); const lines = r.getClientRects(), i = c.querySelector('svg').getBoundingClientRect(); return c.dataset.chip + ':' + (lines.length === 1 && i.top >= lines[0].top - 4 && i.bottom <= lines[0].bottom + 4 ? 'ok' : 'split'); }).join()`;
