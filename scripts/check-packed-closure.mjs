@@ -24,7 +24,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { publishablePackages } from "./publishable-packages.mjs";
+import { inDependencyOrder, publishablePackages } from "./publishable-packages.mjs";
 import { isMain } from "./is-main.mjs";
 
 const ROOT = resolve(new URL("..", import.meta.url).pathname);
@@ -62,6 +62,34 @@ if (isMain(import.meta.url)) {
 	const extra = derived.filter((p) => !independent.includes(p));
 	if (missing.length) errs.push(`the derivation MISSES ${missing.length}: ${missing.join(", ")}`);
 	if (extra.length) errs.push(`the derivation invents ${extra.length}: ${extra.join(", ")}`);
+
+	// W2 (2026-11-01): kiso-web depends on kiso-code and must stay a leaf, so a terminal install never
+	// carries the web app. The dependency ordering throws on a cycle; the walk below proves the CLI's
+	// runtime closure does not reach the web package.
+	try {
+		inDependencyOrder();
+	} catch (e) {
+		errs.push(`the published closure has a ${e instanceof Error ? e.message : e}`);
+	}
+	const deps = new Map();
+	for (const g of JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).workspaces ?? []) {
+		const dir = g.split("/")[0];
+		for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+			const m = join(ROOT, dir, e.name, "package.json");
+			if (!e.isDirectory() || !existsSync(m)) continue;
+			const d = JSON.parse(readFileSync(m, "utf8"));
+			deps.set(d.name, Object.keys({ ...d.dependencies, ...d.peerDependencies }));
+		}
+	}
+	const closure = new Set();
+	const walk = (n) => {
+		if (closure.has(n)) return;
+		closure.add(n);
+		for (const d of deps.get(n) ?? []) walk(d);
+	};
+	walk("@vincemakes/kiso-code");
+	if (closure.size < 2) errs.push("the kiso-code closure read back empty — a failed read");
+	if (closure.has("@vincemakes/kiso-web")) errs.push("kiso-code's runtime closure reaches @vincemakes/kiso-web — the terminal install must not carry the web app");
 
 	// And the script must not have gone back to naming them.
 	const script = readFileSync(resolve(ROOT, "bench/packed-pty-smoke.sh"), "utf8");

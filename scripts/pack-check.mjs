@@ -12,6 +12,7 @@
  */
 
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const PACKAGES = [
@@ -40,7 +41,13 @@ const PACKAGES = [
 	// but never listed here (carried from the Responses adapter review).
 	"@vincemakes/kiso-tui-cells",
 	"@vincemakes/kiso-tui",
+	// W2 (2026-11-01): the 18th package, the local web app. Its page is a static bundle built by
+	// vite into out/renderer; React and vite are build tools and must never reach the installed closure.
+	"@vincemakes/kiso-web",
 ];
+const WEB = "@vincemakes/kiso-web";
+const WEB_PAGE = ["out/renderer/index.html", "out/renderer/manifest.webmanifest", "out/renderer/icon.png"];
+const BUILD_ONLY = /^(react|react-dom|vite|@vitejs\/.*|@types\/.*|typescript)$/;
 
 let failed = false;
 for (const name of PACKAGES) {
@@ -56,10 +63,22 @@ for (const name of PACKAGES) {
 	// F group: every tarball must actually contain README and LICENSE.
 	const missingReadme = !paths.some((p) => p === "README.md" || p.endsWith("/README.md"));
 	const missingLicense = !paths.some((p) => p === "LICENSE" || p.endsWith("/LICENSE"));
-	if (bad.length > 0 || rawSrc.length > 0 || missingDist || missingReadme || missingLicense) {
+	// kiso-web: the page itself ships (a tarball without it serves a 404), no source maps, and no build tool
+	// among the runtime dependencies.
+	const webProblems = [];
+	if (name === WEB) {
+		const manifest = JSON.parse(readFileSync(new URL("../apps/web/package.json", import.meta.url), "utf8"));
+		for (const p of WEB_PAGE) if (!paths.includes(p)) webProblems.push(`missing ${p}`);
+		if (!paths.some((p) => /^out\/renderer\/assets\/.+\.js$/.test(p))) webProblems.push("missing the page bundle");
+		const maps = paths.filter((p) => p.endsWith(".map"));
+		if (maps.length > 0) webProblems.push(`ships source maps ${JSON.stringify(maps)}`);
+		const tools = Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies }).filter((d) => BUILD_ONLY.test(d));
+		if (tools.length > 0) webProblems.push(`build tools in dependencies ${JSON.stringify(tools)}`);
+	}
+	if (bad.length > 0 || rawSrc.length > 0 || missingDist || missingReadme || missingLicense || webProblems.length > 0) {
 		failed = true;
 		console.error(
-			`✗ ${name}: ${missingDist ? "has no dist/ output" : ""} ${missingReadme ? "missing README" : ""} ${missingLicense ? "missing LICENSE" : ""} ${bad.length ? "contains raw TS " + JSON.stringify(bad) : ""} ${rawSrc.length ? "ships raw src/ " + JSON.stringify(rawSrc) : ""}`,
+			`✗ ${name}: ${missingDist ? "has no dist/ output" : ""} ${missingReadme ? "missing README" : ""} ${missingLicense ? "missing LICENSE" : ""} ${bad.length ? "contains raw TS " + JSON.stringify(bad) : ""} ${rawSrc.length ? "ships raw src/ " + JSON.stringify(rawSrc) : ""} ${webProblems.join(", ")}`,
 		);
 	} else {
 		console.log(`✓ ${name}: ${files.length} files, dist + README + LICENSE, no raw TS`);

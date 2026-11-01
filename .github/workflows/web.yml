@@ -1,10 +1,12 @@
 name: Web
 
-# The web app (apps/web) is a private workspace outside the root build and
-# check. This job runs only when something it depends on changes: the app itself,
-# the packages it consumes, the terminal product (its ./policy door, and the recap
-# line one proof compares against), the lockfile, or this file. The repository is
-# public, so the minutes are free; the path filter is for speed.
+# The web app (apps/web), published as @vincemakes/kiso-web: the root build builds
+# it and the root check packs it; its typecheck, gates and proofs run here. This job
+# runs only when something it depends on changes: the app itself, the packages it
+# consumes, the terminal product (its ./policy door, the recap line one proof compares
+# against, and `kiso web`), the package gates and the packed smoke, the root manifest,
+# the lockfile, or this file. The repository is public, so the minutes are free; the
+# path filter is for speed.
 on:
   push:
     branches: [main]
@@ -21,6 +23,13 @@ on:
       - "packages/provider-*/**"
       - "packages/tui/**"
       - "packages/tui-cells/**"
+      - "scripts/web-packed-smoke.mjs"
+      - "scripts/publishable-packages.mjs"
+      - "scripts/check-versions.mjs"
+      - "scripts/check-dist-inventory.mjs"
+      - "scripts/check-packed-closure.mjs"
+      - "scripts/pack-check.mjs"
+      - "package.json"
       - "package-lock.json"
       - ".github/workflows/web.yml"
   pull_request:
@@ -37,6 +46,13 @@ on:
       - "packages/provider-*/**"
       - "packages/tui/**"
       - "packages/tui-cells/**"
+      - "scripts/web-packed-smoke.mjs"
+      - "scripts/publishable-packages.mjs"
+      - "scripts/check-versions.mjs"
+      - "scripts/check-dist-inventory.mjs"
+      - "scripts/check-packed-closure.mjs"
+      - "scripts/pack-check.mjs"
+      - "package.json"
       - "package-lock.json"
       - ".github/workflows/web.yml"
 
@@ -65,3 +81,8 @@ jobs:
       # proof: the kill -9 ones and the page proofs, which drive the runner's own
       # headless Chrome over the DevTools protocol.
       - run: npm run check:full -w @vincemakes/kiso-web
+
+      # the packed tarballs installed with npm install -g into a clean prefix, the way a
+      # person installs them: kiso-web and `kiso web` serve the page and sign in; without
+      # the web package, `kiso web` prints the install line.
+      - run: node scripts/web-packed-smoke.mjs
