@@ -91,7 +91,7 @@ check(Math.max(...jumps) <= 30 && frames.at(-1).n === (await app.evaluate("[...d
 check(frames.every((f) => f.lives <= 1) && frames.some((f) => f.live && f.lives === 1), "one live indicator at a time, never two");
 check(frames.every((f) => f.carets <= 1) && frames.some((f) => f.carets === 1) && !frames.some((f) => f.early), "one caret at a time while text streams, and no footer before its answer is drawn to the end");
 check(!frames.some((f) => f.covered), `nothing was ever drawn over the process header, in ${frames.length} frames (opening and folding included)`);
-check((await app.evaluate("document.querySelector('.say code')?.textContent")) === "README.md" && !(await app.text(".say")).includes("`"), "narration gets inline markdown: code, no backticks");
+check((await app.evaluate("document.querySelector('.say [data-chip]')?.dataset.chip")) === "README.md" && !(await app.text(".say")).includes("`"), "narration gets inline markdown, no backticks: the file in inline code is a chip");
 const chev = (q) => app.evaluate(`(() => { const b = document.querySelector('${q}'), c = b.querySelector('.chev'); return [b.getAttribute('aria-expanded'), getComputedStyle(c).transform, !!(c.compareDocumentPosition(b.querySelector('.lab')) & 4)].join(); })()`);
 const turned = "true,matrix(0, 1, -1, 0, 0, 0),true";
 check((await chev(".th-h")) === turned && (await chev(".ph")) === turned, "open rows: the chevron is left of the label, turned down, aria-expanded true (process and thinking)");
@@ -107,7 +107,7 @@ check(await waitUntil(async () => (await row()) === "running", 10_000), "the sid
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2, 20_000);
 const ended = Date.now();
 check((await waitUntil(async () => (await row()) === "idle", 1000, 50)) && Date.now() - ended <= 1000, `the row stops spinning ${Date.now() - ended} ms after the run's end (at most 1,000)`);
-check(/^Worked for \d+ s$/.test(await app.evaluate("[...document.querySelectorAll('.ph .lab')].at(-1).textContent")), "a run with no tool steps says Worked for N s, without '· 0 steps'");
+check((await app.evaluate("[...document.querySelectorAll('[data-kind=process]')].at(-1).querySelectorAll('.ph, .think').length")) === 1 && (await app.count(".ph")) === 1, "a run with no tool steps has no group line, only its thinking row");
 const bottom = await sc("return el.scrollHeight - el.scrollTop - el.clientHeight");
 check(bottom < 2, `a run the person followed at the bottom ends at the bottom, fold included (${bottom} px above it)`);
 await app.shot("6-zero-steps-sidebar-idle");

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { clock, fmt, t } from "../i18n/index.js";
 import { editDiff } from "../state/diff.js";
+import { delta } from "../state/groups.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
 import { toolIcon } from "./Icons.js";
@@ -30,6 +31,18 @@ export function outputLines(step: StepItem): { text: string; mark: "" | "a" | "d
 	return (step.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l)).map((text) => ({ text, mark: "" as const }));
 }
 
+/** Changed lines, only where exact (`+N −N`); "modified" where a count would be a guess. */
+export function Delta({ d }: { readonly d: ReturnType<typeof delta> }): ReactNode {
+	if (d === null) return null;
+	if (d === "modified") return <span className="delta mod" data-field="delta">{t.deltaModified}</span>;
+	return (
+		<span className="delta" data-field="delta">
+			<em className="plus">+{d.added}</em>
+			{d.removed > 0 ? <em className="minus">−{d.removed}</em> : null}
+		</span>
+	);
+}
+
 /** `frozen`: the run was cut off with the host, so nothing here is moving. */
 export function Step({ step, task, frozen = false }: { readonly step: StepItem; readonly task: TaskRow | undefined; readonly frozen?: boolean }): ReactNode {
 	const running = !frozen && (step.status === "running" || step.status === "calling" || step.status === "waiting");
@@ -52,6 +65,7 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
 				<span className="s-verb">{t.verb[step.name] ?? step.name}</span>
 				<code className="s-obj">{rel(objectOf(step))}</code>
+				<Delta d={delta(step)} />
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
 				{thumb !== null ? <ThumbLink kind={thumb} /> : null}

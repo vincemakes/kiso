@@ -1,7 +1,5 @@
-import { editDiff } from "../state/diff.js";
 import { isInterrupted, isLive, split, type Footer, type State, type Step, type StepStatus } from "../state/model.js";
 import { objectOf } from "../stream/Step.js";
-import { thumbOf } from "../stream/Thumb.js";
 import { t } from "../i18n/index.js";
 
 /**
@@ -24,40 +22,20 @@ export interface RailStep {
 	readonly lines: readonly string[];
 }
 
-export interface RailOutput {
-	readonly id: string;
-	readonly kind: "diff" | "term";
-	readonly name: string;
-	readonly sub: string;
-}
-
 export interface Rail {
 	readonly status: RailStatus;
 	readonly startedAt: number | null;
 	readonly endedAt: number | null;
 	readonly usage: Footer | null;
 	readonly steps: readonly RailStep[];
-	readonly outputs: readonly RailOutput[];
 	/** running background tasks plus approvals waiting: the badge on the overview key */
 	readonly attention: number;
-}
-
-const base = (path: string): string => path.split("/").filter((p) => p !== "").pop() ?? path;
-
-function outputOf(step: Step, rel: (text: string) => string): RailOutput | null {
-	const kind = thumbOf(step.name);
-	if (kind === null || step.status !== "done") return null;
-	if (kind === "term") return { id: step.id, kind, name: rel(objectOf(step)).slice(0, 24), sub: `${step.output?.lines ?? 0} lines` };
-	const diff = editDiff(step.input);
-	const added = step.name === "write_file" && typeof step.input?.["content"] === "string" ? (step.input["content"] as string).split("\n").length : diff.filter((l) => l.kind === "add").length;
-	const removed = step.name === "write_file" ? 0 : diff.filter((l) => l.kind === "del").length;
-	return { id: step.id, kind, name: base(rel(objectOf(step))), sub: `+${added} −${removed}` };
 }
 
 /** `rel` writes a path inside the Work's folder relative to it (display only). */
 export function railOf(state: State, rel: (text: string) => string = (text) => text): Rail {
 	const turn = state.turns.at(-1);
-	if (turn === undefined) return { status: "idle", startedAt: null, endedAt: null, usage: null, steps: [], outputs: [], attention: 0 };
+	if (turn === undefined) return { status: "idle", startedAt: null, endedAt: null, usage: null, steps: [], attention: 0 };
 	const open = split(turn).openAsks.length;
 	const live = isLive(state);
 	const status: RailStatus = isInterrupted(state) ? "interrupted" : live ? (open > 0 ? "waiting" : "working") : turn.outcome === "completed" ? "done" : turn.outcome === "aborted" ? "stopped" : turn.phase === "ended" ? "failed" : "working";
@@ -75,7 +53,6 @@ export function railOf(state: State, rel: (text: string) => string = (text) => t
 			ms: s.startedAt !== null && s.endedAt !== null ? s.endedAt - s.startedAt : null,
 			lines: (s.error !== null ? [s.error] : (s.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l)).slice(0, 4)).map(rel),
 		})),
-		outputs: steps.flatMap((s) => outputOf(s, rel) ?? []),
 		attention: state.tasks.filter((x) => x.endedAt === null).length + open,
 	};
 }

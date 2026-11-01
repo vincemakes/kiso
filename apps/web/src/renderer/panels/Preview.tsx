@@ -9,7 +9,8 @@ import { discoverUrls, previewUrl } from "../state/panels.js";
  * navigation controls beyond reload. A dev server's address is found in the
  * output of the latest run's commands and the tasks' output.
  */
-export function Preview({ state }: { readonly state: State }): ReactNode {
+/** `focus`: an address a link in the stream asked for */
+export function Preview({ state, focus = null }: { readonly state: State; readonly focus?: string | null }): ReactNode {
 	const own = location.port;
 	const [input, setInput] = useState("");
 	const [url, setUrl] = useState<string | null>(null);
@@ -26,6 +27,9 @@ export function Preview({ state }: { readonly state: State }): ReactNode {
 			setInput(found[0]);
 		}
 	}, [url, found[0]]);
+	useEffect(() => {
+		if (focus !== null) go(focus);
+	}, [focus]);
 	const go = (raw: string): void => {
 		const next = previewUrl(raw, own);
 		setBad(next === null);

@@ -1,22 +1,24 @@
-/* process: everything the agent does, one region */
-.proc { animation: in 0.5s var(--ease) both; }
+/* process: narration and groups of steps taking turns; each group folds to its own line */
+.proc { display: flex; flex-direction: column; gap: 10px; animation: in 0.5s var(--ease) both; }
 .ph { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--mute); font-size: 13px; padding: 4px 0; }
 /* a chevron left of its label, turned down while its row is open */
 .chev { flex: none; color: var(--faint); transition: transform 0.15s ease; }
-.proc:not(.folded) .ph .chev, .think.open .th-h .chev { transform: rotate(90deg); }
+.grp:not(.folded) > .ph .chev, .think.open .th-h .chev { transform: rotate(90deg); }
 .ph .lab { color: #555; font-weight: 500; }
 .ph .clk { font-variant-numeric: tabular-nums; }
 .ph .pthumbs { margin-left: auto; display: flex; gap: 6px; }
+.delta { display: inline-flex; gap: 4px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.delta .plus { font-style: normal; color: var(--green); }
+.delta .minus { font-style: normal; color: var(--red); }
+.delta.mod { color: var(--faint); }
 /* opening and folding animate the height of a clipped box (0fr to 1fr): nothing inside is drawn outside it, so no row ever lies over the header */
 .pw { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
-.proc.folded .pw { grid-template-rows: 0fr; }
+.grp.folded > .pw { grid-template-rows: 0fr; }
 .pb { overflow: clip; min-height: 0; min-width: 0; }
 .pb-in { display: flex; flex-direction: column; gap: 12px; padding: 6px 0 4px 2px; }
-.proc.folded .ph { border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .dotpulse { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); position: relative; flex: none; }
 .dotpulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--blue); opacity: 0; animation: rg 1.5s ease-out infinite; }
 @keyframes rg { 0% { transform: scale(0.5); opacity: 0.6; } 100% { transform: scale(1.4); opacity: 0; } }
-.proc.folded .dotpulse, .proc.ended .dotpulse { display: none; }
 
 /* thinking: one line that pages, open for the whole text */
 .think { animation: in 0.5s var(--ease) both; }
@@ -115,7 +117,16 @@
 .ans code { background: #f3f3f5; border-radius: 6px; padding: 1px 6px; font: 13px var(--mono); }
 .ans pre { background: var(--sunk); border-radius: 10px; padding: 10px 14px; overflow: auto; font: 12.5px/1.6 var(--mono); }
 .ans pre code { background: none; padding: 0; }
-.ans .lk { color: var(--blue); text-decoration: underline; }
+/* links and file chips in narration and the answer: a link's address shows on hover; a chip opens its file */
+.lk { position: relative; display: inline-flex; align-items: center; gap: 4px; color: var(--blue); text-decoration: none; border-bottom: 1px dashed transparent; font: inherit; padding: 0; background: none; vertical-align: baseline; cursor: pointer; }
+.lk:hover { border-bottom-color: var(--blue); }
+span.lk { cursor: default; color: inherit; text-decoration: underline; text-decoration-color: var(--line); }
+.fic { width: 14px; height: 14px; flex: none; }
+.hov { display: none; position: absolute; left: 0; top: calc(100% + 4px); z-index: 5; align-items: center; gap: 10px; min-width: 240px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1); color: var(--mute); font-size: 13px; white-space: nowrap; }
+.lk:hover .hov, .lk:focus-visible .hov { display: flex; }
+.hov .o { margin-left: auto; color: var(--ink); }
+.fchip { display: inline-flex; align-items: center; gap: 5px; padding: 0 7px; border-radius: 6px; background: #f3f4f6; color: var(--ink); font: inherit; font-size: 0.92em; line-height: 1.75; vertical-align: 1px; cursor: pointer; }
+.fchip:hover { background: #e9ebef; }
 .ans .tbl { max-width: 100%; overflow-x: auto; margin: 10px 0; }
 .ans table { border-collapse: collapse; font-size: 13.5px; line-height: 1.5; }
 .ans th, .ans td { border: 1px solid var(--line); padding: 5px 10px; vertical-align: top; }

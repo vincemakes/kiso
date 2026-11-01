@@ -1,8 +1,9 @@
 import type { IncomingMessage } from "node:http";
+import { realpathSync } from "node:fs";
 import { basename } from "node:path";
 import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-code/config";
 import { deskRead } from "./fs-routes.js";
-import { Refusal } from "./files.js";
+import { existing, Refusal } from "./files.js";
 import { listDirs, validateFolder } from "./folders.js";
 import { folderInfo } from "./folder-info.js";
 import type { History } from "./history.js";
@@ -13,7 +14,7 @@ import type { SettingsPatch } from "../shared/settings.js";
 
 /**
  * The page's own doors (everything under `/desk/`), behind the host's guard: settings, a Work's environment, the folder's tree
- * and files, task logs, the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
+ * and files, task logs, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
  * `{ status, body }`; a body never holds a credential.
  */
 
@@ -56,6 +57,10 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 		if (path === "/desk/fs/tree" || path === "/desk/fs/file" || path === "/desk/task-log") {
 			if (space === null) return json(404, {});
 			return req.method === "GET" ? deskRead(url, space) : json(405, {});
+		}
+		if (path === "/desk/exists") {
+			if (space === null) return json(404, {});
+			return post ? json(200, { found: existing(realpathSync(space.workspace), (await readJson(req))["paths"]) }) : json(405, {});
 		}
 		if (path === "/desk/env") {
 			if (space === null) return json(404, {});
