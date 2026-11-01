@@ -5,7 +5,6 @@ import { delta } from "../state/groups.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
 import { toolIcon } from "./Icons.js";
-import { ThumbLink, thumbOf } from "./Thumb.js";
 import { useNow } from "./useNow.js";
 import { useRelative } from "./root.js";
 
@@ -49,7 +48,6 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 	const now = useNow(running || (task !== undefined && task.endedAt === null));
 	const began = step.startedAt ?? now;
 	const ms = step.endedAt !== null && step.startedAt !== null ? step.endedAt - step.startedAt : now - began;
-	const thumb = step.status === "done" ? thumbOf(step.name) : null;
 	const all = outputLines(step);
 	const lines = all.slice(0, MAX_LINES);
 	const total = step.name === "edit_file" || step.name === "write_file" ? all.length : (step.output?.lines ?? all.length);
@@ -68,7 +66,6 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 				<Delta d={delta(step)} />
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
-				{thumb !== null ? <ThumbLink kind={thumb} /> : null}
 				<span className="s-time">{(ms / 1000).toFixed(1)}s</span>
 			</div>
 			{step.taskId !== null ? (

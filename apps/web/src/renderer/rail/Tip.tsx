@@ -6,7 +6,6 @@ export interface TipData {
 	readonly rows?: readonly (readonly [string, string])[];
 	readonly log?: readonly string[];
 	readonly note?: string;
-	readonly big?: ReactNode;
 }
 
 /** The hover card, drawn to the left of the rail beside the row that asked for it (hung from the row's bottom edge when the row is low in the window). */
@@ -14,7 +13,6 @@ export function Tip({ tip, top, bottom }: { readonly tip: TipData | null; readon
 	if (tip === null) return null;
 	return (
 		<div className="tip show" style={bottom === undefined ? { top } : { bottom }} data-kind="tip">
-			{tip.big !== undefined ? <div className="big">{tip.big}</div> : null}
 			{tip.head !== undefined ? <h6>{tip.head}</h6> : null}
 			{tip.rows?.map(([k, v]) => (
 				<div className="kv" key={k}>

@@ -51,6 +51,4 @@
 .tip .kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
 .tip .kv b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; word-break: break-all; }
 .tip .lg { font: 11.5px/1.6 ui-monospace, Menlo, monospace; background: #161618; color: #d9d9dc; border-radius: 8px; padding: 8px 10px; margin-top: 6px; white-space: pre-wrap; word-break: break-all; }
-.tip .big { height: 92px; border-radius: 10px; margin-bottom: 8px; box-shadow: 0 0 0 1px var(--line); display: grid; place-items: center; background: #f4f4f6; }
-.tip .big .mt { zoom: 2.6; box-shadow: none; }
 .tip .tnote { color: var(--mute); margin-top: 6px; }

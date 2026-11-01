@@ -1,6 +1,6 @@
 // The panels in a browser tab: the ⋮ menu, Changes (the run's diff), Files (the tree, the changed mark, a markdown preview,
 // folded folders), Terminal and tasks (a background task's log), Preview (a dev server's address found in the log, loaded in a
-// sandboxed frame, a refused address), the half and full widths, and a thumbnail in the stream that opens its panel.
+// sandboxed frame, a refused address), the half and full widths, and no output tiles in the stream (pictures only, from W1c PR 2).
 import { createServer } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -72,8 +72,7 @@ check((await app.count(".pnote.warn")) === 1 && (await q(`document.querySelector
 await app.shot("panel-preview");
 await app.click("[data-act=panel-close]");
 check(await waitUntil(async () => (await app.count("[data-kind=panel]")) === 0 && (await geo()).chatRight === (await geo()).mainRight), "closing gives the width back");
-await q(`document.querySelector('[data-thumb=diff]').click()`);
-check(await waitUntil(async () => (await q(`document.querySelector('[data-kind=panel]')?.dataset.panel`)) === "diff"), "a thumbnail in the stream opens its panel");
+check((await app.count("[data-thumb], .mt")) === 0, "no diff or terminal tiles in the stream: the Changes and Terminal panels open from the menu and the rail");
 await app.close();
 dev.close();
 verdict();

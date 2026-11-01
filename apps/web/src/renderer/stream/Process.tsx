@@ -8,7 +8,6 @@ import { Approval } from "./Approval.js";
 import { Chevron } from "./Icons.js";
 import { Delta, Step } from "./Step.js";
 import { Thinking } from "./Thinking.js";
-import { ThumbLink, thumbOf } from "./Thumb.js";
 import { useNow } from "./useNow.js";
 
 interface Props {
@@ -27,7 +26,6 @@ function Group({ items, turn, tasks, onAnswer, interrupted, live }: Omit<Props, 
 	const isFolded = folded(turn, choice) && !interrupted;
 	const now = useNow(live);
 	const steps = items.filter((i): i is StepItem => i.kind === "step");
-	const thumbs = steps.map((s) => (s.status === "done" ? thumbOf(s.name) : null)).filter((k): k is "diff" | "term" => k !== null);
 	return (
 		<div className={`grp${isFolded ? " folded" : ""}`} data-kind="group" data-folded={isFolded} {...(choice !== undefined ? { "data-hand": choice ? "closed" : "open" } : {})}>
 			<button className="ph" onClick={() => setChoice(!isFolded)} aria-expanded={!isFolded}>
@@ -40,11 +38,6 @@ function Group({ items, turn, tasks, onAnswer, interrupted, live }: Omit<Props, 
 				<Delta d={groupDelta(steps)} />
 				{live ? <span className="clk">{clock(now - (turn.startedAt ?? now))}</span> : null}
 				{live && turn.live?.output != null ? <span className="clk">{`${tokens(turn.live.output)} out`}</span> : null}
-				<span className="pthumbs">
-					{thumbs.map((k, i) => (
-						<ThumbLink key={i} kind={k} />
-					))}
-				</span>
 			</button>
 			<div className="pw">
 				<div className="pb">
