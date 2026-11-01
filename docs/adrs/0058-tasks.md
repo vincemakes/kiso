@@ -1265,3 +1265,18 @@ for 300 s.
      and on resume. A pipe prints `✦ task t3 · …`.
    - **Other promotions** stay rowless: the task-start row stays deferred
      (owner, 2026-10-14).
+
+## Amendment 17 — a timeout or an abort carries the output captured so far (2026-10-29, owner-approved as a correctness fix)
+
+The shell's timeout verdict was the bare `shell timed out after Nms`, and the
+abort verdict the bare `shell aborted`: whatever the command had already
+printed was captured and then dropped. Both verdicts now end with that output
+(stdout, then `[stderr] …`), under the normal caps and truncation notes
+(`partialOutput`, the same text a finished call returns).
+
+- The uncertain-side-effect wording (`could not confirm N descendant(s)
+  exited … UNCERTAIN`) is unchanged and comes first; the output follows.
+- A call that printed nothing keeps the old message byte for byte.
+- Not changed: the schema, the descriptions, the default timeouts, the
+  ceiling and floor, `killTree`, the kill-on-timeout and the abort semantics,
+  and the promotion of a task-aware call.
