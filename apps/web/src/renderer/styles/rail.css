@@ -43,11 +43,6 @@
 .rail .bar b { display: block; height: 100%; width: 100%; background: var(--green); }
 .rail .bar.live b { width: 35%; background: var(--blue); animation: slide 1.4s ease-in-out infinite; }
 @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
-.rail .outs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 2px 0 6px; }
-.rail .out { cursor: default; }
-.rail .oprev { height: 58px; border-radius: 10px; background: #f4f4f6; display: grid; place-items: center; }
-.rail .oprev .mt { zoom: 1.35; }
-.rail .out .nm { font-size: 11.5px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .envcol { display: flex; flex-direction: column; gap: 4px; color: #555; font-size: 12.5px; }
 .envcol > span:not(.chip2) { padding: 2px 4px; border-radius: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip2 { align-self: flex-start; margin-top: 2px; padding: 2px 10px; border-radius: 10px; background: #efeff1; color: #555; font-size: 12px; }
@@ -56,6 +51,4 @@
 .tip .kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
 .tip .kv b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; word-break: break-all; }
 .tip .lg { font: 11.5px/1.6 ui-monospace, Menlo, monospace; background: #161618; color: #d9d9dc; border-radius: 8px; padding: 8px 10px; margin-top: 6px; white-space: pre-wrap; word-break: break-all; }
-.tip .big { height: 92px; border-radius: 10px; margin-bottom: 8px; box-shadow: 0 0 0 1px var(--line); display: grid; place-items: center; background: #f4f4f6; }
-.tip .big .mt { zoom: 2.6; box-shadow: none; }
 .tip .tnote { color: var(--mute); margin-top: 6px; }

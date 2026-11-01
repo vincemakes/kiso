@@ -4,6 +4,7 @@ import { fmt, span, t, tokens } from "../i18n/index.js";
 import { split, type Ask, type Turn as TurnModel } from "../state/model.js";
 import { Answer } from "./Answer.js";
 import { Approval } from "./Approval.js";
+import { RunContext } from "./links.js";
 import { Process } from "./Process.js";
 
 interface Props {
@@ -36,7 +37,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	// the footer closes a run once its answer is drawn to the end, not while the steady release is still writing it
 	const [drawn, setDrawn] = useState(true);
 	return (
-		<>
+		<RunContext.Provider value={turn.id}>
 			<div className="me" data-kind="me">
 				{turn.user}
 			</div>
@@ -46,6 +47,6 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Footer turn={turn} /> : null}
-		</>
+		</RunContext.Provider>
 	);
 }, (a, b) => a.turn === b.turn && a.rev === b.rev && a.tasks === b.tasks && a.interrupted === b.interrupted);

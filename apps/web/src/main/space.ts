@@ -128,6 +128,7 @@ export function createSpace(options: SpaceOptions): Space {
 				lines: lines.length,
 				bytes: Buffer.byteLength(text),
 				truncated: lines.length > HEAD_LINES,
+				...((event.tags ?? []).includes("created") ? { created: true as const } : {}),
 			};
 			return [{ event: "tool_output", data: frame }];
 		}

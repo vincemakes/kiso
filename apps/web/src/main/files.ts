@@ -121,6 +121,18 @@ export function readPreview(root: string, rel: string): FileReply {
 	return { kind: markdown ? "markdown" : "text", size: stat.size, text: head.toString("utf8"), truncated: stat.size > TEXT_CAP };
 }
 
+/** Which of the paths name a file inside the folder (the stream's chips): each judged as a read would be; a refusal is "no". */
+export function existing(root: string, paths: unknown): string[] {
+	if (!Array.isArray(paths) || paths.length > 64) throw new Refusal(400, "at most 64 paths");
+	return paths.filter((p): p is string => typeof p === "string" && p.length <= 512).filter((rel) => {
+		try {
+			return statSync(resolveInside(root, rel)).isFile();
+		} catch {
+			return false;
+		}
+	});
+}
+
 /** The last part of a task's output file, as lines. */
 export function readTaskLog(outputPath: string): TaskLogReply {
 	try {

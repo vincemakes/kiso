@@ -36,6 +36,6 @@ a new task starts in is `KISO_WEB_WORKSPACE`, else the one used last while it st
 the page's folder browser (folders only; from home, or from a full path typed in). Notifications are off until turned on in Settings,
 and only while the page is open. See `src/main/env.ts` for the rest (`KISO_WEB_FAUX` runs a scripted model, for the proofs).
 
-The proofs budget (`scripts/proofs`) is 1,800 lines from W1b on, by an owner ruling of 2026-10-31 (it was 1,600 from S5 by a ruling of 2026-10-26, 1,300 from S4 by a ruling of 2026-10-25, 1,000 from S2 by a ruling of 2026-10-23, and 700 before); the other budgets are unchanged.
+The proofs budget (`scripts/proofs`) is 2,100 lines from W1c on, by an owner ruling of 2026-11-01 (it was 1,800 from W1b by a ruling of 2026-10-31, 1,600 from S5 by a ruling of 2026-10-26, 1,300 from S4 by a ruling of 2026-10-25, 1,000 from S2 by a ruling of 2026-10-23, and 700 before); the other budgets are unchanged.
 
 Plans, mocks and screenshots live outside this repository.

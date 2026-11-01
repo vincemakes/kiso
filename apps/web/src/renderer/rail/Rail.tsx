@@ -4,7 +4,6 @@ import { relativeTo } from "../stream/root.js";
 import { clock, t, tokens } from "../i18n/index.js";
 import type { State } from "../state/model.js";
 import { useOpenPanel } from "../panels/context.js";
-import { Thumb } from "../stream/Thumb.js";
 import { useNow } from "../stream/useNow.js";
 import { railOf, type RailStatus } from "./derive.js";
 import { Tip, type TipData } from "./Tip.js";
@@ -106,18 +105,6 @@ export function Rail({ state, env }: { readonly state: State; readonly env: EnvR
 								<b>{s.title}</b>
 								<small>{s.at === null ? "" : clock(s.at)}</small>
 							</div>
-						</div>
-					))}
-				</div>
-				<div className="r-sec">{t.railOutputs}</div>
-				{rail.outputs.length === 0 ? <div className="empty">{t.railNoOutputs}</div> : null}
-				<div className="outs">
-					{rail.outputs.map((o) => (
-						<div className="out click" key={o.id} data-field="output" onClick={() => openPanel(o.kind === "diff" ? "diff" : "term")} {...over({ head: o.name, note: o.sub, big: <Thumb kind={o.kind} /> })}>
-							<div className="oprev">
-								<Thumb kind={o.kind} />
-							</div>
-							<div className="nm">{o.name}</div>
 						</div>
 					))}
 				</div>

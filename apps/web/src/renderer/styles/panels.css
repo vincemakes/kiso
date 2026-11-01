@@ -12,7 +12,7 @@
 .win[data-rail="0"] .pv-h { padding-right: 100px; }
 .panel.full.clear .pv-h { padding-left: 132px; }
 .pv-h { display: flex; align-items: center; gap: 2px; height: 56px; flex: none; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.pv-h .name { font-weight: 600; margin-right: auto; }
+.pv-h .name { font-weight: 600; margin-right: auto; display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sbtn { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
 .sbtn:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 .pv-b { flex: 1; overflow: auto; padding: 12px; }
@@ -51,6 +51,11 @@
 .tree span { color: var(--mute); flex: none; }
 .tree span.plus { color: var(--green); }
 .imgprev { max-width: 100%; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); }
+[data-panel-body="open"] .imgprev { cursor: zoom-in; }
+[data-panel-body="open"] .imgprev.actual { max-width: none; cursor: zoom-out; }
+.modes { display: flex; gap: 4px; padding: 0 0 10px; }
+.modes button { padding: 3px 10px; border-radius: 7px; font-size: 12.5px; color: var(--mute); }
+.modes button:hover, .modes button.on { background: #f3f3f5; color: var(--ink); }
 .mdprev { padding: 4px 6px; }
 .browser { display: flex; flex-direction: column; height: 100%; }
 .urlbar { display: flex; gap: 8px; align-items: center; padding: 8px 10px; background: #f7f7f8; border-bottom: 1px solid var(--line); }
@@ -58,7 +63,6 @@
 .chips { display: flex; gap: 6px; padding: 6px 10px; flex-wrap: wrap; }
 .chips button { padding: 2px 10px; border-radius: 10px; background: #f3f3f5; font-size: 12px; }
 .browser iframe { border: 0; flex: 1; width: 100%; background: #fff; }
-.thl { display: inline-flex; cursor: pointer; }
 .click { cursor: pointer; }
 
 /* the home screen: a title, the input box in the middle, the tray under it; the first-run guide takes the box's place */

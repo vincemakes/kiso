@@ -9,6 +9,7 @@ import type { PanelKind, PanelMode } from "./state/panels.js";
 import { railOf } from "./rail/derive.js";
 import { isLive } from "./state/model.js";
 import { RootContext } from "./stream/root.js";
+import { KeyContext } from "./stream/links.js";
 import { Loading, WorkView } from "./stream/WorkView.js";
 import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
@@ -160,11 +161,13 @@ export function App(): ReactNode {
 		<PanelContext.Provider value={openPanel}>
 		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
-			{/* the brand: the mark and the word with the sidebar open, the mark alone beside the toggle with it closed; a click does nothing (New task is the button below it) */}
-			<div className="brand" data-kind="brand">
-				<Mark />
-				<span className="word">kiso</span>
-			</div>
+			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
+			{open ? (
+				<div className="brand" data-kind="brand">
+					<Mark />
+					<span className="word">kiso</span>
+				</div>
+			) : null}
 			<button className="sidetoggle" onClick={() => setOpen(!open)} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
 			</button>
@@ -195,7 +198,7 @@ export function App(): ReactNode {
 					<Settings />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><WorkView
+						<div className="chat">{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkView
 								key={`${target.key ?? ""}/${target.sessionId}`}
 								session={session}
 								auto={launch.auto}
@@ -213,7 +216,7 @@ export function App(): ReactNode {
 								}}
 								focusDecision={focusDecision}
 								onFocused={() => setFocusDecision(null)}
-							/></RootContext.Provider>}</div>
+							/></KeyContext.Provider></RootContext.Provider>}</div>
 						{railOn && panel !== null && session !== null ? (
 							<Panels
 								kind={panel.kind}

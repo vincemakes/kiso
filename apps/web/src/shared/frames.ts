@@ -35,6 +35,8 @@ export interface ToolOutputFrame {
 	readonly lines: number;
 	readonly bytes: number;
 	readonly truncated: boolean;
+	/** a write that created its file (the result's "created" tag): only then is its line count exact */
+	readonly created?: true;
 }
 
 /** `event: at` — beside every wire event except the two delta types: when

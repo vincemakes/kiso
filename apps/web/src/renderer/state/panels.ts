@@ -7,7 +7,8 @@ import { editDiff, type DiffLine } from "./diff.js";
  * files the latest run changed (from the edit and write calls on the log).
  */
 
-export type PanelKind = "term" | "diff" | "web" | "files";
+/** `open`: one file of the folder, opened from a chip (its path is the focus) */
+export type PanelKind = "term" | "diff" | "web" | "files" | "open";
 export type PanelMode = "closed" | "half" | "full";
 
 /**
@@ -48,8 +49,10 @@ export interface Change {
 	readonly added: number;
 	readonly removed: number;
 	readonly lines: readonly DiffLine[];
-	/** a file the run wrote whole, not edited in place */
+	/** a file the run created (the write's "created" tag) */
 	readonly created: boolean;
+	/** false when a write replaced a file whole: its lines are the new content, not a count of what changed */
+	readonly exact: boolean;
 }
 
 /** The path a step wrote, as the folder sees it (`root` is the folder's real path; absolute paths inside it are made relative). */
@@ -61,20 +64,21 @@ export function relativeTo(root: string | null, path: string): string {
 export function changesOf(state: State, root: string | null): Change[] {
 	const turn = state.turns.at(-1);
 	if (turn === undefined) return [];
-	const byPath = new Map<string, { lines: DiffLine[]; created: boolean }>();
+	const byPath = new Map<string, { lines: DiffLine[]; created: boolean; exact: boolean }>();
 	for (const item of turn.items) {
 		if (item.kind !== "step" || item.status !== "done" || (item.name !== "edit_file" && item.name !== "write_file")) continue;
 		const step: Step = item;
 		const raw = step.input?.["path"];
 		if (typeof raw !== "string") continue;
 		const path = relativeTo(root, raw);
-		const entry = byPath.get(path) ?? { lines: [], created: false };
+		const entry = byPath.get(path) ?? { lines: [], created: false, exact: true };
 		if (step.name === "write_file") {
 			const content = typeof step.input?.["content"] === "string" ? (step.input["content"] as string) : "";
 			entry.lines.push(...content.split("\n").map((text): DiffLine => ({ kind: "add", text })));
-			entry.created = true;
+			if (step.output?.created === true) entry.created = true;
+			else entry.exact = false;
 		} else entry.lines.push(...editDiff(step.input));
 		byPath.set(path, entry);
 	}
-	return [...byPath].map(([path, e]) => ({ path, created: e.created, lines: e.lines, added: e.lines.filter((l) => l.kind === "add").length, removed: e.lines.filter((l) => l.kind === "del").length }));
+	return [...byPath].map(([path, e]) => ({ path, created: e.created, exact: e.exact, lines: e.lines, added: e.lines.filter((l) => l.kind === "add").length, removed: e.lines.filter((l) => l.kind === "del").length }));
 }

@@ -1,5 +1,5 @@
 // The rail in a browser tab: every number it shows equals the same number recomputed from the durable log by this script
-// (a call is its latest report, a run the sum of its calls), the steps and outputs match the log's tool calls, the background
+// (a call is its latest report, a run the sum of its calls), the steps match the log's tool calls (no Output section), the background
 // task's last output line is in its hover, the environment names the folder, branch and tier, and the rail takes width from the
 // Work (also in a narrow window: it is a column of the row, never laid over the Work). Screenshots go outside the repository.
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
@@ -54,7 +54,7 @@ tip = await hover("context");
 check(tip.includes((lastCall.input + lastCall.cacheRead).toLocaleString()) && (await field("context-pct")) === "?", "the context hover holds the last request's size from the log; with no stated window the ring reads ?");
 const tools = events.filter((e) => e.type === "tool_call_end");
 check((await app.count("[data-field=step]")) === tools.length, `one timeline row per tool call in the log (${tools.length})`);
-check((await app.count("[data-field=output]")) === 2, "outputs: the edit (a diff) and the command (a terminal)");
+check((await app.count("[data-field=output]")) === 0 && !(await app.text("[data-kind=rail]")).includes("OUTPUT"), "no Output section: what a run made is in the stream");
 tip = await hover("task");
 check(tip.includes("hello-from-task"), "the background task's hover shows the last line of its output");
 tip = await hover("env");

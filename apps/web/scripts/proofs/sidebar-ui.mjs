@@ -17,9 +17,12 @@ for (const [ws, id, text] of [[wsA, "work-a", "alpha task"], [wsB, "work-b", "be
 const app = await launchApp({ data, workspace: wsB, fauxScript: [say("Fresh answer.")] });
 const q = (js) => app.evaluate(js);
 const left = () => q(`Math.round(document.querySelector('.main').getBoundingClientRect().left)`);
-check((await q(`document.querySelector('.win').dataset.side`)) === "0" && (await left()) === 0, "the sidebar is closed at first");
+check((await q(`document.querySelector('.win').dataset.side`)) === "0" && (await left()) === 0 && (await app.count("[data-kind=brand]")) === 0, "the sidebar is closed at first, with the toggle alone at the top left: no logo");
+await app.shot("sidebar-closed-top-left");
 await app.click("[data-act=sidebar]");
 check(await waitUntil(async () => (await left()) === 264), "opening it pushes the Work to the right (no overlay)");
+check(await waitUntil(async () => (await q(`(() => { const b = document.querySelector('[data-kind=brand]'); return !!b && b.textContent === "kiso" && !!b.querySelector('.mark') && getComputedStyle(b).opacity === "1" && b.getBoundingClientRect().right <= 264; })()`))), "open, the sidebar's top shows the mark and the word kiso, inside the sidebar");
+await app.shot("sidebar-open-top");
 check(await waitUntil(async () => (await app.count(".item")) === 2), "the history lists the Works of both folders");
 check((await q(`[...document.querySelectorAll('.item')].map((i) => i.querySelector('.tt').textContent + '@' + i.querySelector('small').textContent).join()`)).split(",").every((x, i) => x.startsWith(["beta task", "alpha task"][i])), "each row: title and folder name, newest first");
 check((await app.text(".grp")) === "Today", "grouped by day");
