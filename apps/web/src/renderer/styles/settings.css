@@ -1,0 +1,30 @@
+.settings { position: absolute; inset: 0; overflow-y: auto; padding: 72px 0 40px; }
+.settings > * { width: 560px; max-width: calc(100% - 40px); margin-left: auto; margin-right: auto; }
+.settings h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-top: 0; margin-bottom: 20px; }
+.srow { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.slabel { flex: 1; }
+.slabel small { display: block; color: var(--mute); font-size: 12px; }
+.sfield select { font: inherit; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--line); background: #fff; max-width: 280px; }
+.muted { color: var(--mute); }
+.okline { color: var(--green); }
+.warnline { color: var(--amber); }
+
+/* the folder browser: a modal dialog (the top layer: nothing is positioned over the columns) */
+.folders { width: min(560px, calc(100vw - 32px)); max-height: min(620px, calc(100vh - 48px)); border: 0; border-radius: 16px; padding: 18px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column; gap: 10px; }
+.folders:not([open]) { display: none; }
+.folders::backdrop { background: rgba(0, 0, 0, 0.18); }
+.folders h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.folders .frow { display: flex; gap: 8px; align-items: center; }
+.folders .frow input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line, #e5e5e2); font: inherit; }
+.folders .frow.end { justify-content: flex-end; }
+.folders .full { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.folders .chip.on { background: rgba(0, 0, 0, 0.07); }
+.folders .chip.primary { background: var(--ink); color: #fff; }
+.folders .chip.primary:disabled { opacity: 0.4; }
+.folders .crumbs { display: flex; flex-wrap: wrap; gap: 2px; font-size: 13px; color: var(--mute); }
+.folders .crumbs button + button::before { content: "/"; margin-right: 4px; color: #c4c4c0; }
+.folders .dirs { flex: 1; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; border-top: 1px solid rgba(0, 0, 0, 0.06); border-bottom: 1px solid rgba(0, 0, 0, 0.06); padding: 4px 0; }
+.folders .dir { text-align: left; padding: 6px 8px; border-radius: 8px; }
+.folders button.dir:hover { background: rgba(0, 0, 0, 0.045); }
+.folders .dir.off { color: var(--mute); }
+.signedout { position: fixed; inset: 0; display: grid; place-items: center; color: var(--mute); background: #fff; font-size: 14px; padding: 16px; text-align: center; }
