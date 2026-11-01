@@ -1,12 +1,20 @@
 {
 	"name": "@vincemakes/kiso-web",
-	"version": "0.1.0",
-	"private": true,
+	"version": "0.51.1",
+	"private": false,
 	"description": "kiso web: a local web app on the hosted-session service, served on 127.0.0.1.",
 	"type": "module",
+	"license": "MIT",
 	"bin": {
 		"kiso-web": "dist/main/headless.js"
 	},
+	"files": [
+		"dist/main",
+		"dist/shared",
+		"out/renderer",
+		"README.md",
+		"LICENSE"
+	],
 	"scripts": {
 		"build": "tsc -p tsconfig.build.json && vite build",
 		"typecheck": "tsc -p tsconfig.json",
@@ -40,5 +48,18 @@
 	},
 	"engines": {
 		"node": ">=22"
-	}
+	},
+	"os": [
+		"darwin",
+		"linux"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/vincemakes/kiso.git",
+		"directory": "apps/web"
+	},
+	"bugs": {
+		"url": "https://github.com/vincemakes/kiso/issues"
+	},
+	"homepage": "https://github.com/vincemakes/kiso/tree/main/apps/web#readme"
 }

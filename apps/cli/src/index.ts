@@ -30,7 +30,8 @@ import { newSessionId } from "./session-id.js";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { basename, join } from "node:path";
+import { createRequire } from "node:module";
+import { basename, dirname, join } from "node:path";
 import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
@@ -1287,6 +1288,30 @@ async function main(): Promise<void> {
 		process.exitCode = await applyPatch(args.slice(1));
 		return;
 	}
+	// W2 (2026-11-01): `kiso web` runs the web app, its own package (@vincemakes/kiso-web), when it is
+	// installed beside kiso, and names the install command when it is not. The FIRST argument alone
+	// triggers it, before any flag is read: every other argument is the web app's (`kiso web --no-open`),
+	// and a session named "web" still opens with `kiso chat web`. No terminal UI is drawn on this path,
+	// so the host's own ctrl+C handling decides, and its exit is this command's exit.
+	if (args[0] === "web") {
+		let bin: string;
+		try {
+			const manifest = createRequire(import.meta.url).resolve("@vincemakes/kiso-web/package.json");
+			bin = join(dirname(manifest), (JSON.parse(readFileSync(manifest, "utf8")) as { bin: Record<string, string> }).bin["kiso-web"] ?? "");
+		} catch {
+			process.stderr.write("kiso web: the web app is not installed — npm i -g @vincemakes/kiso-web\n");
+			process.exitCode = 1;
+			return;
+		}
+		const child = spawn(process.execPath, [bin, ...args.slice(1)], { stdio: "inherit" });
+		process.on("SIGINT", () => {}); // the terminal sends it to the host too
+		for (const sig of ["SIGTERM", "SIGHUP"] as const) process.on(sig, () => child.kill(sig));
+		process.exitCode = await new Promise<number>((done) => {
+			child.on("error", () => done(1));
+			child.on("exit", (code) => done(code ?? 1));
+		});
+		return;
+	}
 	// XP-1: --accept-drift (a flag, never an env var) authorizes opening a
 	// session whose recorded profile materially drifted — the
 	// acknowledgement is recorded as a new revision by the runtime.
@@ -1858,6 +1883,7 @@ async function main(): Promise<void> {
 						"  kiso logout <provider>   remove the stored credential (or --endpoint <url>)\n" +
 						"  kiso auth               list stored credentials (keys masked)\n" +
 						"  kiso update             install the latest release (npm i -g @vincemakes/kiso-code@latest)\n" +
+						"  kiso web [--port <n>] [--no-open]   the web app in the browser (its own package: npm i -g @vincemakes/kiso-web)\n" +
 						"  kiso help               this help\n\n" +
 						"flags (any position):\n" +
 						"  --model <profile|provider/model>   pick the model (also /model in-session)\n" +

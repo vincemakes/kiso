@@ -31,6 +31,21 @@ kiso login --endpoint https://gateway.example/v1   # 网关：密钥只发给这
 
 密钥从不写进配置文件。模型档、思考档位、上下文窗口等全部选项见 [docs/configuration.md](docs/configuration.md)。
 
+## kiso web
+
+同一个助手，在这台机器的浏览器里：一个本地网页应用，显示每次运行的过程、旁边是它改的文件和产出，以及所有文件夹的工作历史。它是单独的包，和终端版并列安装：
+
+```bash
+npm install -g @vincemakes/kiso-web
+kiso web
+```
+
+`kiso web` 启动宿主并打开 `http://127.0.0.1:4317` 上的页面（`--port <n>` 换端口，`--no-open` 只打印地址）。**页面要能用，宿主必须在运行：** 命令运行多久宿主就运行多久，命令停了页面就打不开。模型、推理强度和登录都沿用终端版的（`~/.kiso/config.json`、`kiso login`）。没装这个包时，`kiso web` 会打印安装命令。
+
+想放在桌面上：先打开一次页面，再把它添加为应用。Safari（macOS Sonoma 及以上）：文件 > 添加到程序坞；Chrome 或 Edge（macOS 或 Linux）：将此页面作为应用安装。端口是固定的，所以应用地址不会变；打开它之前先运行 `kiso web`。kiso web 支持 macOS 和 Linux；暂不支持 Windows。
+
+登录只在本机进行：命令用一次性代码打开页面，页面用它换取会话 cookie。**已登录的会话就是这台机器 shell 的钥匙**：拿到它的人可以用你的身份执行命令。宿主只监听 127.0.0.1。`kiso web --revoke-sessions` 让所有页面退出登录，之后每个页面都要再从命令登录一次。
+
 ## 它怎么做到的
 
 - **断了能接着做。** 进程崩溃、`kill -9`、关掉终端之后，`kiso resume` 从已提交的持久前缀继续：中断时还没生成完的内容会重新生成，结果不确定的操作交给人决定，绝不自动重做。

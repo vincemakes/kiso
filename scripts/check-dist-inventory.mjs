@@ -70,4 +70,20 @@ if (shipped.length > 0) {
 	console.error(`[dist-inventory] RED — the tarball still carries ${shipped.join(", ")}`);
 	process.exit(1);
 }
-console.log(`[dist-inventory] OK — every published .js has a source (${files.length} files in the tui tarball)`);
+// W2 (2026-11-01): kiso-web publishes too. Its dist/ is tsc output and is held to the same rule in the
+// tarball itself; out/renderer is the vite bundle, which has no one-to-one source and is checked by pack:check.
+const webPacked = execFileSync("npm", ["pack", "--dry-run", "--json", "-w", "@vincemakes/kiso-web"], {
+	cwd: ROOT,
+	encoding: "utf8",
+	stdio: ["ignore", "pipe", "ignore"],
+});
+const webFiles = (JSON.parse(webPacked)[0]?.files ?? []).map((f) => f.path);
+const webOrphans = webFiles.filter((f) => /^dist\/.+\.js$/.test(f)).filter((f) => {
+	const stem = join(ROOT, "apps/web/src", f.slice("dist/".length).replace(/\.js$/, ""));
+	return !existsSync(`${stem}.ts`) && !existsSync(`${stem}.tsx`);
+});
+if (webFiles.length === 0 || webOrphans.length > 0) {
+	console.error(`[dist-inventory] RED — the kiso-web tarball ${webFiles.length === 0 ? "could not be read" : `carries .js with no source: ${webOrphans.join(", ")}`}`);
+	process.exit(1);
+}
+console.log(`[dist-inventory] OK — every published .js has a source (${files.length} files in the tui tarball, ${webFiles.length} in the web tarball)`);

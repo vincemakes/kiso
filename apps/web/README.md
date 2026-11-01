@@ -1,7 +1,17 @@
-# kiso web (work in progress)
+# kiso web
 
 A local web app on the kiso hosted-session service: `kiso-web` runs the host in its own process and serves the page at
-`http://127.0.0.1:4317`. Not part of the root build, typecheck or check.
+`http://127.0.0.1:4317`.
+
+```bash
+npm install -g @vincemakes/kiso-web
+kiso web            # or kiso-web; the terminal's `kiso` runs this package when it is installed
+```
+
+The host must be running for the page to work: it runs while the command runs. Node 22 or later, macOS or Linux (Windows is not supported yet); the
+page runs in Safari 17, Chrome or Edge. Built into the root build; typecheck, gates and proofs run here and in the Web workflow.
+
+Development:
 
 ```
 npm run build -w @vincemakes/kiso-web         # tsc (host, shared, state) + vite (the page into out/)
