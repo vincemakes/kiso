@@ -37,8 +37,9 @@ await app.close();
 // 3. a stop while an approval waits is refused with a message; denying it lets the run go on
 app = await launch([{ events: [call("w1", "shell", { command: "touch made.txt" }), stop] }, end("Not run.")], { KISO_WEB_MODE: "default", KISO_WEB_AUTORUN: "go" });
 check(await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1), "an approval is waiting");
+const clicked = (await app.count("[data-act=stop]")) === 1;
 await app.click("[data-act=stop]");
-check(await waitUntil(async () => /waiting for your answer/.test((await app.text("[data-kind=message]")) ?? "")) && (await app.count("[data-kind=ask]")) === 1, "Stop is refused with a message, and the approval is still there");
+check(await waitUntil(async () => /waiting for your answer/.test((await app.text("[data-kind=message]")) ?? "")) && (await app.count("[data-kind=ask]")) === 1, `Stop is refused with a message, and the approval is still there (Stop found: ${clicked}; message: ${await app.text("[data-kind=message]")}; cards: ${await app.count("[data-kind=ask]")})`);
 await app.shot("9-stop-refused");
 await app.click("[data-act=deny]");
 check(await waitUntil(async () => (await app.text("[data-kind=footer]")) !== null) && (await app.text("[data-kind=answer]")) === "Not run.", "denying it lets the run finish");
