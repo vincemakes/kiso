@@ -161,11 +161,13 @@ export function App(): ReactNode {
 		<PanelContext.Provider value={openPanel}>
 		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
-			{/* the brand: the mark and the word with the sidebar open, the mark alone beside the toggle with it closed; a click does nothing (New task is the button below it) */}
-			<div className="brand" data-kind="brand">
-				<Mark />
-				<span className="word">kiso</span>
-			</div>
+			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
+			{open ? (
+				<div className="brand" data-kind="brand">
+					<Mark />
+					<span className="word">kiso</span>
+				</div>
+			) : null}
 			<button className="sidetoggle" onClick={() => setOpen(!open)} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
 			</button>

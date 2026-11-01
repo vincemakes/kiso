@@ -102,14 +102,14 @@ function SiteIcon({ host }: { readonly host: string }): ReactNode {
 	);
 }
 
-/** A file in the folder: its type and its path; a click opens it in the Open panel. */
+/** A file in the folder: its type and its path; a click opens it in the Open panel. A span, not a button: an inline box wraps and keeps the text baseline. */
 export function Chip({ path, label }: { readonly path: string; readonly label?: ReactNode }): ReactNode {
 	const open = useOpenPanel();
 	return (
-		<button type="button" className="fchip" data-chip={path} title={path} onClick={() => open("open", path)}>
+		<span role="button" tabIndex={0} className="fchip" data-chip={path} title={path} onClick={() => open("open", path)} onKeyDown={(e) => e.key === "Enter" && open("open", path)}>
 			<FileIcon path={path} />
 			{label ?? path}
-		</button>
+		</span>
 	);
 }
 
@@ -119,16 +119,16 @@ export function Link({ text, href, found, root }: { readonly text: ReactNode; re
 	if (/^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(href)) {
 		// a page on this computer, never this app's own host
 		const local = previewUrl(href, location.port);
-		if (local === null) return <span className="lk">{text}</span>;
+		if (local === null) return <span className="lk plain">{text}</span>;
 		return (
-			<button type="button" className="lk" data-link="local" onClick={() => open("web", local)}>
+			<span role="button" tabIndex={0} className="lk" data-link="local" onClick={() => open("web", local)} onKeyDown={(e) => e.key === "Enter" && open("web", local)}>
 				<SiteIcon host="" />
 				{text}
 				<span className="hov">
 					{t.linkLocal}
 					<span className="o">{t.linkPanel}</span>
 				</span>
-			</button>
+			</span>
 		);
 	}
 	if (/^https?:\/\//i.test(href)) {
@@ -136,7 +136,7 @@ export function Link({ text, href, found, root }: { readonly text: ReactNode; re
 		try {
 			url = new URL(href);
 		} catch {
-			return <span className="lk">{text}</span>;
+			return <span className="lk plain">{text}</span>;
 		}
 		return (
 			<a className="lk" data-link="out" href={url.href} target="_blank" rel="noopener noreferrer">
@@ -150,5 +150,5 @@ export function Link({ text, href, found, root }: { readonly text: ReactNode; re
 		);
 	}
 	const path = /^[a-z][a-z0-9+.-]*:/i.test(href) ? null : pathish(href, root);
-	return path !== null && found.has(path) ? <Chip path={path} label={text} /> : <span className="lk" title={href}>{text}</span>;
+	return path !== null && found.has(path) ? <Chip path={path} label={text} /> : <span className="lk plain" title={href}>{text}</span>;
 }

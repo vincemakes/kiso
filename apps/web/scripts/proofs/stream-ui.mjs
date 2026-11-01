@@ -92,6 +92,8 @@ check(frames.every((f) => f.lives <= 1) && frames.some((f) => f.live && f.lives 
 check(frames.every((f) => f.carets <= 1) && frames.some((f) => f.carets === 1) && !frames.some((f) => f.early), "one caret at a time while text streams, and no footer before its answer is drawn to the end");
 check(!frames.some((f) => f.covered), `nothing was ever drawn over the process header, in ${frames.length} frames (opening and folding included)`);
 check((await app.evaluate("document.querySelector('.say [data-chip]')?.dataset.chip")) === "README.md" && !(await app.text(".say")).includes("`"), "narration gets inline markdown, no backticks: the file in inline code is a chip");
+const off = JSON.parse(await app.evaluate(`JSON.stringify([...document.querySelectorAll('.say [data-chip]')].map((el) => { const at = (n, a, b) => { const r = document.createRange(); r.setStart(n, a); r.setEnd(n, b); return r.getClientRects()[0].bottom; }; const own = [...el.childNodes].filter((n) => n.nodeType === 3).at(-1), prev = el.previousSibling; return Math.abs(at(own, 0, 1) - at(prev, prev.length - 1, prev.length)); }))`));
+check(off.length === 1 && off[0] <= 1, `the chip in the narration sits on the text's baseline (off by ${off[0]?.toFixed(1)} px)`);
 const chev = (q) => app.evaluate(`(() => { const b = document.querySelector('${q}'), c = b.querySelector('.chev'); return [b.getAttribute('aria-expanded'), getComputedStyle(c).transform, !!(c.compareDocumentPosition(b.querySelector('.lab')) & 4)].join(); })()`);
 const turned = "true,matrix(0, 1, -1, 0, 0, 0),true";
 check((await chev(".th-h")) === turned && (await chev(".ph")) === turned, "open rows: the chevron is left of the label, turned down, aria-expanded true (process and thinking)");
