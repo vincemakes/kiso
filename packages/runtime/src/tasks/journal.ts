@@ -70,6 +70,11 @@ export type TaskRecord =
 	/** A stop the runner could not confirm: these pids may outlive it. No
 	 *  terminal follows — the verdict stays `unknown`. */
 	| { readonly type: "stop_unconfirmed"; readonly ts: number; readonly pids: readonly number[] }
+	/** An adopted command whose hand-over to the task failed after the task
+	 *  was recorded (its output could not be prepared). The command is
+	 *  running — it was never "not run" — and nothing here owns its end: the
+	 *  verdict is `unknown`, and no terminal is written for it. */
+	| { readonly type: "handover_failed"; readonly ts: number; readonly reason: string }
 	/** `error`: the command never started (no shell, a missing cwd) — then
 	 *  there is no exit code and none is invented. */
 	| { readonly type: "terminal"; readonly ts: number; readonly exitCode: number | null; readonly signal: string | null; readonly error?: string }
@@ -191,6 +196,10 @@ export function verdictOf(records: readonly TaskRecord[], runnerAlive: boolean, 
 		};
 	const planned = records.find((r) => r.type === "planned");
 	if (planned === undefined) return { kind: "not_run" };
+	// a stop that left survivors, or a hand-over that failed, after the command
+	// ran: its end is not known, whether or not whoever recorded that is still
+	// alive (an adopted task's owner is the kiso itself)
+	if (has("command_started") && (has("stop_unconfirmed") || has("handover_failed"))) return { kind: "unknown" };
 	if (has("command_started")) return runnerAlive ? { kind: "running", ready: has("ready") } : { kind: "unknown" };
 	if (has("runner_started")) return runnerAlive ? { kind: "starting" } : { kind: "not_run" };
 	return now - planned.ts < RUNNER_START_WINDOW_MS ? { kind: "starting" } : { kind: "not_run" };
