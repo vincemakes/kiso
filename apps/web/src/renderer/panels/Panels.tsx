@@ -36,8 +36,9 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 			<div className="pv-h">
 				{kind === "open" && focus !== null ? (
 					<span className="name" title={focus}>
-						<FileIcon path={focus} />
-						{focus}
+						{/* an image a tool returned has no file name: it is named as such */}
+						<FileIcon path={focus.startsWith("log:") ? "image.png" : focus} />
+						{focus.startsWith("log:") ? t.imageResult : focus}
 					</span>
 				) : (
 					<span className="name">{NAMES[kind]}</span>

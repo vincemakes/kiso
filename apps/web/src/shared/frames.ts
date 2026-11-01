@@ -37,6 +37,22 @@ export interface ToolOutputFrame {
 	readonly truncated: boolean;
 	/** a write that created its file (the result's "created" tag): only then is its line count exact */
 	readonly created?: true;
+	/** what the call made that can be shown: image blocks of its result, artifact files it wrote, or that a command named and changed */
+	readonly artifacts?: readonly ArtifactRef[];
+}
+
+/**
+ * Something a tool call made that the page can show, tied to that call (so a later search can find where it came from). Internal
+ * to apps/web, not a wire type. `uri`: `log:<seq>/<n>` for the n-th block of a result in the log, `file:<path>` for a file of the
+ * folder (relative to it).
+ */
+export interface ArtifactRef {
+	readonly id: string;
+	readonly workId: string;
+	readonly callId: string;
+	readonly kind: "image" | "page" | "doc" | "media" | "file";
+	readonly uri: string;
+	readonly mediaType?: string;
 }
 
 /** `event: at` — beside every wire event except the two delta types: when

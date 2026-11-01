@@ -9,7 +9,7 @@ import type { PanelKind, PanelMode } from "./state/panels.js";
 import { railOf } from "./rail/derive.js";
 import { isLive } from "./state/model.js";
 import { RootContext } from "./stream/root.js";
-import { KeyContext } from "./stream/links.js";
+import { KeyContext, WorkContext } from "./stream/links.js";
 import { Loading, WorkView } from "./stream/WorkView.js";
 import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
@@ -198,7 +198,7 @@ export function App(): ReactNode {
 					<Settings />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkView
+						<div className="chat">{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><WorkView
 								key={`${target.key ?? ""}/${target.sessionId}`}
 								session={session}
 								auto={launch.auto}
@@ -216,7 +216,7 @@ export function App(): ReactNode {
 								}}
 								focusDecision={focusDecision}
 								onFocused={() => setFocusDecision(null)}
-							/></KeyContext.Provider></RootContext.Provider>}</div>
+							/></WorkContext.Provider></KeyContext.Provider></RootContext.Provider>}</div>
 						{railOn && panel !== null && session !== null ? (
 							<Panels
 								kind={panel.kind}

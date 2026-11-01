@@ -19,6 +19,7 @@ import type { Notice } from "./approvals.js";
  *   KISO_WEB_FAUX_SKIP   a session id: skip the script turns its log already consumed
  *   KISO_WEB_MODE        the permission tier: default | accept-edits | plan | full-access
  *   KISO_WEB_NOTIFY_LOG  a file: notices (an approval waits, a run ended) are also appended to it, as JSON lines (the proofs)
+ *   KISO_WEB_REQUEST_LOG, KISO_WEB_PREVIEW_LOG  files: each request the host, or a preview server, received (the proofs)
  *   KISO_WEB_SANITIZER   "default" | "web"
  *   KISO_WEB_THINKING    0: leave reasoning text off the wire (default: on)
  *   KISO_WEB_KEEPALIVE   keepalive period in ms
@@ -94,6 +95,8 @@ export async function startFromEnv(options: { readonly port?: number } = {}): Pr
 		settings,
 		...(noticeLog() !== undefined ? { notify: noticeLog()! } : {}),
 		exposeThinking: process.env["KISO_WEB_THINKING"] !== "0",
+		requestLog: process.env["KISO_WEB_REQUEST_LOG"] || undefined,
+		previewLog: process.env["KISO_WEB_PREVIEW_LOG"] || undefined,
 		...(options.port !== undefined ? { port: options.port } : {}),
 		...(process.env["KISO_WEB_TOKEN"] !== undefined ? { token: process.env["KISO_WEB_TOKEN"] } : {}),
 		sanitizer: process.env["KISO_WEB_SANITIZER"] === "default" ? "default" : "web",

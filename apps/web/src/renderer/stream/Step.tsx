@@ -4,7 +4,9 @@ import { editDiff } from "../state/diff.js";
 import { delta } from "../state/groups.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
-import { toolIcon } from "./Icons.js";
+import { Chevron, toolIcon } from "./Icons.js";
+import { artifactsOf, InPlace, Thumbs } from "./Artifacts.js";
+import { Chip } from "./links.js";
 import { useNow } from "./useNow.js";
 import { useRelative } from "./root.js";
 
@@ -27,7 +29,8 @@ export function outputLines(step: StepItem): { text: string; mark: "" | "a" | "d
 		if (diff.length > 0) return diff.map((l) => ({ text: `${l.kind === "add" ? "+" : l.kind === "del" ? "-" : " "} ${l.text}`, mark: l.kind === "add" ? "a" : l.kind === "del" ? "d" : "" }));
 	}
 	if (step.name === "write_file" && typeof step.input?.["content"] === "string") return (step.input["content"] as string).split("\n").map((l) => ({ text: `+ ${l}`, mark: "a" as const }));
-	return (step.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l)).map((text) => ({ text, mark: "" as const }));
+	// an image block stands in the text as "[image]": the picture itself is shown instead
+	return (step.output?.head ?? []).filter((l) => !/^\[rev:[0-9a-f]+\]$/.test(l) && !(l === "[image]" && step.output?.artifacts !== undefined)).map((text) => ({ text, mark: "" as const }));
 }
 
 /** Changed lines, only where exact (`+N −N`); "modified" where a count would be a guess. */
@@ -42,8 +45,11 @@ export function Delta({ d }: { readonly d: ReturnType<typeof delta> }): ReactNod
 	);
 }
 
-/** `frozen`: the run was cut off with the host, so nothing here is moving. */
-export function Step({ step, task, frozen = false }: { readonly step: StepItem; readonly task: TaskRow | undefined; readonly frozen?: boolean }): ReactNode {
+/**
+ * `frozen`: the run was cut off with the host, so nothing here is moving. A row that made images has a chevron and opens them in
+ * place (`shown`, kept by its group); a write or an edit of a file in the folder names it with its chip.
+ */
+export function Step({ step, task, frozen = false, shown = false, onShow }: { readonly step: StepItem; readonly task: TaskRow | undefined; readonly frozen?: boolean; readonly shown?: boolean; readonly onShow?: () => void }): ReactNode {
 	const running = !frozen && (step.status === "running" || step.status === "calling" || step.status === "waiting");
 	const now = useNow(running || (task !== undefined && task.endedAt === null));
 	const began = step.startedAt ?? now;
@@ -57,17 +63,23 @@ export function Step({ step, task, frozen = false }: { readonly step: StepItem; 
 	const box = useRef<HTMLDivElement>(null);
 	const [wide, setWide] = useState(false);
 	useLayoutEffect(() => setWide((box.current?.scrollWidth ?? 0) > (box.current?.clientWidth ?? 0) + 1), [lines.length, step.status]);
+	const images = artifactsOf(step).some((a) => a.kind === "image");
+	const object = rel(objectOf(step));
+	const chip = step.status === "done" && (step.name === "write_file" || step.name === "edit_file") && !object.startsWith("/") && !object.startsWith("..");
 	return (
-		<div className={`step ${step.status}`} data-kind="step" data-tool={step.name}>
-			<div className="s-row">
+		<div className={`step ${step.status}${shown ? " shown" : ""}`} data-kind="step" data-tool={step.name} data-shown={images ? shown : undefined}>
+			<div className={`s-row${images ? " click" : ""}`} onClick={images ? onShow : undefined}>
 				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
 				<span className="s-verb">{t.verb[step.name] ?? step.name}</span>
-				<code className="s-obj">{rel(objectOf(step))}</code>
+				{chip ? <Chip path={object} /> : <code className="s-obj">{object}</code>}
 				<Delta d={delta(step)} />
+				{images ? <Chevron /> : null}
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
+				<Thumbs items={artifactsOf(step)} />
 				<span className="s-time">{(ms / 1000).toFixed(1)}s</span>
 			</div>
+			{images && shown ? <InPlace step={step} /> : null}
 			{step.taskId !== null ? (
 				<div className={`s-bar${task === undefined || task.endedAt === null ? " live" : ""}`}>
 					<b />

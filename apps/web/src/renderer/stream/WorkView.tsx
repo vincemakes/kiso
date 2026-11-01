@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { PinnedContext } from "./Artifacts.js";
 import { Composer } from "./Composer.js";
 import { Turn } from "./Turn.js";
 import { isInterrupted, isLive } from "../state/model.js";
@@ -109,8 +110,9 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 			void session.send(auto);
 		}
 	}, [session, auto]);
+	const isPinned = useCallback(() => pinned.current, []);
 	return (
-		<>
+		<PinnedContext.Provider value={isPinned}>
 			<div
 				className="scroll"
 				ref={scroller}
@@ -168,6 +170,6 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 			) : (
 				<Composer running={running} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
 			)}
-		</>
+		</PinnedContext.Provider>
 	);
 }
