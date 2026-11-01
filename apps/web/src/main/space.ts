@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { SessionStore } from "@vincemakes/kiso-runtime";
 import { createSessionService, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
@@ -8,6 +9,7 @@ import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
 import { runTotals, usageFrameAt } from "./usage.js";
 import { webSanitize } from "./sanitize.js";
 import { TimeIndex } from "./times.js";
+import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
 
 /**
@@ -44,6 +46,8 @@ export interface Space {
 	readonly store: SessionStore;
 	readonly service: SessionService;
 	readonly tasks: TaskHub;
+	/** image blocks of results, read from the logs */
+	readonly images: LogImages;
 	readonly handler: ReturnType<typeof createHttpHandler>;
 	/** The Works this host has opened since it started (the ones that can be running). */
 	readonly opened: () => ReadonlySet<string>;
@@ -108,6 +112,23 @@ export function createSpace(options: SpaceOptions): Space {
 		frames.push(...derived(event, sessionId));
 		return frames;
 	};
+	/** The tool, input and execution start of the call a result answers, from the log before it. */
+	const callOf = (sessionId: string, callId: string): CallInfo | null => {
+		let call: { name: string; input: Record<string, unknown> } | null = null;
+		let startedAt: number | null = null;
+		for (const e of service.events(sessionId)) {
+			if (e.type === "tool_call_end" && e.callId === callId) call = { name: e.name, input: e.input as Record<string, unknown> };
+			if (e.type === "tool_execution_started" && e.callId === callId) startedAt = times.at(sessionId, e.seq);
+		}
+		return call === null ? null : { ...call, startedAt };
+	};
+	const realWorkspace = (): string => {
+		try {
+			return realpathSync(options.workspace);
+		} catch {
+			return options.workspace;
+		}
+	};
 	const derived = (event: Event, sessionId: string): readonly WireFrame[] => {
 		if (event.type === "usage") {
 			const frame = usageFrameAt(service.events(sessionId), event.seq, route());
@@ -118,6 +139,7 @@ export function createSpace(options: SpaceOptions): Space {
 			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals } }];
 		}
 		if (event.type === "tool_result") {
+			const artifacts = artifactsOf(event, sessionId, callOf(sessionId, event.callId), realWorkspace());
 			const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" ? b.text : `[${b.type}]`)).join("\n");
 			const lines = text.split("\n");
 			const frame: ToolOutputFrame = {
@@ -129,6 +151,7 @@ export function createSpace(options: SpaceOptions): Space {
 				bytes: Buffer.byteLength(text),
 				truncated: lines.length > HEAD_LINES,
 				...((event.tags ?? []).includes("created") ? { created: true as const } : {}),
+				...(artifacts.length > 0 ? { artifacts } : {}),
 			};
 			return [{ event: "tool_output", data: frame }];
 		}
@@ -177,6 +200,7 @@ export function createSpace(options: SpaceOptions): Space {
 		store,
 		service,
 		tasks,
+		images: new LogImages(options.dir),
 		handler,
 		opened: () => opened,
 		drain: (graceMs) => service.drain(graceMs),

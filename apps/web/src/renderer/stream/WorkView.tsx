@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { PinnedContext } from "./Artifacts.js";
 import { Composer } from "./Composer.js";
 import { Turn } from "./Turn.js";
 import { isInterrupted, isLive } from "../state/model.js";
@@ -46,6 +47,9 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 	// room kept under the stream while the person reads above: content that shrinks below them (a fold) cannot pull the page up under them
 	const spacer = useRef<HTMLDivElement>(null);
 	const room = (px: number): void => void (spacer.current !== null && (spacer.current.style.height = `${Math.max(0, px)}px`));
+	// and room above, for a fold over them larger than the view can scroll back (the view cannot go above its top)
+	const lift = useRef<HTMLDivElement>(null);
+	const raise = (px: number): void => void (lift.current !== null && (lift.current.style.height = `${Math.max(0, px)}px`));
 	const pinned = useRef(true);
 	const anchor = useRef<{ readonly el: Element; readonly top: number } | null>(null);
 	// where the view and the content were at the last look: the person's scroll is told from the page's own moves by its direction
@@ -56,6 +60,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 		pinned.current = true;
 		setBehind(false);
 		room(0);
+		raise(0);
 		const el = scroller.current;
 		if (el === null) return;
 		el.scrollTo({ top: el.scrollHeight, ...(smooth ? { behavior: "smooth" } : {}) });
@@ -77,12 +82,18 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 			if (pinned.current) return void (el.scrollTo({ top: el.scrollHeight }), mark(el));
 			const a = anchor.current;
 			if (a !== null && a.el.isConnected) {
-				const want = el.scrollTop + a.el.getBoundingClientRect().top - a.top;
+				let want = el.scrollTop + a.el.getBoundingClientRect().top - a.top;
+				if (want < 0) {
+					raise((lift.current?.offsetHeight ?? 0) - want);
+					want = 0;
+				}
 				const short = want - (el.scrollHeight - el.clientHeight);
 				if (short > 0) room((spacer.current?.offsetHeight ?? 0) + short);
 				el.scrollTop = want;
 			}
-			remember();
+			// the block the person chose stays the anchor through the page's own moves (a fold: re-choosing mid-fold could pick a
+			// header whose body then folds under it); another is chosen only when they scroll, or when it is gone
+			if (a === null || !a.el.isConnected) remember();
 			mark(el);
 			if (el.scrollHeight - el.scrollTop - el.clientHeight > 40) setBehind(true);
 		});
@@ -109,8 +120,9 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 			void session.send(auto);
 		}
 	}, [session, auto]);
+	const isPinned = useCallback(() => pinned.current, []);
 	return (
-		<>
+		<PinnedContext.Provider value={isPinned}>
 			<div
 				className="scroll"
 				ref={scroller}
@@ -127,11 +139,14 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 						pinned.current = true;
 						setBehind(false);
 						room(0);
+						raise(0);
 					}
-					if (!pinned.current) remember();
+					// a move the page made itself (the anchor kept, above) is no move of the person's: same place as last marked
+					if (!pinned.current && (up || down)) remember();
 					mark(el);
 				}}
 			>
+				<div ref={lift} aria-hidden="true" />
 				<div className="col" ref={column}>
 					{!session.loaded() && turns.length === 0 ? <Loading /> : null}
 					{turns.length === 0 && home === undefined ? (
@@ -168,6 +183,6 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 			) : (
 				<Composer running={running} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
 			)}
-		</>
+		</PinnedContext.Provider>
 	);
 }

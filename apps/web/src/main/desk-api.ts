@@ -1,9 +1,11 @@
 import type { IncomingMessage } from "node:http";
-import { realpathSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-code/config";
 import { deskRead } from "./fs-routes.js";
-import { existing, Refusal } from "./files.js";
+import { existing, Refusal, resolveInside } from "./files.js";
+import { artifactKind } from "./artifacts.js";
+import type { Previews } from "./preview.js";
 import { listDirs, validateFolder } from "./folders.js";
 import { folderInfo } from "./folder-info.js";
 import type { History } from "./history.js";
@@ -26,9 +28,17 @@ export interface DeskContext {
 	readonly spaceFor: (key: string) => Space | null;
 	readonly setPresence: (p: Presence) => void;
 	readonly notices: (seq: number) => { readonly seq: number; readonly notices: readonly Notice[] };
+	readonly previews: Previews;
 }
 
-const json = (status: number, body: unknown): { readonly status: number; readonly body: unknown } => ({ status, body });
+/** An answer: JSON, or bytes (an image) with their headers. */
+export interface DeskAnswer {
+	readonly status: number;
+	readonly body: unknown;
+	readonly headers?: Readonly<Record<string, string>>;
+}
+
+const json = (status: number, body: unknown): DeskAnswer => ({ status, body });
 const BODY_CAP = 16 * 1024;
 
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -48,7 +58,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 
-export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL): Promise<{ readonly status: number; readonly body: unknown }> {
+export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL): Promise<DeskAnswer> {
 	const path = url.pathname;
 	const where = url.searchParams.get("key");
 	const space = where === null || where === "" ? ctx.current : ctx.spaceFor(where);
@@ -61,6 +71,26 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 		if (path === "/desk/exists") {
 			if (space === null) return json(404, {});
 			return post ? json(200, { found: existing(realpathSync(space.workspace), (await readJson(req))["paths"]) }) : json(405, {});
+		}
+		// an image block of a result, from the Work's log: its bytes, or an https address passed on
+		const image = /^\/desk\/image\/([A-Za-z0-9._-]+)\/(\d+)\/(\d+)$/.exec(path);
+		if (image !== null) {
+			if (space === null || req.method !== "GET" || !space.store.ids().includes(image[1]!)) return json(404, {});
+			const b = space.images.block(image[1]!, Number(image[2]), Number(image[3]));
+			if (b === null) return json(404, {});
+			return "url" in b ? { status: 302, body: null, headers: { location: b.url } } : { status: 200, body: b.bytes, headers: { "content-type": b.type, "x-content-type-options": "nosniff", "cache-control": "private, max-age=86400" } };
+		}
+		// a page, a pdf or media of the folder on its own preview server (preview.ts); the address it answers
+		if (path === "/desk/preview" && post) {
+			if (space === null) return json(404, {});
+			const entry = resolveInside(realpathSync(space.workspace), String((await readJson(req))["path"] ?? ""));
+			if (!statSync(entry).isFile() || artifactKind(entry) === undefined) throw new Refusal(400, "not a page, a document or media");
+			const host = req.headers.host ?? "";
+			return json(200, { url: await ctx.previews.open(entry, host, `http://${host}`) });
+		}
+		if (path === "/desk/preview-close" && post) {
+			ctx.previews.close(String((await readJson(req))["url"] ?? ""));
+			return json(200, { ok: true });
 		}
 		if (path === "/desk/env") {
 			if (space === null) return json(404, {});

@@ -12,6 +12,8 @@ import { previewUrl } from "../state/panels.js";
 
 /** The Work's key in the routes (null: the folder in use). */
 export const KeyContext = createContext<string | null>(null);
+/** The Work in front of the person (its session id). */
+export const WorkContext = createContext("");
 /** The run a block belongs to: what /desk/exists answered is remembered per run. */
 export const RunContext = createContext("");
 

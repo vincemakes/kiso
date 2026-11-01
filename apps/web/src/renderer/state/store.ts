@@ -66,9 +66,14 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	let lastSeq = -1;
 	let target: number | null = null;
 	let loaded = false;
+	// refreshes overlap (the page's load, an action, an event): only the answer to the latest question counts, or an early answer
+	// arriving late (the run not started yet) would hide a live run (no Stop beside an approval)
+	let asked = 0;
 	const refresh = async (): Promise<void> => {
+		const mine = (asked += 1);
 		try {
 			const snapshot = await api.state();
+			if (mine !== asked) return;
 			target ??= snapshot.highWater;
 			loaded ||= lastSeq >= target;
 			push({ kind: "snapshot", state: snapshot });

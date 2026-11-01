@@ -1,4 +1,5 @@
 // Shared by the proofs: the host (`kiso-web`), a headless Chrome on its page over the DevTools protocol, and the assertions.
+import { deflateSync } from "node:zlib";
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -132,3 +133,31 @@ export async function launchApp({ data, workspace, fauxScript, env = {} }) {
 	};
 	return { ...page, closeTab: page.close, host: () => host, chrome, restart, close };
 }
+
+/** A real w×h PNG in bands of the given RGB colors, for the proofs that need a picture. */
+export function png(w, h, colors) {
+	const table = Array.from({ length: 256 }, (_, n) => {
+		let c = n;
+		for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+		return c >>> 0;
+	});
+	const crc = (buf) => (~buf.reduce((c, x) => table[(c ^ x) & 255] ^ (c >>> 8), ~0)) >>> 0;
+	const chunk = (type, data) => {
+		const body = Buffer.concat([Buffer.from(type), data]);
+		const out = Buffer.alloc(body.length + 8);
+		out.writeUInt32BE(data.length, 0);
+		body.copy(out, 4);
+		out.writeUInt32BE(crc(body), body.length + 4);
+		return out;
+	};
+	const head = Buffer.alloc(13);
+	head.writeUInt32BE(w, 0);
+	head.writeUInt32BE(h, 4);
+	head[8] = 8;
+	head[9] = 2;
+	const rows = Array.from({ length: h }, (_, y) => Buffer.from([0, ...Array.from({ length: w }, () => colors[Math.floor((y * colors.length) / h)]).flat()]));
+	return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", head), chunk("IDAT", deflateSync(Buffer.concat(rows))), chunk("IEND", Buffer.alloc(0))]);
+}
+
+/** In the page: each chip's icon and text on one line (its text in one line box, the icon within it), as "path:ok" or "path:split". */
+export const CHIP_LINES = `[...document.querySelectorAll('[data-chip]')].map((c) => { const t = [...c.childNodes].find((n) => n.nodeType === 3), r = document.createRange(); r.selectNodeContents(t); const lines = r.getClientRects(), i = c.querySelector('svg').getBoundingClientRect(); return c.dataset.chip + ':' + (lines.length === 1 && i.top >= lines[0].top - 4 && i.bottom <= lines[0].bottom + 4 ? 'ok' : 'split'); }).join()`;

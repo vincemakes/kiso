@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
@@ -12,6 +12,7 @@ import { Auth } from "./auth.js";
 import { ApprovalWatch, type Notice, type Presence } from "./approvals.js";
 import { deskApi, type DeskContext } from "./desk-api.js";
 import { History } from "./history.js";
+import { Previews } from "./preview.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
@@ -37,6 +38,9 @@ export interface HostOptions {
 	readonly settings: Settings;
 	/** Also told of each notice (an approval waits, a run ended, while the person is elsewhere); the page reads them from `/desk/notices`. */
 	readonly notify?: (notice: Notice) => void;
+	/** files the proofs read: each request the host, or a preview server, received */
+	readonly requestLog?: string | undefined;
+	readonly previewLog?: string | undefined;
 	/** 0: the system picks (the proofs); the command passes its fixed port. */
 	readonly port?: number;
 	readonly token?: string;
@@ -111,9 +115,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	let auth: Auth | undefined;
 
 	let presence: Presence | null = null;
+	const previews = new Previews(options.previewLog);
+	const requestLog = options.requestLog;
 	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence);
 	watch.start();
-	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq) };
+	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews };
 
 	let origins: ReadonlySet<string> = new Set();
 	let hosts: ReadonlySet<string> = new Set();
@@ -172,7 +178,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 				"content-type": type,
 				"cache-control": "no-store",
 				"x-content-type-options": "nosniff",
-				"content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; frame-src http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'",
+				"content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: https:; media-src http://localhost:* http://127.0.0.1:*; manifest-src 'self'; frame-src http://localhost:* http://127.0.0.1:*; base-uri 'none'; form-action 'none'",
 			});
 			res.end(body);
 		} catch {
@@ -185,6 +191,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		void (async () => {
 			// DNS rebinding: a name that resolves to 127.0.0.1 but is not ours
 			if (!hosts.has(req.headers.host ?? "")) return refuse(res, 403, "unknown Host");
+			// the proofs read which requests reached the host, and from where
+			if (requestLog !== undefined) appendFileSync(requestLog, `${req.method} ${req.url} site=${req.headers["sec-fetch-site"] ?? "-"} origin=${req.headers.origin ?? "-"} cookie=${(req.headers.cookie ?? "").includes("kiso_web_") ? "yes" : "no"}\n`);
 			const url = new URL(req.url ?? "/", "http://localhost");
 			const origin = req.headers.origin;
 			if (origin !== undefined && !origins.has(origin)) return refuse(res, 403, "Origin not allowed");
@@ -200,6 +208,10 @@ export async function startHost(options: HostOptions): Promise<Host> {
 			if (!bearerOk(req) && !cookieOk(req)) return refuse(res, 401, "not signed in: run kiso web");
 			if (url.pathname.startsWith("/desk/")) {
 				const answer = await deskApi(desk, req, url);
+				if (Buffer.isBuffer(answer.body) || answer.body === null) {
+					res.writeHead(answer.status, answer.headers);
+					return void res.end(answer.body ?? undefined);
+				}
 				res.writeHead(answer.status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
 				return void res.end(JSON.stringify(answer.body));
 			}
@@ -233,6 +245,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 		watch.stop();
+		previews.closeAll();
 		history.close();
 		for (const space of spaces.values()) await space.close();
 	};

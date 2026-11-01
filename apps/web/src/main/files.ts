@@ -20,7 +20,7 @@ export const TEXT_CAP = 256 * 1024;
 export const IMAGE_CAP = 2 * 1024 * 1024;
 const LIST_CAP = 500;
 const LOG_CAP = 64 * 1024;
-const IMAGES: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+const IMAGES: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml" };
 
 /** A refusal with the status the host answers. */
 export class Refusal extends Error {

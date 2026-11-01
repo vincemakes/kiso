@@ -4,7 +4,7 @@
 // at fit width or 100%). The exists door answers only for files inside the folder. Screenshots go outside the repository.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
+import { scratch, checker, launchApp, waitUntil, sleep, CHIP_LINES } from "./lib.mjs";
 
 const { check, verdict } = checker("chips");
 const workspace = scratch("chips-ws");
@@ -26,6 +26,7 @@ check(seen.asked.length === 1 && seen.asked[0].join() === "notes/plan.md,missing
 check(seen.chips.join() === "notes/plan.md,pics/dot.png" && seen.pre === 0 && seen.text.includes("missing/gone.md"), "an existing path in prose and in inline code: a chip each; the missing path: text; the same paths in a code block: no chip");
 const off = await q(`JSON.stringify(${BASELINE})`).then(JSON.parse);
 check(off.length === 4 && Math.max(...off) <= 1, `chips and links share the line's baseline with the text around them (off by ${off.map((d) => d.toFixed(1))} px)`);
+check(!(await q(CHIP_LINES)).includes("split"), `each chip's icon and text share one line (${await q(CHIP_LINES)})`);
 await app.shot("chips-line");
 const out = await q("JSON.stringify((({ href, target, rel }) => ({ href, target, rel }))(document.querySelector('[data-link=out]')))").then(JSON.parse);
 check(out.href === "https://github.com/vincemakes/kiso" && out.target === "_blank" && /noopener/.test(out.rel) && /noreferrer/.test(out.rel), "an outside link opens a new browser tab, without an opener or a referrer");
