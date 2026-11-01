@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { projectMessages, type Message } from "@vincemakes/kiso-core";
 import type { SessionStore } from "@vincemakes/kiso-runtime";
+import { readShowsWholeFile } from "@vincemakes/kiso-tools-node";
 
 /**
  * The hidden observed revision: with it, edit_file and write_file take no
@@ -29,14 +30,14 @@ export function observedRevisionFrom(store: SessionStore, workspace: string) {
 			return undefined;
 		}
 		const target = real(full);
-		const calls = new Map<string, { readonly name: string; readonly full: string; readonly ranged: boolean }>();
+		const calls = new Map<string, { readonly name: string; readonly full: string; readonly input: Record<string, unknown> }>();
 		let rev: string | undefined;
 		let wholeKnown = false;
 		for (const m of messages) {
 			if (m.role === "assistant") {
 				for (const b of m.blocks) {
 					if (b.type === "tool_use" && typeof b.input.path === "string") {
-						calls.set(b.callId, { name: b.name, full: real(resolve(workspace, b.input.path)), ranged: b.input.offset !== undefined || b.input.limit !== undefined });
+						calls.set(b.callId, { name: b.name, full: real(resolve(workspace, b.input.path)), input: b.input });
 					}
 				}
 			} else if (m.role === "tool") {
@@ -46,8 +47,9 @@ export function observedRevisionFrom(store: SessionStore, workspace: string) {
 				const hit = [...body.matchAll(/\[(rev:[0-9a-f]{16})\]/g)].pop();
 				if (hit === undefined) continue;
 				if (!m.isError && (c.name === "read_file" || c.name === "edit_file" || c.name === "write_file")) {
+					const sameRevision = hit[1] === rev;
 					rev = hit[1];
-					if (c.name === "read_file") wholeKnown = !c.ranged && !body.includes("(call again with offset=") && !body.includes("[output capped at");
+					if (c.name === "read_file") wholeKnown = readShowsWholeFile(c.input, body) || (wholeKnown && sameRevision);
 					else if (c.name === "write_file") wholeKnown = true;
 				} else if (m.isError && c.name === "edit_file" && body.includes(" changed since ")) {
 					rev = hit[1];

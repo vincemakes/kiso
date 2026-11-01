@@ -481,6 +481,18 @@ function moreLinesNote(nextOffset: number, remaining: number, limit: number): st
 	return `\n… ${remaining} more ${remaining === 1 ? "line" : "lines"} (call again with offset=${nextOffset} limit=${limit})`;
 }
 
+/** WR-1: does this read_file call, with the result it got, show the file from its first
+ *  line to its last? It starts at the top (no offset, or offset 1) and carries none of the
+ *  three notices that say more remains: the continuation note, the output cap, the
+ *  over-long-line cap. A `limit` that covers the file is fine, because a short one always
+ *  leaves the continuation note. The hosts' observed-revision rule uses this for the
+ *  whole-file overwrite; it lives beside the notices so the two cannot drift apart. */
+export function readShowsWholeFile(input: { readonly offset?: unknown }, body: string): boolean {
+	const offset = input.offset;
+	if (offset !== undefined && !(typeof offset === "number" && offset <= 1)) return false;
+	return !body.includes("(call again with offset=") && !body.includes("[output capped at") && !/\[a line near .* exceeds the \d+-char cap/.test(body);
+}
+
 export function readFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string; offset?: number; limit?: number }> {
 	return defineTool<{ path: string; offset?: number; limit?: number }>({
 		name: "read_file",
@@ -993,7 +1005,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				expectedRevision = opts.observedRevision(ctx?.sessionId, full, "write");
 				// the trajectory audit: after ranged reads the model retried this
 				// in a loop — say that only a WHOLE read lets it replace the file
-				if (expectedRevision === undefined) return precondition(`write_file: ${path} already exists — to replace it, first read the whole file (read_file with no offset or limit; a ranged read is not enough), or change part of it with edit_file`);
+				if (expectedRevision === undefined) return precondition(`write_file: ${path} already exists — to replace it, first read the whole file from its first line (a read that starts later or stops early is not enough; for a long file pass a limit that covers it), or change part of it with edit_file`);
 			}
 			// WR-1 — the observed-revision stale-write guard. The decision
 			// lattice runs BEFORE any bytes move; every refusal is a
