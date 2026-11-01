@@ -34,10 +34,16 @@ await app.click("[data-act=abandon]");
 check(await waitUntil(async () => (await app.text("[data-kind=footer]")) !== null, 20_000) && (await app.text("[data-kind=answer]")) === "I will not assume it ran." && (await app.count("[data-kind=verdicts]")) === 0, "Skip it: the last verdict resumes the run, which answers");
 await app.close();
 
-// 3. a stop while an approval waits is refused with a message; denying it lets the run go on
-app = await launch([{ events: [call("w1", "shell", { command: "touch made.txt" }), stop] }, end("Not run.")], { KISO_WEB_MODE: "default", KISO_WEB_AUTORUN: "go" });
+// 3. a stop while an approval waits is refused with a message; denying it lets the run go on. The page's question about the run
+// asked before it started is answered late (as a slow host can): the late answer must not hide the live run, and Stop with it.
+app = await launch([{ events: [call("w1", "shell", { command: "touch made.txt" }), stop] }, end("Not run.")], { KISO_WEB_MODE: "default" });
+await app.evaluate(`window.__hold = 1; const f = window.fetch; window.fetch = async (u, o) => { const late = /\\/state$/.test(String(u)) && window.__hold-- > 0; const r = await f(u, o); if (late) await new Promise((x) => setTimeout(x, 1500)); return r; }; window.__kiso.abort(); true`);
+await sleep(300);
+await app.evaluate('window.__kiso.send("go")');
 check(await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1), "an approval is waiting");
+await sleep(2000);
 const clicked = (await app.count("[data-act=stop]")) === 1;
+check(clicked, "an answer about the run that arrives after a newer one is dropped: the run is still live on the page, with its Stop");
 await app.click("[data-act=stop]");
 check(await waitUntil(async () => /waiting for your answer/.test((await app.text("[data-kind=message]")) ?? "")) && (await app.count("[data-kind=ask]")) === 1, `Stop is refused with a message, and the approval is still there (Stop found: ${clicked}; message: ${await app.text("[data-kind=message]")}; cards: ${await app.count("[data-kind=ask]")})`);
 await app.shot("9-stop-refused");

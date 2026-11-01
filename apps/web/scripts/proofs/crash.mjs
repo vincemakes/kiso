@@ -18,9 +18,11 @@ async function scenario(name, killAfterMs, first, second, afterRestart) {
 	const h1 = await launch({ data, workspace, fauxScript: first, env });
 	const s = createClient({ baseUrl: `http://127.0.0.1:${h1.port}/v1/sessions`, headers: () => ({ authorization: `Bearer ${token}` }), reconnect: { initialMs: 200, maxMs: 800 } }).session(session);
 	const seen = [];
+	// what the client got, in order, and where it reconnected (with the last seq it had): a gap explains itself
+	const trail = [];
 	const ctl = new AbortController();
 	const reader = (async () => {
-		for await (const ev of s.events({ signal: ctl.signal })) if (ev.kind === "event") seen.push(ev.event.seq);
+		for await (const ev of s.events({ signal: ctl.signal, onReconnect: (n) => trail.push(`reconnect#${n} after ${seen.at(-1) ?? -1}`) })) if (ev.kind === "event") (seen.push(ev.event.seq), trail.push(`${ev.event.seq}:${ev.event.type}`));
 	})();
 	await s.run("go");
 	await sleep(killAfterMs);
@@ -34,9 +36,10 @@ async function scenario(name, killAfterMs, first, second, afterRestart) {
 	await waitUntil(async () => !(await s.state()).running && seen.includes(Math.max(...(await s.replay()).events.map((e) => e.seq))), 20_000);
 	ctl.abort();
 	await reader;
-	const durable = (await s.replay()).events.map((e) => e.seq);
+	const log = (await s.replay()).events;
+	const durable = log.map((e) => e.seq);
 	const same = JSON.stringify(seen) === JSON.stringify(durable);
-	check(same, `${name}: the client saw each of the ${durable.length} durable wire events exactly once, in order (no duplicate, no gap)${same ? "" : `: saw [${seen}], durable [${durable}]`}`);
+	check(same, `${name}: the client saw each of the ${durable.length} durable wire events exactly once, in order (no duplicate, no gap)${same ? "" : `: the client got [${trail.join(" ")}]; the host replays [${log.map((e) => `${e.seq}:${e.type}`).join(" ")}]; killed after ${killAfterMs} ms`}`);
 	for (const pid of orphans) try { process.kill(Number(pid), "SIGKILL"); } catch { /* gone */ }
 	h2.child.kill("SIGTERM");
 	await new Promise((r) => h2.child.once("exit", r));
