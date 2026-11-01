@@ -30,7 +30,7 @@ const app = await launchApp({ data: scratch("ui-data"), workspace, env: { KISO_W
 // every frame: how much answer text is drawn, how many live indicators, and whether the process header is covered by anything
 await app.evaluate(`window.__frames = []; (function f() {
 	const ph = document.querySelector('.ph'), r = ph?.getBoundingClientRect(), top = document.querySelector('.scroll')?.getBoundingClientRect().top ?? 0, at = r && r.height > 0 && r.top >= top ? document.elementFromPoint(r.left + 40, r.top + r.height / 2) : null;
-	window.__frames.push({ n: [...document.querySelectorAll('[data-kind=answer] > :not(.tbl)')].reduce((sum, e) => sum + e.textContent.length, 0), lives: document.querySelectorAll('[data-kind=live]').length, carets: [...document.querySelectorAll('.caret *')].filter((e) => getComputedStyle(e, '::after').animationName === 'bl').length, early: !!document.querySelector('[data-kind=footer]') && [...document.querySelectorAll('[data-kind=answer]')].some((a) => a.dataset.settled !== 'true'), live: !!window.__kiso?.state.turns.at(-1)?.phase.startsWith('run'), covered: at !== null && !ph.contains(at) });
+	window.__frames.push({ n: [...document.querySelectorAll('[data-kind=answer] > :not(.tbl)')].reduce((sum, e) => sum + e.textContent.length, 0), lives: document.querySelectorAll('[data-kind=live]').length, carets: [...document.querySelectorAll('.caret *')].filter((e) => getComputedStyle(e, '::after').animationName === 'bl').length, early: !!document.querySelector('[data-kind=footer]') && [...document.querySelectorAll('[data-kind=answer]')].some((a) => a.dataset.settled !== 'true'), live: !!window.__kiso?.state.turns.at(-1)?.phase.startsWith('run'), covered: at !== null && !ph.contains(at), st: Math.round(document.querySelector('.scroll')?.scrollTop ?? 0), sh: document.querySelector('.scroll')?.scrollHeight ?? 0, read: window.__read ? Math.round(window.__read.getBoundingClientRect().top) : null });
 	requestAnimationFrame(f);
 })(); true`);
 const sc = (js) => app.evaluate(`(() => { const el = document.querySelector('.scroll'); ${js} })()`);
@@ -52,7 +52,9 @@ for (let i = 0; i < 600 && !(await app.text("[data-kind=footer]")); i++) {
 }
 await sleep(1500);
 const held = await sc("return { top: window.__read.getBoundingClientRect().top, pill: document.querySelectorAll('[data-act=latest]').length }");
-check(shot.up.room > 300 && Math.abs(held.top - shot.up.top) <= 2 && held.pill === 1 && (await app.evaluate("document.querySelector('[data-kind=process]').dataset.folded")) === "true", `scrolled up while it streamed: the block they were reading (${shot.up.what}) stayed where it was through the rest of the stream and the fold at the end (${shot.up.top.toFixed(0)} -> ${held.top.toFixed(0)} px), and a Latest pill shows`);
+// where it moved, if it did: the frames around the largest jump of the block being read (scroll top, scroll height, its top)
+const moved = JSON.parse(await app.evaluate("JSON.stringify(window.__frames.filter((f) => f.read !== null))")).map((f, i, all) => ({ i, d: i === 0 ? 0 : Math.abs(f.read - all[i - 1].read), f })).sort((a, b) => b.d - a.d)[0];
+check(shot.up.room > 300 && Math.abs(held.top - shot.up.top) <= 2 && held.pill === 1 && (await app.evaluate("document.querySelector('[data-kind=process]').dataset.folded")) === "true", `scrolled up while it streamed: the block they were reading (${shot.up.what}) stayed where it was through the rest of the stream and the fold at the end (${shot.up.top.toFixed(0)} -> ${held.top.toFixed(0)} px), and a Latest pill shows${moved?.d > 2 ? `; largest jump ${moved.d} px at ${JSON.stringify(moved.f)}` : ""}`);
 await app.click("[data-act=latest]");
 check(await waitUntil(() => sc("return el.scrollHeight - el.scrollTop - el.clientHeight < 2 && document.querySelectorAll('[data-act=latest]').length === 0")), "the pill takes the view to the latest and goes");
 await app.shot("4-folded-with-answer");
