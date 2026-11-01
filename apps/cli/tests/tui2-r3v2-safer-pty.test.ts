@@ -20,7 +20,8 @@
  * consume turn 1, and it asserts exactly that.
  */
 
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
@@ -54,6 +55,13 @@ const TRUNCATED = [
 	'{"alternatives":[{"command":"npm run build","reason":"rebuilds in place and keeps build/"},',
 	'{"command":"rm -rf build/cache && npm run build","reason":"clears only the ca',
 ].join("\n");
+
+/** The folder each session runs in: empty, and never the repository. The approved calls here
+ *  (`rm -rf build && npm run build`, `npm run build`) really run, so in the checkout they ran the
+ *  root build inside a synchronous PTY run, and the worker's reply to the runner waited on it
+ *  (a `Timeout calling "onTaskUpdate"` once the root build grew). Here they fail at once, which
+ *  none of these tests looks at: they are about the panel. */
+const workspace = (): string => mkdtempSync(join(tmpdir(), "kiso-r3v2-"));
 
 /** Every request line in the session's trace sidecar. */
 function requests(home: string): Record<string, unknown>[] {
@@ -94,6 +102,7 @@ describe("TUI2-R3v2 ③ — the safer-options arc, end to end", () => {
 				[7.0, "1"], // approve the amended call
 			],
 			timeout: 90,
+			cwd: workspace(),
 		});
 
 		// the alternatives were offered, in the model's own words
@@ -134,6 +143,7 @@ describe("TUI2-R3v2 ③ — the safer-options arc, end to end", () => {
 				["all done.", "exit\r"],
 			],
 			delays: [[2.5, "1"]], // approve, never asking
+			cwd: workspace(),
 		});
 		expect(raw).toContain("all done.");
 		const all = requests(dirs.home as string);
@@ -158,6 +168,7 @@ describe("TUI2-R3v2 ③ — the safer-options arc, end to end", () => {
 			],
 			delays: [[2.5, "3"], [5.0, "1"]],
 			timeout: 90,
+			cwd: workspace(),
 		});
 		const screen = screenAt(raw, "the original choices stand").join("\n");
 		expect(screen).toContain("couldn't get safer options — the original choices stand");
@@ -185,6 +196,7 @@ describe("TUI2-R3v2 ③ — the safer-options arc, end to end", () => {
 			],
 			delays: [[2.5, "3"], [5.0, "1"]],
 			timeout: 90,
+			cwd: workspace(),
 		});
 		const screen = screenAt(raw, "the original choices stand").join("\n");
 		expect(screen).toContain("couldn't get safer options (the reply was cut short) — the original choices stand");
