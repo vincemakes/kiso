@@ -8,7 +8,7 @@ npm install -g @vincemakes/kiso-web
 kiso web            # or kiso-web; the terminal's `kiso` runs this package when it is installed
 ```
 
-The host must be running for the page to work: it runs while the command runs. Node 22 or later, macOS or Linux; the
+The host must be running for the page to work: it runs while the command runs. Node 22 or later, macOS or Linux (Windows is not supported yet); the
 page runs in Safari 17, Chrome or Edge. Built into the root build; typecheck, gates and proofs run here and in the Web workflow.
 
 Development:

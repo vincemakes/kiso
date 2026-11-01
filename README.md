@@ -42,7 +42,7 @@ kiso web
 
 `kiso web` starts the host and opens the page at `http://127.0.0.1:4317` (`--port <n>` for another, `--no-open` to print the address instead). **The host must be running for the page to work:** it runs while the command runs, and with the command stopped the page cannot load. The model, the effort and the sign-in are the terminal's own (`~/.kiso/config.json`, `kiso login`). Without the package installed, `kiso web` prints the install command.
 
-To keep it on the desktop, open the page once and add it as an app: Safari (macOS Sonoma or later), File > Add to Dock; Chrome or Edge (macOS or Windows), Install page as app. The port is fixed, so the app keeps its address; start `kiso web` before opening it.
+To keep it on the desktop, open the page once and add it as an app: Safari (macOS Sonoma or later), File > Add to Dock; Chrome or Edge (macOS or Linux), Install page as app. The port is fixed, so the app keeps its address; start `kiso web` before opening it. kiso web runs on macOS and Linux; Windows is not supported yet.
 
 Sign-in is local: the command opens the page on a one-time code, which the page trades for a session cookie. **A signed-in session is a key to this machine's shell**: whoever holds it can run commands as you. The host listens on 127.0.0.1 only. `kiso web --revoke-sessions` signs every page out; each signs in again from the command.
 

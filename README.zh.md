@@ -42,7 +42,7 @@ kiso web
 
 `kiso web` 启动宿主并打开 `http://127.0.0.1:4317` 上的页面（`--port <n>` 换端口，`--no-open` 只打印地址）。**页面要能用，宿主必须在运行：** 命令运行多久宿主就运行多久，命令停了页面就打不开。模型、推理强度和登录都沿用终端版的（`~/.kiso/config.json`、`kiso login`）。没装这个包时，`kiso web` 会打印安装命令。
 
-想放在桌面上：先打开一次页面，再把它添加为应用。Safari（macOS Sonoma 及以上）：文件 > 添加到程序坞；Chrome 或 Edge（macOS 或 Windows）：将此页面作为应用安装。端口是固定的，所以应用地址不会变；打开它之前先运行 `kiso web`。
+想放在桌面上：先打开一次页面，再把它添加为应用。Safari（macOS Sonoma 及以上）：文件 > 添加到程序坞；Chrome 或 Edge（macOS 或 Linux）：将此页面作为应用安装。端口是固定的，所以应用地址不会变；打开它之前先运行 `kiso web`。kiso web 支持 macOS 和 Linux；暂不支持 Windows。
 
 登录只在本机进行：命令用一次性代码打开页面，页面用它换取会话 cookie。**已登录的会话就是这台机器 shell 的钥匙**：拿到它的人可以用你的身份执行命令。宿主只监听 127.0.0.1。`kiso web --revoke-sessions` 让所有页面退出登录，之后每个页面都要再从命令登录一次。
 
