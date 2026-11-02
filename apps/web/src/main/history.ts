@@ -56,16 +56,16 @@ function printOf(dir: string): string {
 export class History {
 	readonly #home: string;
 	readonly #live: LiveState;
-	readonly #parentOf: (id: string) => string | undefined;
+	readonly #marksOf: (id: string) => Pick<WorkRow, "parent" | "pinned" | "archived">;
 	readonly #reads = new Map<string, Read>();
 	readonly #queue: string[] = [];
 	#worker: Worker | null = null;
 	#inflight: string | null = null;
 
-	constructor(home: string, live: LiveState, parentOf: (id: string) => string | undefined = () => undefined) {
+	constructor(home: string, live: LiveState, marksOf: (id: string) => Pick<WorkRow, "parent" | "pinned" | "archived"> = () => ({})) {
 		this.#home = home;
 		this.#live = live;
-		this.#parentOf = parentOf;
+		this.#marksOf = marksOf;
 	}
 
 	/** `fresh` names a folder whose listing is read again now, whatever its age. */
@@ -86,9 +86,8 @@ export class History {
 			if (read === undefined) continue;
 			const key = basename(folder.dir);
 			for (const meta of read.metas) {
-				const parent = this.#parentOf(meta.id);
 				rows.push({
-					...(parent === undefined ? {} : { parent }),
+					...this.#marksOf(meta.id),
 					id: meta.id,
 					key,
 					folder: basename(folder.workspace),

@@ -15,7 +15,7 @@ import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
 import { Folders } from "./home/Folders.js";
-import { forkWork, renameWork, chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { actOnWork, forkWork, renameWork, chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
 import { CommitDialog, PrDialog } from "./rail/GitDialogs.js";
 import { Header } from "./rail/Header.js";
 import type { GitReply } from "../shared/git.js";
@@ -104,6 +104,7 @@ export function App(): ReactNode {
 		const timer = setInterval(refreshGit, 20_000);
 		return () => clearInterval(timer);
 	}, [pending, refreshGit]);
+	const prOfRow = useCallback((row: WorkRow) => fetchGit(row.key === history?.current.key ? null : row.key).then((g) => (g.pr !== null && g.pr.state === "OPEN" ? { number: g.pr.number, url: g.pr.url } : null)), [history?.current.key]);
 	const prDraft = useCallback(() => fetchPrDraft(target.key), [target.key]);
 	useEffect(() => {
 		if (started && !shown && history !== null) refresh(target.key ?? history.current.key);
@@ -194,11 +195,15 @@ export function App(): ReactNode {
 	const title = named[target.sessionId] ?? row?.title ?? session?.state.turns[0]?.user.split("\n")[0] ?? "";
 	const sub = env === null ? "" : env.branch === null ? env.folder : `${env.folder} · ${env.branch}`;
 	// a name shows at once; a cleared one waits for the listing, which reads names live, to give back the first-request title
-	const onRename = (name: string): Promise<void> =>
-		renameWork(target.key, target.sessionId, name).then((r) => {
-			setNamed(({ [target.sessionId]: _, ...n }) => (r.name === null ? n : { ...n, [target.sessionId]: r.name }));
-			return fetchHistory(target.key ?? history?.current.key).then(setHistory, () => undefined);
+	// a row's folder key as the routes take it (null: the folder in use), and the listing read again for that folder
+	const keyOf = (row: WorkRow): string | null => (row.key === history?.current.key ? null : row.key);
+	const reread = (key: string | undefined): Promise<void> => fetchHistory(key).then(setHistory, () => undefined);
+	const renameRow = (key: string | null, id: string, name: string): Promise<void> =>
+		renameWork(key, id, name).then((r) => {
+			setNamed(({ [id]: _, ...n }) => (r.name === null ? n : { ...n, [id]: r.name }));
+			return reread(key ?? history?.current.key);
 		});
+	const onRename = (name: string): Promise<void> => renameRow(target.key, target.sessionId, name);
 	const header =
 		railOn && session !== null ? (
 			<Header title={title} sub={sub} onRename={onRename}>
@@ -229,9 +234,13 @@ export function App(): ReactNode {
 		) : env?.fork !== undefined ? (
 			<div className="forknote" data-kind="fork-note">
 				{t.forkedFrom}{" "}
-				<button className="flink" data-act="fork-parent" onClick={() => setTarget({ key: target.key, sessionId: env.fork!.parent })}>
-					{parentRow?.title || env.fork.title || t.untitled}
-				</button>{" "}
+				{parentRow === undefined ? (
+					<b data-field="fork-parent-gone">{env.fork.title || t.untitled}</b>
+				) : (
+					<button className="flink" data-act="fork-parent" onClick={() => setTarget({ key: target.key, sessionId: env.fork!.parent })}>
+						{parentRow.title || env.fork.title || t.untitled}
+					</button>
+				)}{" "}
 				· {ago(env.fork.at, Date.now())}. {t.forkShared}
 			</div>
 		) : null;
@@ -261,6 +270,24 @@ export function App(): ReactNode {
 				active={{ key: activeKey, id: target.sessionId }}
 				settingsOn={view === "settings"}
 				onOpen={openWork}
+				onAct={(row, act) =>
+					actOnWork(keyOf(row), row.id, act).then(() => {
+						if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
+						return reread(row.key);
+					})
+				}
+				onRename={(row, name) => renameRow(keyOf(row), row.id, name)}
+				onFork={(row) =>
+					void forkWork(keyOf(row), row.id).then(
+						(r) => {
+							setView("work");
+							setTarget({ key: keyOf(row), sessionId: r.id });
+							void reread(row.key);
+						},
+						(e: Error) => setForkError(e.message),
+					)
+				}
+				prOf={prOfRow}
 				onNew={() => {
 					setView("work");
 					setTarget({ key: null, sessionId: newWorkId() });

@@ -110,7 +110,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		const space = spaces.get(key);
 		if (space === undefined || !space.service.isRunning(sessionId)) return "idle";
 		return (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
-	}, (id) => options.settings.forkOf(id)?.parent);
+	}, (id) => options.settings.marksOf(id));
 
 	const rendererDir = fileURLToPath(new URL("../../out/renderer/", import.meta.url));
 	const tokenBytes = Buffer.from(token);

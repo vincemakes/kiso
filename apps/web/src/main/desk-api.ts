@@ -6,6 +6,7 @@ import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
 import { contextParts } from "./context.js";
 import { rename } from "./names.js";
 import { forkNoteOf, forkWork } from "./fork.js";
+import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
 import { commit, gitOf, openPr, prDraft } from "./git.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
@@ -111,6 +112,16 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (!SAFE_ID.test(session)) return json(404, {});
 			const atSeq = typeof body["atSeq"] === "number" ? body["atSeq"] : undefined;
 			return json(200, { id: forkWork(space, ctx.settings, session, atSeq).id });
+		}
+		if (path === "/desk/work") {
+			if (!post) return json(405, {});
+			if (space === null) return json(404, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			const act = str(body["act"]) ?? "";
+			if (!SAFE_ID.test(session) || !WORK_ACTS.includes(act as WorkAct)) return json(404, {});
+			workAct(space, ctx.settings, session, act as WorkAct);
+			return json(200, { ok: true });
 		}
 		if (path === "/desk/task-stop") {
 			if (!post) return json(405, {});
