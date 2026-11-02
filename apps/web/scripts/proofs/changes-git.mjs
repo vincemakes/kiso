@@ -9,7 +9,9 @@ import { join } from "node:path";
 import { scratch, checker, launchApp, waitUntil } from "./lib.mjs";
 
 const { check, verdict } = checker("changes-git");
-const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "p", GIT_AUTHOR_EMAIL: "p@x", GIT_COMMITTER_NAME: "p", GIT_COMMITTER_EMAIL: "p@x" } }).trim();
+// a person's git has an identity; a CI runner's may not, so the host gets the same one this script commits with
+const ID = { GIT_AUTHOR_NAME: "p", GIT_AUTHOR_EMAIL: "p@x", GIT_COMMITTER_NAME: "p", GIT_COMMITTER_EMAIL: "p@x" };
+const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...ID } }).trim();
 const origin = scratch("git-origin");
 git(origin, "init", "-q", "--bare", "-b", "main");
 const ws = scratch("git-ws");
@@ -36,7 +38,7 @@ writeFileSync(join(bin, "gh"), `#!/bin/sh\ncase "$1 $2" in\n"auth status") exit 
 chmodSync(join(bin, "gh"), 0o755);
 const use = { type: "usage", inputTokens: 3000, outputTokens: 50, cacheRead: 0, cacheWrite: null, known: true };
 const turn = (text) => ({ events: [{ type: "text_delta", text }, use, { type: "stop", reason: "end_turn" }] });
-const app = await launchApp({ data: scratch("git-data"), workspace: ws, fauxScript: [turn("Looked."), turn("Again.")], env: { PATH: `${bin}:${process.env.PATH}`, KISO_WEB_SESSION: "gitw" } });
+const app = await launchApp({ data: scratch("git-data"), workspace: ws, fauxScript: [turn("Looked."), turn("Again.")], env: { PATH: `${bin}:${process.env.PATH}`, KISO_WEB_SESSION: "gitw", ...ID } });
 const q = (js) => app.evaluate(js);
 const text = (sel) => app.text(sel).then((v) => v ?? "");
 await q(`window.__kiso.send("look at the branch")`);
