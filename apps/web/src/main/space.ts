@@ -62,9 +62,10 @@ const DELTAS = new Set<Event["type"]>(["thinking", "text_delta"]);
 export function createSpace(options: SpaceOptions): Space {
 	const store = new SessionStore(options.dir);
 	const tasks = createTaskHub(options.dir);
-	const route = (): string => {
+	// the Work's own route (a Work can switch its model in the composer): what its usage is canonicalized and priced on
+	const route = (sessionId: string): string => {
 		try {
-			return routeOf(options.model());
+			return routeOf(options.model({ sessionId, sessionsDir: options.dir }));
 		} catch {
 			return "unknown";
 		}
@@ -93,9 +94,10 @@ export function createSpace(options: SpaceOptions): Space {
 		},
 	});
 
-	const windowOf = (): number | null => {
+	// the Work's own model (a Work can switch it in the composer), for its context window
+	const windowOf = (sessionId: string): number | null => {
 		try {
-			const m = options.model();
+			const m = options.model({ sessionId, sessionsDir: options.dir });
 			return m.kind === "profile" ? (m.contextWindow ?? null) : null;
 		} catch {
 			return null;
@@ -131,11 +133,11 @@ export function createSpace(options: SpaceOptions): Space {
 	};
 	const derived = (event: Event, sessionId: string): readonly WireFrame[] => {
 		if (event.type === "usage") {
-			const frame = usageFrameAt(service.events(sessionId), event.seq, route());
-			return frame === null ? [] : [{ event: "usage", data: { ...frame, window: windowOf() } }];
+			const frame = usageFrameAt(service.events(sessionId), event.seq, route(sessionId));
+			return frame === null ? [] : [{ event: "usage", data: { ...frame, window: windowOf(sessionId) } }];
 		}
 		if (event.type === "terminal") {
-			const totals = runTotals(service.events(sessionId), event.seq, route());
+			const totals = runTotals(service.events(sessionId), event.seq, route(sessionId));
 			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals } }];
 		}
 		if (event.type === "tool_result") {

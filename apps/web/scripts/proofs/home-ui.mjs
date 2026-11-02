@@ -45,12 +45,12 @@ await app.click("[data-act=notify]");
 check(await waitUntil(async () => (await q("document.querySelector('[data-field=notify]')?.dataset.state")) === "on"), "a click asks the browser and turns them on");
 await q("document.querySelector('[data-act=new]').click(); document.querySelector('[data-act=sidebar]').click()");
 await waitUntil(async () => (await app.count("[data-kind=home]")) === 1);
-const setTag = (v) => q(`(() => { const el = document.querySelector('[data-field=tag]'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-const tag = () => q("document.querySelector('[data-field=tag]')?.value");
-await setTag("plan");
-check(await waitUntil(async () => (await tag()) === "plan"), "the tag changes this Work's tier through the host");
+const pill = () => app.text("[data-field=tier-pill]");
+await app.click("[data-act=tier]");
+await app.click("[data-tier=plan]");
+check(await waitUntil(async () => (await pill()) === "Read-only"), "the composer's tier pill changes this Work's tier through the host");
 await q("document.querySelector('[data-act=new]').click()");
-check(await waitUntil(async () => (await app.count("[data-kind=home]")) === 1 && (await tag()) === "default"), "another Work still has the default tier");
+check(await waitUntil(async () => (await app.count("[data-kind=home]")) === 1 && (await pill()) === "Asks each time"), "another Work still has the default tier");
 // a Work that asks, then the person goes elsewhere
 await q(`window.__kiso.send("write the file")`);
 check(await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1, 20_000), "a Work asks for an approval");

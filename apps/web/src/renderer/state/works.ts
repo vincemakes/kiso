@@ -37,9 +37,10 @@ export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[]
 	return buckets.flatMap((rows, i) => (rows.length === 0 ? [] : [{ label: labels[i]!, works: rows }]));
 }
 
-/** Where a Work runs: its folder, branch and permission tier (key null: the folder in use). */
-export async function fetchEnv(key: string | null): Promise<EnvReply> {
-	const response = await fetch(`/desk/env${key === null ? "" : `?key=${encodeURIComponent(key)}`}`);
+/** Where a Work runs: its folder, branch and permission tier — that Work's own when `session` is given (key null: the folder in use). */
+export async function fetchEnv(key: string | null, session?: string): Promise<EnvReply> {
+	const q = new URLSearchParams({ ...(key === null ? {} : { key }), ...(session === undefined ? {} : { session }) }).toString();
+	const response = await fetch(`/desk/env${q === "" ? "" : `?${q}`}`);
 	if (!response.ok) throw new Error(`env ${response.status}`);
 	return (await response.json()) as EnvReply;
 }

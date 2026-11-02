@@ -1,14 +1,14 @@
-import { memo, useState, type ReactNode } from "react";
+import { memo, useContext, useState, type ReactNode } from "react";
 import type { TaskRow } from "../../shared/frames.js";
 import { fmt, span, t, tokens } from "../i18n/index.js";
 import { split, type Ask, type Turn as TurnModel } from "../state/model.js";
 import { Answer } from "./Answer.js";
 import { Approval } from "./Approval.js";
-import { RunContext } from "./links.js";
+import { RunContext, WorkContext } from "./links.js";
 import { Process } from "./Process.js";
-import { artifactsOf, focusOf } from "./Artifacts.js";
+import { artifactsOf, focusOf, Picture } from "./Artifacts.js";
 import { artifactIcon } from "./Icons.js";
-import { useOpenArtifact } from "./Lightbox.js";
+import { LightboxContext, useOpenArtifact } from "./Lightbox.js";
 import type { ArtifactRef } from "../../shared/frames.js";
 
 interface Props {
@@ -56,6 +56,25 @@ function Made({ turn }: { readonly turn: TurnModel }): ReactNode {
 	);
 }
 
+/** The person's pictures in their line, small, in the bubble's corner; a click opens one in the lightbox. */
+function MePictures({ pictures }: { readonly pictures: readonly string[] }): ReactNode {
+	const work = useContext(WorkContext);
+	const lightbox = useContext(LightboxContext);
+	if (pictures.length === 0) return null;
+	return (
+		<div className="me-pics" data-kind="me-pictures">
+			{pictures.map((p) => {
+				const focus = `log:${work}/${p.slice(4)}`;
+				return (
+					<button key={p} className="me-pic" onClick={() => lightbox(focus)} data-picture={focus}>
+						<Picture focus={focus} className="me-img" />
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
 /** One run: the person's line, the process, the approvals still open, the answer, what it made, the live row or the footer. */
 export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: Props): ReactNode {
 	const { process: items, answer, openAsks } = split(turn);
@@ -65,9 +84,12 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	const [drawn, setDrawn] = useState(true);
 	return (
 		<RunContext.Provider value={turn.id}>
-			<div className="me" data-kind="me">
-				{turn.user}
-			</div>
+			<MePictures pictures={turn.pictures} />
+			{turn.user !== "" || turn.pictures.length === 0 ? (
+				<div className="me" data-kind="me">
+					{turn.user}
+				</div>
+			) : null}
 			{inProcess.length > 0 || live ? <Process turn={turn} items={inProcess} tasks={tasks} onAnswer={onAnswer} interrupted={interrupted} /> : null}
 			{openAsks.map((ask: Ask) => (
 				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />

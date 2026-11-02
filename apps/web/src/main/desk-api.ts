@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { realpathSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-code/config";
-import { deskRead, SAFE_ID } from "./fs-routes.js";
+import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
 import type { Previews } from "./preview.js";
@@ -16,7 +16,7 @@ import type { SettingsPatch } from "../shared/settings.js";
 
 /**
  * The page's own doors (everything under `/desk/`), behind the host's guard: settings, a Work's environment, the folder's tree
- * and files, task logs and stopping a task, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
+ * and files, the files `@` can name, task logs and stopping a task, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
  * `{ status, body }`; a body never holds a credential.
  */
 
@@ -64,6 +64,10 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 	const space = where === null || where === "" ? ctx.current : ctx.spaceFor(where);
 	const post = req.method === "POST";
 	try {
+		if (path === "/desk/at-files") {
+			if (space === null) return json(404, {});
+			return req.method === "GET" ? json(200, atFiles(space)) : json(405, {});
+		}
 		if (path === "/desk/task-stop") {
 			if (!post) return json(405, {});
 			if (space === null) return json(404, {});
@@ -107,9 +111,24 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 		}
 		if (path === "/desk/history") return req.method === "GET" ? json(200, await ctx.history.snapshot({ key: ctx.current.key, dir: ctx.current.dir }, url.searchParams.get("fresh") ?? undefined)) : json(405, {});
 		if (path === "/desk/settings") {
-			if (post) ctx.settings.apply((await readJson(req)) as SettingsPatch);
-			else if (req.method !== "GET") return json(405, {});
-			return json(200, ctx.settings.snapshot(url.searchParams.get("session") ?? undefined));
+			let session = url.searchParams.get("session") ?? undefined;
+			if (post) {
+				const patch = (await readJson(req)) as SettingsPatch;
+				// a patch for one Work is answered with that Work's settings
+				session ??= patch.session;
+				const before = patch.session === undefined ? undefined : ctx.settings.workOf(patch.session);
+				const work = ctx.settings.apply(patch);
+				// a Work's model changed: rebuild it from its log so its next run uses it; a run in flight refuses, and the choice is put back
+				if (work !== null && space !== null && space.opened().has(work)) {
+					try {
+						await space.service.reopen(work);
+					} catch {
+						ctx.settings.restoreWork(work, before);
+						return json(409, { message: "a run is going: switch the model when it ends" });
+					}
+				}
+			} else if (req.method !== "GET") return json(405, {});
+			return json(200, ctx.settings.snapshot(session));
 		}
 		if (path === "/desk/folder" && post) {
 			const workspace = validateFolder((await readJson(req))["path"]);

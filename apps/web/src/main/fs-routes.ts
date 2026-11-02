@@ -1,10 +1,11 @@
-import { realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readdirSync, realpathSync } from "node:fs";
 import { listDir, readPreview, readTaskLog, Refusal } from "./files.js";
 import type { Space } from "./space.js";
 
 /**
- * The read doors of the page: a Work's folder (a tree, a file) and a
- * background task's log. GET only, behind the host's guard; every path is
+ * The read doors of the page: a Work's folder (a tree, a file, the list the
+ * composer's @ picks from) and a background task's log. GET only, behind the host's guard; every path is
  * judged by files.ts, a task id only by the task manager of a session that
  * exists in the Work's folder.
  */
@@ -33,4 +34,31 @@ export function deskRead(url: URL, space: Space): { readonly status: number; rea
 		if (error instanceof Refusal) return { status: error.status, body: { code: "refused", message: error.message } };
 		return { status: 500, body: { code: "internal", message: "unreadable" } };
 	}
+}
+
+const AT_CAP = 2000;
+const AT_SKIP = new Set([".git", "node_modules", ".kiso", "dist", "build", ".next", ".venv", "__pycache__"]);
+
+/** The files `@` can name, as the terminal lists them: git's own list (tracked and untracked, ignores honoured), else a bounded walk; `truncated` when the cap cut it. */
+export function atFiles(space: Space): { readonly files: readonly string[]; readonly truncated: boolean } {
+	let files: string[];
+	try {
+		files = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], { cwd: space.workspace, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24, timeout: 3000 }).split("\n").filter((p) => p !== "");
+	} catch {
+		files = [];
+		const walk = (dir: string, prefix: string): void => {
+			try {
+				for (const e of readdirSync(dir, { withFileTypes: true })) {
+					if (files.length > AT_CAP) return;
+					if (AT_SKIP.has(e.name)) continue;
+					if (e.isDirectory()) walk(`${dir}/${e.name}`, `${prefix}${e.name}/`);
+					else if (e.isFile()) files.push(`${prefix}${e.name}`);
+				}
+			} catch {
+				// an unreadable directory adds nothing
+			}
+		};
+		walk(space.workspace, "");
+	}
+	return { files: files.slice(0, AT_CAP), truncated: files.length > AT_CAP };
 }

@@ -1,20 +1,18 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { EnvReply, SettingsReply } from "../../shared/settings.js";
+import type { EnvReply } from "../../shared/settings.js";
 import { t } from "../i18n/index.js";
 import { fetchRecent } from "../state/desk.js";
 
 interface Props {
 	readonly env: EnvReply | null;
-	readonly settings: SettingsReply | null;
 	/** choose a folder with the system's dialog */
 	readonly onPick: () => void;
 	/** a folder from the recent list */
 	readonly onOpen: (path: string) => void;
-	readonly onTier: (mode: string) => void;
 }
 
-/** Under the input box: the folder this Work runs in (a click chooses another), and this Work's permission tier. */
-export function Tray({ env, settings, onPick, onOpen, onTier }: Props): ReactNode {
+/** Under the input box: the folder this Work runs in (a click chooses another). The tier is the composer's own pill. */
+export function Tray({ env, onPick, onOpen }: Props): ReactNode {
 	const [menu, setMenu] = useState(false);
 	const [recent, setRecent] = useState<readonly { readonly folder: string; readonly path: string }[]>([]);
 	useEffect(() => {
@@ -55,15 +53,6 @@ export function Tray({ env, settings, onPick, onOpen, onTier }: Props): ReactNod
 					</div>
 				) : null}
 			</div>
-			{settings === null ? null : (
-				<select className="chip tag" title={t.tierTip} value={settings.mode} onChange={(e) => onTier(e.target.value)} data-field="tag">
-					{settings.modes.map((m) => (
-						<option key={m.value} value={m.value}>
-							{t.tier[m.value] ?? m.label}
-						</option>
-					))}
-				</select>
-			)}
 			<span className="hint">{"⌘K"}</span>
 		</div>
 	);

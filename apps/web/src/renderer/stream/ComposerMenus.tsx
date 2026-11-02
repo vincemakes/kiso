@@ -1,0 +1,162 @@
+import { createContext, useEffect, useRef, useState, type ReactNode } from "react";
+import type { SettingsReply } from "../../shared/settings.js";
+import { t } from "../i18n/index.js";
+import { I } from "./Icons.js";
+
+/** What the composer's pills read and change: this Work's settings, and the calls that change its tier, model and effort. */
+export interface Controls {
+	readonly settings: SettingsReply | null;
+	readonly setTier: (mode: string) => Promise<void>;
+	readonly setModel: (patch: { readonly profile?: string; readonly effort?: string }) => Promise<void>;
+	/** the files `@` can name in this Work's folder (fetched when the picker first opens) */
+	readonly atFiles: () => Promise<readonly string[]>;
+}
+export const ControlsContext = createContext<Controls | null>(null);
+
+/** A pill and the menu it opens above itself; a click outside or Esc closes it. */
+export function Menu({ label, className, act, disabled, title, children }: { readonly label: ReactNode; readonly className?: string; readonly act: string; readonly disabled?: boolean; readonly title?: string; readonly children: (close: () => void) => ReactNode }): ReactNode {
+	const [open, setOpen] = useState(false);
+	const box = useRef<HTMLSpanElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		const away = (e: MouseEvent): void => void (box.current?.contains(e.target as Node) === false && setOpen(false));
+		const key = (e: KeyboardEvent): void => void (e.key === "Escape" && setOpen(false));
+		addEventListener("mousedown", away);
+		addEventListener("keydown", key);
+		return () => (removeEventListener("mousedown", away), removeEventListener("keydown", key));
+	}, [open]);
+	return (
+		<span className="cm" ref={box}>
+			<button type="button" className={`cpill${className === undefined ? "" : ` ${className}`}`} onClick={() => setOpen(!open)} aria-expanded={open} disabled={disabled} title={title} data-act={act}>
+				{label}
+			</button>
+			{open ? (
+				<div className="cmenu" role="menu" data-menu={act}>
+					{children(() => setOpen(false))}
+				</div>
+			) : null}
+		</span>
+	);
+}
+
+const TIER_CLASS: Readonly<Record<string, string>> = { plan: "plan", "full-access": "full" };
+
+/** The Work's permission tier: read-only, ask, edits allowed, full access; a change reaches this Work only. */
+export function TierMenu({ c }: { readonly c: Controls }): ReactNode {
+	const mode = c.settings?.mode ?? "default";
+	return (
+		<Menu
+			act="tier"
+			className={TIER_CLASS[mode] ?? ""}
+			label={
+				<>
+					<svg className="i16" viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M12 21s7-3.5 7-9V6l-7-3-7 3v6c0 5.5 7 9 7 9z" />
+					</svg>
+					<span data-field="tier-pill">{t.tier[mode] ?? mode}</span>
+				</>
+			}
+		>
+			{(close) => (
+				<>
+					<div className="cm-h">{t.tierHead}</div>
+					{(c.settings?.modes ?? []).map((m) => (
+						<button type="button" key={m.value} className="cm-i" role="menuitemradio" aria-checked={m.value === mode} data-tier={m.value} onClick={() => void c.setTier(m.value).then(close)}>
+							<span className={`cm-dot ${TIER_CLASS[m.value] ?? ""}`} />
+							<span className="cm-t">
+								<b>{t.tier[m.value] ?? m.label}</b>
+								<small>{t.tierNote[m.value] ?? ""}</small>
+							</span>
+							{m.value === mode ? <I.check /> : null}
+						</button>
+					))}
+				</>
+			)}
+		</Menu>
+	);
+}
+
+/** The Work's model and effort: the profiles of the shared configuration, and the levels the chosen one's route accepts. */
+export function ModelMenu({ c, running }: { readonly c: Controls; readonly running: boolean }): ReactNode {
+	const s = c.settings;
+	const current = s?.profiles.find((p) => p.name === s.profile) ?? null;
+	const effort = s?.effort?.current ?? null;
+	const [err, setErr] = useState<string | null>(null);
+	// a refusal (a run in flight) is said in the menu, never swallowed
+	const change = (patch: { readonly profile?: string; readonly effort?: string }, close?: () => void): void =>
+		void c.setModel(patch).then(
+			() => (setErr(null), close?.()),
+			(e: unknown) => setErr(e instanceof Error ? e.message : String(e)),
+		);
+	return (
+		<Menu
+			act="model"
+			disabled={running || s === null || s.profiles.length === 0}
+			{...(running ? { title: t.modelWhileRunning } : {})}
+			label={
+				<>
+					<span data-field="model-pill">{current?.model ?? t.noModel}</span>
+					{effort !== null ? <span className="sub">· {t.effort[effort] ?? effort}</span> : null}
+					<I.chevron />
+				</>
+			}
+		>
+			{(close) => (
+				<>
+					<div className="cm-h">{t.modelHead}</div>
+					{(s?.profiles ?? []).map((p) => (
+						<button type="button" key={p.name} className="cm-i" role="menuitemradio" aria-checked={p.name === s?.profile} disabled={!p.available} data-profile={p.name} onClick={() => change({ profile: p.name }, close)}>
+							<span className="cm-t">
+								<b>
+									{p.model}
+									{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
+								</b>
+								<small>{p.available ? p.name : t.notSignedIn}</small>
+							</span>
+							{p.name === s?.profile ? <I.check /> : null}
+						</button>
+					))}
+					{s?.effort !== null && s?.effort !== undefined && s.effort.levels.length > 1 ? (
+						<>
+							<div className="cm-h">{t.effortHead}</div>
+							<div className="cm-seg" role="radiogroup">
+								{s.effort.levels.map((l) => (
+									<button type="button" key={l} className={l === effort ? "on" : ""} role="radio" aria-checked={l === effort} data-effort={l} onClick={() => change({ effort: l })}>
+										{t.effort[l] ?? l}
+									</button>
+								))}
+							</div>
+						</>
+					) : null}
+					{err !== null ? <div className="cm-err" data-kind="model-refused">{err}</div> : null}
+				</>
+			)}
+		</Menu>
+	);
+}
+
+/** `@`: the folder's files whose path holds what was typed after it, at most eight; arrows and Enter or a click pick one. */
+export function AtPicker({ query, files, active, onPick }: { readonly query: string; readonly files: readonly string[]; readonly active: number; readonly onPick: (path: string) => void }): ReactNode {
+	const hits = atHits(files, query);
+	return (
+		<div className="cmenu atp" role="listbox" data-kind="at-picker">
+			{hits.length === 0 ? <div className="cm-h">{t.atNone}</div> : null}
+			{hits.map((path, i) => (
+				<button type="button" key={path} className={`cm-i${i === active ? " on" : ""}`} role="option" aria-selected={i === active} data-at={path} onMouseDown={(e) => (e.preventDefault(), onPick(path))}>
+					<I.file />
+					<span className="cm-t">
+						<b>{path.split("/").pop()}</b>
+						<small>{path}</small>
+					</span>
+				</button>
+			))}
+		</div>
+	);
+}
+
+/** The picker's matches: the path holds the query (any case), the file name's own matches first. */
+export const atHits = (files: readonly string[], query: string): readonly string[] => {
+	const q = query.toLowerCase();
+	const hit = files.filter((f) => f.toLowerCase().includes(q));
+	return [...hit.filter((f) => (f.split("/").pop() ?? "").toLowerCase().includes(q)), ...hit.filter((f) => !(f.split("/").pop() ?? "").toLowerCase().includes(q))].slice(0, 8);
+};

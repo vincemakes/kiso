@@ -32,7 +32,10 @@ export const fetchDirs = (root: string | null, path: string): Promise<DirsReply>
 export const chooseFolder = (path: string): Promise<{ readonly key: string; readonly folder: string }> => call("/desk/folder", { path });
 export const fetchRecent = (): Promise<{ readonly recent: readonly { readonly folder: string; readonly path: string; readonly key: string }[] }> => call("/desk/recent");
 export const fetchSettings = (session?: string): Promise<SettingsReply> => call(`/desk/settings${session === undefined ? "" : `?session=${encodeURIComponent(session)}`}`);
-export const saveSettings = (patch: SettingsPatch): Promise<SettingsReply> => call("/desk/settings", patch);
+/** `key`: the folder the Work is in, so a Work's model change rebuilds it in its own space. */
+export const saveSettings = (patch: SettingsPatch, key: string | null = null): Promise<SettingsReply> => call(`/desk/settings${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, patch);
+/** The files `@` can name in a Work's folder (git's list, else a bounded walk). */
+export const fetchAtFiles = (key: string | null): Promise<{ readonly files: readonly string[]; readonly truncated: boolean }> => call(`/desk/at-files${key === null ? "" : `?key=${encodeURIComponent(key)}`}`);
 export const saveKey = (profile: string, key: string): Promise<{ readonly ok: true }> => call("/desk/login", { profile, key });
 /** Stop one background task of a Work (the rail's stop): the task manager's own stop, as `/tasks` does in the terminal. */
 export const stopTask = (key: string | null, session: string, task: string): Promise<{ readonly stopped: boolean }> => call(`/desk/task-stop${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { session, task });

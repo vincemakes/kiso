@@ -13,6 +13,9 @@ const WEB = /(\bapps\/web\b|@vincemakes\/kiso-web)/;
 /** file (relative to apps/web) → the internal specifiers it may import. */
 const INTERNAL_ALLOWED = {
 	"src/main/tasks.ts": ["@vincemakes/kiso-runtime/internal"],
+	// the model table's input modalities (whether a profile's model reads pictures), as the terminal's own config door reads it;
+	// no root export carries the table (adding one is a public-surface change)
+	"src/main/settings.ts": ["@vincemakes/kiso-runtime/internal"],
 };
 
 /** workspace package name → its `exports` keys (null: no exports map). */
