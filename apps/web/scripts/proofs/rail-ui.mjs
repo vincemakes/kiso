@@ -27,7 +27,7 @@ const app = await launchApp({ data, workspace, env: { KISO_WEB_MODE: "accept-edi
 const q = (js) => app.evaluate(js);
 const field = (name) => q(`document.querySelector('[data-field=${name}]')?.textContent ?? null`);
 await q(`window.__kiso.send("shorten the readme, then run the slow command")`);
-check(await waitUntil(async () => (await field("badge")) === "1", 30_000), "a command that asks puts the badge on the overview key");
+check(await waitUntil(async () => (await app.count("[data-act=allow]")) === 1, 30_000) && (await app.count("[data-field=badge]")) === 0, "a command that asks shows its card in the stream; the overview key carries no count (owner, 2026-11-02)");
 await app.click("[data-act=allow]");
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 1 && (await app.count("[data-field=task]")) === 1, 30_000), "the run ends with its background task in the rail");
 check((await app.count("[data-field=step]")) === 0 && !/\b(Done|Working)\b/.test(await app.text("[data-kind=rail]")), "the rail carries no state of the run itself: no steps, no Done (the stream shows the run)");
