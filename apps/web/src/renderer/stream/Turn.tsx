@@ -1,13 +1,14 @@
 import { memo, useContext, useState, type ReactNode } from "react";
 import type { TaskRow } from "../../shared/frames.js";
-import { fmt, span, t, tokens } from "../i18n/index.js";
+import { ago, fmt, span, t, tokens } from "../i18n/index.js";
 import { split, type Ask, type Turn as TurnModel } from "../state/model.js";
 import { Answer } from "./Answer.js";
 import { Approval } from "./Approval.js";
-import { RunContext, WorkContext } from "./links.js";
+import { ForkContext, RunContext, WorkContext } from "./links.js";
+import { useNow } from "./useNow.js";
 import { Process } from "./Process.js";
 import { artifactsOf, focusOf, Picture } from "./Artifacts.js";
-import { artifactIcon } from "./Icons.js";
+import { artifactIcon, Check, Copy, Fork } from "./Icons.js";
 import { LightboxContext, useOpenArtifact } from "./Lightbox.js";
 import type { ArtifactRef } from "../../shared/frames.js";
 
@@ -30,6 +31,38 @@ function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
 		<div className="acts" data-kind="footer">
 			{fmt(f.cacheRate === null ? t.footerNoCache : t.footer, values)}
 			{f.tokPerSec != null ? fmt(t.footerRate, { rate: f.tokPerSec }) : null}
+		</div>
+	);
+}
+
+/** Copy a line to the clipboard; the icon says it was, for a moment. */
+function CopyButton({ text }: { readonly text: string }): ReactNode {
+	const [done, setDone] = useState(false);
+	return (
+		<button className="ab" title={done ? t.copied : t.copy} aria-label={t.copy} data-act="copy" onClick={() => void navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}>
+			{done ? <Check /> : <Copy />}
+		</button>
+	);
+}
+
+/** Under a reply, on hover: copy, fork from here, and when it finished (the exact time and how long it took in the hover). */
+function ReplyActs({ turn, text }: { readonly turn: TurnModel; readonly text: string }): ReactNode {
+	const fork = useContext(ForkContext);
+	const now = useNow(turn.endedAt !== null, 30_000);
+	const endSeq = turn.endSeq;
+	return (
+		<div className="racts" data-kind="reply-acts">
+			{text !== "" ? <CopyButton text={text} /> : null}
+			{fork !== null && endSeq !== null ? (
+				<button className="ab" title={t.forkHere} aria-label={t.forkHere} data-act="fork" onClick={() => fork(endSeq)}>
+					<Fork />
+				</button>
+			) : null}
+			{turn.endedAt !== null ? (
+				<span className="ago" data-kind="ago" title={fmt(t.tookAt, { at: new Date(turn.endedAt).toLocaleString("en", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }), took: turn.startedAt === null ? "?" : span(turn.endedAt - turn.startedAt) })}>
+					{ago(turn.endedAt, now)}
+				</span>
+			) : null}
 		</div>
 	);
 }
@@ -85,10 +118,16 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	const [drawn, setDrawn] = useState(true);
 	return (
 		<RunContext.Provider value={turn.id}>
+			<div className="turn">
 			<MePictures pictures={turn.pictures} />
 			{turn.user !== "" || turn.pictures.length === 0 ? (
 				<div className="me" data-kind="me">
 					{turn.user}
+				</div>
+			) : null}
+			{turn.user !== "" ? (
+				<div className="racts me-acts" data-kind="me-acts">
+					<CopyButton text={turn.user} />
 				</div>
 			) : null}
 			{inProcess.length > 0 || live ? <Process turn={turn} items={inProcess} tasks={tasks} onAnswer={onAnswer} interrupted={interrupted} /> : null}
@@ -98,6 +137,8 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Made turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Footer turn={turn} /> : null}
+			{turn.phase === "ended" && !live && (answer === null || drawn) ? <ReplyActs turn={turn} text={answer?.text ?? ""} /> : null}
+			</div>
 		</RunContext.Provider>
 	);
 }, (a, b) => a.turn === b.turn && a.rev === b.rev && a.tasks === b.tasks && a.interrupted === b.interrupted);

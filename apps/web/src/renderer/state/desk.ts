@@ -54,5 +54,7 @@ export const fetchAtFiles = (key: string | null): Promise<{ readonly files: read
 export const saveKey = (profile: string, key: string): Promise<{ readonly ok: true }> => call("/desk/login", { profile, key });
 /** Stop one background task of a Work (the rail's stop): the task manager's own stop, as `/tasks` does in the terminal. */
 export const stopTask = (key: string | null, session: string, task: string): Promise<{ readonly stopped: boolean }> => call(`/desk/task-stop${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { session, task });
+/** Fork a Work at the end of one of its runs; the answer is the new Work's id (the host refuses in words: a seq not at a run's end, a verdict still owed). */
+export const forkWork = (key: string | null, session: string, atSeq: number): Promise<{ readonly id: string }> => call(withKey("/desk/fork", key), { session, atSeq });
 export const startDemo = (): Promise<{ readonly ok: true }> => call("/desk/demo", {});
 export const sendPresence = (key: string | null, session: string, focused: boolean): Promise<unknown> => call("/desk/presence", { key: key ?? "", session, focused });

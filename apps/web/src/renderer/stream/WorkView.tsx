@@ -19,6 +19,8 @@ interface Props {
 	/** an approval a notification pointed at: scrolled to and focused once its card is there */
 	readonly focusDecision?: string | null;
 	readonly onFocused?: () => void;
+	/** a line above the first run (a fork's notice of where it came from) */
+	readonly lead?: ReactNode;
 }
 
 /** A Work on its way: quiet lines, shown after a moment so a quick open never flashes them. */
@@ -32,7 +34,7 @@ export const Loading = (): ReactNode => (
 );
 
 /** One Work: its stream and its input. A Work whose run died offers the resume card. */
-export function WorkView({ session, auto, home, focusDecision, onFocused }: Props): ReactNode {
+export function WorkView({ session, auto, home, focusDecision, onFocused, lead }: Props): ReactNode {
 	const version = useSyncExternalStore(session.subscribe, session.version);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
@@ -172,6 +174,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 							<b>kiso</b>
 						</div>
 					) : null}
+					{turns.length > 0 ? lead : null}
 					{turns.map((turn, i) => (
 						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={(id, allow) => void session.approve(id, allow)} />
 					))}

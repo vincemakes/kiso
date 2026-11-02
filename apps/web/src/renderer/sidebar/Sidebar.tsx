@@ -28,8 +28,8 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings }
 				{groupWorks(works).map((group) => (
 					<section key={group.label}>
 						<div className="grp">{group.label}</div>
-						{group.works.map((row) => (
-							<button key={`${row.key}/${row.id}`} className={`item${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
+						{group.works.map((row, i) => (
+							<button key={`${row.key}/${row.id}`} className={`item${row.parent !== undefined && group.works.some((w) => w.key === row.key && w.id === row.parent) ? (group.works[i + 1]?.parent === row.parent ? " child more" : " child") : ""}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
 								{row.state === "running" ? <span className="sp" title={t.runningNow} /> : row.state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : null}
 								<span className="tt">{row.title === "" ? t.untitled : row.title}</span>
 								<small>{row.folder}</small>

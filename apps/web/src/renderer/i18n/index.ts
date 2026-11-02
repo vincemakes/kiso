@@ -18,5 +18,13 @@ export const span = (ms: number): string => {
 	return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`;
 };
 
+/** just now, 42s ago, 3m ago, 5h ago, 2d ago, then the date (Oct 3): when something happened, one rule everywhere. */
+export const ago = (at: number, now: number): string => {
+	const s = Math.max(0, Math.floor((now - at) / 1000));
+	if (s < 10) return t.justNow;
+	const [n, u] = s < 60 ? [s, "s"] : s < 3600 ? [Math.floor(s / 60), "m"] : s < 86_400 ? [Math.floor(s / 3600), "h"] : [Math.floor(s / 86_400), "d"];
+	return u === "d" && n > 30 ? new Date(at).toLocaleDateString("en", { month: "short", day: "numeric" }) : fmt(t.ago, { n: `${n}${u}` });
+};
+
 /** 1.2k, 42 — a token count as the terminal says it. */
 export const tokens = (n: number | null): string => (n === null ? "?" : n < 1000 ? String(n) : `${(Math.round(n / 100) / 10).toFixed(1)}k`);

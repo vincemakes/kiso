@@ -44,12 +44,22 @@ interface Own {
 	readonly tiers?: Readonly<Record<string, string>>;
 	/** a profile and an effort per Work, for Works whose model was switched in the composer */
 	readonly works?: Readonly<Record<string, Work>>;
+	/** where a forked Work came from: history, never authority (a fork is a peer of its parent) */
+	readonly forks?: Readonly<Record<string, Fork>>;
 	readonly recent?: readonly string[];
 }
 
 interface Work {
 	readonly profile?: string;
 	readonly effort?: string;
+}
+
+export interface Fork {
+	readonly parent: string;
+	/** the parent's title when it was forked (for the fork's notice and its first line) */
+	readonly title: string;
+	readonly atSeq: number;
+	readonly at: number;
 }
 
 const MAX_RECENT = 10;
@@ -162,6 +172,22 @@ export class Settings {
 	/** A Work's own model choice (to put back when its rebuild is refused). */
 	workOf(session: string): Work | undefined {
 		return this.#read().works?.[session];
+	}
+
+	/** A fork starts with its parent's own tier, model and effort, and remembers where it came from. */
+	forked(parent: string, child: string, fork: Fork): void {
+		const own = this.#read();
+		const tier = own.tiers?.[parent];
+		const work = own.works?.[parent];
+		this.write({
+			...(tier !== undefined ? { tiers: { ...own.tiers, [child]: tier } } : {}),
+			...(work !== undefined ? { works: { ...own.works, [child]: work } } : {}),
+			forks: { ...own.forks, [child]: fork },
+		});
+	}
+
+	forkOf(session: string): Fork | undefined {
+		return this.#read().forks?.[session];
 	}
 
 	restoreWork(session: string, work: Work | undefined): void {

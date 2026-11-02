@@ -103,6 +103,8 @@ export interface Turn {
 	live: Footer | null;
 	/** the run's usage at its end, from run_usage */
 	footer: Footer | null;
+	/** the seq of the run's `terminal`: where a fork from this reply is cut */
+	endSeq: number | null;
 }
 
 export interface State {
@@ -201,7 +203,7 @@ export function reduce(s: State, input: Input): State {
 				note(item);
 			} else {
 				const pictures = Array.isArray(e.content) ? (e.content as readonly { type?: string }[]).flatMap((b, n) => (b.type === "image" ? [`log:${e.seq}/${n}`] : [])) : [];
-				s.turns.push({ id: `t${e.seq}`, user: text, pictures, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, live: null, footer: null });
+				s.turns.push({ id: `t${e.seq}`, user: text, pictures, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, live: null, footer: null, endSeq: null });
 			}
 			return s;
 		}
@@ -298,6 +300,7 @@ export function reduce(s: State, input: Input): State {
 			if (turn === undefined) return s;
 			turn.phase = "ended";
 			turn.outcome = e.outcome.kind;
+			turn.endSeq = e.seq;
 			s.last = { seq: e.seq, type: e.type, itemId: null };
 			return s;
 		}

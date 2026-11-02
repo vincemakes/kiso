@@ -121,6 +121,17 @@
 .ans blockquote { margin: 8px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
 .ans hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .acts { color: var(--mute); font: 11.5px var(--mono); animation: in 0.4s var(--ease) both; }
+/* a message's actions: on hover of its run, copy and fork and when it finished (the person's line: copy only) */
+.racts { display: flex; align-items: center; gap: 2px; margin: 2px 0 10px -6px; color: var(--mute); font-size: 12px; opacity: 0; transition: opacity 0.15s; }
+.racts.me-acts { justify-content: flex-end; margin: -2px 0 0; }
+.turn { display: contents; }
+.turn:hover > .racts:not(.me-acts), .me:hover + .me-acts, .racts:hover, .racts:focus-within { opacity: 1; }
+.racts .ab { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; color: var(--mute); }
+.racts .ab:hover { background: rgba(0, 0, 0, 0.05); color: var(--ink); }
+.racts .ago { margin-left: 6px; color: var(--mute); font-size: 11.5px; }
+.forknote { margin: 0 0 14px; padding: 8px 12px; border-radius: 10px; background: #f6f6f4; color: var(--mute); font-size: 12.5px; line-height: 1.5; }
+.forknote.err { color: #b42318; background: #fef3f2; }
+.forknote .flink { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
 
 /* interruptions */
 .ask.resume .btn { margin-top: 8px; }
