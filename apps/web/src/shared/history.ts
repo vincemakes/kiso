@@ -21,6 +21,10 @@ export interface WorkRow {
 	readonly state: WorkState;
 	/** the Work this one was forked from (the sidebar lists a fork after it, one step in) */
 	readonly parent?: string;
+	/** its place among the pinned Works (0: the latest pin) */
+	readonly pinned?: number;
+	/** kept out of the list; the sidebar's Archived line shows it */
+	readonly archived?: true;
 }
 
 export interface HistoryReply {

@@ -41,3 +41,20 @@
 .fn-b > div { overflow: hidden; }
 .fn-b button { display: flex; gap: 10px; align-items: center; width: 100%; padding: 7px 10px; border-radius: 10px; color: #444; }
 .fn-b button:hover, .fn-b button.on { background: rgba(0, 0, 0, 0.045); }
+/* a row's ⋯ on hover (and while its menu is open), over the folder name; the menu is laid over the window at it */
+.row { position: relative; }
+.row .dots { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 24px; border-radius: 7px; display: none; place-items: center; color: #555; }
+.row:hover .dots, .row.menu-open .dots { display: grid; }
+.row:hover .item small, .row.menu-open .item small { visibility: hidden; }
+.row .dots:hover { background: rgba(0, 0, 0, 0.07); }
+.item .pinmark { flex: none; color: var(--mute); display: grid; }
+.item .pinmark .ico { width: 12px; height: 12px; }
+.row-in { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 0; }
+.row-in::selection { background: #cfe0ff; }
+.menu.smenu { position: fixed; right: auto; z-index: 140; min-width: 200px; }
+.menu .sep { height: 1px; background: var(--line); margin: 5px 4px; }
+.menu button.danger { color: #c0392b; }
+.menu button.danger .ico { color: #c0392b; }
+.side-err { margin: 6px 4px; padding: 7px 10px; border-radius: 9px; background: #fef3f2; color: #b42318; font-size: 12.5px; line-height: 1.45; }
+.archived-h { display: block; width: 100%; text-align: left; }
+.archived-h:hover { color: var(--ink); }

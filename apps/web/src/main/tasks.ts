@@ -20,6 +20,8 @@ export interface TaskHub {
 	readonly shellTasks: (sessionId: string | undefined) => ShellTasks | undefined;
 	/** The manager itself, for `session.useTasks` and the frames. */
 	readonly managerFor: (sessionId: string) => TaskManager;
+	/** Release a deleted Work's manager (its pollers and its place in the map). */
+	readonly forget: (sessionId: string) => void;
 	/** Stop every task the process owns and release the pollers. */
 	readonly close: () => Promise<void>;
 }
@@ -41,6 +43,10 @@ export function createTaskHub(storeRoot: string): TaskHub {
 		// the manager satisfies ShellTasks structurally (tools-node takes no runtime dependency)
 		shellTasks: (sessionId) => (sessionId === undefined ? undefined : (managerFor(sessionId) as unknown as ShellTasks)),
 		managerFor,
+		forget: (sessionId) => {
+			managers.get(sessionId)?.close();
+			managers.delete(sessionId);
+		},
 		close: async () => {
 			for (const manager of managers.values()) {
 				await manager.stopAll("exit", 2_000, "moved");

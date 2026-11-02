@@ -27,19 +27,25 @@ export interface Group {
 	readonly works: readonly WorkRow[];
 }
 
-/** Today, yesterday, earlier — by the calendar day on this machine; the input is newest first and stays so. */
+/** Pinned (the latest pin first), then today, yesterday, earlier by the calendar day on this machine; the input is newest first and
+ *  stays so. A fork follows its parent; an archived Work, with its forks, is left out (`archived` lists them). */
 export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[] {
 	const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 	const day = 86_400_000;
-	const buckets: WorkRow[][] = [[], [], []];
-	// a fork is listed right after its parent (the parent's day), the Works without a listed parent in their own order
+	const id = (w: WorkRow, other = w.id): string => `${w.key}/${other}`;
+	const byId = new Map(works.map((w) => [id(w), w]));
+	const out = (w: WorkRow | undefined): boolean => w !== undefined && (w.archived === true || (w.parent !== undefined && out(byId.get(id(w, w.parent)))));
+	const shown = works.filter((w) => !out(w));
+	const ids = new Set(shown.map((w) => id(w)));
+	const under = (w: WorkRow): boolean => w.parent !== undefined && w.pinned === undefined && ids.has(id(w, w.parent));
 	const kids = new Map<string, WorkRow[]>();
-	const ids = new Set(works.map((w) => `${w.key}/${w.id}`));
-	for (const w of works) if (w.parent !== undefined && ids.has(`${w.key}/${w.parent}`)) kids.set(`${w.key}/${w.parent}`, [...(kids.get(`${w.key}/${w.parent}`) ?? []), w]);
-	const after = (w: WorkRow): WorkRow[] => [w, ...(kids.get(`${w.key}/${w.id}`) ?? []).flatMap(after)];
-	const roots = works.filter((w) => w.parent === undefined || !ids.has(`${w.key}/${w.parent}`));
-	for (const root of roots) buckets[root.updatedAt >= midnight ? 0 : root.updatedAt >= midnight - day ? 1 : 2]!.push(...after(root));
-	const labels = [t.today, t.yesterday, t.earlier];
+	for (const w of shown) if (under(w)) kids.set(id(w, w.parent), [...(kids.get(id(w, w.parent!)) ?? []), w]);
+	const after = (w: WorkRow): WorkRow[] => [w, ...(kids.get(id(w)) ?? []).flatMap(after)];
+	const buckets: WorkRow[][] = [[], [], [], []];
+	const roots = shown.filter((w) => !under(w));
+	for (const root of [...roots.filter((w) => w.pinned !== undefined).sort((a, b) => a.pinned! - b.pinned!), ...roots.filter((w) => w.pinned === undefined)])
+		buckets[root.pinned !== undefined ? 0 : root.updatedAt >= midnight ? 1 : root.updatedAt >= midnight - day ? 2 : 3]!.push(...after(root));
+	const labels = [t.pinned, t.today, t.yesterday, t.earlier];
 	return buckets.flatMap((rows, i) => (rows.length === 0 ? [] : [{ label: labels[i]!, works: rows }]));
 }
 

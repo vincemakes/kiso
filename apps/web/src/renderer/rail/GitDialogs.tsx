@@ -2,25 +2,25 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { GitFile } from "../../shared/git.js";
 import { fmt, t } from "../i18n/index.js";
 
-/** A dialog over the window: Esc or Cancel closes it; nothing it holds is done until its confirm. */
-function Dialog({ title, sub, busy, error, confirm, onConfirm, onCancel, children }: { readonly title: string; readonly sub: string; readonly busy: boolean; readonly error: string | null; readonly confirm: string; readonly onConfirm: () => void; readonly onCancel: () => void; readonly children: ReactNode }): ReactNode {
+/** A dialog over the window: Esc or Cancel closes it; nothing it holds is done until its confirm. `kind` names it for the proofs. */
+export function Dialog({ kind = "git", danger = false, title, sub, busy, error, confirm, onConfirm, onCancel, children }: { readonly kind?: string; readonly danger?: boolean; readonly title: string; readonly sub: string; readonly busy: boolean; readonly error: string | null; readonly confirm: string; readonly onConfirm: () => void; readonly onCancel: () => void; readonly children: ReactNode }): ReactNode {
 	useEffect(() => {
 		const key = (e: KeyboardEvent): void => void (e.key === "Escape" && !busy && onCancel());
 		addEventListener("keydown", key);
 		return () => removeEventListener("keydown", key);
 	}, [busy, onCancel]);
 	return (
-		<div className="dlg-veil" data-kind="git-dialog" role="dialog" aria-label={title}>
+		<div className="dlg-veil" data-kind={`${kind}-dialog`} role="dialog" aria-label={title}>
 			<div className="dlg">
 				<h3>{title}</h3>
 				<div className="dlg-sub mono">{sub}</div>
 				{children}
-				{error !== null ? <div className="dlg-err" data-kind="git-error">{error}</div> : null}
+				{error !== null ? <div className="dlg-err" data-kind={`${kind}-error`}>{error}</div> : null}
 				<div className="dlg-btns">
-					<button type="button" onClick={onCancel} disabled={busy} data-act="git-cancel">
+					<button type="button" onClick={onCancel} disabled={busy} data-act={`${kind}-cancel`}>
 						{t.cancel}
 					</button>
-					<button type="button" className="go" onClick={onConfirm} disabled={busy} data-act="git-confirm">
+					<button type="button" className={danger ? "go danger" : "go"} onClick={onConfirm} disabled={busy} data-act={`${kind}-confirm`}>
 						{busy ? t.working : confirm}
 					</button>
 				</div>

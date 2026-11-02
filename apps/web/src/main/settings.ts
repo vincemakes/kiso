@@ -46,6 +46,10 @@ interface Own {
 	readonly works?: Readonly<Record<string, Work>>;
 	/** where a forked Work came from: history, never authority (a fork is a peer of its parent) */
 	readonly forks?: Readonly<Record<string, Fork>>;
+	/** pinned Works, the latest pin first */
+	readonly pins?: readonly string[];
+	/** Works kept out of the list */
+	readonly archived?: readonly string[];
 	readonly recent?: readonly string[];
 }
 
@@ -188,6 +192,27 @@ export class Settings {
 
 	forkOf(session: string): Fork | undefined {
 		return this.#read().forks?.[session];
+	}
+
+	/** Pin or archive a Work (a pin goes first), or take it off. */
+	mark(session: string, list: "pins" | "archived", on: boolean): void {
+		const rest = (this.#read()[list] ?? []).filter((id) => id !== session);
+		this.write({ [list]: on ? [session, ...rest] : rest });
+	}
+
+	/** What the sidebar shows of a Work beyond its log: the fork's parent, its pin's place, whether it is archived. */
+	marksOf(session: string): { readonly parent?: string; readonly pinned?: number; readonly archived?: true } {
+		const own = this.#read();
+		const parent = own.forks?.[session]?.parent;
+		const pinned = own.pins?.indexOf(session) ?? -1;
+		return { ...(parent !== undefined ? { parent } : {}), ...(pinned >= 0 ? { pinned } : {}), ...(own.archived?.includes(session) ? { archived: true as const } : {}) };
+	}
+
+	/** A deleted Work leaves nothing here; a fork's record of it stays (its notice still names the parent). */
+	forget(session: string): void {
+		const own = this.#read();
+		const drop = <T>(m: Readonly<Record<string, T>> | undefined): Record<string, T> => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => k !== session));
+		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session) });
 	}
 
 	restoreWork(session: string, work: Work | undefined): void {
