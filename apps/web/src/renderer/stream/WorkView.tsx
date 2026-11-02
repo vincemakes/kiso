@@ -58,6 +58,15 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 	const last = useRef({ top: 0, height: 0 });
 	const mark = (el: HTMLElement): void => void (last.current = { top: el.scrollTop, height: el.scrollHeight });
 	const [behind, setBehind] = useState(false);
+	// a fold can leave the view below the content's end (blank under the last line): going back to the end is then a glide, not a
+	// jump, and the room goes only once the view is there (removing it first would snap the last line to the bottom)
+	const glide = useRef(false);
+	const settle = (el: HTMLElement): void => {
+		glide.current = false;
+		room(0);
+		raise(0);
+		mark(el);
+	};
 	const toBottom = (smooth = false): void => {
 		pinned.current = true;
 		setBehind(false);
@@ -81,7 +90,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 		const col = column.current;
 		if (el === null || col === null) return;
 		const follow = new ResizeObserver(() => {
-			if (pinned.current) return void (el.scrollTo({ top: el.scrollHeight }), mark(el));
+			if (pinned.current) return void (glide.current || el.scrollTo({ top: el.scrollHeight }), mark(el));
 			const a = anchor.current;
 			if (a !== null && a.el.isConnected) {
 				let want = el.scrollTop + a.el.getBoundingClientRect().top - a.top;
@@ -133,6 +142,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 					// and, while a run can still fold, keep a screen of room below so a fold under them has somewhere to go. They moved down
 					// to the end of the content (not of the room): follow again, and the room goes without moving the view.
 					const el = e.currentTarget;
+					if (glide.current) return void (gap(el) >= -1 ? settle(el) : mark(el));
 					const up = el.scrollTop < last.current.top - 1 && el.scrollHeight >= last.current.height;
 					const down = el.scrollTop > last.current.top + 1;
 					if (up) {
@@ -142,8 +152,12 @@ export function WorkView({ session, auto, home, focusDecision, onFocused }: Prop
 					} else if (down && gap(el) < 40) {
 						pinned.current = true;
 						setBehind(false);
-						room(0);
-						raise(0);
+						if (gap(el) < -1) {
+							// a wheel during the glide cancels it: glide again from wherever it stopped, never drop the room under the view
+							const go = (): void => void (glide.current && (gap(el) < -1 ? (el.scrollTo({ top: el.scrollTop + gap(el), behavior: "smooth" }), setTimeout(go, 400)) : settle(el)));
+							glide.current = true;
+							go();
+						} else (room(0), raise(0));
 					}
 					// a move the page made itself (the anchor kept, above) is no move of the person's: same place as last marked
 					if (!pinned.current && (up || down)) remember();
