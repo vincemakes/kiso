@@ -8,19 +8,15 @@ interface Props {
 	readonly state: State;
 	readonly wkey: string | null;
 	readonly sessionId: string;
-	/** the task to show first (opened from the rail) */
-	readonly focus: string | null;
+	/** the tab shown: a task's id, or COMMANDS (the panel's top bar holds the tabs) */
+	readonly tab: string;
 }
 
-const COMMANDS = "commands";
+export const COMMANDS = "commands";
 
 /** Background tasks with their logs, and the latest run's foreground commands with the first lines they printed. */
-export function Term({ state, wkey, sessionId, focus }: Props): ReactNode {
-	const [tab, setTab] = useState<string>(focus ?? state.tasks[0]?.id ?? COMMANDS);
+export function Term({ state, wkey, sessionId, tab }: Props): ReactNode {
 	const [log, setLog] = useState<{ readonly lines: readonly string[]; readonly truncated: boolean } | null>(null);
-	useEffect(() => {
-		if (focus !== null) setTab(focus);
-	}, [focus]);
 	const task = state.tasks.find((x) => x.id === tab);
 	const running = task !== undefined && task.endedAt === null;
 	useEffect(() => {
@@ -37,16 +33,6 @@ export function Term({ state, wkey, sessionId, focus }: Props): ReactNode {
 	const commands = (state.turns.at(-1)?.items ?? []).filter((i): i is Step => i.kind === "step" && i.name === "shell");
 	return (
 		<div data-panel-body="term">
-			<div className="ttabs">
-				{state.tasks.map((x) => (
-					<button key={x.id} className={tab === x.id ? "on" : ""} onClick={() => setTab(x.id)} data-tab={x.id}>
-						{x.id} {x.label}
-					</button>
-				))}
-				<button className={tab === COMMANDS ? "on" : ""} onClick={() => setTab(COMMANDS)} data-tab={COMMANDS}>
-					{t.commandsTab}
-				</button>
-			</div>
 			{task !== undefined ? (
 				<>
 					<div className="tmeta mono">

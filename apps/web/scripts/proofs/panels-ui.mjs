@@ -1,6 +1,6 @@
-// The panels in a browser tab: the ⋮ menu, Changes (the run's diff), Files (the tree, the changed mark, a markdown preview,
+// The panels in a browser tab: the ⋯ menu, Changes (the run's diff), Files (the tree, the changed mark, a markdown preview,
 // folded folders), Terminal and tasks (a background task's log), Preview (a dev server's address found in the log, loaded in a
-// sandboxed frame, a refused address), the half and full widths, and no diff or terminal tiles in the stream (thumbnails are for what a step made).
+// sandboxed frame, a refused address; tabs of pages, each with its own frame), the terminal's tabs in the top bar, the half and full widths, and no diff or terminal tiles in the stream (thumbnails are for what a step made).
 import { createServer } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -57,9 +57,10 @@ await app.shot("panel-files");
 await app.click("[data-act=panel-menu]");
 await app.click("[data-open=term]");
 check(await waitUntil(async () => (await q(`document.querySelector('[data-log=task]')?.textContent ?? ''`)).includes(devUrl), 15_000), "Terminal and tasks shows the background task's log");
+check((await q("[...document.querySelectorAll('.pv-h [data-tab]')].map((e) => e.dataset.tab).join()")).endsWith(",commands") && (await app.count(".pv-h [data-tab]")) >= 2, "the terminal's tabs are in the panel's top bar: one per background task, then the run's commands");
 await app.click("[data-act=panel-menu]");
 await app.click("[data-open=web]");
-check(await waitUntil(async () => (await q(`document.querySelector('[data-frame]')?.dataset.frame ?? ''`)) === devUrl, 10_000), "Preview finds the dev server's address in the log and loads it");
+check(await waitUntil(async () => (await q(`document.querySelector('[data-frame]')?.dataset.frame ?? ''`)) === devUrl && (await q(`document.querySelector('.ptab.on')?.textContent`)) === devUrl.replace(/^https?:\/\//, ""), 10_000), "Preview finds the dev server's address in the log, loads it, and names its tab by it");
 check((await q(`document.querySelector('[data-frame]').getAttribute('sandbox')`)).split(" ").sort().join() === "allow-forms,allow-same-origin,allow-scripts" && await waitUntil(async () => hits > 0, 8000), "in a sandboxed frame, and the server was reached (the page's policy allows the frame)");
 const typeUrl = async (text) => {
 	await q(`(() => { const el = document.querySelector('[data-field=url]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
@@ -70,6 +71,16 @@ check((await app.count(".pnote.warn")) === 1 && (await q(`document.querySelector
 await typeUrl(`localhost:${await q("location.port")}`);
 check((await app.count(".pnote.warn")) === 1 && (await q(`document.querySelector('[data-frame]').dataset.frame`)) === devUrl, "this app's own address is refused too");
 await app.shot("panel-preview");
+// tabs of one kind: + opens a page beside the first, each tab keeps its own frame, a tab closes
+const front = (sel) => `document.querySelector('.tabpane:not([style*="none"]) ${sel}')`;
+await app.click("[data-act=tab-new]");
+check((await app.count(".ptab")) === 2 && (await q(`document.querySelector('.ptab.on')?.textContent`)) === "New tab" && (await q(`${front("[data-frame]")} === null`)), "+ opens a new tab in front, empty");
+await q(`(() => { const el = ${front("[data-field=url]")}; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ${JSON.stringify(`${devUrl}other`)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+check(await waitUntil(async () => (await q(`document.querySelector('.ptab.on')?.textContent`)) === `${devUrl}other`.replace(/^https?:\/\//, "")), "the tab is named by the page it shows");
+await app.click(".ptab:not(.on)");
+check(await waitUntil(async () => (await q(`${front("[data-frame]")}?.dataset.frame`)) === devUrl) && (await app.count("[data-frame]")) === 2, "back on the first tab its page is still there: each tab keeps its own frame");
+await app.click(".ptab:not(.on) [data-act=tab-close]");
+check(await waitUntil(async () => (await app.count(".ptab")) === 1 && (await app.count("[data-frame]")) === 1), "a tab closes; the other stays");
 await app.click("[data-act=panel-close]");
 check(await waitUntil(async () => (await app.count("[data-kind=panel]")) === 0 && (await geo()).chatRight === (await geo()).mainRight), "closing gives the width back");
 check((await app.count("[data-thumb=diff], [data-thumb=term], .mt")) === 0, "no diff or terminal tiles in the stream: the Changes and Terminal panels open from the menu and the rail");

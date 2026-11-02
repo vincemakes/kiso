@@ -35,9 +35,6 @@
 .diff .h { background: #f1f1ef; color: var(--mute); padding: 4px 12px; }
 .log { font: 12.5px/1.7 ui-monospace, Menlo, monospace; background: #161618; color: #d9d9dc; border-radius: 12px; padding: 14px; min-height: 120px; white-space: pre-wrap; word-break: break-all; }
 .log.txt { background: #fafaf9; color: #333; border: 1px solid var(--line); }
-.ttabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
-.ttabs button { padding: 4px 12px; border-radius: 10px; background: #f3f3f5; font-size: 12.5px; }
-.ttabs button.on { background: var(--ink); color: #fff; }
 .tmeta { padding: 4px 0 8px; }
 .cmd { margin-bottom: 12px; }
 .crumbs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 8px; font-size: 12.5px; color: var(--mute); }
@@ -101,3 +98,16 @@ input.hdr-title.edit { width: min(440px, 55%); max-width: none; border: 0; outli
 input.hdr-title.edit:hover { background: transparent; }
 .hdr-title.edit::selection { background: #cfe0ff; }
 .hdr-sub { min-width: 0; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a panel's tabs of one kind in its top bar: pages in the browser, tasks in the terminal; + opens a page, each page closes */
+.ptabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; margin-right: auto; }
+.ptab { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 200px; height: 32px; padding: 0 6px 0 10px; border-radius: 9px; color: #555; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.ptab > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ptab:hover { background: var(--sunk); }
+.ptab.on { background: #fff; color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.ptab .i16 { color: var(--mute); }
+.ptab-x { width: 18px; height: 18px; flex: none; border-radius: 5px; display: grid; place-items: center; color: var(--faint); }
+.ptab-x:hover { background: #e7e7ea; color: var(--ink); }
+.ptab-x .i16 { width: 12px; height: 12px; }
+.tabpane { flex: 1; min-height: 0; flex-direction: column; }
+.urlbar a, .urlbar button { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: #555; }
+.urlbar a:hover, .urlbar button:hover { background: #ececef; }
