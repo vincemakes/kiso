@@ -1,5 +1,6 @@
 import type { DirsReply } from "../../shared/files.js";
-import type { SettingsPatch, SettingsReply } from "../../shared/settings.js";
+import type { ContextParts, SettingsPatch, SettingsReply } from "../../shared/settings.js";
+import type { GitReply } from "../../shared/git.js";
 
 /** The page's calls to the host's own doors (`/desk/...`); the session cookie goes with each, the page adds nothing. */
 
@@ -34,6 +35,18 @@ export const fetchRecent = (): Promise<{ readonly recent: readonly { readonly fo
 export const fetchSettings = (session?: string): Promise<SettingsReply> => call(`/desk/settings${session === undefined ? "" : `?session=${encodeURIComponent(session)}`}`);
 /** `key`: the folder the Work is in, so a Work's model change rebuilds it in its own space. */
 export const saveSettings = (patch: SettingsPatch, key: string | null = null): Promise<SettingsReply> => call(`/desk/settings${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, patch);
+const withKey = (path: string, key: string | null, more: Record<string, string> = {}): string => {
+	const q = new URLSearchParams({ ...(key === null ? {} : { key }), ...more }).toString();
+	return q === "" ? path : `${path}?${q}`;
+};
+/** The rail's Changes from git; `draft`: the pull request dialog's starting title and body. */
+export const fetchGit = (key: string | null): Promise<GitReply> => call(withKey("/desk/git", key));
+export const fetchPrDraft = (key: string | null): Promise<{ readonly title: string; readonly body: string }> => call(withKey("/desk/git", key, { draft: "1" }));
+/** On the person's confirm only: commit the ticked files; push and open the pull request. */
+export const postCommit = (key: string | null, message: string, paths: readonly string[]): Promise<{ readonly sha: string }> => call(withKey("/desk/commit", key), { message, paths });
+export const postPr = (key: string | null, title: string, body: string): Promise<{ readonly number: number; readonly url: string }> => call(withKey("/desk/pr", key), { title, body });
+/** What a Work's requests always carry (bytes), and its compaction sizes. */
+export const fetchContext = (key: string | null, session: string): Promise<ContextParts> => call(withKey("/desk/context", key, { session }));
 /** The files `@` can name in a Work's folder (git's list, else a bounded walk). */
 export const fetchAtFiles = (key: string | null): Promise<{ readonly files: readonly string[]; readonly truncated: boolean }> => call(`/desk/at-files${key === null ? "" : `?key=${encodeURIComponent(key)}`}`);
 export const saveKey = (profile: string, key: string): Promise<{ readonly ok: true }> => call("/desk/login", { profile, key });

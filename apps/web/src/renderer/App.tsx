@@ -16,7 +16,9 @@ import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
 import { Folders } from "./home/Folders.js";
-import { chooseFolder, fetchAtFiles, fetchSettings, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { CommitDialog, PrDialog } from "./rail/GitDialogs.js";
+import type { GitReply } from "../shared/git.js";
 import { ControlsContext, type Controls } from "./stream/ComposerMenus.js";
 import { signIn } from "./state/auth.js";
 import { watchNotices } from "./state/notify.js";
@@ -24,7 +26,7 @@ import { launchParams, openSession, type Session } from "./state/store.js";
 import { fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
 import { t } from "./i18n/index.js";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
-import type { EnvReply, SettingsReply } from "../shared/settings.js";
+import type { ContextParts, EnvReply, SettingsReply } from "../shared/settings.js";
 
 // read once, when the page loads: the address fragment can be read only once
 const launch = launchParams();
@@ -83,6 +85,26 @@ export function App(): ReactNode {
 	const version = useSyncExternalStore(session?.subscribe ?? NO_SUBSCRIPTION, session?.version ?? NO_VERSION);
 	const shown = history?.works.some((w) => w.id === target.sessionId) ?? false;
 	const started = (session?.state.turns.length ?? 0) > 0;
+	// the rail's Changes from git and the Context parts: read when the Work or its settings change and when a run ends; a pull
+	// request whose checks are still running is read again every 20 s
+	const [git, setGit] = useState<GitReply | null>(null);
+	const [parts, setParts] = useState<ContextParts | null>(null);
+	const [dialog, setDialog] = useState<"commit" | "pr" | null>(null);
+	const refreshGit = useCallback(() => void fetchGit(target.key).then(setGit, () => setGit(null)), [target.key]);
+	const lastPhase = session?.state.turns.at(-1)?.phase ?? null;
+	const turns = session?.state.turns.length ?? 0;
+	useEffect(() => {
+		if (signedIn !== true || view !== "work") return;
+		refreshGit();
+		void fetchContext(target.key, target.sessionId).then(setParts, () => setParts(null));
+	}, [target, view, signedIn, settingsBump, settings, lastPhase, turns, refreshGit]);
+	const pending = git?.pr != null && git.pr.state === "OPEN" && git.pr.checks.done < git.pr.checks.total;
+	useEffect(() => {
+		if (!pending) return;
+		const timer = setInterval(refreshGit, 20_000);
+		return () => clearInterval(timer);
+	}, [pending, refreshGit]);
+	const prDraft = useCallback(() => fetchPrDraft(target.key), [target.key]);
 	useEffect(() => {
 		if (started && !shown && history !== null) refresh(target.key ?? history.current.key);
 	}, [started, shown, version, target, history === null, refresh]);
@@ -248,7 +270,19 @@ export function App(): ReactNode {
 					</div>
 				)}
 			</main>
-			{railOn && session !== null ? <Rail state={session.state} env={env} onStopTask={(id) => void stopTask(target.key, target.sessionId, id)} /> : null}
+			{railOn && session !== null ? <Rail state={session.state} env={env} git={git} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => void stopTask(target.key, target.sessionId, id)} /> : null}
+			{dialog === "commit" && git?.branch != null ? (
+				<CommitDialog
+					branch={git.branch}
+					files={git.files.filter((f) => f.dirty)}
+					draft={(session?.state.turns.at(-1)?.user ?? "").split("\n")[0]!.slice(0, 72)}
+					onCommit={(message, paths) => postCommit(target.key, message, paths).then(() => (setDialog(null), refreshGit()))}
+					onCancel={() => setDialog(null)}
+				/>
+			) : null}
+			{dialog === "pr" && git?.branch != null && git.base !== null ? (
+				<PrDialog branch={git.branch} base={git.base} ahead={git.ahead} draft={prDraft} onCreate={(title, body) => postPr(target.key, title, body).then(() => (setDialog(null), refreshGit()))} onCancel={() => setDialog(null)} />
+			) : null}
 			{lightbox !== null ? (
 				<KeyContext.Provider value={target.key}>
 					<Lightbox focus={lightbox} onClose={closeLightbox} />

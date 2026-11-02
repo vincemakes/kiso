@@ -50,6 +50,7 @@ export const I = {
 	close: i16(<path d="M6 6l12 12M18 6 6 18" />),
 	download: i16(<path d="M12 4v12M7 11l5 5 5-5M5 20h14" />),
 	chevron: i16(<path d="m6 9 6 6 6-6" />),
+	pr: i16(<><circle cx="6" cy="6" r="2" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 8v8M18 16V9a3 3 0 0 0-3-3h-4M13 4l-2 2 2 2" /></>),
 };
 /** An artifact's icon by its kind and name: an image, a page, markdown, code or any other file. */
 export const artifactIcon = (kind: string, path: string): ReactNode =>
