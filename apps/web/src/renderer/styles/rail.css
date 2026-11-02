@@ -37,8 +37,43 @@
 .r-ctx .r-sh { height: 38px; }
 .r-ctxv { font: 12px ui-monospace, Menlo, monospace; color: var(--mute); white-space: nowrap; }
 .r-ctxv b { color: var(--ink); font-weight: 600; }
-.r-meter { height: 4px; margin: -2px 12px 8px 42px; border-radius: 999px; background: #ebebef; overflow: hidden; }
-.r-meter b { display: block; height: 100%; border-radius: 999px; background: var(--blue); transition: width 0.8s var(--ease); }
+.r-meter { position: relative; display: flex; gap: 1px; height: 4px; margin: -2px 12px 8px 42px; border-radius: 999px; background: #ebebef; }
+.r-meter b { flex: none; display: block; height: 100%; border-radius: 999px; background: var(--blue); transition: width 0.8s var(--ease); }
+.r-meter .tick { position: absolute; top: -3px; width: 2px; height: 10px; margin-left: -1px; border-radius: 1px; background: #8e8e96; }
+.r-meter .tick.soft { background: #c9c9cf; }
+/* the Context breakdown's colours: the conversation blue, the fixed parts warm, the free room the track */
+.seg-conversation { background: var(--blue) !important; }
+.seg-system { background: #8b5cf6 !important; }
+.seg-instructions { background: #14b8a6 !important; }
+.seg-tools { background: #f97316 !important; }
+.seg-free { background: #ebebef; box-shadow: inset 0 0 0 1px #dcdce1; }
+.r-parts { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.r-part { display: grid; grid-template-columns: 10px 1fr auto 44px; align-items: center; gap: 8px; height: 22px; color: #444; }
+.r-part .sw { width: 9px; height: 9px; border-radius: 2px; }
+.r-part b { font: 500 11.5px ui-monospace, Menlo, monospace; color: var(--mute); text-align: right; }
+.r-part em { font: normal 11.5px ui-monospace, Menlo, monospace; color: var(--ink); text-align: right; }
+.r-parts small { color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+.r-act { flex: none; margin-left: 4px; padding: 2px 9px; border: 1px solid #d5d5da; border-radius: 7px; background: #fff; color: var(--ink); font-size: 12px; white-space: nowrap; }
+.r-act:hover { background: var(--sunk); }
+.r-pr { text-decoration: none; }
+.r-ci { flex: none; font: 11.5px ui-monospace, Menlo, monospace; color: var(--green); }
+.r-ci.run { color: var(--amber); }
+.r-ci.bad { color: var(--red); }
+/* the commit and pull request dialogs: over the window, nothing done before the confirm */
+.dlg-veil { position: fixed; inset: 0; z-index: 210; display: grid; place-items: center; background: rgba(20, 20, 24, 0.32); padding: 16px; }
+.dlg { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; background: #fff; border-radius: 14px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25); padding: 18px 20px; animation: in 0.15s var(--ease) both; }
+.dlg h3 { margin: 0 0 4px; font-size: 15px; }
+.dlg-sub { margin-bottom: 10px; }
+.dlg-l { display: block; margin: 10px 0 4px; color: var(--mute); font-size: 12px; }
+.dlg-in { width: 100%; border: 1px solid #dfdfe4; border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
+.dlg-files { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow: auto; padding: 4px 0; }
+.dlg-file { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.dlg-file small { color: var(--mute); }
+.dlg-err { margin-top: 10px; padding: 7px 10px; border-radius: 8px; background: #fff4ec; color: #9a3412; font-size: 12.5px; }
+.dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.dlg-btns button { padding: 6px 14px; border: 1px solid #d5d5da; border-radius: 9px; background: #fff; font-size: 13px; }
+.dlg-btns .go { background: var(--ink); border-color: var(--ink); color: #fff; }
+.dlg-btns button:disabled { opacity: 0.6; }
 .r-kv { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; margin: 0 12px 6px 42px; font-size: 12.5px; color: #555; }
 .r-kv b { font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .r-kv small { grid-column: 1 / -1; color: var(--faint); font-size: 11.5px; margin-top: 4px; }

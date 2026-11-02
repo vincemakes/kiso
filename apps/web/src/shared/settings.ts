@@ -44,3 +44,12 @@ export interface SettingsPatch {
 	readonly mode?: string;
 	readonly session?: string;
 }
+
+/** What `GET /desk/context?session=` answers: what a Work's requests always carry, in bytes (the page estimates tokens from them and
+ *  says so), and the context sizes at which compaction becomes eligible and must happen (the runtime's tiers; null without a stated window). */
+export interface ContextParts {
+	readonly system: number;
+	readonly instructions: number;
+	readonly tools: { readonly count: number; readonly bytes: number };
+	readonly compaction: { readonly starts: number; readonly must: number } | null;
+}

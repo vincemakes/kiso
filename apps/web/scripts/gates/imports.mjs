@@ -16,6 +16,8 @@ const INTERNAL_ALLOWED = {
 	// the model table's input modalities (whether a profile's model reads pictures), as the terminal's own config door reads it;
 	// no root export carries the table (adding one is a public-surface change)
 	"src/main/settings.ts": ["@vincemakes/kiso-runtime/internal"],
+	// the runtime's compaction tiers, for the rail's Context: where compaction starts and must happen (no root export carries them)
+	"src/main/context.ts": ["@vincemakes/kiso-runtime/internal"],
 };
 
 /** workspace package name → its `exports` keys (null: no exports map). */

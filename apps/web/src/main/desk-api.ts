@@ -3,6 +3,8 @@ import { realpathSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-code/config";
 import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
+import { contextParts } from "./context.js";
+import { commit, gitOf, openPr, prDraft } from "./git.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
 import type { Previews } from "./preview.js";
@@ -16,7 +18,7 @@ import type { SettingsPatch } from "../shared/settings.js";
 
 /**
  * The page's own doors (everything under `/desk/`), behind the host's guard: settings, a Work's environment, the folder's tree
- * and files, the files `@` can name, task logs and stopping a task, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
+ * and files, the files `@` can name, task logs and stopping a task, the Context parts, git's changes and, on the person's confirm, a commit and a pull request, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
  * `{ status, body }`; a body never holds a credential.
  */
 
@@ -67,6 +69,29 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 		if (path === "/desk/at-files") {
 			if (space === null) return json(404, {});
 			return req.method === "GET" ? json(200, atFiles(space)) : json(405, {});
+		}
+		if (path === "/desk/context") {
+			if (space === null) return json(404, {});
+			const session = url.searchParams.get("session") ?? undefined;
+			let window: number | null = null;
+			try {
+				const m = ctx.settings.model(session === undefined ? undefined : { sessionId: session, sessionsDir: space.dir });
+				window = m.kind === "profile" ? (m.contextWindow ?? null) : null;
+			} catch {
+				// no model: the parts are still known, the compaction sizes are not
+			}
+			return req.method === "GET" ? json(200, contextParts(space.workspace, ctx.settings.tierOf(session), window)) : json(405, {});
+		}
+		if (path === "/desk/git") {
+			if (space === null) return json(404, {});
+			return req.method === "GET" ? json(200, url.searchParams.has("draft") ? await prDraft(space.workspace) : await gitOf(space.workspace)) : json(405, {});
+		}
+		if (path === "/desk/commit" || path === "/desk/pr") {
+			if (!post) return json(405, {});
+			if (space === null) return json(404, {});
+			const body = await readJson(req);
+			if (path === "/desk/commit") return json(200, await commit(space.workspace, str(body["message"]) ?? "", Array.isArray(body["paths"]) ? body["paths"].filter((p): p is string => typeof p === "string") : []));
+			return json(200, await openPr(space.workspace, str(body["title"]) ?? "", str(body["body"]) ?? ""));
 		}
 		if (path === "/desk/task-stop") {
 			if (!post) return json(405, {});

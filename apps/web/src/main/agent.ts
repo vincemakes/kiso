@@ -92,6 +92,13 @@ class WebAgent extends Agent {
 	}
 }
 
+/** The system prompt a Work's agent is built with: the terminal's prompt for the folder (its project instructions included), and the tier's note. */
+export function promptOf(workspace: string, tier: PermissionMode): string {
+	const prompt = composeSystemPrompt(workspace, protectedFiles());
+	const modeNote = modeSystemPrompt(tier);
+	return modeNote === undefined ? prompt : `${prompt}\n\n${modeNote}`;
+}
+
 export function createWebAgent(options: WebAgentOptions): Agent {
 	const { store, workspace, model } = options;
 	const root = (): string => workspace;
@@ -105,13 +112,11 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 		...(options.toolLimits !== undefined ? { limits: options.toolLimits } : {}),
 	};
 	const window = model.kind === "profile" ? model.contextWindow : undefined;
-	const prompt = composeSystemPrompt(workspace, protectedFiles());
-	const modeNote = modeSystemPrompt(options.tier());
 	const definition: AgentDefinition = {
 		model: model.kind === "adapter" ? model.model : model.profile.model,
 		store,
 		workspace,
-		systemPrompt: modeNote === undefined ? prompt : `${prompt}\n\n${modeNote}`,
+		systemPrompt: promptOf(workspace, options.tier()),
 		toolRules: CODING_TOOL_RULES,
 		tools: [...createCodingTools(toolOptions)],
 		// the terminal's chain, in its order: the guards that deny speak first

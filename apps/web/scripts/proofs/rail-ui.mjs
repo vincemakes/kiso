@@ -66,7 +66,7 @@ check((await app.count("[data-field=output]")) === 1 && (await q("document.query
 tip = await hover("env");
 check((await field("env")).includes("feature-rail") && (await field("tier")) === "Edits allowed" && tip.includes(workspace.split("/").pop()), "the footer names the folder, the branch and the permission tier");
 await q(`document.querySelector('[data-field=env]').dispatchEvent(new MouseEvent('mouseleave'))`);
-const icons = await q("JSON.stringify([...document.querySelectorAll('[data-kind=rail] svg')].map((e) => { const c = getComputedStyle(e); return [Math.round(e.getBoundingClientRect().width), c.strokeWidth]; }))").then(JSON.parse);
+const icons = await q("JSON.stringify([...document.querySelectorAll('[data-kind=rail] svg')].map((e) => { const c = getComputedStyle(e); return [Math.round(parseFloat(c.width)), c.strokeWidth]; }))").then(JSON.parse);
 check(icons.length >= 6 && icons.every(([w, sw]) => w === 16 && sw === "1.75px"), `every icon in the rail is one size and one stroke (${icons.length} icons, 16 px, 1.75)`);
 await app.click("[data-field=output]");
 check(await waitUntil(async () => (await q("document.querySelector('[data-kind=panel]')?.dataset.panel")) === "open" && (await app.count("[data-kind=lightbox]")) === 0 && (await q("document.querySelector('.rail').getBoundingClientRect().width")) <= 1), "an output that is not a picture opens in the Open panel, which takes the rail's place");

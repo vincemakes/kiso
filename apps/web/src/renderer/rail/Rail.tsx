@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import type { EnvReply } from "../../shared/settings.js";
+import type { ContextParts, EnvReply } from "../../shared/settings.js";
+import type { GitReply } from "../../shared/git.js";
 import type { TaskRow } from "../../shared/frames.js";
 import { clock, fmt, t, tokens } from "../i18n/index.js";
 import type { State } from "../state/model.js";
@@ -36,7 +37,17 @@ interface Props {
 	readonly state: State;
 	readonly env: EnvReply | null;
 	readonly onStopTask: (id: string) => void;
+	/** the folder's changes from git (null: not read yet); outside git the rail falls back to the Work's own edits from the log */
+	readonly git: GitReply | null;
+	/** what the Work's requests always carry, for the Context breakdown (null: not read yet) */
+	readonly parts: ContextParts | null;
+	readonly onCommit: () => void;
+	readonly onPr: () => void;
 }
+
+/** Tokens estimated from bytes (about four bytes a token for English and code): the breakdown says it is an estimate. */
+const est = (bytes: number): number => Math.round(bytes / 4);
+const pctOf = (n: number, of: number | null): string => (of === null || of === 0 ? "" : `${((n / of) * 100).toFixed(1)}%`);
 
 /**
  * The rail: one column of hairline sections, glanceable, no cards. Context (folded to one row and a bar), the background tasks
@@ -44,7 +55,7 @@ interface Props {
  * (opened the one way the stream opens them), and where it runs. It carries no state of the run itself: the stream shows the live
  * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
  */
-export function Rail({ state, env, onStopTask }: Props): ReactNode {
+export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
 	const rail = railOf(state);
 	const openPanel = useOpenPanel();
 	const openArtifact = useOpenArtifact();
@@ -66,6 +77,15 @@ export function Rail({ state, env, onStopTask }: Props): ReactNode {
 	const live = state.tasks.filter((x) => x.endedAt === null);
 	const done = state.tasks.filter((x) => x.endedAt !== null);
 	const changes = workChangesOf(state, env?.root ?? null);
+	const g = git?.repo === true ? git : null;
+	const rows = g !== null ? g.files.map((f) => ({ path: f.path, added: f.added ?? 0, removed: f.removed ?? 0, created: f.state === "new", exact: f.added !== null, deleted: f.state === "deleted" })) : changes.map((c) => ({ ...c, deleted: false }));
+	// the Context breakdown: the parts every request carries (estimated from bytes), the conversation as the measured rest, the free room
+	const fixed = parts === null ? null : [
+		{ key: "system", name: t.ctxSystem, tokens: est(parts.system) },
+		...(parts.instructions > 0 ? [{ key: "instructions", name: t.ctxInstructions, tokens: est(parts.instructions) }] : []),
+		{ key: "tools", name: fmt(t.ctxTools, { n: parts.tools.count }), tokens: est(parts.tools.bytes) },
+	];
+	const segments = fixed === null || used === null ? null : [{ key: "conversation", name: t.ctxConversation, tokens: Math.max(0, used - fixed.reduce((n, f) => n + f.tokens, 0)) }, ...fixed];
 	const outputs = outputsOf(state);
 	const now = Date.now();
 	const task = (x: TaskRow): ReactNode => (
@@ -108,10 +128,38 @@ export function Rail({ state, env, onStopTask }: Props): ReactNode {
 							</span>
 						</button>
 						<div className="r-meter" aria-hidden="true">
-							<b style={{ width: `${share ?? 0}%` }} />
+							{segments !== null && window !== null ? segments.map((x) => <b key={x.key} className={`seg-${x.key}`} style={{ width: `${(x.tokens / window) * 100}%` }} />) : <b style={{ width: `${share ?? 0}%` }} />}
+							{parts?.compaction != null && window !== null ? (
+								<>
+									<i className="tick soft" style={{ left: `${(parts.compaction.starts / window) * 100}%` }} title={t.ctxStarts} />
+									<i className="tick" style={{ left: `${(parts.compaction.must / window) * 100}%` }} title={t.ctxMust} />
+								</>
+							) : null}
 						</div>
 						{folded["context"] ? null : (
 							<div className="r-kv" data-field="context-detail">
+								{segments === null ? null : (
+									<div className="r-parts" data-field="context-parts">
+										{segments.map((x) => (
+											<div key={x.key} className="r-part" data-part={x.key}>
+												<i className={`sw seg-${x.key}`} />
+												<span>{x.name}</span>
+												<b>≈{tokens(x.tokens)}</b>
+												<em>{pctOf(x.tokens, window)}</em>
+											</div>
+										))}
+										{window !== null && used !== null ? (
+											<div className="r-part" data-part="free">
+												<i className="sw seg-free" />
+												<span>{t.ctxFree}</span>
+												<b>{tokens(Math.max(0, window - used))}</b>
+												<em>{pctOf(Math.max(0, window - used), window)}</em>
+											</div>
+										) : null}
+										{parts?.compaction != null ? <small>{fmt(t.ctxCompaction, { starts: tokens(parts.compaction.starts), must: tokens(parts.compaction.must) })}</small> : null}
+										<small>{t.ctxEstimate}</small>
+									</div>
+								)}
 								<span>{t.railUsed}</span>
 								<b>{used === null ? "—" : used.toLocaleString()}</b>
 								<span>{t.railWindow}</span>
@@ -147,32 +195,55 @@ export function Rail({ state, env, onStopTask }: Props): ReactNode {
 							{finished ? done.map(task) : null}
 						</Section>
 					)}
-					{changes.length === 0 && (env?.branch ?? null) === null ? null : (
+					{rows.length === 0 && (g?.branch ?? env?.branch ?? null) === null ? null : (
 						<Section
 							id="changes"
 							name={t.railChanges}
-							count={changes.length}
+							count={rows.length}
 							extra={
 								<span className="r-mt">
-									<span className="add">+{changes.reduce((n, c) => n + c.added, 0)}</span> <span className="del">−{changes.reduce((n, c) => n + c.removed, 0)}</span>
+									<span className="add">+{rows.reduce((n, c) => n + c.added, 0)}</span> <span className="del">−{rows.reduce((n, c) => n + c.removed, 0)}</span>
 								</span>
 							}
 							open={!folded["changes"]}
 							onToggle={toggle("changes")}
 						>
-							{env?.branch == null ? null : (
-								<div className="r-row r-br" data-field="branch">
+							{(g?.branch ?? env?.branch ?? null) === null ? null : (
+								<div className="r-row r-br" data-field="branch-row">
 									<span className="r-ic">
 										<I.branch />
 									</span>
-									<span className="r-nm mono">{env.branch}</span>
+									<span className="r-nm mono" data-field="branch">{g?.branch ?? env?.branch}</span>
+									{g?.base != null && g.base !== g.branch ? <span className="r-mt">→ {g.base}{g.ahead > 0 ? ` ↑${g.ahead}` : ""}</span> : null}
+									{g === null || g.pr !== null ? null : g.dirty ? (
+										<button className="r-act" onClick={onCommit} data-act="commit">
+											{t.commitOpen}
+										</button>
+									) : g.canPr && g.ahead > 0 ? (
+										<button className="r-act" onClick={onPr} data-act="create-pr">
+											{t.prOpen}
+										</button>
+									) : null}
 								</div>
 							)}
-							{changes.map((c) => (
+							{g?.pr == null ? null : (
+								<a className="r-row r-pr" href={g.pr.url} target="_blank" rel="noreferrer" data-field="pr" title={g.pr.title}>
+									<span className="r-ic">
+										<I.pr />
+									</span>
+									<span className="r-nm">
+										#{g.pr.number} {g.pr.title}
+									</span>
+									<span className={`r-ci${g.pr.checks.failed > 0 ? " bad" : g.pr.checks.done < g.pr.checks.total ? " run" : ""}`} data-field="pr-checks">
+										{g.pr.state === "MERGED" ? t.prMerged : g.pr.checks.total === 0 ? "" : `${g.pr.checks.done}/${g.pr.checks.total}`}
+									</span>
+								</a>
+							)}
+							{rows.map((c) => (
 								<div className="r-row" key={c.path} data-field="change" title={c.path} onClick={() => openPanel("diff")}>
 									<span className="r-ic">{artifactIcon("file", c.path)}</span>
 									<span className="r-nm">{c.path.split("/").pop()}</span>
-									<span className="r-mt">{c.created ? t.railNew : c.exact ? <><span className="add">+{c.added}</span> <span className="del">−{c.removed}</span></> : t.deltaModified}</span>
+									<span className="r-mt">{c.deleted ? t.gitState.deleted : c.created ? t.railNew : c.exact ? <><span className="add">+{c.added}</span> <span className="del">−{c.removed}</span></> : t.deltaModified}</span>
 								</div>
 							))}
 						</Section>
