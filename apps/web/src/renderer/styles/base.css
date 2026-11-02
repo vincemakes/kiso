@@ -5,6 +5,7 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 textarea { font: inherit; color: inherit; }
 svg { display: block; }
 .ico { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.i16 { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 
 /* the stream starts below the row of the sidebar toggle, so scrolled text never draws under it; its top edge fades */
 .scroll { position: absolute; inset: 54px 0 112px 0; overflow-y: auto; overflow-anchor: none; padding: 0 0 40px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 14px); mask-image: linear-gradient(to bottom, transparent, #000 14px); }

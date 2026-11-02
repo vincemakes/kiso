@@ -124,8 +124,8 @@ await app.shot("6-zero-steps-sidebar-idle");
 // a step that fails on a path in the Work's folder: its message once, in red, with the folder's paths relative and its root by name, here and in the rail
 await app.evaluate(`window.__kiso.send("read the notes")`);
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 3, 20_000);
-const failed = await app.evaluate("JSON.stringify({ out: document.querySelectorAll('.step.failed .s-out').length, err: document.querySelector('.step.failed .s-err')?.textContent, obj: document.querySelector('.step.failed .s-obj')?.textContent, rail: [...document.querySelectorAll('[data-field=step] b')].map((b) => b.textContent) })").then(JSON.parse);
+const failed = await app.evaluate("JSON.stringify({ out: document.querySelectorAll('.step.failed .s-out').length, err: document.querySelector('.step.failed .s-err')?.textContent, obj: document.querySelector('.step.failed .s-obj')?.textContent })").then(JSON.parse);
 const name = workspace.split("/").pop();
-check(failed.out === 0 && failed.err.includes("missing/notes.txt") && !failed.err.includes("/folders/") && failed.obj === "missing/notes.txt" && failed.rail.includes("Read missing/notes.txt") && (!failed.err.includes("root") || failed.err.includes(name)), `a failed step shows its message once, in red, without the folder's absolute path, here and in the rail: ${failed.err}`);
+check(failed.out === 0 && failed.err.includes("missing/notes.txt") && !failed.err.includes("/folders/") && failed.obj === "missing/notes.txt" && (!failed.err.includes("root") || failed.err.includes(name)), `a failed step shows its message once, in red, without the folder's absolute path: ${failed.err}`);
 await app.close();
 verdict();

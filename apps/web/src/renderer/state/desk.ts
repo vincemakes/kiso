@@ -34,5 +34,7 @@ export const fetchRecent = (): Promise<{ readonly recent: readonly { readonly fo
 export const fetchSettings = (session?: string): Promise<SettingsReply> => call(`/desk/settings${session === undefined ? "" : `?session=${encodeURIComponent(session)}`}`);
 export const saveSettings = (patch: SettingsPatch): Promise<SettingsReply> => call("/desk/settings", patch);
 export const saveKey = (profile: string, key: string): Promise<{ readonly ok: true }> => call("/desk/login", { profile, key });
+/** Stop one background task of a Work (the rail's stop): the task manager's own stop, as `/tasks` does in the terminal. */
+export const stopTask = (key: string | null, session: string, task: string): Promise<{ readonly stopped: boolean }> => call(`/desk/task-stop${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { session, task });
 export const startDemo = (): Promise<{ readonly ok: true }> => call("/desk/demo", {});
 export const sendPresence = (key: string | null, session: string, focused: boolean): Promise<unknown> => call("/desk/presence", { key: key ?? "", session, focused });

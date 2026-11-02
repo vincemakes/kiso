@@ -9,7 +9,7 @@ import type { Space } from "./space.js";
  * exists in the Work's folder.
  */
 
-const SAFE_ID = /^[A-Za-z0-9._-]+$/;
+export const SAFE_ID = /^[A-Za-z0-9._-]+$/;
 
 export function deskRead(url: URL, space: Space): { readonly status: number; readonly body: unknown } {
 	try {

@@ -11,11 +11,12 @@ import { isLive } from "./state/model.js";
 import { RootContext } from "./stream/root.js";
 import { KeyContext, WorkContext } from "./stream/links.js";
 import { Loading, WorkView } from "./stream/WorkView.js";
+import { Lightbox, LightboxContext } from "./stream/Lightbox.js";
 import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
 import { Folders } from "./home/Folders.js";
-import { chooseFolder, fetchSettings, saveSettings, sendPresence, type OpenWork } from "./state/desk.js";
+import { chooseFolder, fetchSettings, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
 import { signIn } from "./state/auth.js";
 import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
@@ -89,7 +90,10 @@ export function App(): ReactNode {
 		if (view === "work" && signedIn === true) void fetchEnv(target.key).then(setEnv, () => undefined);
 	}, [target, view, signedIn]);
 	const railOn = started && view === "work";
-	const railOpen = railOn && railChoice;
+	// an open panel takes the rail's place; closing it gives the rail back
+	const railOpen = railOn && railChoice && panel === null;
+	const [lightbox, setLightbox] = useState<string | null>(null);
+	const closeLightbox = useCallback(() => setLightbox(null), []);
 	const attention = session === null ? 0 : railOf(session.state).attention;
 	const openPanel = useCallback((kind: PanelKind, focus?: string): void => setPanel((p) => ({ kind, mode: p?.mode ?? "half", focus: focus ?? null })), []);
 	useEffect(() => {
@@ -159,6 +163,7 @@ export function App(): ReactNode {
 	if (signedIn === false) return <div className="signedout" data-kind="signedout">{t.signedOut}</div>;
 	return (
 		<PanelContext.Provider value={openPanel}>
+		<LightboxContext.Provider value={setLightbox}>
 		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
 			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
@@ -184,7 +189,7 @@ export function App(): ReactNode {
 			/>
 			{railOn ? <PanelMenu onPick={openPanel} /> : null}
 			{railOn ? (
-				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => setRailChoice(!railChoice)} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
+				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
 					<Overview />
 					{attention > 0 ? (
 						<span className="tbadge" data-field="badge">
@@ -233,8 +238,14 @@ export function App(): ReactNode {
 					</div>
 				)}
 			</main>
-			{railOn && session !== null ? <Rail state={session.state} env={env} /> : null}
+			{railOn && session !== null ? <Rail state={session.state} env={env} onStopTask={(id) => void stopTask(target.key, target.sessionId, id)} /> : null}
+			{lightbox !== null ? (
+				<KeyContext.Provider value={target.key}>
+					<Lightbox focus={lightbox} onClose={closeLightbox} />
+				</KeyContext.Provider>
+			) : null}
 		</div>
+		</LightboxContext.Provider>
 		</PanelContext.Provider>
 	);
 }

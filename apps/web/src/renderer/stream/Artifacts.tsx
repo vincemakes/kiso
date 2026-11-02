@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { ArtifactRef } from "../../shared/frames.js";
 import { t } from "../i18n/index.js";
-import { useOpenPanel } from "../panels/context.js";
+import { useOpenArtifact } from "./Lightbox.js";
 import { fetchFile } from "../state/api.js";
 import type { Step } from "../state/model.js";
 import { FileIcon, KeyContext } from "./links.js";
@@ -9,7 +9,7 @@ import { FileIcon, KeyContext } from "./links.js";
 /**
  * What a step made, drawn: a small thumbnail at the right of its row (an image scaled; a page as a static placeholder, its icon and
  * <title>, never a live frame, so no script of it runs; anything else its type's tile), the first three of a group on its line,
- * and an image opened in place at column width. A click on a thumbnail opens the item in the Open panel.
+ * and an image opened in place at column width. A click opens the item the one way (`useOpenArtifact`): an image in the lightbox, the rest in the Open panel.
  */
 
 /** Whether the stream is pinned to the bottom (the person follows the newest): an image opens by itself only then. */
@@ -60,7 +60,7 @@ function PagePlaceholder({ path }: { readonly path: string }): ReactNode {
 }
 
 export function Thumb({ a }: { readonly a: ArtifactRef }): ReactNode {
-	const open = useOpenPanel();
+	const open = useOpenArtifact();
 	const focus = focusOf(a);
 	return (
 		<span
@@ -72,7 +72,7 @@ export function Thumb({ a }: { readonly a: ArtifactRef }): ReactNode {
 			title={focus.startsWith("log:") ? t.imageResult : focus}
 			onClick={(e) => {
 				e.stopPropagation();
-				open("open", focus);
+				open(a);
 			}}
 		>
 			{a.kind === "image" ? <Picture focus={focus} className="tn-img" /> : a.kind === "page" ? <PagePlaceholder path={focus} /> : <FileIcon path={focus} />}
@@ -93,15 +93,15 @@ export function Thumbs({ items, max = 3 }: { readonly items: readonly ArtifactRe
 	);
 }
 
-/** A step's images, opened in place at column width; a click opens one in the Open panel. */
+/** A step's images, opened in place at column width; a click opens one in the lightbox. */
 export function InPlace({ step }: { readonly step: Step }): ReactNode {
-	const open = useOpenPanel();
+	const open = useOpenArtifact();
 	return (
 		<div className="inplace" data-kind="inplace">
 			{artifactsOf(step)
 				.filter((a) => a.kind === "image")
 				.map((a) => (
-					<span key={a.id} role="button" tabIndex={0} onClick={() => open("open", focusOf(a))}>
+					<span key={a.id} role="button" tabIndex={0} onClick={() => open(a)}>
 						<Picture focus={focusOf(a)} className="ip-img" />
 					</span>
 				))}
