@@ -1,5 +1,5 @@
 /* the rail: one slim column of hairline sections, glanceable; hover for detail. A column of the window row: 280 px when open (244 before the rev 3 rows, owner 2026-11-02), shown only by the overview key. */
-.railtoggle { position: absolute; right: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
+.railtoggle { position: relative; flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
 .railtoggle:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 .railtoggle.on { background: #efeff1; color: var(--ink); }
 .tbadge { position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; border-radius: 8px; background: var(--blue); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; padding: 0 4px; }
@@ -7,7 +7,7 @@
 .rail { flex: none; width: 0; overflow: hidden; background: #fbfbfc; transition: width 0.5s var(--ease); }
 .win[data-rail="1"] .rail { width: 280px; }
 .rail-in { width: 280px; height: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--line); min-width: 0; }
-.rail-h { height: 56px; flex: none; }
+.rail-h { height: 54px; flex: none; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line); color: var(--mute); font-size: 12.5px; }
 .rail-b { flex: 1; overflow-y: auto; scrollbar-width: thin; }
 .grow { flex: 1; }
 .mono { font: 11.5px ui-monospace, Menlo, monospace; color: var(--mute); }

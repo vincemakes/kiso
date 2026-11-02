@@ -9,9 +9,8 @@
 	.work.paneled .chat { flex: 0 0 0; min-width: 0; overflow: hidden; }
 	.work.paneled .panel { flex: 1 1 auto; min-width: 0; }
 }
-.win[data-rail="0"] .pv-h { padding-right: 100px; }
 .panel.full.clear .pv-h { padding-left: 132px; }
-.pv-h { display: flex; align-items: center; gap: 2px; height: 56px; flex: none; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.pv-h { display: flex; align-items: center; gap: 2px; height: 54px; flex: none; padding: 0 12px; border-bottom: 1px solid var(--line); }
 .pv-h .name { font-weight: 600; margin-right: auto; display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sbtn { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
 .sbtn:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
@@ -22,7 +21,7 @@
 .pv-b .empty { color: var(--mute); padding: 4px 0; text-align: left; margin: 0; font-size: 13.5px; }
 .pad { padding: 20px 16px !important; }
 
-.morebtn { position: absolute; right: 48px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
+.morebtn { position: relative; flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
 .morebtn:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 .menu { position: absolute; right: 12px; top: 50px; z-index: 120; min-width: 210px; background: #fff; border-radius: 14px; box-shadow: 0 12px 44px rgba(0, 0, 0, 0.16), 0 0 0 1px var(--line); padding: 6px; animation: in 0.2s var(--ease) both; }
 .menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 9px; text-align: left; }
@@ -91,3 +90,14 @@ select.chip { appearance: none; padding-right: 14px; cursor: pointer; font: inhe
 [data-panel-body="open"].served { display: flex; flex-direction: column; height: 100%; }
 .pageview { flex: 1; width: 100%; min-height: 60vh; border: 0; border-radius: 8px; box-shadow: 0 0 0 1px var(--line); background: #fff; }
 .mediaview { width: 100%; }
+
+/* the conversation's header: one 54 px row on top of the stream, level with the panel's and the rail's own top bars, so the three
+   read as one header; the title (a click renames it in place) and the folder at the left, the overview key and ⋯ at the right */
+.hdr { position: absolute; top: 0; left: 0; right: 0; z-index: 60; height: 54px; display: flex; align-items: center; gap: 4px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: #fff; min-width: 0; }
+.win[data-side="0"] .hdr { padding-left: 54px; }
+.hdr-title { min-width: 0; max-width: 55%; padding: 5px 8px; border-radius: 8px; font-weight: 600; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.hdr-title:hover { background: var(--sunk); }
+input.hdr-title.edit { width: min(440px, 55%); max-width: none; border: 0; outline: 0; background: transparent; font: inherit; font-weight: 600; font-size: 14px; }
+input.hdr-title.edit:hover { background: transparent; }
+.hdr-title.edit::selection { background: #cfe0ff; }
+.hdr-sub { min-width: 0; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -16,8 +16,9 @@ import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
 import { Folders } from "./home/Folders.js";
-import { chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { renameWork, chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
 import { CommitDialog, PrDialog } from "./rail/GitDialogs.js";
+import { Header } from "./rail/Header.js";
 import type { GitReply } from "../shared/git.js";
 import { ControlsContext, type Controls } from "./stream/ComposerMenus.js";
 import { signIn } from "./state/auth.js";
@@ -189,6 +190,31 @@ export function App(): ReactNode {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
 	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey ? { ...w, state: ownState } : w));
+	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request; folder · branch under it
+	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
+	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
+	const title = named[target.sessionId] ?? row?.title ?? session?.state.turns[0]?.user.split("\n")[0] ?? "";
+	const sub = env === null ? "" : env.branch === null ? env.folder : `${env.folder} · ${env.branch}`;
+	// a name shows at once; a cleared one waits for the listing, which reads names live, to give back the first-request title
+	const onRename = (name: string): Promise<void> =>
+		renameWork(target.key, target.sessionId, name).then((r) => {
+			setNamed(({ [target.sessionId]: _, ...n }) => (r.name === null ? n : { ...n, [target.sessionId]: r.name }));
+			return fetchHistory(target.key ?? history?.current.key).then(setHistory, () => undefined);
+		});
+	const header =
+		railOn && session !== null ? (
+			<Header title={title} sub={sub} onRename={onRename}>
+				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
+					<Overview />
+					{attention > 0 ? (
+						<span className="tbadge" data-field="badge">
+							{attention}
+						</span>
+					) : null}
+				</button>
+				<PanelMenu onPick={openPanel} />
+			</Header>
+		) : null;
 	const openWork = (row: WorkRow): void => {
 		setView("work");
 		setTarget({ key: row.key === history?.current.key ? null : row.key, sessionId: row.id });
@@ -221,23 +247,12 @@ export function App(): ReactNode {
 				}}
 				onSettings={() => setView("settings")}
 			/>
-			{railOn ? <PanelMenu onPick={openPanel} /> : null}
-			{railOn ? (
-				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
-					<Overview />
-					{attention > 0 ? (
-						<span className="tbadge" data-field="badge">
-							{attention}
-						</span>
-					) : null}
-				</button>
-			) : null}
 			<main className="main">
 				{view === "settings" ? (
 					<Settings />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><WorkView
+						<div className="chat">{header}{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><WorkView
 								key={`${target.key ?? ""}/${target.sessionId}`}
 								session={session}
 								auto={launch.auto}

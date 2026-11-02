@@ -29,6 +29,7 @@ function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
 	return (
 		<div className="acts" data-kind="footer">
 			{fmt(f.cacheRate === null ? t.footerNoCache : t.footer, values)}
+			{f.tokPerSec != null ? fmt(t.footerRate, { rate: f.tokPerSec }) : null}
 		</div>
 	);
 }

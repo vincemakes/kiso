@@ -114,7 +114,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 	return (
 		<aside className="rail" data-kind="rail">
 			<div className="rail-in">
-				<div className="rail-h" />
+				<div className="rail-h">{t.overview}</div>
 				<div className="rail-b">
 					<section className={`r-sec r-ctx${folded["context"] ? " closed" : ""}`} data-section="context">
 						<button className="r-sh" onClick={toggle("context")} aria-expanded={!folded["context"]} data-act="fold-context" data-field="context">

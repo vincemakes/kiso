@@ -78,3 +78,20 @@ export function runTotals(events: readonly Event[], terminalSeq: number, route: 
 	}
 	return null;
 }
+
+const CALL_OUTPUT = new Set(["thinking", "text_start", "text_delta", "tool_call_start", "tool_call_end"]);
+
+/** The run's decode rate as the terminal times one call (TPS-1), summed: each call from its first output event to its last usage
+ *  report (tool time falls between calls), output over the summed time; null under 0.5 s or with no output ("0 tok/s" is no measurement). */
+export function runRate(events: readonly Event[], terminalSeq: number, output: number | null, at: (seq: number) => number): number | null {
+	const start = events.reduce((n, ev) => (ev.type === "terminal" && ev.seq < terminalSeq ? ev.seq : n), -1);
+	let [ms, first, last] = [0, -1, -1];
+	for (const ev of events) {
+		if (ev.seq <= start || ev.seq > terminalSeq) continue;
+		if (CALL_OUTPUT.has(ev.type) && first < 0) first = ev.seq;
+		else if (ev.type === "usage" && first >= 0) last = ev.seq;
+		if (ev.type === "stop" || ev.seq === terminalSeq) [ms, first, last] = [ms + (first >= 0 && last >= 0 ? Math.max(0, at(last) - at(first)) : 0), -1, -1];
+	}
+	const rate = output === null || ms < 500 ? 0 : Math.round(output / (ms / 1000));
+	return rate > 0 ? rate : null;
+}

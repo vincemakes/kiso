@@ -27,15 +27,21 @@ interface Read {
 /** What the host knows about a Work it holds open: a run live, or waiting for an answer. */
 export type LiveState = (key: string, sessionId: string) => Promise<WorkState>;
 
-/** The folder's files as one string: it changes when a log is added or written. */
+/** The folder's files as one string: it changes when a log is added or written, or a Work's name file (`<id>.meta.json`, the
+ *  runtime's titles read it) is written by a rename. */
 function printOf(dir: string): string {
 	let count = 0;
 	let bytes = 0;
 	let newest = 0;
 	for (const name of readdirSync(dir)) {
-		if (!name.endsWith(".jsonl")) continue;
+		const meta = name.endsWith(".meta.json");
+		if (!name.endsWith(".jsonl") && !meta) continue;
 		try {
 			const s = statSync(join(dir, name));
+			if (meta) {
+				newest = Math.max(newest, s.mtimeMs);
+				continue;
+			}
 			if (s.size === 0) continue;
 			count += 1;
 			bytes += s.size;

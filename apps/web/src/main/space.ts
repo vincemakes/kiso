@@ -6,7 +6,7 @@ import type { Event } from "@vincemakes/kiso-core";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
 import { createWebAgent, routeOf, type ModelChoice, type PermissionMode } from "./agent.js";
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
-import { runTotals, usageFrameAt } from "./usage.js";
+import { runRate, runTotals, usageFrameAt } from "./usage.js";
 import { webSanitize } from "./sanitize.js";
 import { TimeIndex } from "./times.js";
 import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
@@ -137,8 +137,9 @@ export function createSpace(options: SpaceOptions): Space {
 			return frame === null ? [] : [{ event: "usage", data: { ...frame, window: windowOf(sessionId) } }];
 		}
 		if (event.type === "terminal") {
-			const totals = runTotals(service.events(sessionId), event.seq, route(sessionId));
-			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals } }];
+			const events = service.events(sessionId);
+			const totals = runTotals(events, event.seq, route(sessionId));
+			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals, tokPerSec: runRate(events, event.seq, totals.output, (seq) => times.at(sessionId, seq)) } }];
 		}
 		if (event.type === "tool_result") {
 			const artifacts = artifactsOf(event, sessionId, callOf(sessionId, event.callId), realWorkspace());
