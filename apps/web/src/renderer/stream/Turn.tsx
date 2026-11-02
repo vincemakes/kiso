@@ -6,6 +6,10 @@ import { Answer } from "./Answer.js";
 import { Approval } from "./Approval.js";
 import { RunContext } from "./links.js";
 import { Process } from "./Process.js";
+import { artifactsOf, focusOf } from "./Artifacts.js";
+import { artifactIcon } from "./Icons.js";
+import { useOpenArtifact } from "./Lightbox.js";
+import type { ArtifactRef } from "../../shared/frames.js";
 
 interface Props {
 	readonly turn: TurnModel;
@@ -29,7 +33,30 @@ function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
 	);
 }
 
-/** One run: the person's line, the process, the approvals still open, the answer, the live row or the footer. */
+/** What the run made, once each and in the order made, after its answer: the same items its steps show, opened the one way. */
+function Made({ turn }: { readonly turn: TurnModel }): ReactNode {
+	const open = useOpenArtifact();
+	const seen = new Set<string>();
+	const made: ArtifactRef[] = [];
+	for (const item of turn.items) if (item.kind === "step") for (const a of artifactsOf(item)) if (!seen.has(focusOf(a))) (seen.add(focusOf(a)), made.push(a));
+	if (made.length === 0) return null;
+	return (
+		<div className="made" data-kind="made">
+			{made.map((a) => {
+				const focus = focusOf(a);
+				const name = focus.startsWith("log:") ? t.imageResult : (focus.split("/").pop() ?? focus);
+				return (
+					<button key={focus} className="made-c" data-made={focus} title={focus.startsWith("log:") ? t.imageResult : focus} onClick={() => open(a)}>
+						{artifactIcon(a.kind, focus)}
+						<span>{name}</span>
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
+/** One run: the person's line, the process, the approvals still open, the answer, what it made, the live row or the footer. */
 export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: Props): ReactNode {
 	const { process: items, answer, openAsks } = split(turn);
 	const inProcess = items.filter((i) => !(i.kind === "ask" && i.decision === "open"));
@@ -46,6 +73,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
+			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Made turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Footer turn={turn} /> : null}
 		</RunContext.Provider>
 	);

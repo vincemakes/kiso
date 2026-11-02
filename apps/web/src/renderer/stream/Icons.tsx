@@ -29,6 +29,32 @@ export const Overview = (): ReactNode => svg(<><rect x="3.5" y="4.5" width="17" 
 export const Sidebar = (): ReactNode => svg(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></>, 17);
 export const ArrowUp = (): ReactNode => svg(<path d="M12 19V5M6 11l6-6 6 6" />, 16);
 
+/** The rail's and the viewer's set: one 16 px box, one 1.75 stroke (`.i16`), so a branch, a folder and a file read the same size. */
+const i16 = (children: ReactNode): (() => ReactNode) => () => (
+	<svg className="i16" viewBox="0 0 24 24" aria-hidden="true">
+		{children}
+	</svg>
+);
+export const I = {
+	term: i16(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></>),
+	branch: i16(<><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="7" r="2" /><path d="M6 7v10M18 9c0 5-6 4-11 8" /></>),
+	folder: i16(<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />),
+	file: i16(<><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /></>),
+	code: i16(<path d="m9 8-4 4 4 4M15 8l4 4-4 4" />),
+	globe: i16(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3" /></>),
+	image: i16(<><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m21 16-5-5-9 9" /></>),
+	md: i16(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M7 15V9l2.5 3L12 9v6M16 9v6M14 13l2 2 2-2" /></>),
+	check: i16(<path d="M5 12.5 10 17l9-10" />),
+	computer: i16(<><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></>),
+	external: i16(<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />),
+	close: i16(<path d="M6 6l12 12M18 6 6 18" />),
+	download: i16(<path d="M12 4v12M7 11l5 5 5-5M5 20h14" />),
+	chevron: i16(<path d="m6 9 6 6 6-6" />),
+};
+/** An artifact's icon by its kind and name: an image, a page, markdown, code or any other file. */
+export const artifactIcon = (kind: string, path: string): ReactNode =>
+	kind === "image" ? <I.image /> : kind === "page" || /^https?:/.test(path) ? <I.globe /> : /\.(md|markdown)$/i.test(path) ? <I.md /> : /\.(tsx?|jsx?|mjs|css|py|go|rs|json)$/i.test(path) ? <I.code /> : <I.file />;
+
 const ICONS: Readonly<Record<string, ReactNode>> = {
 	read_file: svg(<><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" /><path d="M14 3v5h5" /></>),
 	edit_file: svg(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />),

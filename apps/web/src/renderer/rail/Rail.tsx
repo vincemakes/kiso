@@ -1,29 +1,58 @@
 import { useState, type ReactNode } from "react";
 import type { EnvReply } from "../../shared/settings.js";
-import { relativeTo } from "../stream/root.js";
-import { clock, t, tokens } from "../i18n/index.js";
+import type { TaskRow } from "../../shared/frames.js";
+import { clock, fmt, t, tokens } from "../i18n/index.js";
 import type { State } from "../state/model.js";
 import { useOpenPanel } from "../panels/context.js";
-import { useNow } from "../stream/useNow.js";
-import { railOf, type RailStatus } from "./derive.js";
+import { artifactIcon, I } from "../stream/Icons.js";
+import { useOpenArtifact } from "../stream/Lightbox.js";
+import { outputsOf, railOf, workChangesOf } from "./derive.js";
 import { Tip, type TipData } from "./Tip.js";
 
-const RING = 100.5;
-const STATUS_TEXT: Readonly<Record<RailStatus, string>> = { idle: t.railIdle, working: t.railWorking, waiting: t.railWaiting, done: t.railDone, stopped: t.railStopped, failed: t.railFailed, interrupted: t.railInterrupted };
 const money = (usd: number | null): string => (usd === null ? "—" : `$${usd.toFixed(4)}`);
 const pct = (n: number | null): string => (n === null ? "—" : `${Math.round(n)}%`);
+const ago = (ms: number): string => (ms < 60_000 ? t.railNow : ms < 3_600_000 ? `${Math.floor(ms / 60_000)}m` : ms < 86_400_000 ? `${Math.floor(ms / 3_600_000)}h` : `${Math.floor(ms / 86_400_000)}d`);
+const SHOWN = 4;
+
+/** A section of the rail: a header that folds it (a 16 px chevron in the icon column, the name, a count, a figure at the right). */
+function Section({ id, name, count, extra, open, onToggle, children }: { readonly id: string; readonly name: string; readonly count?: number; readonly extra?: ReactNode; readonly open: boolean; readonly onToggle: () => void; readonly children: ReactNode }): ReactNode {
+	return (
+		<section className={`r-sec${open ? "" : " closed"}`} data-section={id}>
+			<button className="r-sh" onClick={onToggle} aria-expanded={open} data-act={`fold-${id}`}>
+				<span className="r-ic r-chev">
+					<I.chevron />
+				</span>
+				<b>{name}</b>
+				{count !== undefined ? <span className="r-cnt">{count}</span> : null}
+				<span className="grow" />
+				{extra}
+			</button>
+			{open ? <div className="r-bd">{children}</div> : null}
+		</section>
+	);
+}
+
+interface Props {
+	readonly state: State;
+	readonly env: EnvReply | null;
+	readonly onStopTask: (id: string) => void;
+}
 
 /**
- * The rail: one slim column that answers "where is this run" at a glance —
- * status and clock, the context ring and the usage line, background tasks,
- * the timeline of steps, what the run produced, and where it runs. Hovering
- * a row opens its detail beside the rail. Every number is read from the
- * stream's state, which is built from the durable log.
+ * The rail: one column of hairline sections, glanceable, no cards. Context (folded to one row and a bar), the background tasks
+ * (only when there are any; the finished ones folded into one row), the files this Work changed and its branch, everything it made
+ * (opened the one way the stream opens them), and where it runs. It carries no state of the run itself: the stream shows the live
+ * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
  */
-export function Rail({ state, env }: { readonly state: State; readonly env: EnvReply | null }): ReactNode {
-	const rail = railOf(state, (text) => relativeTo(text, env?.root ?? ""));
+export function Rail({ state, env, onStopTask }: Props): ReactNode {
+	const rail = railOf(state);
 	const openPanel = useOpenPanel();
+	const openArtifact = useOpenArtifact();
 	const [hover, setHover] = useState<{ readonly tip: TipData; readonly top?: number; readonly bottom?: number } | null>(null);
+	const [folded, setFolded] = useState<Readonly<Record<string, boolean>>>({ context: true });
+	const [finished, setFinished] = useState(false);
+	const [allOutputs, setAllOutputs] = useState(false);
+	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
 	const over = (tip: TipData) => ({
 		onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
 			const r = e.currentTarget.getBoundingClientRect();
@@ -31,98 +60,162 @@ export function Rail({ state, env }: { readonly state: State; readonly env: EnvR
 		},
 		onMouseLeave: () => setHover(null),
 	});
-	const live = rail.status === "working" || rail.status === "waiting";
-	const now = useNow(live);
-	const ms = rail.startedAt === null ? 0 : (rail.endedAt ?? now) - rail.startedAt;
 	const u = rail.usage;
 	const { tokens: used, window } = state.context;
 	const share = used === null || window === null ? null : Math.min(100, (used / window) * 100);
-	const usageTip: TipData = {
-		head: t.railUsage,
-		rows: [
-			[t.railFresh, u?.fresh == null ? "—" : u.fresh.toLocaleString()],
-			[t.railOutput, u?.output == null ? "—" : u.output.toLocaleString()],
-			[t.railCache, pct(u?.cacheRate ?? null)],
-			[t.railCost, money(u?.costUsd ?? null)],
-			[t.railCalls, String(u?.calls ?? 0)],
-		],
-	};
+	const live = state.tasks.filter((x) => x.endedAt === null);
+	const done = state.tasks.filter((x) => x.endedAt !== null);
+	const changes = workChangesOf(state, env?.root ?? null);
+	const outputs = outputsOf(state);
+	const now = Date.now();
+	const task = (x: TaskRow): ReactNode => (
+		<div className={`r-row${x.endedAt === null ? "" : " dim"}`} key={x.id} data-field="task" onClick={() => openPanel("term", x.id)} {...over({ head: x.command, log: x.tail, rows: [[t.railState, x.label]] })}>
+			<span className="r-ic">
+				<I.term />
+			</span>
+			<span className="r-nm mono">{x.command}</span>
+			<span className="r-mt">{clock(x.elapsedMs)}</span>
+			{x.endedAt === null ? (
+				<button
+					className="r-stop"
+					aria-label={t.stopTask}
+					title={t.stopTask}
+					data-act="task-stop"
+					onClick={(e) => {
+						e.stopPropagation();
+						onStopTask(x.id);
+					}}
+				>
+					<i />
+				</button>
+			) : null}
+		</div>
+	);
 	return (
 		<aside className="rail" data-kind="rail">
 			<div className="rail-in">
-			<div className="rail-h" />
-			<div className="rail-b">
-				<div className="r-status" data-field="status" {...over(usageTip)}>
-					<span className={`pulse ${rail.status}`} />
-					<b>{STATUS_TEXT[rail.status]}</b>
-					<span className="grow" />
-					<span className="clk" data-field="clock">
-						{clock(ms)}
-					</span>
-				</div>
-				<div
-					className="r-line"
-					data-field="context"
-					{...over({
-						head: t.railContext,
-						rows: [
-							[t.railUsed, used === null ? "—" : `${used.toLocaleString()}`],
-							[t.railWindow, window === null ? t.railUnstated : window.toLocaleString()],
-						],
-						note: t.railCompactNote,
-					})}
-				>
-					<svg width="26" height="26" viewBox="0 0 40 40">
-						<circle cx="20" cy="20" r="16" fill="none" stroke="#ececef" strokeWidth="5" />
-						<circle cx="20" cy="20" r="16" fill="none" stroke="var(--blue)" strokeWidth="5" strokeLinecap="round" strokeDasharray={RING} strokeDashoffset={RING * (1 - (share ?? 0) / 100)} transform="rotate(-90 20 20)" />
-					</svg>
-					<span>{t.railContext}</span>
-					<b data-field="context-pct">{share === null ? "?" : `${Math.round(share)}%`}</b>
-				</div>
-				<div className="r-use mono" data-field="usage" {...over(usageTip)}>
-					{u === null ? "0 · $0" : `${tokens((u.fresh ?? 0) + (u.output ?? 0))} · ${money(u.costUsd)}`}
-				</div>
-				<div className="r-sec">{t.railTasks}</div>
-				{state.tasks.length === 0 ? <div className="empty">{t.railNoTasks}</div> : null}
-				{state.tasks.map((task) => (
-					<div className="tli click" key={task.id} data-field="task" onClick={() => openPanel("term", task.id)} {...over({ head: task.command, log: task.tail, rows: [[t.railState, task.label]] })}>
-						<div className="t1">
-							<b>{task.command}</b>
-							<small>{clock(task.elapsedMs)}</small>
+				<div className="rail-h" />
+				<div className="rail-b">
+					<section className={`r-sec r-ctx${folded["context"] ? " closed" : ""}`} data-section="context">
+						<button className="r-sh" onClick={toggle("context")} aria-expanded={!folded["context"]} data-act="fold-context" data-field="context">
+							<span className="r-ic r-chev">
+								<I.chevron />
+							</span>
+							<b>{t.railContext}</b>
+							<span className="grow" />
+							<span className="r-ctxv">
+								<b data-field="context-pct">{share === null ? "?" : `${Math.round(share)}%`}</b> · {tokens(used)} / {window === null ? "?" : tokens(window)}
+							</span>
+						</button>
+						<div className="r-meter" aria-hidden="true">
+							<b style={{ width: `${share ?? 0}%` }} />
 						</div>
-						<div className={`bar${task.endedAt === null ? " live" : ""}`}>
-							<b />
-						</div>
-					</div>
-				))}
-				<div className="r-sec">{t.railSteps}</div>
-				<div className="tl">
-					{rail.steps.length === 0 ? <div className="empty">{t.railNoSteps}</div> : null}
-					{rail.steps.map((s) => (
-						<div className={`tli ${s.status}`} key={s.id} data-field="step" {...over({ head: s.title, log: s.lines, rows: s.ms === null ? [] : [[t.railTook, `${(s.ms / 1000).toFixed(1)} s`]] })}>
-							<span className="nd" />
-							<div className="t1">
-								<b>{s.title}</b>
-								<small>{s.at === null ? "" : clock(s.at)}</small>
+						{folded["context"] ? null : (
+							<div className="r-kv" data-field="context-detail">
+								<span>{t.railUsed}</span>
+								<b>{used === null ? "—" : used.toLocaleString()}</b>
+								<span>{t.railWindow}</span>
+								<b>{window === null ? t.railUnstated : window.toLocaleString()}</b>
+								<span>{t.railFresh}</span>
+								<b data-field="usage-fresh">{u?.fresh == null ? "—" : u.fresh.toLocaleString()}</b>
+								<span>{t.railOutput}</span>
+								<b data-field="usage-output">{u?.output == null ? "—" : u.output.toLocaleString()}</b>
+								<span>{t.railCache}</span>
+								<b data-field="usage-cache">{pct(u?.cacheRate ?? null)}</b>
+								<span>{t.railCost}</span>
+								<b data-field="usage-cost">{money(u?.costUsd ?? null)}</b>
+								<span>{t.railCalls}</span>
+								<b data-field="usage-calls">{String(u?.calls ?? 0)}</b>
+								<small>{t.railCompactNote}</small>
 							</div>
-						</div>
-					))}
+						)}
+					</section>
+					{state.tasks.length === 0 ? null : (
+						<Section id="tasks" name={t.railTasks} {...(live.length > 0 ? { count: live.length } : {})} open={!folded["tasks"]} onToggle={toggle("tasks")}>
+							{live.map(task)}
+							{done.length === 0 ? null : (
+								<button className="r-row dim" onClick={() => setFinished(!finished)} aria-expanded={finished} data-act="finished">
+									<span className="r-ic">
+										<I.check />
+									</span>
+									<span className="r-nm">{fmt(t.railFinished, { n: done.length })}</span>
+									<span className={`r-ic r-chev${finished ? "" : " side"}`}>
+										<I.chevron />
+									</span>
+								</button>
+							)}
+							{finished ? done.map(task) : null}
+						</Section>
+					)}
+					{changes.length === 0 && (env?.branch ?? null) === null ? null : (
+						<Section
+							id="changes"
+							name={t.railChanges}
+							count={changes.length}
+							extra={
+								<span className="r-mt">
+									<span className="add">+{changes.reduce((n, c) => n + c.added, 0)}</span> <span className="del">−{changes.reduce((n, c) => n + c.removed, 0)}</span>
+								</span>
+							}
+							open={!folded["changes"]}
+							onToggle={toggle("changes")}
+						>
+							{env?.branch == null ? null : (
+								<div className="r-row r-br" data-field="branch">
+									<span className="r-ic">
+										<I.branch />
+									</span>
+									<span className="r-nm mono">{env.branch}</span>
+								</div>
+							)}
+							{changes.map((c) => (
+								<div className="r-row" key={c.path} data-field="change" title={c.path} onClick={() => openPanel("diff")}>
+									<span className="r-ic">{artifactIcon("file", c.path)}</span>
+									<span className="r-nm">{c.path.split("/").pop()}</span>
+									<span className="r-mt">{c.created ? t.railNew : c.exact ? <><span className="add">+{c.added}</span> <span className="del">−{c.removed}</span></> : t.deltaModified}</span>
+								</div>
+							))}
+						</Section>
+					)}
+					{outputs.length === 0 ? null : (
+						<Section id="outputs" name={t.railOutputs} count={outputs.length} open={!folded["outputs"]} onToggle={toggle("outputs")}>
+							{(allOutputs ? outputs : outputs.slice(0, SHOWN)).map((o) => (
+								<div className="r-row" key={o.focus} data-field="output" data-artifact={o.focus} title={o.focus.startsWith("log:") ? t.imageResult : o.focus} onClick={() => openArtifact(o.a)}>
+									<span className="r-ic">{artifactIcon(o.a.kind, o.focus)}</span>
+									<span className="r-nm">{o.focus.startsWith("log:") ? t.imageResult : o.focus.split("/").pop()}</span>
+									<span className="r-mt">{o.at === null ? "" : ago(now - o.at)}</span>
+								</div>
+							))}
+							{outputs.length > SHOWN && !allOutputs ? (
+								<button className="r-row dim" onClick={() => setAllOutputs(true)} data-act="more-outputs">
+									<span className="r-ic" />
+									<span className="r-nm">{fmt(t.railShowMore, { n: outputs.length - SHOWN })}</span>
+								</button>
+							) : null}
+						</Section>
+					)}
 				</div>
-			</div>
-			<div className="rail-f">
 				{env === null ? null : (
-					<div className="envcol" data-field="env" {...over({ head: t.railEnv, rows: [[t.railPath, env.path], ...(env.branch === null ? [] : ([[t.railBranch, env.branch]] as const))] })}>
-						<span>{env.folder}</span>
-						{env.branch === null ? null : <span>{env.branch}</span>}
+					<div className="r-env" data-field="env" {...over({ head: t.railEnv, rows: [[t.railPath, env.path], ...(env.branch === null ? [] : ([[t.railBranch, env.branch]] as const))] })}>
+						<span className="r-ic">
+							<I.folder />
+						</span>
+						<span className="r-env-f">{env.folder}</span>
+						{env.branch === null ? null : (
+							<>
+								<span className="r-ic">
+									<I.branch />
+								</span>
+								<span className="r-env-b mono">{env.branch}</span>
+							</>
+						)}
 						<span className="chip2" data-field="tier">
 							{t.tier[env.mode] ?? env.mode}
 						</span>
 					</div>
 				)}
 			</div>
-			</div>
 			<Tip tip={hover?.tip ?? null} {...(hover?.top !== undefined ? { top: hover.top } : {})} {...(hover?.bottom !== undefined ? { bottom: hover.bottom } : {})} />
 		</aside>
 	);
 }
-

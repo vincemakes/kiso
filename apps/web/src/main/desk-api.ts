@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import { realpathSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-code/config";
-import { deskRead } from "./fs-routes.js";
+import { deskRead, SAFE_ID } from "./fs-routes.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
 import type { Previews } from "./preview.js";
@@ -16,7 +16,7 @@ import type { SettingsPatch } from "../shared/settings.js";
 
 /**
  * The page's own doors (everything under `/desk/`), behind the host's guard: settings, a Work's environment, the folder's tree
- * and files, task logs, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
+ * and files, task logs and stopping a task, which paths exist (the chips), the history, picking a folder, signing in with a key, the demo, and the page's presence. Each answers
  * `{ status, body }`; a body never holds a credential.
  */
 
@@ -64,6 +64,15 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 	const space = where === null || where === "" ? ctx.current : ctx.spaceFor(where);
 	const post = req.method === "POST";
 	try {
+		if (path === "/desk/task-stop") {
+			if (!post) return json(405, {});
+			if (space === null) return json(404, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			const task = str(body["task"]) ?? "";
+			if (!SAFE_ID.test(session) || !SAFE_ID.test(task) || !space.store.ids().includes(session)) return json(404, {});
+			return json(200, { stopped: space.tasks.managerFor(session).stop(task, "person") });
+		}
 		if (path === "/desk/fs/tree" || path === "/desk/fs/file" || path === "/desk/task-log") {
 			if (space === null) return json(404, {});
 			return req.method === "GET" ? deskRead(url, space) : json(405, {});
