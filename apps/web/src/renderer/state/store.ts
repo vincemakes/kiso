@@ -20,8 +20,9 @@ export interface Session {
 	readonly loaded: () => boolean;
 	/** a short message for the person (a refused stop), or null */
 	readonly message: () => string | null;
-	readonly send: (text: string) => Promise<void>;
-	readonly steer: (text: string) => Promise<void>;
+	/** a line: text, or text with pictures and files (content blocks) */
+	readonly send: (input: WireInput) => Promise<void>;
+	readonly steer: (input: WireInput) => Promise<void>;
 	readonly abort: () => Promise<void>;
 	readonly approve: (decisionId: string, allow: boolean) => Promise<void>;
 	readonly resume: () => Promise<void>;

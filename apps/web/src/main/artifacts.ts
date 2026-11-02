@@ -62,7 +62,7 @@ export function artifactsOf(event: ToolResultEvent, workId: string, call: CallIn
 }
 
 /**
- * Image blocks of results, read from the session's log: an index of seq to the byte range of its line, built once per log and
+ * Image blocks of results and of the person's own lines, read from the session's log: an index of seq to the byte range of its line, built once per log and
  * extended as it grows, so a request reads one event, never the whole log.
  */
 export class LogImages {
@@ -73,13 +73,14 @@ export class LogImages {
 		this.#dir = dir;
 	}
 
-	/** The n-th block of the result at `seq`: its bytes, an https address to pass on, or null. */
+	/** The n-th block of the result or the line at `seq`: its bytes, an https address to pass on, or null. */
 	block(sessionId: string, seq: number, n: number): { readonly type: string; readonly bytes: Buffer } | { readonly url: string } | null {
 		const file = join(this.#dir, `${sessionId}.jsonl`);
 		const at = this.#index(file).get(seq);
 		if (at === undefined) return null;
-		const event = (JSON.parse(read(file, at[0], at[1]).toString("utf8")) as { event: ToolResultEvent }).event;
-		const b = event.type === "tool_result" && Array.isArray(event.content) ? event.content[n] : undefined;
+		// a tool's result, or the person's own line (a picture pasted into the composer)
+		const event = (JSON.parse(read(file, at[0], at[1]).toString("utf8")) as { event: ToolResultEvent | Extract<Event, { type: "user_input" }> }).event;
+		const b = (event.type === "tool_result" || event.type === "user_input") && Array.isArray(event.content) ? event.content[n] : undefined;
 		if (b?.type !== "image") return null;
 		if (b.sourceType === "base64" && b.data !== undefined) return { type: b.mediaType ?? "image/png", bytes: Buffer.from(b.data, "base64") };
 		return b.url?.startsWith("https:") === true ? { url: b.url } : null;

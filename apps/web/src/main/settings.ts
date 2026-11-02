@@ -16,6 +16,7 @@ import {
 	type ModelProfile,
 } from "@vincemakes/kiso-code/config";
 import { MODE_LABEL, OFFERED_MODES } from "@vincemakes/kiso-code/policy";
+import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
 import type { ModelChoice, PermissionMode } from "./agent.js";
 import { fauxSkip } from "./faux.js";
 import { storeKey } from "./login.js";
@@ -29,7 +30,9 @@ import type { SettingsPatch, SettingsReply } from "../shared/settings.js";
  * the profile new Works run on and the permission tier. The effort a profile
  * starts at is the terminal's own remembered one (`preferences.json`).
  * Changes reach Works opened after them; the tier reaches every Work at once
- * (it is process-wide until a Work carries its own, in S5).
+ * (it is process-wide until a Work carries its own, in S5). A Work can carry
+ * its own profile and effort too (the composer's model pill): the host
+ * rebuilds that Work between runs, from the same log.
  */
 
 interface Own {
@@ -39,10 +42,20 @@ interface Own {
 	readonly mode?: string;
 	/** a tier per Work (session id), for Works whose tier was set */
 	readonly tiers?: Readonly<Record<string, string>>;
+	/** a profile and an effort per Work, for Works whose model was switched in the composer */
+	readonly works?: Readonly<Record<string, Work>>;
 	readonly recent?: readonly string[];
 }
 
+interface Work {
+	readonly profile?: string;
+	readonly effort?: string;
+}
+
 const MAX_RECENT = 10;
+const SAFE_SESSION = /^[A-Za-z0-9._-]+$/;
+/** Whether the model table says the profile's model reads images; unknown is no (nothing is sent that might be dropped). */
+const readsImages = (p: ModelProfile): boolean => lookupModelMetadata(p.model, p.baseUrl)?.capabilities.inputModalities?.includes("image") === true;
 const isTier = (value: unknown): value is PermissionMode => OFFERED_MODES.some((m) => m === value);
 
 export class Settings {
@@ -110,9 +123,11 @@ export class Settings {
 		return merged;
 	}
 
-	/** The profile in use: the person's pick if it still exists, else the configuration's own default. */
-	#chosen(config: KisoConfig): string | null {
+	/** The profile in use: the Work's own pick, else the person's pick for new Works, if it still exists, else the configuration's own default. */
+	#chosen(config: KisoConfig, session?: string): string | null {
 		const models = config.models ?? {};
+		const own = session === undefined ? undefined : this.#read().works?.[session]?.profile;
+		if (own !== undefined && models[own] !== undefined) return own;
 		const picked = this.#read().profile;
 		if (picked !== undefined && models[picked] !== undefined) return picked;
 		return config.model !== undefined && models[config.model] !== undefined ? config.model : null;
@@ -123,11 +138,11 @@ export class Settings {
 		if (this.#fixed !== null) return this.#fixed;
 		if (this.#demo !== null) return this.#demo(ctx === undefined ? 0 : fauxSkip(ctx.sessionsDir, ctx.sessionId));
 		const config = this.#config();
-		const name = this.#chosen(config);
+		const name = this.#chosen(config, ctx?.sessionId);
 		if (name === null) throw new Error("no model is configured: add a profile to ~/.kiso/config.json (see the terminal's docs) and choose it in Settings");
 		const profile = config.models![name]!;
 		const auth = authForProfile(name, profile);
-		const effort = startingEffort(profile, preferences().effort?.[name]);
+		const effort = startingEffort(profile, this.#effortOf(name, ctx?.sessionId));
 		return {
 			kind: "profile",
 			name,
@@ -136,6 +151,22 @@ export class Settings {
 			contextWindow: contextWindowOf(profile, config) ?? undefined,
 			...(effort !== null ? { reasoning: { thinking: "default", effort } as NonNullable<Extract<ModelChoice, { kind: "profile" }>["reasoning"]> } : {}),
 		};
+	}
+
+	/** The effort a Work asked for (when it is one of the profile's levels), else the terminal's remembered one for the profile. */
+	#effortOf(name: string, session?: string): string | undefined {
+		const own = session === undefined ? undefined : this.#read().works?.[session]?.effort;
+		return own ?? preferences().effort?.[name];
+	}
+
+	/** A Work's own model choice (to put back when its rebuild is refused). */
+	workOf(session: string): Work | undefined {
+		return this.#read().works?.[session];
+	}
+
+	restoreWork(session: string, work: Work | undefined): void {
+		const { [session]: _, ...rest } = this.#read().works ?? {};
+		this.write({ works: work === undefined ? rest : { ...rest, [session]: work } });
 	}
 
 	/** The person's own test-runner commands (`checks` in the configuration), for the compaction phase rule. */
@@ -167,13 +198,13 @@ export class Settings {
 	snapshot(session?: string): SettingsReply {
 		const config = this.#config();
 		const models = config.models ?? {};
-		const name = this.#chosen(config);
+		const name = this.#chosen(config, session);
 		const profile: ModelProfile | undefined = name === null ? undefined : models[name];
 		const levels = profile === undefined ? null : effortOptions(profile);
 		return {
-			profiles: Object.entries(models).map(([n, p]) => ({ name: n, model: p.model, available: profileAvailable(p) })),
+			profiles: Object.entries(models).map(([n, p]) => ({ name: n, model: p.model, available: profileAvailable(p), images: readsImages(p) })),
 			profile: name,
-			effort: levels === null || name === null ? null : { ...levels, current: startingEffort(profile!, preferences().effort?.[name]) },
+			effort: levels === null || name === null ? null : { ...levels, current: startingEffort(profile!, this.#effortOf(name, session)) },
 			mode: this.tierOf(session),
 			setup: this.#setup(config, name),
 			modes: OFFERED_MODES.map((value) => ({ value, label: MODE_LABEL[value] })),
@@ -181,8 +212,21 @@ export class Settings {
 		};
 	}
 
-	apply(patch: SettingsPatch): void {
+	/** Apply a patch; returns the Work whose model binding it changed (the host rebuilds that Work), else null. */
+	apply(patch: SettingsPatch): string | null {
 		const config = this.#config();
+		const session = patch.session !== undefined && SAFE_SESSION.test(patch.session) ? patch.session : undefined;
+		if (session !== undefined && (patch.profile !== undefined || patch.effort !== undefined)) {
+			// one Work's model: its own profile and effort, the new-Work default untouched
+			const was = this.workOf(session) ?? {};
+			const profileName = patch.profile !== undefined && config.models?.[patch.profile] !== undefined ? patch.profile : (was.profile ?? this.#chosen(config, session) ?? undefined);
+			const profile = profileName === undefined ? undefined : config.models?.[profileName];
+			const effort = patch.effort !== undefined && profile !== undefined && effortOptions(profile)?.levels.includes(patch.effort) === true ? patch.effort : patch.profile !== undefined ? undefined : was.effort;
+			const next: Work = { ...(profileName !== undefined ? { profile: profileName } : {}), ...(effort !== undefined ? { effort } : {}) };
+			if (next.profile === was.profile && next.effort === was.effort) return null;
+			this.write({ works: { ...this.#read().works, [session]: next } });
+			return session;
+		}
 		if (patch.profile !== undefined && config.models?.[patch.profile] !== undefined) {
 			this.write({ profile: patch.profile });
 			// choosing a profile that can run ends the tour
@@ -195,8 +239,9 @@ export class Settings {
 			if (patch.session === undefined) {
 				this.#default = patch.mode;
 				this.write({ mode: patch.mode });
-			} else if (/^[A-Za-z0-9._-]+$/.test(patch.session)) this.write({ tiers: { ...this.#read().tiers, [patch.session]: patch.mode } });
+			} else if (SAFE_SESSION.test(patch.session)) this.write({ tiers: { ...this.#read().tiers, [patch.session]: patch.mode } });
 		}
+		return null;
 	}
 }
 

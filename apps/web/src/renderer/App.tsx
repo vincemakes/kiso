@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Sidebar } from "./sidebar/Sidebar.js";
 import { Mark, Overview, Sidebar as SidebarIcon } from "./stream/Icons.js";
 import { Rail } from "./rail/Rail.js";
@@ -16,7 +16,8 @@ import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
 import { Folders } from "./home/Folders.js";
-import { chooseFolder, fetchSettings, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { chooseFolder, fetchAtFiles, fetchSettings, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { ControlsContext, type Controls } from "./stream/ComposerMenus.js";
 import { signIn } from "./state/auth.js";
 import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
@@ -87,14 +88,24 @@ export function App(): ReactNode {
 	}, [started, shown, version, target, history === null, refresh]);
 
 	useEffect(() => {
-		if (view === "work" && signedIn === true) void fetchEnv(target.key).then(setEnv, () => undefined);
-	}, [target, view, signedIn]);
+		if (view === "work" && signedIn === true) void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined);
+	}, [target, view, settingsBump, signedIn]);
 	const railOn = started && view === "work";
 	// an open panel takes the rail's place; closing it gives the rail back
 	const railOpen = railOn && railChoice && panel === null;
 	const [lightbox, setLightbox] = useState<string | null>(null);
 	const closeLightbox = useCallback(() => setLightbox(null), []);
 	const attention = session === null ? 0 : railOf(session.state).attention;
+	// the composer's pills: this Work's tier, model and effort, changed for this Work only (its folder's key, so its own space rebuilds it)
+	const controls = useMemo<Controls>(
+		() => ({
+			settings,
+			setTier: (mode) => saveSettings({ mode, session: target.sessionId }, target.key).then((r) => (setSettings(r), setSettingsBump((n) => n + 1))),
+			setModel: (patch) => saveSettings({ ...patch, session: target.sessionId }, target.key).then((r) => setSettings(r)),
+			atFiles: () => fetchAtFiles(target.key).then((r) => r.files),
+		}),
+		[settings, target],
+	);
 	const openPanel = useCallback((kind: PanelKind, focus?: string): void => setPanel((p) => ({ kind, mode: p?.mode ?? "half", focus: focus ?? null })), []);
 	useEffect(() => {
 		if (view === "work" && signedIn === true) void fetchSettings(target.sessionId).then(setSettings, () => undefined);
@@ -164,6 +175,7 @@ export function App(): ReactNode {
 	return (
 		<PanelContext.Provider value={openPanel}>
 		<LightboxContext.Provider value={setLightbox}>
+		<ControlsContext.Provider value={controls}>
 		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
 			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
@@ -211,10 +223,8 @@ export function App(): ReactNode {
 									tray: (
 										<Tray
 											env={env}
-											settings={settings}
 											onPick={pick}
 											onOpen={openFolder}
-											onTier={(mode) => void saveSettings({ mode, session: target.sessionId }).then(() => setSettingsBump((n) => n + 1))}
 										/>
 									),
 									guide: settings !== null && (settings.setup === "signin" || settings.setup === "noprofile") ? <Guide settings={settings} onChanged={() => setSettingsBump((n) => n + 1)} /> : null,
@@ -245,6 +255,7 @@ export function App(): ReactNode {
 				</KeyContext.Provider>
 			) : null}
 		</div>
+		</ControlsContext.Provider>
 		</LightboxContext.Provider>
 		</PanelContext.Provider>
 	);

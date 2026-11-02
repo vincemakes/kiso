@@ -5,6 +5,8 @@ export interface ProfileRow {
 	/** the model id the profile names */
 	readonly model: string;
 	readonly available: boolean;
+	/** the model table says this model reads images (unknown is false: an image is not sent to a model that might drop it) */
+	readonly images: boolean;
 }
 
 export interface SettingsReply {
@@ -34,7 +36,9 @@ export interface EnvReply {
 }
 
 export interface SettingsPatch {
+	/** with `session`, that Work's profile (the host rebuilds it before its next run); without, the profile new Works run on */
 	readonly profile?: string;
+	/** with `session`, that Work's effort; without, the effort the profile starts at */
 	readonly effort?: string;
 	/** with `session`, that Work's tier; without, the tier new Works start with */
 	readonly mode?: string;

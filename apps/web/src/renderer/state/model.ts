@@ -90,6 +90,8 @@ export interface Footer {
 export interface Turn {
 	readonly id: string;
 	readonly user: string;
+	/** the person's pictures in the line that started the run: `log:<seq>/<n>`, read from the log like a result's */
+	readonly pictures: readonly string[];
 	readonly items: Item[];
 	phase: "running" | "ended";
 	startedAt: number | null;
@@ -196,7 +198,8 @@ export function reduce(s: State, input: Input): State {
 				turn.items.push(item);
 				note(item);
 			} else {
-				s.turns.push({ id: `t${e.seq}`, user: text, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, live: null, footer: null });
+				const pictures = Array.isArray(e.content) ? (e.content as readonly { type?: string }[]).flatMap((b, n) => (b.type === "image" ? [`log:${e.seq}/${n}`] : [])) : [];
+				s.turns.push({ id: `t${e.seq}`, user: text, pictures, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, live: null, footer: null });
 			}
 			return s;
 		}
