@@ -103,7 +103,7 @@ export const en = {
 	railContext: "Context",
 	railUsed: "Used",
 	railWindow: "Window",
-	railUnstated: "not stated",
+	railUnstated: "(default: the profile states none)",
 	railCompactNote: "Long Works are summarized automatically, as in the terminal.",
 	railTasks: "Background tasks",
 	railFinished: "{n} finished",

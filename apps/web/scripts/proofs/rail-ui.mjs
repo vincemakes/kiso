@@ -43,7 +43,7 @@ for (const e of events) {
 const sum = (k) => calls.reduce((n, c) => n + c.last[k], 0);
 const [fresh, output, cacheRead] = [sum("input"), sum("output"), sum("cacheRead")];
 const lastCall = calls.at(-1).last;
-check((await app.count("[data-field=context-detail]")) === 0 && (await field("context-pct")) === "?", "Context is one folded row; with no stated window it reads ?");
+check((await app.count("[data-field=context-detail]")) === 0 && /^\d+%$/.test(await field("context-pct")) && /\/ 200k$/.test(await app.text("[data-field=context-pct]").then(() => app.evaluate("document.querySelector('[data-field=context-pct]').parentElement.textContent.trim()"))), "Context is one folded row; with no stated window it is drawn against 200k (owner 2026-11-02: a number, not ?)");
 await app.click("[data-act=fold-context]");
 const n = (name) => field(name).then((v) => (v ?? "").replace(/,/g, ""));
 check((await n("usage-fresh")) === String(fresh) && (await n("usage-output")) === String(output) && (await field("usage-cache")) === `${Math.round((cacheRead / (fresh + cacheRead)) * 100)}%` && (await field("usage-calls")) === String(calls.length) && (await field("context-detail")).includes((lastCall.input + lastCall.cacheRead).toLocaleString()), "unfolded, Context holds the log's fresh, output, cache rate, request count and the last request's size");

@@ -72,8 +72,10 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 		onMouseLeave: () => setHover(null),
 	});
 	const u = rail.usage;
-	const { tokens: used, window } = state.context;
-	const share = used === null || window === null ? null : Math.min(100, (used / window) * 100);
+	// a profile that states no window is drawn against 200k, the common window (owner 2026-11-02: a number reads better than "?")
+	const { tokens: used, window: stated } = state.context;
+	const window = stated ?? 200_000;
+	const share = used === null ? 0 : Math.min(100, (used / window) * 100);
 	const live = state.tasks.filter((x) => x.endedAt === null);
 	const done = state.tasks.filter((x) => x.endedAt !== null);
 	const changes = workChangesOf(state, env?.root ?? null);
@@ -124,7 +126,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 							<b>{t.railContext}</b>
 							<span className="grow" />
 							<span className="r-ctxv">
-								<b data-field="context-pct">{share === null ? "?" : `${Math.round(share)}%`}</b> · {tokens(used)} / {window === null ? "?" : tokens(window)}
+								<b data-field="context-pct">{Math.round(share)}%</b> · {tokens(used ?? 0)} / {window % 1000 === 0 ? `${window / 1000}k` : tokens(window)}
 							</span>
 						</button>
 						<div className="r-meter" aria-hidden="true">
@@ -163,7 +165,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 								<span>{t.railUsed}</span>
 								<b>{used === null ? "—" : used.toLocaleString()}</b>
 								<span>{t.railWindow}</span>
-								<b>{window === null ? t.railUnstated : window.toLocaleString()}</b>
+								<b>{stated === null ? `${window.toLocaleString()} ${t.railUnstated}` : window.toLocaleString()}</b>
 								<span>{t.railFresh}</span>
 								<b data-field="usage-fresh">{u?.fresh == null ? "—" : u.fresh.toLocaleString()}</b>
 								<span>{t.railOutput}</span>
