@@ -7,9 +7,9 @@ import type { ContextParts } from "../shared/settings.js";
 
 /** What the Work's requests always carry, in bytes, for the rail's Context breakdown (an estimate the page labels as one), and where
  *  compaction starts and must happen for the stated window (the runtime's own tiers; null without a stated window). */
-export function contextParts(workspace: string, tier: PermissionMode, window: number | null): ContextParts {
+export function contextParts(workspace: string, tier: PermissionMode, window: number | null, note?: string): ContextParts {
 	const bytes = (s: string): number => Buffer.byteLength(s, "utf8");
-	const prompt = promptOf(workspace, tier);
+	const prompt = promptOf(workspace, tier, note);
 	const instructions = Math.max(0, bytes(composeSystemPrompt(workspace, protectedFiles())) - bytes(SYSTEM_PROMPT));
 	const tools = createCodingTools({ workspaceRoot: workspace, excludeRoots: [kisoHome()], secretEnvNames: [], protectedFiles: protectedFiles() });
 	const tiers = window === null ? null : tiersFor(window, 0);

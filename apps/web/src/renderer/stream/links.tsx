@@ -16,6 +16,8 @@ export const KeyContext = createContext<string | null>(null);
 export const WorkContext = createContext("");
 /** The run a block belongs to: what /desk/exists answered is remembered per run. */
 export const RunContext = createContext("");
+/** Fork the Work in front at a run's end (the seq of its `terminal`); null where forking is not offered. */
+export const ForkContext = createContext<((atSeq: number) => void) | null>(null);
 
 const CANDIDATE = /(?<![\w/.@~-])(?:\.\/|\/)?[\w@+-][\w@.+-]*(?:\/[\w@.+-]+)*/g;
 const EXT = /\.[A-Za-z][A-Za-z0-9]{0,7}$/;

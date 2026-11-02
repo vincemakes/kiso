@@ -19,6 +19,8 @@ export interface WorkRow {
 	readonly events: number;
 	readonly runs: number;
 	readonly state: WorkState;
+	/** the Work this one was forked from (the sidebar lists a fork after it, one step in) */
+	readonly parent?: string;
 }
 
 export interface HistoryReply {

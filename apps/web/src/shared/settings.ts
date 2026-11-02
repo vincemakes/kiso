@@ -33,6 +33,8 @@ export interface EnvReply {
 	readonly root: string;
 	readonly branch: string | null;
 	readonly mode: string;
+	/** when the Work asked about is a fork: what it was forked from, and when */
+	readonly fork?: { readonly parent: string; readonly title: string; readonly at: number };
 }
 
 export interface SettingsPatch {

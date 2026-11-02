@@ -32,7 +32,13 @@ export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[]
 	const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 	const day = 86_400_000;
 	const buckets: WorkRow[][] = [[], [], []];
-	for (const w of works) buckets[w.updatedAt >= midnight ? 0 : w.updatedAt >= midnight - day ? 1 : 2]!.push(w);
+	// a fork is listed right after its parent (the parent's day), the Works without a listed parent in their own order
+	const kids = new Map<string, WorkRow[]>();
+	const ids = new Set(works.map((w) => `${w.key}/${w.id}`));
+	for (const w of works) if (w.parent !== undefined && ids.has(`${w.key}/${w.parent}`)) kids.set(`${w.key}/${w.parent}`, [...(kids.get(`${w.key}/${w.parent}`) ?? []), w]);
+	const after = (w: WorkRow): WorkRow[] => [w, ...(kids.get(`${w.key}/${w.id}`) ?? []).flatMap(after)];
+	const roots = works.filter((w) => w.parent === undefined || !ids.has(`${w.key}/${w.parent}`));
+	for (const root of roots) buckets[root.updatedAt >= midnight ? 0 : root.updatedAt >= midnight - day ? 1 : 2]!.push(...after(root));
 	const labels = [t.today, t.yesterday, t.earlier];
 	return buckets.flatMap((rows, i) => (rows.length === 0 ? [] : [{ label: labels[i]!, works: rows }]));
 }

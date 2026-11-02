@@ -5,6 +5,7 @@ import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-
 import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
 import { contextParts } from "./context.js";
 import { rename } from "./names.js";
+import { forkNoteOf, forkWork } from "./fork.js";
 import { commit, gitOf, openPr, prDraft } from "./git.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
@@ -81,7 +82,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			} catch {
 				// no model: the parts are still known, the compaction sizes are not
 			}
-			return req.method === "GET" ? json(200, contextParts(space.workspace, ctx.settings.tierOf(session), window)) : json(405, {});
+			return req.method === "GET" ? json(200, contextParts(space.workspace, ctx.settings.tierOf(session), window, forkNoteOf(ctx.settings, session))) : json(405, {});
 		}
 		if (path === "/desk/git") {
 			if (space === null) return json(404, {});
@@ -101,6 +102,15 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const session = str(body["session"]) ?? "";
 			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
 			return json(200, { name: rename(space.dir, session, str(body["name"]) ?? "") });
+		}
+		if (path === "/desk/fork") {
+			if (!post) return json(405, {});
+			if (space === null) return json(404, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			if (!SAFE_ID.test(session)) return json(404, {});
+			const atSeq = typeof body["atSeq"] === "number" ? body["atSeq"] : undefined;
+			return json(200, { id: forkWork(space, ctx.settings, session, atSeq).id });
 		}
 		if (path === "/desk/task-stop") {
 			if (!post) return json(405, {});
@@ -141,7 +151,10 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 		}
 		if (path === "/desk/env") {
 			if (space === null) return json(404, {});
-			return req.method === "GET" ? json(200, folderInfo(space.workspace, ctx.settings.tierOf(url.searchParams.get("session") ?? undefined))) : json(405, {});
+			if (req.method !== "GET") return json(405, {});
+			const session = url.searchParams.get("session") ?? undefined;
+			const fork = session === undefined ? undefined : ctx.settings.forkOf(session);
+			return json(200, { ...folderInfo(space.workspace, ctx.settings.tierOf(session)), ...(fork === undefined ? {} : { fork: { parent: fork.parent, title: fork.title, at: fork.at } }) });
 		}
 		if (path === "/desk/history") return req.method === "GET" ? json(200, await ctx.history.snapshot({ key: ctx.current.key, dir: ctx.current.dir }, url.searchParams.get("fresh") ?? undefined)) : json(405, {});
 		if (path === "/desk/settings") {

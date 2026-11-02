@@ -58,6 +58,8 @@ export interface WebAgentOptions {
 	readonly model: ModelChoice;
 	/** The tier in force for this session, read on every decision: each Work has its own (the policy reads it through the getter). */
 	readonly tier: () => PermissionMode;
+	/** what this Work's model is told beyond the folder's prompt (a fork's notice of what it did not inherit) */
+	readonly note?: string;
 	/** The id of the session this agent serves (the endpoint's cache key and `{session}` headers are drawn from it). */
 	readonly sessionId: string;
 	/** The person's own test-runner commands, in front of the built-in ones, for the compaction phase rule. */
@@ -93,10 +95,9 @@ class WebAgent extends Agent {
 }
 
 /** The system prompt a Work's agent is built with: the terminal's prompt for the folder (its project instructions included), and the tier's note. */
-export function promptOf(workspace: string, tier: PermissionMode): string {
+export function promptOf(workspace: string, tier: PermissionMode, note?: string): string {
 	const prompt = composeSystemPrompt(workspace, protectedFiles());
-	const modeNote = modeSystemPrompt(tier);
-	return modeNote === undefined ? prompt : `${prompt}\n\n${modeNote}`;
+	return [prompt, modeSystemPrompt(tier), note].filter((p) => p !== undefined).join("\n\n");
 }
 
 export function createWebAgent(options: WebAgentOptions): Agent {
@@ -116,7 +117,7 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 		model: model.kind === "adapter" ? model.model : model.profile.model,
 		store,
 		workspace,
-		systemPrompt: promptOf(workspace, options.tier()),
+		systemPrompt: promptOf(workspace, options.tier(), options.note),
 		toolRules: CODING_TOOL_RULES,
 		tools: [...createCodingTools(toolOptions)],
 		// the terminal's chain, in its order: the guards that deny speak first

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { forkNoteOf } from "./fork.js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
@@ -79,6 +80,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		prefix,
 		model: (ctx) => options.settings.model(ctx),
 		tierOf: (sessionId) => options.settings.tierOf(sessionId),
+		noteOf: (sessionId) => forkNoteOf(options.settings, sessionId),
 		checkRunners: () => options.settings.checks(),
 		secretEnvNames: options.settings.secretEnvNames(),
 		exposeThinking: options.exposeThinking ?? true,
@@ -108,7 +110,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		const space = spaces.get(key);
 		if (space === undefined || !space.service.isRunning(sessionId)) return "idle";
 		return (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
-	});
+	}, (id) => options.settings.forkOf(id)?.parent);
 
 	const rendererDir = fileURLToPath(new URL("../../out/renderer/", import.meta.url));
 	const tokenBytes = Buffer.from(token);
