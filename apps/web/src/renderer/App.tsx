@@ -6,7 +6,6 @@ import { PanelContext } from "./panels/context.js";
 import { Panels } from "./panels/Panels.js";
 import { PanelMenu } from "./panels/Menu.js";
 import type { PanelKind, PanelMode } from "./state/panels.js";
-import { railOf } from "./rail/derive.js";
 import { isLive } from "./state/model.js";
 import { RootContext } from "./stream/root.js";
 import { KeyContext, WorkContext } from "./stream/links.js";
@@ -118,7 +117,6 @@ export function App(): ReactNode {
 	const railOpen = railOn && railChoice && panel === null;
 	const [lightbox, setLightbox] = useState<string | null>(null);
 	const closeLightbox = useCallback(() => setLightbox(null), []);
-	const attention = session === null ? 0 : railOf(session.state).attention;
 	// the composer's pills: this Work's tier, model and effort, changed for this Work only (its folder's key, so its own space rebuilds it)
 	const controls = useMemo<Controls>(
 		() => ({
@@ -206,11 +204,6 @@ export function App(): ReactNode {
 			<Header title={title} sub={sub} onRename={onRename}>
 				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
 					<Overview />
-					{attention > 0 ? (
-						<span className="tbadge" data-field="badge">
-							{attention}
-						</span>
-					) : null}
 				</button>
 				<PanelMenu onPick={openPanel} />
 			</Header>

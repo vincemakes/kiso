@@ -1,4 +1,4 @@
-import { split, type Footer, type State } from "../state/model.js";
+import type { Footer, State } from "../state/model.js";
 import { artifactsOf, focusOf } from "../stream/Artifacts.js";
 import { changesOf } from "../state/panels.js";
 import type { ArtifactRef } from "../../shared/frames.js";
@@ -11,14 +11,11 @@ import type { ArtifactRef } from "../../shared/frames.js";
 
 export interface Rail {
 	readonly usage: Footer | null;
-	/** running background tasks plus approvals waiting: the badge on the overview key */
-	readonly attention: number;
 }
 
 export function railOf(state: State): Rail {
 	const turn = state.turns.at(-1);
-	if (turn === undefined) return { usage: null, attention: 0 };
-	return { usage: turn.footer ?? turn.live, attention: state.tasks.filter((x) => x.endedAt === null).length + split(turn).openAsks.length };
+	return { usage: turn === undefined ? null : (turn.footer ?? turn.live) };
 }
 
 /** One thing the Work made, newest first, once each (the same file written twice is one output). */

@@ -80,8 +80,10 @@ export function Thumb({ a }: { readonly a: ArtifactRef }): ReactNode {
 	);
 }
 
-/** The first `max` thumbnails, then +N. */
-export function Thumbs({ items, max = 3 }: { readonly items: readonly ArtifactRef[]; readonly max?: number }): ReactNode {
+/** The first `max` pictures a step or a group made, then +N. Only pictures get a thumbnail: a file's tile showed its type's icon and
+ *  nothing of the file (owner, 2026-11-02; W1c drew a tile for every artifact). Files are in the run's strip and the rail's Outputs. */
+export function Thumbs({ items: all, max = 3 }: { readonly items: readonly ArtifactRef[]; readonly max?: number }): ReactNode {
+	const items = all.filter((a) => a.kind === "image");
 	if (items.length === 0) return null;
 	return (
 		<span className="tns">
