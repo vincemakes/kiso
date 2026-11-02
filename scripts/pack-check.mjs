@@ -46,7 +46,7 @@ const PACKAGES = [
 	"@vincemakes/kiso-web",
 ];
 const WEB = "@vincemakes/kiso-web";
-const WEB_PAGE = ["out/renderer/index.html", "out/renderer/manifest.webmanifest", "out/renderer/icon.png"];
+const WEB_PAGE = ["out/renderer/index.html", "out/renderer/manifest.webmanifest", "out/renderer/icon.png", "out/renderer/favicon.svg", "out/renderer/favicon-32.png"];
 const BUILD_ONLY = /^(react|react-dom|vite|@vitejs\/.*|@types\/.*|typescript)$/;
 
 let failed = false;
