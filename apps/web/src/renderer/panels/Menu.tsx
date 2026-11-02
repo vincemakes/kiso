@@ -9,7 +9,7 @@ const ITEMS: readonly { readonly kind: PanelKind; readonly label: string; readon
 	{ kind: "files", label: t.panelFiles, icon: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /> },
 ];
 
-/** The ⋮ key beside the overview key, and the list of panels it opens. */
+/** The ⋯ key after the overview key at the conversation's top right, and the list of panels it opens. */
 export function PanelMenu({ onPick }: { readonly onPick: (kind: PanelKind) => void }): ReactNode {
 	const [open, setOpen] = useState(false);
 	useEffect(() => {
@@ -31,9 +31,9 @@ export function PanelMenu({ onPick }: { readonly onPick: (kind: PanelKind) => vo
 				}}
 			>
 				<svg className="ico" viewBox="0 0 24 24">
-					<circle cx="12" cy="5.5" r="1.2" />
+					<circle cx="5.5" cy="12" r="1.2" />
 					<circle cx="12" cy="12" r="1.2" />
-					<circle cx="12" cy="18.5" r="1.2" />
+					<circle cx="18.5" cy="12" r="1.2" />
 				</svg>
 			</button>
 			{open ? (

@@ -85,6 +85,8 @@ export interface Footer {
 	readonly cacheRead: number | null;
 	readonly costUsd: number | null;
 	readonly calls: number;
+	/** the run's decode rate (output over the calls' own time, as the terminal measures it); null when it would not be a measurement */
+	readonly tokPerSec?: number | null;
 }
 
 export interface Turn {
@@ -336,7 +338,7 @@ function frame(s: State, name: string, data: unknown): void {
 		case "run_usage": {
 			if (turn === undefined) return;
 			const u = data as Footer;
-			turn.footer = { fresh: u.fresh, output: u.output, cacheRate: u.cacheRate, cacheRead: u.cacheRead, costUsd: u.costUsd, calls: u.calls };
+			turn.footer = { fresh: u.fresh, output: u.output, cacheRate: u.cacheRate, cacheRead: u.cacheRead, costUsd: u.costUsd, calls: u.calls, tokPerSec: u.tokPerSec ?? null };
 			return;
 		}
 		case "tool_output": {

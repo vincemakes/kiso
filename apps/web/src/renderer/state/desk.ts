@@ -45,6 +45,8 @@ export const fetchPrDraft = (key: string | null): Promise<{ readonly title: stri
 /** On the person's confirm only: commit the ticked files; push and open the pull request. */
 export const postCommit = (key: string | null, message: string, paths: readonly string[]): Promise<{ readonly sha: string }> => call(withKey("/desk/commit", key), { message, paths });
 export const postPr = (key: string | null, title: string, body: string): Promise<{ readonly number: number; readonly url: string }> => call(withKey("/desk/pr", key), { title, body });
+/** Name a Work (empty clears the name, back to its first-request title); the answer is the name kept. */
+export const renameWork = (key: string | null, session: string, name: string): Promise<{ readonly name: string | null }> => call(withKey("/desk/rename", key), { session, name });
 /** What a Work's requests always carry (bytes), and its compaction sizes. */
 export const fetchContext = (key: string | null, session: string): Promise<ContextParts> => call(withKey("/desk/context", key, { session }));
 /** The files `@` can name in a Work's folder (git's list, else a bounded walk). */

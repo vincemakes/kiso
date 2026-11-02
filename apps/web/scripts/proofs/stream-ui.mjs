@@ -91,7 +91,7 @@ await app.click(".th-h");
 await sleep(700);
 await app.shot("6-thinking-open");
 check((await app.text(".th-text")) === THINK && (await app.evaluate("document.querySelector('.think').classList.contains('open')")), "opening the thinking row shows its whole text");
-check(/^\d+ s · .* in · .* out · \d+% cache$/.test(await app.text("[data-kind=footer]")), "the footer: duration, tokens in and out, cache rate");
+check(/^\d+ s · .* in · .* out · \d+% cache( · \d+ tok\/s)?$/.test(await app.text("[data-kind=footer]")), "the footer: duration, tokens in and out, cache rate");
 const frames = JSON.parse(await app.evaluate("JSON.stringify(window.__frames)"));
 const jumps = frames.slice(1).map((f, i) => f.n - frames[i].n);
 // (a table row is drawn whole once its closing pipe has arrived: rows are held back, not paced, so the pace is measured on the prose)

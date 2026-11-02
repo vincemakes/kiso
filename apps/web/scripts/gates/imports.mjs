@@ -18,6 +18,8 @@ const INTERNAL_ALLOWED = {
 	"src/main/settings.ts": ["@vincemakes/kiso-runtime/internal"],
 	// the runtime's compaction tiers, for the rail's Context: where compaction starts and must happen (no root export carries them)
 	"src/main/context.ts": ["@vincemakes/kiso-runtime/internal"],
+	// a Work's name: the runtime's session-name store, the terminal's rename (no root export carries it)
+	"src/main/names.ts": ["@vincemakes/kiso-runtime/internal"],
 };
 
 /** workspace package name → its `exports` keys (null: no exports map). */
