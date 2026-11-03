@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { KeyContext, WorkContext } from "./links.js";
 import { PinnedContext } from "./Artifacts.js";
 import { Composer } from "./Composer.js";
 import { Turn } from "./Turn.js";
@@ -34,10 +35,34 @@ export const Loading = (): ReactNode => (
 );
 
 /** One Work: its stream and its input. A Work whose run died offers the resume card. */
+/**
+ * The line the person may send next after the Work's latest run, when it ended well (plan follow-up, owner 2026-11-03):
+ * asked of the host, which asks the Work's own model at most once a run, and only for a run it carried itself (after a
+ * restart it has nothing to repeat: none). Coming back to the Work shows the same line again at no cost; the next run
+ * clears it.
+ */
+function useFollowUp(last: Session["state"]["turns"][number] | undefined): string | null {
+	const work = useContext(WorkContext);
+	const key = useContext(KeyContext);
+	const asked = useRef(new Set<string>());
+	const [line, setLine] = useState<{ readonly at: string; readonly text: string } | null>(null);
+	const at = last === undefined ? "" : `${work}/${last.id}`;
+	useEffect(() => {
+		if (last === undefined || last.phase !== "ended" || last.outcome !== "completed" || last.endSeq === null || asked.current.has(at)) return;
+		asked.current.add(at);
+		const q = new URLSearchParams({ session: work, seq: String(last.endSeq), ...(key === null ? {} : { key }) });
+		void fetch(`/desk/followup?${q}`)
+			.then((r) => (r.ok ? (r.json() as Promise<{ line: string }>) : { line: "" }))
+			.then((r) => r.line !== "" && setLine({ at, text: r.line }), () => undefined);
+	}, [last, last?.phase, last?.outcome, at, work, key]);
+	return line !== null && line.at === at && last?.phase === "ended" ? line.text : null;
+}
+
 export function WorkView({ session, auto, home, focusDecision, onFocused, lead }: Props): ReactNode {
 	const version = useSyncExternalStore(session.subscribe, session.version);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
+	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);
 	const uncertain = (session.state.snapshot?.uncertain.length ?? 0) > 0;
 	const message = session.message();
@@ -202,7 +227,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					)}
 				</div>
 			) : (
-				<Composer running={running} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
+				<Composer running={running} suggestion={suggestion} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

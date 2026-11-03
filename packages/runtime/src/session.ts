@@ -42,6 +42,7 @@ import {
 	type ToolSpec,
 	type EventInput,
 	type RetryInfo,
+	type StreamOptions,
 } from "@vincemakes/kiso-core";
 import { executionLedger } from "./ledger.js";
 import { overflowBelt, type OverflowMeasure } from "./overflow-belt.js";
@@ -100,6 +101,13 @@ export interface SideQueryOptions {
 	readonly prompt: string;
 	readonly maxTokens?: number;
 	/** cancels the request — the CLI wires esc to it. */
+	readonly signal?: AbortSignalLike;
+}
+
+export interface FollowUpOptions {
+	/** what is asked after the run's last reply, as the person's next message */
+	readonly ask: string;
+	readonly maxTokens?: number;
 	readonly signal?: AbortSignalLike;
 }
 
@@ -183,6 +191,8 @@ export class AgentSession {
 	// NOT readonly since 0.1.23: /model replaces it between runs (the
 	// constructor, setAdapter, and setModelBinding are the only writers).
 	#adapter: Adapter;
+	/** the last request a run sent, as the provider adapter got it (in memory only): what followUp sends again */
+	#lastRequest: StreamOptions | null = null;
 	readonly #config: SessionConfig;
 	/** 0.51.0: the checkpoint every summary call is built from — resolved ONCE at construction from a snapshot of `contextPolicy.checkpointSections`; the raw host array is never read again. */
 	readonly #checkpoint: ResolvedCheckpoint | undefined;
@@ -991,7 +1001,7 @@ export class AgentSession {
 		this.ensureHealthy();
 		if (this.#profilePending) this.#recordProfile(); // XP-1: legacy revision 1, before the first request
 		const config = options?.maxTurns !== undefined ? { ...this.#effectiveConfig(), maxTurns: options.maxTurns } : this.#effectiveConfig();
-		return new Run(this.#store, this.#learning(this.#adapter), config, this, input, options?.signal, false, options?.source, options?.via);
+		return new Run(this.#store, this.#remembering(this.#learning(this.#adapter)), config, this, input, options?.signal, false, options?.source, options?.via);
 	}
 
 	/**
@@ -1002,7 +1012,72 @@ export class AgentSession {
 	 */
 	resume(): Run {
 		this.ensureHealthy();
-		return new Run(this.#store, this.#learning(this.#adapter), this.#effectiveConfig(), this, undefined, undefined, true);
+		return new Run(this.#store, this.#remembering(this.#learning(this.#adapter)), this.#effectiveConfig(), this, undefined, undefined, true);
+	}
+
+	/** The adapter a run uses, noting each request it carries (the last one stands, without its signal) for followUp. */
+	#remembering(adapter: Adapter): Adapter {
+		return {
+			stream: (options) => {
+				const { signal: _signal, ...request } = options;
+				this.#lastRequest = request;
+				return adapter.stream(options);
+			},
+		};
+	}
+
+	/**
+	 * A follow-up of the last run: its last request sent again, byte for byte as the run sent it, then what came after it
+	 * in the conversation (the run's last reply, as the projection has it, reasoning included) and `ask` as a user message,
+	 * through the session's own adapter; the model's text comes back. The prefix is the run's own, so a route
+	 * that caches reads nearly all of it from the cache: the web app asks it for the line the person may send next.
+	 *
+	 * Like sideQuery it writes nothing durable and lands one trace line with a fresh runId and purpose "follow-up". It
+	 * sends nothing, and answers "", when no run has sent a request since this session was opened, or when the model has
+	 * been switched since (that prefix would not be this model's). Tools stay in the request (they are part of the
+	 * prefix); a tool call in the answer is ignored.
+	 */
+	/** What the conversation holds after a request's messages: the projection's rest when it starts with them (the usual
+	 *  case), else only its last reply. */
+	#after(sent: readonly Message[]): Message[] {
+		const now = this.projected();
+		if (JSON.stringify(now.slice(0, sent.length)) === JSON.stringify(sent)) return now.slice(sent.length);
+		const last = now.at(-1);
+		return last?.role === "assistant" ? [last] : [];
+	}
+
+	async followUp(options: FollowUpOptions): Promise<string> {
+		this.ensureHealthy();
+		const last = this.#lastRequest;
+		if (last === null || last.model !== this.#model) return "";
+		const tracer = new RequestTracer({
+			root: this.#store.root,
+			sessionId: this.id,
+			runId: crypto.randomUUID(),
+			provider: this.#provider ?? "adapter",
+			model: this.#model,
+			...(this.#baseUrl !== undefined ? { endpoint: this.#baseUrl } : {}),
+			adapterVersion: runtimeVersion(),
+			purpose: "follow-up",
+			log: [],
+			rentParts: { base: last.systemPrompt ?? "", appends: [] },
+		});
+		tracer.init();
+		const guarded = traceGuard(tracer, idleGuard(this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
+		let text = "";
+		try {
+			for await (const ev of guarded.stream({
+				...last,
+				messages: [...last.messages, ...this.#after(last.messages), { role: "user", content: options.ask }],
+				...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+				...(options.signal !== undefined ? { signal: options.signal } : {}),
+			})) {
+				if (ev.type === "text_delta") text += ev.text;
+			}
+		} finally {
+			tracer.finishRun();
+		}
+		return text;
 	}
 
 	/**
