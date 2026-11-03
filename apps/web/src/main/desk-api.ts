@@ -160,6 +160,15 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			ctx.previews.close(String((await readJson(req))["url"] ?? ""));
 			return json(200, { ok: true });
 		}
+		// the line the person may send next after the run that ended at `seq` (asked once, after that run; "" for none)
+		if (path === "/desk/followup") {
+			if (space === null) return json(404, {});
+			if (req.method !== "GET") return json(405, {});
+			const session = url.searchParams.get("session") ?? "";
+			const seq = Number(url.searchParams.get("seq"));
+			if (!space.store.ids().includes(session) || !Number.isInteger(seq)) return json(404, {});
+			return json(200, { line: await space.followUp(session, seq) });
+		}
 		if (path === "/desk/env") {
 			if (space === null) return json(404, {});
 			if (req.method !== "GET") return json(405, {});

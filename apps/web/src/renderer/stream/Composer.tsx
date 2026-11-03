@@ -6,6 +6,8 @@ import { AtPicker, atHits, ControlsContext, Menu, ModelMenu, TierMenu } from "./
 
 interface Props {
 	readonly running: boolean;
+	/** the line the person may send next: the empty box's placeholder, Tab takes it */
+	readonly suggestion?: string | null;
 	readonly onSend: (input: WireInput) => void;
 	readonly onSteer: (input: WireInput) => void;
 	readonly onStop: () => void;
@@ -51,7 +53,7 @@ function lineOf(text: string, attached: readonly Attachment[]): WireInput {
  * by `+`; `@` names a file of the folder. The bar under the box holds `+`, this Work's tier, and its model and effort. A picture
  * waits in the box, unsent, while the model in use is not known to read images.
  */
-export function Composer({ running, onSend, onSteer, onStop, inline = false, children }: Props): ReactNode {
+export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, children }: Props): ReactNode {
 	const c = useContext(ControlsContext);
 	const [text, setText] = useState("");
 	const [attached, setAttached] = useState<readonly Attachment[]>([]);
@@ -104,6 +106,7 @@ export function Composer({ running, onSend, onSteer, onStop, inline = false, chi
 			if ((e.key === "Enter" || e.key === "Tab") && hits[at.active] !== undefined) return (e.preventDefault(), choose(hits[at.active]!));
 			if (e.key === "Escape") return (e.preventDefault(), setAt(null));
 		}
+		if (e.key === "Tab" && !e.shiftKey && !running && suggestion != null && text === "") return (e.preventDefault(), setText(suggestion));
 		if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
 			e.preventDefault();
 			submit();
@@ -150,7 +153,8 @@ export function Composer({ running, onSend, onSteer, onStop, inline = false, chi
 					ref={box}
 					rows={1}
 					value={text}
-					placeholder={running ? t.inputRunning : t.inputPlaceholder}
+					placeholder={running ? t.inputRunning : (suggestion ?? t.inputPlaceholder)}
+					data-suggestion={suggestion ?? undefined}
 					onChange={(e) => {
 						setText(e.target.value);
 						grow(e.target);

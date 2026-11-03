@@ -24,7 +24,7 @@ machinery the SDK deliberately does not expose (see §3).
 | `RunClosedError` | keep | ADR-0057: `steer()` on a run whose ingress sealed — the host starts a new run with the input |
 | `SessionStore`, `StoreRecord`, `SessionMeta`, `StaleWriterError`, `StoreCorruptionError` | keep | the append-only JSONL store |
 | `PoisonedSessionError`, `ResumeBlockedError` | keep | the two documented session failure modes |
-| `ApprovalRequest`, `CompactInfo`, `ContextPolicy`, `SessionConfig`, `SideQueryOptions`, `SummarizeResult` | keep | session-level types |
+| `ApprovalRequest`, `CompactInfo`, `ContextPolicy`, `FollowUpOptions`, `SessionConfig`, `SideQueryOptions`, `SummarizeResult` | keep | session-level types |
 | `CheckpointSection`, `DEFAULT_CHECKPOINT_SECTIONS` | keep | 0.51.0: the sections of a checkpoint, as data (see "Checkpoint sections" below) |
 | `Event` | keep | the durable event union (§2) |
 | `disposeExtensions`, `loadExtensions`, `loadProjectExtensions`, `KisoExtension` | keep | the extension contract |
