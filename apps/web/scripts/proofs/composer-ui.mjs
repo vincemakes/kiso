@@ -100,5 +100,16 @@ check(refused.status === 409 && after.profile === "vision" && (await q("document
 slow();
 await sleep(300);
 endpoint.close();
+// Settings' model field is the composer's menu too (owner 2026-11-03): each profile's model over its name, opening below its pill
+if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
+await q(`document.querySelector('.fn-h').click()`);
+await app.click("[data-act=settings]");
+await waitUntil(async () => (await app.count("[data-kind=settings] [data-act=profile]")) === 1, 15_000);
+await app.click("[data-kind=settings] [data-act=profile]");
+const listed = await q("[...document.querySelectorAll('[data-kind=settings] [data-menu=profile] .cm-i')].map((e) => e.querySelector('b').firstChild.textContent + '/' + e.querySelector('small').textContent).join()");
+await sleep(400);
+await app.shot("settings-model");
+await app.click("[data-kind=settings] [data-profile=vision]");
+check(listed === "mock-text/text,claude-sonnet-5-5/vision" && (await waitUntil(async () => (await text("[data-kind=settings] [data-field=profile]")) === "claude-sonnet-5-5")), `Settings lists each profile's model over its name in the composer's menu, and a pick shows in its pill (${listed})`);
 await app.close();
 verdict();
