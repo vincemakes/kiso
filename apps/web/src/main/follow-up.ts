@@ -5,7 +5,7 @@
  */
 
 export const FOLLOW_UP_ASK =
-	"Write the one message the person is most likely to send you next, in their language, as they would type it, and nothing else. If the work is done and nothing naturally follows, answer with nothing.";
+	"Write the one message the person is most likely to send you next, as they would type it, and nothing else. If the work is done and nothing naturally follows, answer with nothing.";
 
 /** The model's answer as the box shows it: its first non-empty line, without quotes around it, at most 200 characters; "" for none. */
 export function oneLine(text: string): string {
