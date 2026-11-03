@@ -100,6 +100,7 @@ export async function startFromEnv(options: { readonly port?: number } = {}): Pr
 		...(options.port !== undefined ? { port: options.port } : {}),
 		...(process.env["KISO_WEB_TOKEN"] !== undefined ? { token: process.env["KISO_WEB_TOKEN"] } : {}),
 		sanitizer: process.env["KISO_WEB_SANITIZER"] === "default" ? "default" : "web",
+		followUps: process.env["KISO_WEB_FOLLOWUP"] !== "off",
 		...(Number.isFinite(keepalive) && keepalive > 0 ? { keepaliveMs: keepalive } : {}),
 		...(process.env["KISO_WEB_MIN_FG_MS"] !== undefined && Number.isFinite(minFg) ? { toolLimits: { minForegroundMs: minFg } } : {}),
 	});

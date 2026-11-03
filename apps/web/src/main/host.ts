@@ -51,6 +51,8 @@ export interface HostOptions {
 	readonly sanitizer?: "default" | "web";
 	readonly keepaliveMs?: number;
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
+	/** After a run, ask the Work's model for the line the person may send next (default true; the proofs turn it off). */
+	readonly followUps?: boolean;
 }
 
 export interface Host {
@@ -87,6 +89,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		sanitizer: options.sanitizer ?? "web",
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
+		followUps: options.followUps ?? true,
 	});
 
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it

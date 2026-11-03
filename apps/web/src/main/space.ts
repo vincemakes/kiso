@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { SessionStore } from "@vincemakes/kiso-runtime";
+import { SessionStore, type Agent } from "@vincemakes/kiso-runtime";
 import { createSessionService, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
@@ -10,6 +10,7 @@ import { runRate, runTotals, usageFrameAt } from "./usage.js";
 import { webSanitize } from "./sanitize.js";
 import { TimeIndex } from "./times.js";
 import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
+import { FOLLOW_UP_ASK, oneLine } from "./follow-up.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
 
 /**
@@ -39,6 +40,8 @@ export interface SpaceOptions {
 	readonly sanitizer: "default" | "web";
 	readonly keepaliveMs?: number;
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
+	/** ask for a follow-up after a run (off: `followUp` answers "" and sends nothing) */
+	readonly followUps?: boolean;
 }
 
 export interface Space {
@@ -53,6 +56,9 @@ export interface Space {
 	readonly handler: ReturnType<typeof createHttpHandler>;
 	/** The Works this host has opened since it started (the ones that can be running). */
 	readonly opened: () => ReadonlySet<string>;
+	/** The line the person may send next after the run that ended at `seq`: asked of the Work's own model once, with the
+	 *  run's own request as the prefix (Session.followUp); "" when off, not the latest run, not completed, or it failed. */
+	readonly followUp: (sessionId: string, seq: number) => Promise<string>;
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -74,6 +80,20 @@ export function createSpace(options: SpaceOptions): Space {
 	};
 
 	const opened = new Set<string>();
+	const sessions = new Map<string, Awaited<ReturnType<Agent["session"]>>>();
+	const followUps = new Map<string, Promise<string>>();
+	const followUp = (sessionId: string, seq: number): Promise<string> => {
+		const session = sessions.get(sessionId);
+		const end = [...service.events(sessionId)].reverse().find((e) => e.type === "terminal");
+		if (options.followUps !== true || session === undefined || service.isRunning(sessionId) || end?.seq !== seq || end.outcome.kind !== "completed") return Promise.resolve("");
+		const at = `${sessionId}:${seq}`;
+		let line = followUps.get(at);
+		if (line === undefined) {
+			line = session.followUp({ ask: FOLLOW_UP_ASK, maxTokens: 200 }).then(oneLine, () => "");
+			followUps.set(at, line);
+		}
+		return line;
+	};
 	const service = createSessionService({
 		store,
 		open: async (sessionId) => {
@@ -90,6 +110,7 @@ export function createSpace(options: SpaceOptions): Space {
 				...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
 				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 				onSession: (sessionId, session) => {
+					sessions.set(sessionId, session);
 					// the model hears how a task ended; nothing wakes an idle session
 					session.useTasks(tasks.managerFor(sessionId), { wake: false });
 				},
@@ -209,6 +230,7 @@ export function createSpace(options: SpaceOptions): Space {
 		images: new LogImages(options.dir),
 		handler,
 		opened: () => opened,
+		followUp,
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {
 			await tasks.close();
