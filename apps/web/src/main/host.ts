@@ -53,6 +53,8 @@ export interface HostOptions {
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
 	/** After a run, ask the Work's model for the line the person may send next (default true; the proofs turn it off). */
 	readonly followUps?: boolean;
+	/** Title a Work from its first message with its own model (default true; the proofs turn it off). */
+	readonly titles?: boolean;
 }
 
 export interface Host {
@@ -90,6 +92,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
+		titles: options.titles ?? true,
 	});
 
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
