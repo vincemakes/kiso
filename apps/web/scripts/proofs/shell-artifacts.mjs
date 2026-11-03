@@ -1,7 +1,8 @@
 // What a command made, found without a guess: a path named in the command or its output counts only if it is inside the folder,
 // is an artifact type, exists, and changed during the step. A command that writes a file without naming it finds nothing (and is
-// no error); an old file named in the output is not taken; nor is a file named outside the folder or in a dot-directory. A write
-// of an artifact type is one; of another type is not.
+// no error); an old file named in the output is not taken; nor is one in a dot-directory. A write of an artifact type is one; of
+// another type is not. Outside the folder only a raster picture made in the step is taken (owner 2026-11-03: a browser tool's
+// screenshot under /tmp), kept as a copy the page reads by the Work's log route; an old picture, a page or an svg there is not.
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch, clientFor, scratch, checker } from "./lib.mjs";
@@ -14,11 +15,14 @@ mkdirSync(join(workspace, ".cache"));
 writeFileSync(join(workspace, "old.html"), "<title>Old</title>");
 utimesSync(join(workspace, "old.html"), new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
 writeFileSync(join(workspace, "make.js"), "require('fs').writeFileSync('quiet.png', 'x');\n");
+writeFileSync(join(outside, "old.png"), "old picture");
+utimesSync(join(outside, "old.png"), new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
 const script = [
 	{ events: [
 		call("c1", "shell", { command: "printf '<title>Out</title>' > out.html && echo wrote out.html" }),
 		call("c2", "shell", { command: "node make.js" }),
-		call("c3", "shell", { command: `touch .cache/x.png ${outside}/far.png && echo see old.html .cache/x.png ${outside}/far.png` }),
+		call("c3", "shell", { command: `touch .cache/x.png && printf 'shot one' > ${outside}/far.png && echo see old.html .cache/x.png; echo Saved ${outside}/far.png` }),
+		call("c6", "shell", { command: `printf '<p>x</p>' > ${outside}/far.html && printf '<svg/>' > ${outside}/far.svg && echo ${outside}/old.png ${outside}/far.html ${outside}/far.svg` }),
 		call("c4", "write_file", { path: "page.html", content: "<title>Page</title>" }),
 		call("c5", "write_file", { path: "notes.txt", content: "plain" }),
 		{ type: "stop", reason: "tool_use" },
@@ -28,11 +32,17 @@ const script = [
 const host = await launch({ data: scratch("sa-data"), workspace, fauxScript: script, env: { KISO_WEB_MODE: "full-access" } });
 const frames = [];
 for await (const ev of clientFor(host).session("sa").runStream("make things")) if (ev.kind === "frame" && ev.event === "tool_output") frames.push(ev.data);
-host.child.kill("SIGTERM");
 const of = (id) => frames.find((f) => f.callId === id);
+// the kept copy is what the page reads, and it stays the step's picture when the outside file is written again
+writeFileSync(join(outside, "far.png"), "shot two");
+const shot = await fetch(`${host.origin}/desk/image/sa/${of("c3")?.seq}/k0`, { headers: { authorization: `Bearer ${host.token}` } });
+const shotBody = shot.ok ? await shot.text() : "";
+host.child.kill("SIGTERM");
 const uris = (id) => (of(id)?.artifacts ?? []).map((a) => `${a.kind} ${a.uri}`).join();
 check(uris("c1") === "page file:out.html" && of("c1").artifacts[0].workId === "sa" && of("c1").artifacts[0].callId === "c1", `a command that writes out.html and prints its path: found, tied to its call and Work (${uris("c1")})`);
 check(uris("c2") === "" && !of("c2").isError, "a command that writes quiet.png without naming it: nothing found, and no error");
-check(uris("c3") === "" && !of("c3").isError && of("c3").head.join().includes("far.png"), `an old file named in the output, a file in a dot-directory and one outside the folder, all named and touched: none taken (${uris("c3")})`);
+check(uris("c3") === `image log:${of("c3").seq}/k0` && !of("c3").isError, `an old file named in the output and one in a dot-directory are not taken; a picture the step wrote outside the folder is, as a kept copy (${uris("c3")})`);
+check(shot.ok && shot.headers.get("content-type") === "image/png" && shotBody === "shot one", `the page reads the kept copy through the Work's image route, the step's own picture even after the outside file changed ("${shotBody}")`);
+check(uris("c6") === "", `outside the folder, an old picture, a page and an svg are not taken (${uris("c6")})`);
 check(uris("c4") === "page file:page.html" && uris("c5") === "", `a write of a page is an artifact; of a .txt is not (${uris("c4")} | ${uris("c5")})`);
 verdict();

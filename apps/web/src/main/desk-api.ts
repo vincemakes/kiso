@@ -141,10 +141,10 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			return post ? json(200, { found: existing(realpathSync(space.workspace), (await readJson(req))["paths"]) }) : json(405, {});
 		}
 		// an image block of a result, from the Work's log: its bytes, or an https address passed on
-		const image = /^\/desk\/image\/([A-Za-z0-9._-]+)\/(\d+)\/(\d+)$/.exec(path);
+		const image = /^\/desk\/image\/([A-Za-z0-9._-]+)\/(\d+)\/(\d+|k\d+)$/.exec(path);
 		if (image !== null) {
 			if (space === null || req.method !== "GET" || !space.store.ids().includes(image[1]!)) return json(404, {});
-			const b = space.images.block(image[1]!, Number(image[2]), Number(image[3]));
+			const b = space.images.block(image[1]!, Number(image[2]), image[3]!.startsWith("k") ? image[3]! : Number(image[3]));
 			if (b === null) return json(404, {});
 			return "url" in b ? { status: 302, body: null, headers: { location: b.url } } : { status: 200, body: b.bytes, headers: { "content-type": b.type, "x-content-type-options": "nosniff", "cache-control": "private, max-age=86400" } };
 		}
