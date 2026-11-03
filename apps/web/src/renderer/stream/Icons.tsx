@@ -29,7 +29,8 @@ export const Overview = (): ReactNode => svg(<><rect x="3.5" y="4.5" width="17" 
 export const Sidebar = (): ReactNode => svg(<><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></>, 17);
 export const Copy = (): ReactNode => svg(<><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>, 14);
 export const Check = (): ReactNode => svg(<path d="m5 12.5 4.5 4.5L19 7.5" />, 14);
-export const Fork = (): ReactNode => svg(<><circle cx="6" cy="5" r="2" /><circle cx="18" cy="5" r="2" /><circle cx="12" cy="19" r="2" /><path d="M6 7v2a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V7M12 12v5" /></>, 14);
+/** Fork: Lucide's `split` (ISC), turned a quarter clockwise so the stem comes in from the left and the branches part to the right (owner 2026-11-03). */
+export const Fork = (): ReactNode => svg(<g transform="rotate(90 12 12)"><path d="M16 3h5v5" /><path d="M8 3H3v5" /><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3" /><path d="m15 9 6-6" /></g>, 14);
 export const ArrowUp = (): ReactNode => svg(<path d="M12 19V5M6 11l6-6 6 6" />, 16);
 
 /** The rail's and the viewer's set: one 16 px box, one 1.75 stroke (`.i16`), so a branch, a folder and a file read the same size. */
