@@ -27,14 +27,6 @@
 .ph .lab.shimmer, .th-h .lab.shimmer { background: linear-gradient(90deg, #8a8a8e 20%, #1c1c1e 50%, #8a8a8e 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 1.8s linear infinite; }
 @keyframes sh { to { background-position: -200% 0; } }
 .th-h .t { font-variant-numeric: tabular-nums; color: var(--faint); }
-.pv1 { flex: 1; min-width: 0; height: 20px; position: relative; overflow: hidden; margin-left: 4px; transition: opacity 0.3s; }
-.pv1 span { position: absolute; left: 0; right: 0; top: 0; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #a0a0a6; font-size: 12.5px; }
-.pv1 .on { animation: lineIn 0.4s var(--ease) both; }
-.pv1 .out { animation: lineOut 0.3s var(--ease) both; }
-@keyframes lineIn { from { transform: translateY(100%); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes lineOut { from { transform: none; opacity: 1; } to { transform: translateY(-100%); opacity: 0; } }
-.think.thinking .pv1 span { background: linear-gradient(90deg, #a0a0a6 25%, #3a3a40 50%, #a0a0a6 75%); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation-name: sh; animation-duration: 2.2s; animation-timing-function: linear; animation-iteration-count: infinite; }
-.think.done .pv1, .think.open .pv1 { opacity: 0; }
 .th-full { display: grid; grid-template-rows: 0fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
 .think.open .th-full { grid-template-rows: 1fr; }
 .th-full > div { overflow: clip; min-height: 0; min-width: 0; }
@@ -151,7 +143,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.ph .lab.shimmer, .th-h .lab.shimmer { animation: none; color: var(--mute); background: none; }
-	.dotpulse::after, .pv1 span, .ask { animation: none !important; }
+	.dotpulse::after, .ask { animation: none !important; }
 	.pw, .th-full, .chev { transition: none; }
 	.brand { animation: none; }
 }

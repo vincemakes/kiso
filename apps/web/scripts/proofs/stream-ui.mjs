@@ -37,13 +37,13 @@ const sc = (js) => app.evaluate(`(() => { const el = document.querySelector('.sc
 await app.evaluate(`window.__snaps = []; new MutationObserver(() => {
 	const q = (s) => document.querySelector(s);
 	window.__snaps.push({ answer: q('[data-kind=answer]')?.textContent ?? null, folded: q('[data-kind=process]')?.dataset.folded ?? null, asks: document.querySelectorAll('[data-kind=ask]').length,
-		live: !!q('.think.thinking'), delim: [...document.querySelectorAll('[data-kind=answer] p')].some((p) => p.textContent.includes('|:--')), line: q('.pv1 .on')?.textContent ?? null, footer: q('[data-kind=footer]') !== null, place: q('textarea')?.placeholder ?? null });
+		live: !!q('.think.thinking'), delim: [...document.querySelectorAll('[data-kind=answer] p')].some((p) => p.textContent.includes('|:--')), row: q('.think .th-h')?.textContent ?? null, full: q('.think .th-text')?.textContent ?? null, footer: q('[data-kind=footer]') !== null, place: q('textarea')?.placeholder ?? null });
 }).observe(document.getElementById('root'), { subtree: true, childList: true, characterData: true, attributes: true }); true`);
 await app.evaluate(`window.__kiso.send("Shorten the install steps in README.md, then run the tests")`);
 let approved = 0;
 const shot = {};
 for (let i = 0; i < 600 && !(await app.text("[data-kind=footer]")); i++) {
-	if (!shot.think && (await app.count(".pv1 .on"))) (shot.think = true, await sleep(200), await app.shot("1-thinking"));
+	if (!shot.think && (await app.count(".think.thinking"))) (shot.think = true, await sleep(200), await app.shot("1-thinking"));
 	if (await app.count("[data-act=allow]")) (await sleep(400), await app.shot(`2-approval-${approved}`), await app.click("[data-act=allow]"), (approved += 1), await sleep(250));
 	if (!shot.bg && (await app.count(".bgtag"))) (shot.bg = true, await app.shot("3-background-step"));
 	// the person scrolls up to the answer's first lines while it still streams: from here the view must not move for them
@@ -65,9 +65,8 @@ await app.click("[data-act=latest]");
 check(await waitUntil(() => sc("return el.scrollHeight - el.scrollTop - el.clientHeight < 2 && document.querySelectorAll('[data-act=latest]').length === 0")), "the pill takes the view to the latest and goes");
 await app.shot("4-folded-with-answer");
 const snaps = JSON.parse(await app.evaluate("JSON.stringify(window.__snaps)"));
-const lines = [...new Set(snaps.map((s) => s.line).filter((l) => l !== null))];
 check(approved === 2, "two approvals were asked and answered through the cards");
-check(JSON.stringify(lines) === JSON.stringify(P) && snaps.some((s) => s.live && s.line !== null), "the thinking line paged through the three paragraphs' first sentences, in order, never a half sentence, while the model was still thinking");
+check(snaps.some((s) => s.live && /^Thinking\d+s$/.test(s.row ?? "")) && !snaps.some((s) => P.some((p) => (s.row ?? "").includes(p.slice(0, 16)))) && snaps.some((s) => P.every((p) => (s.full ?? "").includes(p))), "while the model thinks its folded row says Thinking and the seconds, none of the text (owner 2026-11-03); the whole text waits in the row's fold");
 const streaming = snaps.filter((s) => s.answer !== null && s.place === "Add a line, or press Esc to stop…");
 check(streaming.length > 5 && streaming.every((s) => s.folded === "false"), `the process stayed open through ${streaming.length} samples of the streaming answer`);
 check(snaps.at(-1).folded === "true" && snaps.at(-1).footer && snaps.at(-1).asks === 0, "when the run ended the process folded, the footer appeared and no approval was left");
