@@ -109,6 +109,8 @@ export const en = {
 	settingsTier: "Permissions",
 	settingsSignIn: "Sign-in",
 	notSent: "Not sent, the run was stopped: {line}",
+	/** a run that ended other than cleanly or by a stop: said under it, never left blank */
+	runEnd: { error: "The run failed: {detail}", max_tokens: "The answer was cut off: the model reached its output limit", max_turns: "Stopped after {detail} rounds: the round budget is used up", hook_stopped: "A Stop hook ended the run ({detail})" } as Readonly<Record<string, string>>,
 	railFresh: "New input",
 	railOutput: "Output",
 	railCache: "Cache hit",

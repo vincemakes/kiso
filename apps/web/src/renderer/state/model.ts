@@ -99,6 +99,8 @@ export interface Turn {
 	startedAt: number | null;
 	endedAt: number | null;
 	outcome: string | null;
+	/** what a run that did not finish cleanly says: the error's message, the hook's name, the rounds it used */
+	detail: string | null;
 	/** the run's usage so far, from the usage frames */
 	live: Footer | null;
 	/** the run's usage at its end, from run_usage */
@@ -203,7 +205,7 @@ export function reduce(s: State, input: Input): State {
 				note(item);
 			} else {
 				const pictures = Array.isArray(e.content) ? (e.content as readonly { type?: string }[]).flatMap((b, n) => (b.type === "image" ? [`log:${e.seq}/${n}`] : [])) : [];
-				s.turns.push({ id: `t${e.seq}`, user: text, pictures, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, live: null, footer: null, endSeq: null });
+				s.turns.push({ id: `t${e.seq}`, user: text, pictures, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, detail: null, live: null, footer: null, endSeq: null });
 			}
 			return s;
 		}
@@ -300,6 +302,8 @@ export function reduce(s: State, input: Input): State {
 			if (turn === undefined) return s;
 			turn.phase = "ended";
 			turn.outcome = e.outcome.kind;
+			const o = e.outcome;
+			turn.detail = o.kind === "error" ? o.error.message : o.kind === "hook_stopped" ? o.hook : o.kind === "max_turns" ? String(o.turns) : null;
 			turn.endSeq = e.seq;
 			s.last = { seq: e.seq, type: e.type, itemId: null };
 			return s;

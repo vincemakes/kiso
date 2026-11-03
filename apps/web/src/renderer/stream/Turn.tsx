@@ -109,6 +109,18 @@ function MePictures({ pictures }: { readonly pictures: readonly string[] }): Rea
 	);
 }
 
+/** How a run ended when it did not finish cleanly and was not stopped: a failed request (a spent key, a refused plan) is said in
+ *  words, with what the provider answered, rather than leaving the reply blank. */
+function RunEnd({ turn }: { readonly turn: TurnModel }): ReactNode {
+	const line = turn.outcome === null ? undefined : t.runEnd[turn.outcome];
+	if (line === undefined) return null;
+	return (
+		<div className={`run-end${turn.outcome === "error" ? " bad" : ""}`} data-kind="run-end" data-outcome={turn.outcome}>
+			{fmt(line, { detail: turn.detail ?? "" })}
+		</div>
+	);
+}
+
 /** One run: the person's line, the process, the approvals still open, the answer, what it made, the live row or the footer. */
 export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: Props): ReactNode {
 	const { process: items, answer, openAsks } = split(turn);
@@ -135,6 +147,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
+			{turn.phase === "ended" && !live && (answer === null || drawn) ? <RunEnd turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Made turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Footer turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <ReplyActs turn={turn} text={answer?.text ?? ""} /> : null}
