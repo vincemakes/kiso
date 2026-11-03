@@ -1,5 +1,5 @@
-import { closeSync, fstatSync, openSync, readSync, statSync } from "node:fs";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Event } from "@vincemakes/kiso-core";
 import type { ArtifactRef } from "../shared/frames.js";
 import { resolveInside } from "./files.js";
@@ -10,6 +10,12 @@ type ToolResultEvent = Extract<Event, { type: "tool_result" }>;
  * What a tool call made that the page can show, each "best effort, never a guess": an image block of its result; an artifact
  * file a successful write or edit touched; or, for a command, a path its text or its output head names that is inside the
  * folder, of an artifact type, exists, and changed at or after the step began. No folder scan, no watcher.
+ *
+ * A picture a command made OUTSIDE the folder (a browser tool saving a screenshot under /tmp: owner 2026-11-03, the screenshot
+ * must show in the stream) is kept as a copy in the Work's own `<id>.files/`, under the result's `log:` address: the page only
+ * ever reads the copy, never the outside path. Only a raster picture (no svg: it can carry script), named by the command or its
+ * output, changed during the step, at most KEEP_MAX bytes; it is copied once, so a later file of the same name does not replace
+ * it. This widens the 2026-10-31 rule "a file named outside the folder is not taken" for pictures only.
  */
 
 const KINDS: Readonly<Record<string, ArtifactRef["kind"]>> = {
@@ -20,6 +26,10 @@ const KINDS: Readonly<Record<string, ArtifactRef["kind"]>> = {
 const NAMED = /[\w@+./-]+\.(?:png|jpe?g|gif|webp|svg|html?|md|pdf|csv|mp4|webm|mov|mp3|wav)\b/gi;
 /** a file's clock and the log's may differ by the file system's granularity */
 const SLACK_MS = 50;
+const KEPT: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp" };
+const KEEP_MAX = 10 * 1024 * 1024;
+/** where a kept copy lives: the Work's own folder of files beside its log */
+const keptDir = (dir: string, workId: string): string => join(dir, `${workId}.files`);
 
 export const artifactKind = (path: string): ArtifactRef["kind"] | undefined => KINDS[extname(path).toLowerCase()];
 
@@ -30,20 +40,46 @@ export interface CallInfo {
 	readonly startedAt: number | null;
 }
 
-/** `root`: the folder's real path. */
-export function artifactsOf(event: ToolResultEvent, workId: string, call: CallInfo | null, root: string): ArtifactRef[] {
+/** `root`: the folder's real path; `dir`: the sessions directory, where a picture made outside the folder is kept. */
+export function artifactsOf(event: ToolResultEvent, workId: string, call: CallInfo | null, root: string, dir: string): ArtifactRef[] {
 	const out: ArtifactRef[] = [];
-	const ref = (n: number | string, kind: ArtifactRef["kind"], uri: string, mediaType?: string): void => {
-		out.push({ id: `${event.callId}:${n}`, workId, callId: event.callId, kind, uri, ...(mediaType !== undefined ? { mediaType } : {}) });
+	const ref = (n: number | string, kind: ArtifactRef["kind"], uri: string, mediaType?: string, name?: string): void => {
+		out.push({ id: `${event.callId}:${n}`, workId, callId: event.callId, kind, uri, ...(mediaType !== undefined ? { mediaType } : {}), ...(name !== undefined ? { name } : {}) });
 	};
-	if (Array.isArray(event.content))
+	if (Array.isArray(event.content)) {
+		const blocks = event.content.filter((b) => b.type === "image").length;
+		let k = 0;
 		event.content.forEach((b, n) => {
-			if (b.type === "image" && ((b.sourceType === "base64" && b.data !== undefined) || b.url?.startsWith("https:") === true)) ref(n, "image", `log:${event.seq}/${n}`, b.mediaType);
+			if (b.type !== "image" || !((b.sourceType === "base64" && b.data !== undefined) || b.url?.startsWith("https:") === true)) return;
+			// an image block has no file name: the tool, the result's number and, of several, its place
+			const ext = (b.mediaType ?? "image/png").split("/")[1]?.replace("jpeg", "jpg") ?? "png";
+			ref(n, "image", `log:${event.seq}/${n}`, b.mediaType, `${call?.name ?? "image"}-${event.seq}${blocks > 1 ? `-${(k += 1)}` : ""}.${ext}`);
 		});
+	}
 	if (event.isError || call === null) return out;
+	let kept = 0;
+	const outside = (full: string, since: number): void => {
+		const ext = extname(full).toLowerCase();
+		if (KEPT[ext] === undefined || out.some((a) => a.id === `${event.callId}:${full}`)) return;
+		const name = `${event.seq}-k${kept}${ext}`;
+		const copy = join(keptDir(dir, workId), name);
+		try {
+			if (!existsSync(copy)) {
+				const stat = statSync(full);
+				if (!stat.isFile() || stat.mtimeMs < since - SLACK_MS || stat.size > KEEP_MAX) return;
+				mkdirSync(keptDir(dir, workId), { recursive: true });
+				copyFileSync(full, copy);
+			}
+		} catch {
+			return;
+		}
+		ref(full, "image", `log:${event.seq}/k${kept}`, KEPT[ext], basename(full));
+		kept += 1;
+	};
 	const file = (raw: string, since: number | null): void => {
 		const rel = relative(root, isAbsolute(raw) ? raw : resolve(root, raw));
 		const kind = artifactKind(rel);
+		if (rel.startsWith("..") && isAbsolute(raw) && since !== null) return outside(raw, since);
 		if (kind === undefined || rel.startsWith("..") || out.some((a) => a.uri === `file:${rel}`)) return;
 		try {
 			const stat = statSync(resolveInside(root, rel));
@@ -73,8 +109,20 @@ export class LogImages {
 		this.#dir = dir;
 	}
 
-	/** The n-th block of the result or the line at `seq`: its bytes, an https address to pass on, or null. */
-	block(sessionId: string, seq: number, n: number): { readonly type: string; readonly bytes: Buffer } | { readonly url: string } | null {
+	/** The n-th block of the result or the line at `seq`: its bytes, an https address to pass on, or null; `k<n>`: the n-th
+	 *  picture of that result kept from outside the folder. */
+	block(sessionId: string, seq: number, n: number | string): { readonly type: string; readonly bytes: Buffer } | { readonly url: string } | null {
+		if (typeof n === "string") {
+			const name = (() => {
+				try {
+					return readdirSync(keptDir(this.#dir, sessionId)).find((f) => f.startsWith(`${seq}-${n}.`));
+				} catch {
+					return undefined;
+				}
+			})();
+			const type = name === undefined ? undefined : KEPT[extname(name)];
+			return name === undefined || type === undefined ? null : { type, bytes: readFileSync(join(keptDir(this.#dir, sessionId), name)) };
+		}
 		const file = join(this.#dir, `${sessionId}.jsonl`);
 		const at = this.#index(file).get(seq);
 		if (at === undefined) return null;

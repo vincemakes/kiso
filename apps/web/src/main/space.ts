@@ -145,7 +145,7 @@ export function createSpace(options: SpaceOptions): Space {
 			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals, tokPerSec: runRate(events, event.seq, totals.output, (seq) => times.at(sessionId, seq)) } }];
 		}
 		if (event.type === "tool_result") {
-			const artifacts = artifactsOf(event, sessionId, callOf(sessionId, event.callId), realWorkspace());
+			const artifacts = artifactsOf(event, sessionId, callOf(sessionId, event.callId), realWorkspace(), options.dir);
 			const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" ? b.text : `[${b.type}]`)).join("\n");
 			const lines = text.split("\n");
 			const frame: ToolOutputFrame = {
