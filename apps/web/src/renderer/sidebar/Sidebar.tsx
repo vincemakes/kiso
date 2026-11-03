@@ -208,9 +208,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			<div className={`fn${fnOpen ? " open" : ""}`}>
 				<button className="fn-h" onClick={() => setFnOpen(!fnOpen)} aria-expanded={fnOpen}>
 					{t.functions}
-					<span className="chev">
-						<Chevron />
-					</span>
+					<Chevron />
 				</button>
 				<div className="fn-b">
 					<div>

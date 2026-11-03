@@ -211,6 +211,20 @@
 .cm-seg { display: flex; gap: 4px; padding: 2px 8px 8px; }
 .cm-seg button { flex: 1; padding: 4px 0; border-radius: 7px; background: var(--sunk); color: var(--mute); font-size: 12.5px; }
 .cm-seg button.on { background: var(--ink); color: #fff; }
+/* the model menu: one line a model in a list a few lines high (it scrolls), then the effort as a row with its levels beside */
+.cmenu[data-menu="model"] { width: 340px; max-width: calc(100vw - 32px); }
+.cm-list { max-height: 264px; overflow-y: auto; scrollbar-width: thin; }
+.cm-i.one { align-items: center; gap: 8px; padding: 6px 10px; }
+.cm-i.one > b { font-weight: 450; font-size: 13.5px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-i.one > small { flex: 0 1 auto; max-width: 42%; color: var(--faint); font-size: 12px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-i.one > .i16, .cm-nock { flex: none; width: 16px; margin: 0; }
+.cm-i.one > .i16:last-child { color: var(--blue); }
+.cmenu .sep { height: 1px; background: var(--line); margin: 5px 4px; }
+.cm-fly { position: relative; }
+.cm-row > .cm-v { color: var(--mute); text-transform: capitalize; }
+.cm-i.one.cm-row > .i16:last-child { color: var(--mute); transform: rotate(-90deg); }
+.cm .cmenu.cm-sub[data-menu] { bottom: -6px; left: auto; right: calc(100% + 12px); min-width: 200px; width: 220px; }
+.cm-sub .cm-i.one > b { text-transform: capitalize; }
 .cm-err { margin: 4px 8px 6px; padding: 6px 8px; border-radius: 8px; background: #fff4ec; color: #9a3412; font-size: 12.5px; }
 .atp { left: 8px; bottom: calc(100% - 4px); }
 .atts { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 0 2px; }

@@ -65,6 +65,9 @@ await app.shot("composer-1-held");
 
 // switch this Work to the model that reads pictures, then send
 await app.click("[data-act=model]");
+// one line a model, the menu whole in the window, the model in use checked (owner 2026-11-03: the menu ran off the top)
+const shape = await q("(() => { const m = document.querySelector('[data-menu=model]').getBoundingClientRect(); const rows = [...document.querySelectorAll('[data-menu=model] [data-profile]')]; return { inside: m.top >= 0 && m.bottom <= innerHeight, one: rows.every((r) => r.getBoundingClientRect().height < 40), checked: rows.find((r) => r.getAttribute('aria-checked') === 'true')?.dataset.profile }; })()");
+check(shape.inside && shape.one && shape.checked === "text", `the model menu holds one line a model, sits whole in the window and checks the model in use (${JSON.stringify(shape)})`);
 await app.click("[data-profile=vision]");
 check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5" && (await app.count("[data-kind=images-held]")) === 0), "switching this Work to a model that reads pictures lets them go");
 const own = await fetch(`${app.host().origin}/desk/settings?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());

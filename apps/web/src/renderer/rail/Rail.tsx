@@ -14,6 +14,9 @@ const money = (usd: number | null): string => (usd === null ? "—" : `$${usd.to
 const pct = (n: number | null): string => (n === null ? "—" : `${Math.round(n)}%`);
 const ago = (ms: number): string => (ms < 60_000 ? t.railNow : ms < 3_600_000 ? `${Math.floor(ms / 60_000)}m` : ms < 86_400_000 ? `${Math.floor(ms / 3_600_000)}h` : `${Math.floor(ms / 86_400_000)}d`);
 const SHOWN = 4;
+/** the changed files listed at first, and at most after "Show more": a folder with thousands of changes stays light */
+const CHANGES_SHOWN = 8;
+const CHANGES_MAX = 200;
 
 /** A section of the rail: a header that folds it (a 16 px chevron in the icon column, the name, a count, a figure at the right). */
 function Section({ id, name, count, extra, open, onToggle, children }: { readonly id: string; readonly name: string; readonly count?: number; readonly extra?: ReactNode; readonly open: boolean; readonly onToggle: () => void; readonly children: ReactNode }): ReactNode {
@@ -63,6 +66,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 	const [folded, setFolded] = useState<Readonly<Record<string, boolean>>>({ context: true });
 	const [finished, setFinished] = useState(false);
 	const [allOutputs, setAllOutputs] = useState(false);
+	const [allChanges, setAllChanges] = useState(false);
 	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
 	const over = (tip: TipData) => ({
 		onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
@@ -241,13 +245,24 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 									</span>
 								</a>
 							)}
-							{rows.map((c) => (
+							{rows.slice(0, allChanges ? CHANGES_MAX : CHANGES_SHOWN).map((c) => (
 								<div className="r-row" key={c.path} data-field="change" title={c.path} onClick={() => openPanel("diff")}>
 									<span className="r-ic">{artifactIcon("file", c.path)}</span>
 									<span className="r-nm">{c.path.split("/").pop()}</span>
 									<span className="r-mt">{c.deleted ? t.gitState.deleted : c.created ? t.railNew : c.exact ? <><span className="add">+{c.added}</span> <span className="del">−{c.removed}</span></> : t.deltaModified}</span>
 								</div>
 							))}
+							{rows.length > CHANGES_SHOWN && !allChanges ? (
+								<button className="r-row dim" onClick={() => setAllChanges(true)} data-act="more-changes">
+									<span className="r-ic" />
+									<span className="r-nm">{fmt(t.railShowMore, { n: rows.length - CHANGES_SHOWN })}</span>
+								</button>
+							) : rows.length > CHANGES_MAX && allChanges ? (
+								<div className="r-row dim" data-field="changes-unlisted">
+									<span className="r-ic" />
+									<span className="r-nm">{fmt(t.railUnlisted, { n: rows.length - CHANGES_MAX })}</span>
+								</div>
+							) : null}
 						</Section>
 					)}
 					{outputs.length === 0 ? null : (

@@ -104,34 +104,53 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 			{(close) => (
 				<>
 					<div className="cm-h">{t.modelHead}</div>
-					{(s?.profiles ?? []).map((p) => (
-						<button type="button" key={p.name} className="cm-i" role="menuitemradio" aria-checked={p.name === s?.profile} disabled={!p.available} data-profile={p.name} onClick={() => change({ profile: p.name }, close)}>
-							<span className="cm-t">
-								<b>
-									{p.model}
-									{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
-								</b>
+					{/* one line a model, a few lines high: the list scrolls, opened at the one in use */}
+					<div className="cm-list" ref={(el) => el?.querySelector("[aria-checked=true]")?.scrollIntoView({ block: "nearest" })}>
+						{(s?.profiles ?? []).map((p) => (
+							<button type="button" key={p.name} className="cm-i one" role="menuitemradio" aria-checked={p.name === s?.profile} disabled={!p.available} data-profile={p.name} title={p.available ? `${p.model} · ${p.name}` : t.notSignedIn} onClick={() => change({ profile: p.name }, close)}>
+								<b>{p.model}</b>
+								{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
 								<small>{p.available ? p.name : t.notSignedIn}</small>
-							</span>
-							{p.name === s?.profile ? <I.check /> : null}
-						</button>
-					))}
+								{p.name === s?.profile ? <I.check /> : <span className="cm-nock" />}
+							</button>
+						))}
+					</div>
 					{s?.effort !== null && s?.effort !== undefined && s.effort.levels.length > 1 ? (
 						<>
-							<div className="cm-h">{t.effortHead}</div>
-							<div className="cm-seg" role="radiogroup">
-								{s.effort.levels.map((l) => (
-									<button type="button" key={l} className={l === effort ? "on" : ""} role="radio" aria-checked={l === effort} data-effort={l} onClick={() => change({ effort: l })}>
-										{t.effort[l] ?? l}
-									</button>
-								))}
-							</div>
+							<div className="sep" />
+							{/* the effort is one row: its level, and a side list of the levels the route accepts */}
+							<EffortRow levels={s.effort.levels} current={effort ?? s.effort.default} preset={s.effort.default} onPick={(l) => change({ effort: l })} />
 						</>
 					) : null}
 					{err !== null ? <div className="cm-err" data-kind="model-refused">{err}</div> : null}
 				</>
 			)}
 		</Menu>
+	);
+}
+
+/** The effort as one row (its level, then a chevron) and the levels in a list beside the menu; it lives as long as the menu. */
+function EffortRow({ levels, current, preset, onPick }: { readonly levels: readonly string[]; readonly current: string | null; readonly preset: string | null; readonly onPick: (level: string) => void }): ReactNode {
+	const [open, setOpen] = useState(false);
+	return (
+		<div className="cm-fly">
+			<button type="button" className={`cm-i one cm-row${open ? " on" : ""}`} aria-expanded={open} data-act="effort" onClick={() => setOpen(!open)}>
+				<b>{t.effortRow}</b>
+				<small className="cm-v">{current === null ? "" : (t.effort[current] ?? current)}</small>
+				<I.chevron />
+			</button>
+			{open ? (
+				<div className="cmenu cm-sub" role="menu" data-menu="effort">
+					{levels.map((l) => (
+						<button type="button" key={l} className="cm-i one" role="menuitemradio" aria-checked={l === current} data-effort={l} onClick={() => (onPick(l), setOpen(false))}>
+							<b>{t.effort[l] ?? l}</b>
+							<small>{l === preset ? t.settingsDefault : ""}</small>
+							{l === current ? <I.check /> : <span className="cm-nock" />}
+						</button>
+					))}
+				</div>
+			) : null}
+		</div>
 	);
 }
 
