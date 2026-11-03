@@ -172,6 +172,32 @@ function summaryReasoning(model: string, baseUrl: string | undefined): { reasoni
 	return r.ok && r.wire.thinking !== undefined ? { reasoning: r.wire } : {};
 }
 
+type WireSetting = { readonly thinking?: "adaptive" | "enabled" | "disabled"; readonly effort?: string };
+
+/** The session title's ask (Session.title): no language named, the model follows the message's own. */
+export const TITLE_PROMPT = "Write a short title (2 to 8 words) for a conversation that opens with the user's message. Only the title: no quotes, no punctuation at the end.";
+
+/** No thinking for a side answer, where the model table says how: thinking disabled, else effort `none`; null when the
+ *  table knows neither (then nothing is sent: a raw field to an unknown model can be a 400). */
+function quietReasoning(model: string, baseUrl: string | undefined): WireSetting | null {
+	const off = resolveReasoning(model, { thinking: "disabled", effort: "default" }, baseUrl);
+	if (off.ok && off.wire.thinking !== undefined) return off.wire;
+	const none = resolveReasoning(model, { thinking: "default", effort: "none" }, baseUrl);
+	return none.ok && none.wire.effort !== undefined ? none.wire : null;
+}
+
+/** A model's title as a name: its first non-empty line, without quotes around it or punctuation at its end, its spaces
+ *  collapsed, at most 60 characters; "" when no letter or digit is left. */
+export function cleanTitle(text: string): string {
+	const line = text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "";
+	// quotes and ending punctuation can wrap each other ("Title." / Title"."): strip both until neither is left
+	let bare = line;
+	for (let was = ""; was !== bare; ) (was = bare), (bare = bare.replace(/^["'`\u201c\u2018\u300c]+|["'`\u201d\u2019\u300d]+$/g, "").replace(/[.!?;:,\u3002\uff01\uff1f\uff1b\uff1a\uff0c]+$/u, "").trim());
+	bare = bare.replace(/\s+/g, " ");
+	const cut = [...bare].length > 60 ? `${[...bare].slice(0, 59).join("")}…` : bare;
+	return /[\p{L}\p{N}]/u.test(cut) ? cut : "";
+}
+
 /** ADR-0057 §5 (3e D1): a steer detaches a foreground command only once it
  *  is this old — a command about to end on its own is left to end. */
 export const AUTO_DETACH_MIN_AGE_MS = 2_000;
@@ -932,6 +958,11 @@ export class AgentSession {
 	 * CLI's honest degradation.
 	 */
 	async sideQuery(options: SideQueryOptions): Promise<string> {
+		return this.#sideQuery(options);
+	}
+
+	/** sideQuery's body; `reasoning` (resolved, native) is the title's way to ask for no thinking, not a public option. */
+	async #sideQuery(options: SideQueryOptions & { readonly reasoning?: WireSetting }): Promise<string> {
 		this.ensureHealthy();
 		// a fresh id: this request is not the paused run's work, and giving
 		// it the run's id would put on-demand rent inside a run's total.
@@ -964,6 +995,7 @@ export class AgentSession {
 				messages: [{ role: "user", content: options.prompt }],
 				systemPrompt: options.systemPrompt,
 				...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+				...(options.reasoning !== undefined ? { reasoning: options.reasoning } : {}),
 				...(options.signal !== undefined ? { signal: options.signal } : {}),
 			})) {
 				if (ev.type === "text_delta") text += ev.text;
@@ -972,6 +1004,28 @@ export class AgentSession {
 			tracer.finishRun();
 		}
 		return text;
+	}
+
+	/**
+	 * A title for the conversation `firstMessage` opens (owner 2026-11-03: the person's first line is not a title): one
+	 * side query with its own short prompt and that message (its first 500 characters), no tools, no history, purpose
+	 * "title" in the trace. It asks for no thinking where the route allows it (measured on co: 6-10 tokens out instead of
+	 * 100 cut short): thinking disabled, else effort `none`, resolved through the model table as the manual summary is;
+	 * for a model the table does not know it sends no reasoning field and allows more output. The answer is cleaned to
+	 * one line (no quotes, no ending punctuation, at most 60 characters); "" when nothing is left. It writes nothing: the
+	 * caller keeps the title where it keeps names, and only for a session the person has not named.
+	 */
+	async title(firstMessage: string, options?: { readonly signal?: AbortSignalLike }): Promise<string> {
+		const quiet = quietReasoning(this.#model, this.#baseUrl);
+		const text = await this.#sideQuery({
+			purpose: "title",
+			systemPrompt: TITLE_PROMPT,
+			prompt: firstMessage.slice(0, 500),
+			maxTokens: quiet === null ? 400 : 100,
+			...(quiet !== null ? { reasoning: quiet } : {}),
+			...(options?.signal !== undefined ? { signal: options.signal } : {}),
+		});
+		return cleanTitle(text);
 	}
 
 	/** Run one user turn. Iterate to consume; `run.abort()` cancels. */
