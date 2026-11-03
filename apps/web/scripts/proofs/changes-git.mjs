@@ -79,5 +79,7 @@ await app.click("[data-act=fold-context]");
 const parts = await q("JSON.stringify([...document.querySelectorAll('[data-part]')].map((e) => [e.dataset.part, Number(e.querySelector('b').textContent.replace(/[^0-9.k]/g, '').replace(/([0-9.]+)k/, (_, n) => String(Number(n) * 1000)))]))").then(JSON.parse);
 const sum = parts.filter(([k]) => k !== "free").reduce((n, [, v]) => n + v, 0);
 check(["conversation", "system", "tools"].every((k) => parts.some(([p]) => p === k)) && Math.abs(sum - 3000) <= 150, `the breakdown lists the conversation, the system prompt and the tools, and they add up to the measured 3,000 (${sum})`);
+const oneLine = await q("[...document.querySelectorAll('[data-part]')].every((e, i, all) => { const n = e.querySelector('span'); return getComputedStyle(n).whiteSpace === 'nowrap' && n.title === n.textContent && (i === 0 || all[i - 1].getBoundingClientRect().bottom <= e.getBoundingClientRect().top + 0.5); })");
+check(oneLine, "each part's name keeps to one line (cut, its full text on hover), so no row runs into the next (owner 2026-11-03: Project instructions wrapped over Tools)");
 await app.close();
 verdict();

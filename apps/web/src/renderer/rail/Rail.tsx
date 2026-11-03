@@ -145,7 +145,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 										{segments.map((x) => (
 											<div key={x.key} className="r-part" data-part={x.key}>
 												<i className={`sw seg-${x.key}`} />
-												<span>{x.name}</span>
+												<span title={x.name}>{x.name}</span>
 												<b>≈{tokens(x.tokens)}</b>
 												<em>{pctOf(x.tokens, window)}</em>
 											</div>
@@ -153,7 +153,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 										{window !== null && used !== null ? (
 											<div className="r-part" data-part="free">
 												<i className="sw seg-free" />
-												<span>{t.ctxFree}</span>
+												<span title={t.ctxFree}>{t.ctxFree}</span>
 												<b>{tokens(Math.max(0, window - used))}</b>
 												<em>{pctOf(Math.max(0, window - used), window)}</em>
 											</div>
