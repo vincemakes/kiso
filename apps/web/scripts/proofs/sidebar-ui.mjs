@@ -25,7 +25,7 @@ check(await waitUntil(async () => (await q(`(() => { const b = document.querySel
 await app.shot("sidebar-open-top");
 check(await waitUntil(async () => (await app.count(".item")) === 2), "the history lists the Works of both folders");
 check((await q(`[...document.querySelectorAll('.item')].map((i) => i.querySelector('.tt').textContent + '@' + i.querySelector('small').textContent).join()`)).split(",").every((x, i) => x.startsWith(["beta task", "alpha task"][i])), "each row: title and folder name, newest first");
-check((await app.text(".grp")) === "Today", "grouped by day");
+check((await app.text(".grp")) === "Recents", "unpinned Works list under Recents");
 await app.shot("sidebar-open");
 await q(`document.querySelector('.item[data-work=work-a]').click()`);
 check(await waitUntil(async () => (await app.text("[data-kind=answer]"))?.includes("alpha task done.")), "a click opens a Work of the other folder and replays its log");

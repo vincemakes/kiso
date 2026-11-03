@@ -1,5 +1,6 @@
-// The sidebar's per-Work ⋯ menu (plan PR 7, owner 2026-11-02). It opens on ⋯ and closes on a click away or Esc. Pin puts a Work
-// under Pinned, the latest pin first, through a reload; Rename works in the row (its text selected, no box); Fork opens a fork listed
+// The sidebar's per-Work ⋯ menu (plan PR 7, owner 2026-11-02; reworked to the owner's reference 2026-11-03). It opens on ⋯, lists
+// Open PR first and a key on each item, picks on that key, and closes on a click away or Esc. Pin puts the one row under Pinned (its
+// forks stay below), the latest pin first, through a reload; a group's head folds it; Rename works in the row (its text selected, no box); Fork opens a fork listed
 // under its parent; Open PR shows only when the folder's branch has an open one; Archive takes a Work and its forks out of the list
 // and "Archived (n)" brings it back. Delete is refused while the Work runs, names what goes, then removes its log, sidecar and task
 // records and its entries in desktop.json; its fork becomes a top-level row. Screenshots go outside the repository.
@@ -53,12 +54,14 @@ await menu("wa");
 await waitUntil(async () => (await app.count("[data-menu-act=pr]")) === 1, 10_000);
 await app.shot("sidebar-menu-0");
 const items = await q("[...document.querySelectorAll('[data-menu-act]')].map((e) => e.dataset.menuAct).join()");
+const keys = await q("[...document.querySelectorAll('[data-menu-act] kbd')].map((e) => e.textContent).join('')");
+const icons = await q("document.querySelectorAll('[data-kind=work-menu] svg').length");
 await q("document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); true");
 const away = await waitUntil(async () => (await app.count("[data-kind=work-menu]")) === 0, 3000);
 await menu("wa");
 await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
 const esc = await waitUntil(async () => (await app.count("[data-kind=work-menu]")) === 0, 3000);
-check(items === "pin,rename,fork,pr,archive,delete" && away && esc, `the menu holds pin, rename, fork, Open PR (the branch has #7), archive and delete, and closes on a click away and on Esc (${items})`);
+check(items === "pr,pin,rename,fork,archive,delete" && keys === "GPRFAD" && icons === 0 && away && esc, `the menu lists Open PR (the branch has #7) first, then pin, rename, fork, archive and delete, each with its key and no icon, and closes on a click away and on Esc (${items} ${keys})`);
 
 // pin: the latest pin first, through a reload
 await menu("wa"), await pick("pin");
@@ -69,8 +72,18 @@ await q("location.reload()");
 await sleep(1500);
 if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
 check(await waitUntil(async () => (await rows()).slice(0, 3).join() === `#Pinned,${wb},wa`, 20_000), "the pins stand through a reload (the host's own desktop.json)");
-await menu(wb), await pick("unpin");
-await waitUntil(async () => (await rows()).slice(0, 2).join() === "#Pinned,wa");
+check((await app.count(".pinmark")) === 0, "a pinned row carries no pin mark: the Pinned head says it");
+await app.click("[data-act=fold-group]");
+const folded = await waitUntil(async () => (await rows()).join() === "#Pinned");
+await q("location.reload()");
+await sleep(1500);
+if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
+const kept = await waitUntil(async () => (await rows()).join() === "#Pinned", 20_000);
+await app.click("[data-act=fold-group]");
+check(folded && kept && (await waitUntil(async () => (await rows()).slice(0, 3).join() === `#Pinned,${wb},wa`)), "the Pinned head folds its rows, the fold stands through a reload, and opens again");
+await menu(wb);
+await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'p' })); true");
+check(await waitUntil(async () => (await rows()).slice(0, 2).join() === "#Pinned,wa" && (await app.count("[data-kind=work-menu]")) === 0), "P in the open menu unpins");
 
 // rename in the row
 await q(`document.querySelector('.item[data-work="${wb}"]').click(); true`);
@@ -87,7 +100,7 @@ check(editing.all && editing.focus && editing.border === "0px" && (await waitUnt
 await menu("wa"), await pick("fork");
 check(await waitUntil(async () => (await app.count("[data-kind=fork-note]")) === 1, 20_000), "Fork opens a fork of the Work at once");
 const fork = readdirSync(dir()).find((f) => f.endsWith(".jsonl") && ![`wa.jsonl`, `${wb}.jsonl`].includes(f)).slice(0, -6);
-check(await waitUntil(async () => (await rows()).slice(0, 3).join() === `#Pinned,wa,└${fork}`, 20_000), "the fork is listed under its parent, in the parent's group");
+check(await waitUntil(async () => (await rows()).slice(0, 3).join() === "#Pinned,wa,#Recents" && (await rows()).includes(fork), 20_000), "a pin holds the one row: the fork of a pinned Work lists under Recents");
 
 // archive: the Work and its fork leave the list; Archived (1) brings it back
 await menu("wa"), await pick("archive");
@@ -95,7 +108,9 @@ check(await waitUntil(async () => !(await rows()).includes("wa") && !(await rows
 await app.click("[data-act=archived]");
 await waitUntil(async () => (await rows()).includes("wa"));
 await menu("wa"), await pick("unarchive");
-check(await waitUntil(async () => (await rows()).slice(0, 3).join() === `#Pinned,wa,└${fork}` && (await app.count("[data-act=archived]")) === 0), "Unarchive puts it back, with its fork");
+check(await waitUntil(async () => (await rows()).slice(0, 2).join() === "#Pinned,wa" && (await rows()).includes(fork) && (await app.count("[data-act=archived]")) === 0), "Unarchive puts it back, with its fork");
+await menu("wa"), await pick("unpin");
+check(await waitUntil(async () => (await rows()).join().includes(`wa,└${fork}`)), "unpinned, the fork is listed under its parent again");
 await app.shot("sidebar-menu-1");
 
 // delete: the dialog says what goes; then the files and the host's entries are gone; the fork stands on its own
