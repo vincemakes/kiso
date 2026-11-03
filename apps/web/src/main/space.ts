@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { SessionStore, type Agent } from "@vincemakes/kiso-runtime";
+import { named, titleIfUnnamed } from "./names.js";
 import { createSessionService, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
@@ -42,6 +43,8 @@ export interface SpaceOptions {
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
 	/** ask for a follow-up after a run (off: `followUp` answers "" and sends nothing) */
 	readonly followUps?: boolean;
+	/** title a Work from its first message (Session.title), beside its first run */
+	readonly titles?: boolean;
 }
 
 export interface Space {
@@ -82,6 +85,17 @@ export function createSpace(options: SpaceOptions): Space {
 	const opened = new Set<string>();
 	const sessions = new Map<string, Awaited<ReturnType<Agent["session"]>>>();
 	const followUps = new Map<string, Promise<string>>();
+	// owner 2026-11-03: a Work is titled by a summary of its first message, once, beside its first run; the person's
+	// own name wins, before or after, and a failure leaves the first request's title
+	const titled = new Set<string>();
+	const title = (sessionId: string, event: Extract<Event, { type: "user_input" }>): void => {
+		const session = sessions.get(sessionId);
+		if (options.titles !== true || session === undefined || titled.has(sessionId) || !service.isRunning(sessionId)) return;
+		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
+		titled.add(sessionId);
+		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" ? b.text : "")).join(" ");
+		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => titleIfUnnamed(options.dir, sessionId, name), () => undefined);
+	};
 	const followUp = (sessionId: string, seq: number): Promise<string> => {
 		const session = sessions.get(sessionId);
 		const end = [...service.events(sessionId)].reverse().find((e) => e.type === "terminal");
@@ -131,6 +145,7 @@ export function createSpace(options: SpaceOptions): Space {
 			const at: AtFrame = { seq: event.seq, ts: times.at(sessionId, event.seq) };
 			frames.push({ event: "at", data: at });
 		}
+		if (event.type === "user_input") title(sessionId, event);
 		frames.push(...derived(event, sessionId));
 		return frames;
 	};

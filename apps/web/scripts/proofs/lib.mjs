@@ -36,9 +36,9 @@ export function launch({ data, workspace, fauxScript, env = {} }) {
 	const scriptPath = join(data, "faux.json");
 	if (fauxScript !== undefined) writeFileSync(scriptPath, JSON.stringify(fauxScript));
 	const token = env.KISO_WEB_TOKEN ?? randomBytes(16).toString("hex");
-	// follow-ups off unless a proof asks: a follow-up request would take the faux script's next turn
+	// follow-ups and titles off unless a proof asks: either request would take the faux script's next turn
 	const child = spawn(process.execPath, [fileURLToPath(new URL("../../dist/main/headless.js", import.meta.url)), "--no-open", "--port", env.KISO_WEB_PORT ?? "0"], {
-		env: { ...process.env, KISO_HOME: data, KISO_WEB_DATA: data, KISO_WEB_WORKSPACE: workspace, ...(fauxScript !== undefined ? { KISO_WEB_FAUX: scriptPath } : {}), KISO_WEB_FOLLOWUP: "off", ...env, KISO_WEB_TOKEN: token },
+		env: { ...process.env, KISO_HOME: data, KISO_WEB_DATA: data, KISO_WEB_WORKSPACE: workspace, ...(fauxScript !== undefined ? { KISO_WEB_FAUX: scriptPath } : {}), KISO_WEB_FOLLOWUP: "off", KISO_AUTO_TITLE: "off", ...env, KISO_WEB_TOKEN: token },
 		stdio: ["ignore", "pipe", "pipe"],
 	});
 	return new Promise((resolve, reject) => {
