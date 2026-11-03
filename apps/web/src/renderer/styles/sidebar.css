@@ -18,6 +18,12 @@
 .newbtn:hover { background: #fff; }
 .hlist { flex: 1; overflow-y: auto; margin: 0 -6px; padding: 0 6px; scrollbar-width: thin; scrollbar-color: #cfcfcb transparent; }
 .grp { font-size: 12px; color: var(--mute); padding: 12px 8px 4px; }
+/* a group's head folds it: the triangle points down while it is open */
+.hlist section + section { margin-top: 10px; }
+.grp.gh { display: flex; align-items: center; gap: 5px; width: 100%; text-align: left; }
+.grp.gh:hover { color: var(--ink); }
+.grp.gh .tri { width: 10px; height: 10px; fill: currentColor; transition: transform 0.2s var(--ease); }
+.shut > .grp.gh .tri { transform: rotate(-90deg); }
 .item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 9px; border-radius: 10px; transition: background 0.15s; }
 /* a fork under its parent: a small elbow, one line down through its siblings, clear of the title */
 .item.child { padding-left: 30px; position: relative; }
@@ -47,14 +53,12 @@
 .row:hover .dots, .row.menu-open .dots { display: grid; }
 .row:hover .item small, .row.menu-open .item small { visibility: hidden; }
 .row .dots:hover { background: rgba(0, 0, 0, 0.07); }
-.item .pinmark { flex: none; color: var(--mute); display: grid; }
-.item .pinmark .ico { width: 12px; height: 12px; }
 .row-in { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 0; }
 .row-in::selection { background: #cfe0ff; }
 .menu.smenu { position: fixed; right: auto; z-index: 140; min-width: 200px; }
 .menu .sep { height: 1px; background: var(--line); margin: 5px 4px; }
 .menu button.danger { color: #c0392b; }
-.menu button.danger .ico { color: #c0392b; }
+.menu.smenu kbd { margin-left: auto; font: inherit; font-size: 12px; color: var(--mute); }
 .side-err { margin: 6px 4px; padding: 7px 10px; border-radius: 9px; background: #fef3f2; color: #b42318; font-size: 12.5px; line-height: 1.45; }
 .archived-h { display: block; width: 100%; text-align: left; }
 .archived-h:hover { color: var(--ink); }

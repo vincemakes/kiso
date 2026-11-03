@@ -28,7 +28,8 @@ export interface Group {
 }
 
 /** Pinned (the latest pin first), then today, yesterday, earlier by the calendar day on this machine; the input is newest first and
- *  stays so. A fork follows its parent; an archived Work, with its forks, is left out (`archived` lists them). */
+ *  stays so. A fork follows its parent, except into Pinned: a pin holds the one row; an archived Work, with its forks, is left out
+ *  (`archived` lists them). */
 export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[] {
 	const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 	const day = 86_400_000;
@@ -36,8 +37,8 @@ export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[]
 	const byId = new Map(works.map((w) => [id(w), w]));
 	const out = (w: WorkRow | undefined): boolean => w !== undefined && (w.archived === true || (w.parent !== undefined && out(byId.get(id(w, w.parent)))));
 	const shown = works.filter((w) => !out(w));
-	const ids = new Set(shown.map((w) => id(w)));
-	const under = (w: WorkRow): boolean => w.parent !== undefined && w.pinned === undefined && ids.has(id(w, w.parent));
+	const free = new Set(shown.filter((w) => w.pinned === undefined).map((w) => id(w)));
+	const under = (w: WorkRow): boolean => w.parent !== undefined && w.pinned === undefined && free.has(id(w, w.parent));
 	const kids = new Map<string, WorkRow[]>();
 	for (const w of shown) if (under(w)) kids.set(id(w, w.parent), [...(kids.get(id(w, w.parent!)) ?? []), w]);
 	const after = (w: WorkRow): WorkRow[] => [w, ...(kids.get(id(w)) ?? []).flatMap(after)];

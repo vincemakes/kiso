@@ -80,7 +80,7 @@ export const en = {
 	archive: "Archive",
 	unarchive: "Unarchive",
 	archivedN: "Archived ({n})",
-	deleteWork: "Delete…",
+	deleteWork: "Delete",
 	workMenu: "More for this Work",
 	deleteTitle: "Delete \u201c{title}\u201d?",
 	deleteWhat: "Its conversation ({runs}), its settings and its background-task records are removed from this computer. Files it changed in the folder stay. This cannot be undone; Archive hides a Work instead.",
