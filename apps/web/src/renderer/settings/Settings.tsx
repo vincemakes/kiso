@@ -55,15 +55,11 @@ export function Settings(): ReactNode {
 					<Menu act="profile" down label={pill(current?.model ?? "—", "profile")}>
 						{(close) =>
 							s.profiles.map((p) => (
-								<button type="button" key={p.name} className="cm-i" role="menuitemradio" aria-checked={p.name === s.profile} disabled={!p.available} data-profile={p.name} onClick={() => (change({ profile: p.name }), close())}>
-									<span className="cm-t">
-										<b>
-											{p.model}
-											{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
-										</b>
-										<small>{p.available ? p.name : t.settingsNotSignedIn}</small>
-									</span>
-									{p.name === s.profile ? <I.check /> : null}
+								<button type="button" key={p.name} className="cm-i one" role="menuitemradio" aria-checked={p.name === s.profile} disabled={!p.available} data-profile={p.name} title={`${p.model} · ${p.name}`} onClick={() => (change({ profile: p.name }), close())}>
+									<b>{p.model}</b>
+									{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
+									<small>{p.available ? p.name : t.settingsNotSignedIn}</small>
+									{p.name === s.profile ? <I.check /> : <span className="cm-nock" />}
 								</button>
 							))
 						}
@@ -77,12 +73,10 @@ export function Settings(): ReactNode {
 					<Menu act="effort" down label={pill(t.effort[effort] ?? effort, "effort")}>
 						{(close) =>
 							s.effort!.levels.map((level) => (
-								<button type="button" key={level} className="cm-i" role="menuitemradio" aria-checked={level === effort} data-effort={level} onClick={() => (change({ effort: level }), close())}>
-									<span className="cm-t">
-										<b>{t.effort[level] ?? level}</b>
-										{level === s.effort!.default ? <small>{t.settingsDefault}</small> : null}
-									</span>
-									{level === effort ? <I.check /> : null}
+								<button type="button" key={level} className="cm-i one" role="menuitemradio" aria-checked={level === effort} data-effort={level} onClick={() => (change({ effort: level }), close())}>
+									<b>{t.effort[level] ?? level}</b>
+									<small>{level === s.effort!.default ? t.settingsDefault : ""}</small>
+									{level === effort ? <I.check /> : <span className="cm-nock" />}
 								</button>
 							))
 						}

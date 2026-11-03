@@ -2,11 +2,14 @@
 .settings > * { width: 560px; max-width: calc(100% - 40px); margin-left: auto; margin-right: auto; }
 .settings h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-top: 0; margin-bottom: 20px; }
 .srow { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
-.slabel { flex: 1; }
+.slabel { flex: 1; min-width: 45%; }
 .slabel small { display: block; color: var(--mute); font-size: 12px; }
 /* the fields are the composer's menus: a pill with what is chosen, the list opening below it (scrolling when long) */
 .sfield .cpill { border: 1px solid var(--line); background: #fff; max-width: 280px; }
+.sfield { max-width: 55%; text-align: right; }
 .sfield .cpill > span { overflow: hidden; text-overflow: ellipsis; }
+.sfield [data-field="effort"], .sfield [data-effort] b { text-transform: capitalize; }
+.sfield .cmenu.down { width: 340px; text-align: left; }
 .sfield .cmenu.down { top: calc(100% + 6px); bottom: auto; left: auto; right: 0; max-height: min(420px, 60vh); overflow-y: auto; }
 .muted { color: var(--mute); }
 .okline { color: var(--green); }
