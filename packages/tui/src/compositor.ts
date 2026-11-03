@@ -57,7 +57,7 @@ import { pickWindowOf } from "./approval-panel.js";
 import type { PanelState } from "./approval-panel.js";
 import { atPanelRows, bandHeader, bandKeyRow, bandVisible, bandWindow, moreMark, type AtMatch } from "./at-picker.js";
 // TUI2-R2 ②: the session picker's rows — the band's third occupant.
-import { RESUME_FILTER_HINT, sessionPickerRows, type SessionPickState } from "./session-picker.js";
+import { FORK_FILTER_HINT, RESUME_FILTER_HINT, sessionPickerRows, type SessionPickState } from "./session-picker.js";
 
 /** KC3 §4 — the @ picker's bound state (the editor's atState()). */
 export interface AtPanelState {
@@ -2803,7 +2803,7 @@ export class Body {
 		// in the row's pad, so the cursor and the columns do not move.
 		// Graphite P3: the same exception for a pick that filters (/model) —
 		// its input is the filter too, and its hint is the caller's words.
-		const hint = panel === null ? (this.#pickState?.() != null ? RESUME_FILTER_HINT : null) : panelHintOf(panel);
+		const hint = panel === null ? (this.#pickState?.() != null ? (this.#pickState?.()?.kind === "fork" ? FORK_FILTER_HINT : RESUME_FILTER_HINT) : null) : panelHintOf(panel);
 		if (hint !== null && rows.length === 1 && rows[0] === "") {
 			const pad = / +$/.exec(out[0]!);
 			const hintW = visibleWidth(hint);

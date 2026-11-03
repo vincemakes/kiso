@@ -481,6 +481,7 @@ const HELP_TABLE: readonly (readonly [string, string])[] = [
 	["/compact", "summarize the older conversation to free context"],
 	["/clear", "start a fresh conversation (the old session stays resumable)"],
 	["/resume", "switch to another session; /resume <id> goes directly"],
+	["/fork", "a new session from after one of this session's replies, then switch to it"],
 	// §2.5: the conversation is untouched — this rereads what kiso was
 	// built with, not what it has said.
 	["/reload", "reread extensions, skills and config into this session"],

@@ -123,6 +123,10 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 			"/compact     summarize the older conversation to free context",
 			"/clear       start a fresh conversation (the old session stays resumable)",
 			"/resume      switch to another session; /resume <id> goes directly",
+			// the fork round — a DECLARED ADDITION beside /resume: both switch the
+			// terminal to another session. The computed stop does not move:
+			// `/fork` is five characters.
+			"/fork        a new session from after one of this session's replies, then switch to it",
 			// §2.5 — a DECLARED ADDITION in the same class as /clear, /resume,
 			// /rewrap and /copy. It sits beside /resume because both answer
 			// "put me somewhere else without losing this", and the computed
@@ -168,7 +172,7 @@ describe("T-Q3 / slice ⓪ — the extraction changed no bytes", () => {
 	});
 
 	it("the last row still carries its own newline — two rows from one bodyLog call", () => {
-		expect(helpRows()).toHaveLength(27); // the second main-sync round: main's ADR-0058 3e pair (/tasks + ctrl+b) on top of Graphite's 25 // the main-sync round: Graphite R3d's /name and the modes round's /dont-ask, both declared // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's command rows
+		expect(helpRows()).toHaveLength(28); // the fork round: + /fork // the second main-sync round: main's ADR-0058 3e pair (/tasks + ctrl+b) on top of Graphite's 25 // the main-sync round: Graphite R3d's /name and the modes round's /dont-ask, both declared // 0.40.6 (declared re-pin): + /settings // 8 extracted + the mini-spec pair + /rewrap (R4) + /copy (E1 §3) + the three §2.2 shell rows + §2.3's command rows
 		expect(helpRows().filter((r) => r.includes("\n"))).toHaveLength(1);
 	});
 

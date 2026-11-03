@@ -338,8 +338,8 @@ function editorInput(editor: Editor): LineInput {
 		// TUI2-R2 ②: the session picker — the editor owns the keys (the
 		// selection walk, the filter, enter/esc), the compositor draws the
 		// band, and the id comes back here.
-		pick(cards, onPick, here) {
-			editor.beginPick(cards, onPick, here);
+		pick(cards, onPick, here, kind) {
+			editor.beginPick(cards, onPick, here, kind);
 		},
 		// W22: the pending-turn queue — the ↑ pop walk (the keys); the
 		// chips are the compositor's bindQueue (the dock side).
