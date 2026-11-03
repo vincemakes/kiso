@@ -36,9 +36,13 @@ check(await waitUntil(async () => (await q(`[...document.querySelectorAll('.item
 await app.shot("sidebar-new-work");
 await q(`document.querySelector('.fn-h').click()`);
 await app.click("[data-act=settings]");
-check(await waitUntil(async () => (await app.count("[data-kind=settings] select[data-field=mode]")) === 1), "Functions holds Settings, which opens in the window");
-await q(`(() => { const sel = document.querySelector('[data-field=mode]'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'plan'); sel.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-check(await waitUntil(async () => (await q(`document.querySelector('[data-field=mode]').value`)) === "plan"), "the tier changes through the host and the page shows what the host answered");
+check(await waitUntil(async () => (await app.count("[data-kind=settings] [data-act=mode]")) === 1), "Functions holds Settings, which opens in the window");
+check((await app.count("[data-kind=settings] select")) === 0, "Settings has no native select: its fields are the composer's menus (owner 2026-11-03)");
+await app.click("[data-kind=settings] [data-act=mode]");
+const below = await q(`(() => { const m = document.querySelector('[data-kind=settings] [data-menu=mode]'); const b = document.querySelector('[data-kind=settings] [data-act=mode]'); return m !== null && m.getBoundingClientRect().top >= b.getBoundingClientRect().bottom && m.querySelectorAll('.cm-i small').length > 0; })()`);
+check(below, "the tier menu opens below its pill, each tier with its note");
+await app.click("[data-kind=settings] [data-tier=plan]");
+check(await waitUntil(async () => (await app.text("[data-kind=settings] [data-field=mode]")) === "Read-only" && (await app.count("[data-kind=settings] [data-menu=mode]")) === 0), "the tier changes through the host, the menu closes and the pill shows what the host answered");
 await app.shot("settings");
 await app.click("[data-act=sidebar]");
 check(await waitUntil(async () => (await left()) === 0), "closing it gives the width back");

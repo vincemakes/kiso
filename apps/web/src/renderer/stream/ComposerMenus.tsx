@@ -13,8 +13,8 @@ export interface Controls {
 }
 export const ControlsContext = createContext<Controls | null>(null);
 
-/** A pill and the menu it opens above itself; a click outside or Esc closes it. */
-export function Menu({ label, className, act, disabled, title, children }: { readonly label: ReactNode; readonly className?: string; readonly act: string; readonly disabled?: boolean; readonly title?: string; readonly children: (close: () => void) => ReactNode }): ReactNode {
+/** A pill and the menu it opens above itself (below it, `down`); a click outside or Esc closes it. */
+export function Menu({ label, className, act, disabled, title, down, children }: { readonly label: ReactNode; readonly className?: string; readonly act: string; readonly disabled?: boolean; readonly title?: string; readonly down?: boolean; readonly children: (close: () => void) => ReactNode }): ReactNode {
 	const [open, setOpen] = useState(false);
 	const box = useRef<HTMLSpanElement>(null);
 	useEffect(() => {
@@ -31,7 +31,7 @@ export function Menu({ label, className, act, disabled, title, children }: { rea
 				{label}
 			</button>
 			{open ? (
-				<div className="cmenu" role="menu" data-menu={act}>
+				<div className={down === true ? "cmenu down" : "cmenu"} role="menu" data-menu={act}>
 					{children(() => setOpen(false))}
 				</div>
 			) : null}
@@ -39,7 +39,7 @@ export function Menu({ label, className, act, disabled, title, children }: { rea
 	);
 }
 
-const TIER_CLASS: Readonly<Record<string, string>> = { plan: "plan", "full-access": "full" };
+export const TIER_CLASS: Readonly<Record<string, string>> = { plan: "plan", "full-access": "full" };
 
 /** The Work's permission tier: read-only, ask, edits allowed, full access; a change reaches this Work only. */
 export function TierMenu({ c }: { readonly c: Controls }): ReactNode {

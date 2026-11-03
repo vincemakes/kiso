@@ -4,7 +4,10 @@
 .srow { display: flex; align-items: center; gap: 16px; padding: 14px 0; border-top: 1px solid var(--line); }
 .slabel { flex: 1; }
 .slabel small { display: block; color: var(--mute); font-size: 12px; }
-.sfield select { font: inherit; padding: 6px 10px; border-radius: 9px; border: 1px solid var(--line); background: #fff; max-width: 280px; }
+/* the fields are the composer's menus: a pill with what is chosen, the list opening below it (scrolling when long) */
+.sfield .cpill { border: 1px solid var(--line); background: #fff; max-width: 280px; }
+.sfield .cpill > span { overflow: hidden; text-overflow: ellipsis; }
+.sfield .cmenu.down { top: calc(100% + 6px); bottom: auto; left: auto; right: 0; max-height: min(420px, 60vh); overflow-y: auto; }
 .muted { color: var(--mute); }
 .okline { color: var(--green); }
 .warnline { color: var(--amber); }
