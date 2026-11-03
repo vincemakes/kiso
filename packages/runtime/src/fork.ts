@@ -71,12 +71,17 @@ export function forkSession(root: string, parent: string, afterSeq?: number): { 
 	return { id, origin };
 }
 
+const FORK_NOTE_HEAD = 'This session was forked from the session "';
+
+/** Whether a text block is the fork note (the apps show the person's words, never this). */
+export const isForkNote = (text: string): boolean => text.startsWith(FORK_NOTE_HEAD);
+
 /**
  * What a fork's model is told, once, with the fork's first input after the copied history (never in the system prompt:
  * a cache is a prefix, and a note there made the fork's first request read the whole history fresh, 0% against 88%
  * measured on co, plan fork rev 2): what the conversation it continues does not bring with it.
  */
 export const forkNote = (parentTitle: string): string =>
-	`This session was forked from the session "${parentTitle}" at the end of one of its runs. The conversation above it is copied; two things are not. ` +
+	`${FORK_NOTE_HEAD}${parentTitle}" at the end of one of its runs. The conversation above it is copied; two things are not. ` +
 	"Background tasks started there are not running here (a task id from that conversation names nothing in this session). " +
 	"The folder is shared with it: its files are as they are on disk now, not as they were when the run above ended, and the original session may still change them.";

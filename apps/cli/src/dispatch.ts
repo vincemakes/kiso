@@ -7,12 +7,13 @@
 import type { SessionRoute } from "./projects.js";
 import { STATUS_GLYPHS, contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, displayVerb, escapeTerminal, helpRows, toolTarget, infoSheetRows, kUnit, modePickView, modelPickView, namedPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
-import { buildAdapter, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
-import type { AgentSession } from "@vincemakes/kiso-runtime";
+import { buildAdapter, isForkNote, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
+import { ForkRefusedError, SessionStore, type AgentSession } from "@vincemakes/kiso-runtime";
+import type { SessionCardView } from "@vincemakes/kiso-tui";
 import { MODE_LABEL, MODE_NOTE, OFFERED_MODES, applyModeSetting, getDontAsk, getMode, modeDisplay, parseMode, setDontAsk, type ModeSetting } from "./mode.js";
 import { clipboardWrite, lastAnswer } from "./clipboard.js";
 import { protectedBangReason, protectedShellVerdict } from "./protected-shell.js";
-import { activeStoreDir, agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
+import { activeStoreDir, sessionStoreRef, agentBaseUrl, currentProfileName, setCurrentProfileName, currentModelName, agentModel, body, bodyLog, codingToolOptions, protectedFiles, kisoHome, configModels, dock, lastBinding, loadedSkillsCatalog, mergedConfig, readContextLedger, retryOnRow, sessionsDir, setAgentModel, setConfiguredWindow, setCurrentModelName, setModelChoice, setRetryShown, upstreamOf, VERSION, type LineInput , setLastBinding } from "./state.js";
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { profileProviderLabel, providerLabel } from "./provider-label.js";
 import { installedVersion, versionStatusLine } from "./stale-version.js";
@@ -1423,6 +1424,45 @@ export function dispatch(line: string, ctx: DispatchCtx): void {
 		ctx.requestReload();
 		return;
 	}
+	if (trimmed === "/fork") {
+		// owner 2026-11-03: the web app's fork, one rule — a new session from after one of this session's replies
+		// (SessionStore.fork), then the terminal switches to it as /resume does; the replies are picked in /resume's band
+		if (ctx.isRunning()) {
+			body.notice("[/fork] a run is in flight — let it finish (esc stops it), then fork");
+			ctx.input.prompt();
+			return;
+		}
+		ctx.chainRef.current = ctx.chainRef.current.then(async () => {
+			const cards = replyCards(sessionStoreRef?.load(ctx.session.id) ?? []);
+			if (cards.length === 0) {
+				body.notice("no finished reply to fork after yet");
+				ctx.input.prompt();
+				return;
+			}
+			const fork = (afterSeq: number): void => {
+				try {
+					const made = new SessionStore(activeStoreDir).fork(ctx.session.id, { afterSeq });
+					body.notice(`forked "${escapeTerminal(readSessionName(activeStoreDir, made.id) ?? made.id)}" — switching to it`);
+					ctx.requestSwitch(made.id);
+				} catch (error) {
+					body.notice(error instanceof ForkRefusedError ? `[/fork] ${error.message}` : `[/fork] ${error instanceof Error ? error.message : String(error)}`);
+					ctx.input.prompt();
+				}
+			};
+			// no band (a pipe, a dock-less terminal): after the last reply, the sidebar's Fork
+			if (ctx.input.pick === undefined || !dock.active) return fork(Number(cards[0]!.id));
+			ctx.input.pick(
+				() => cards,
+				(picked) => {
+					if (picked === null) ctx.input.prompt(); // esc: nothing forked, nothing said
+					else fork(Number(picked));
+				},
+				undefined,
+				"fork",
+			);
+		});
+		return;
+	}
 	if (trimmed === "/resume" || trimmed.startsWith("/resume ")) {
 		// the mini-spec: the in-session door to the durable sessions —
 		// /resume <id> switches directly; bare /resume opens the SAME
@@ -1616,4 +1656,26 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	const action = await ask(`${task.id} · ${taskStateLabel(task)} · ${taskRow(task).note}`, actions.map((label) => ({ label })));
 	if (action === 0) show(task);
 	else if (action === 1) stop(task);
+}
+
+/** /fork's rows: each finished run's reply, newest first, by its first line and when it ended; the opened row says the
+ *  line it answered. The card's id is the seq of the run's terminal, where SessionStore.fork cuts. */
+export function replyCards(records: readonly StoreRecord[]): SessionCardView[] {
+	const cards: SessionCardView[] = [];
+	let asked = "";
+	let reply = "";
+	for (const { event: e, ts } of records) {
+		if (e.type === "user_input" && e.source !== "system") {
+			const content = Array.isArray(e.content) ? (e.content as { type?: string; text?: string }[]).filter((b) => !(b.type === "text" && isForkNote(b.text ?? ""))) : e.content;
+			asked = (typeof content === "string" ? content : content.map((b) => (b.type === "text" ? (b.text ?? "") : "")).join(" ")).trim();
+			reply = "";
+		} else if (e.type === "tool_result") reply = "";
+		else if (e.type === "text_delta") reply += e.text;
+		else if (e.type === "terminal" && e.outcome.kind === "completed") {
+			// the row is how the person recognizes the reply: its first line, inline code read as plain text
+			const first = (reply.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "(no reply text)").replace(/`([^`]*)`/g, "$1");
+			cards.unshift({ id: String(e.seq), title: first, badge: "completed", turns: null, updatedAt: ts, uncertain: 0, asks: 0, outcome: null, detail: `answered: ${asked.split("\n")[0] ?? ""}` });
+		}
+	}
+	return cards;
 }

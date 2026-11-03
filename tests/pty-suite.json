@@ -21,6 +21,7 @@
   "apps/cli/tests/clipboard.test.ts",
   "apps/cli/tests/coding-agent.test.ts",
   "apps/cli/tests/cold-resume-pty.test.ts",
+  "apps/cli/tests/fork-pty.test.ts",
   "apps/cli/tests/compact-cli.test.ts",
   "apps/cli/tests/config-e2e.test.ts",
   "apps/cli/tests/config-round-trip.test.ts",

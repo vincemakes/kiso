@@ -534,7 +534,7 @@ export interface LineInput {
 	 *  picked id, or null when the human leaves without picking.
 	 *  OPTIONAL: only the raw-mode editor has it, and the picker only
 	 *  ever opens on a TTY (a pipe has nobody to pick). */
-	pick?(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void, here?: string): void;
+	pick?(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void, here?: string, kind?: "resume" | "fork"): void;
 	/** W22: bind the pending-turn queue — the ↑ pop walks the CLI's
 	 *  live slots (each pop cancels the turn), esc ends the walk after
 	 *  one more pop. The chips are the compositor's own bindQueue. */

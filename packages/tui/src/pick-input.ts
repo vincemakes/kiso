@@ -28,6 +28,7 @@ export class PickInput {
 	 *  whether the person flipped to ALL. */
 	#here: string | undefined = undefined;
 	#all = false;
+	#kind: "resume" | "fork" = "resume";
 
 	constructor(private readonly host: Pick<BandHost, "line" | "clear" | "reflow" | "render" | "syncMouse">) {}
 
@@ -39,8 +40,9 @@ export class PickInput {
 	 *  (the buffer becomes the filter query) and `onPick` receives the
 	 *  chosen id — or null when the human leaves without picking, which
 	 *  is a first-class outcome and not an error. */
-	begin(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void, here?: string): void {
+	begin(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void, here?: string, kind: "resume" | "fork" = "resume"): void {
 		this.#cards = cards;
+		this.#kind = kind;
 		this.#commit = onPick;
 		this.#sel = 0;
 		this.#here = here;
@@ -64,7 +66,7 @@ export class PickInput {
 		const cards = scoped === null ? this.#cards() : scoped.cards;
 		const query = this.host.line();
 		const matches = sessionFilter(cards, query);
-		return { cards, matches, selected: Math.max(0, Math.min(this.#sel, matches.length - 1)), scope: scoped?.scope ?? null, query };
+		return { cards, matches, selected: Math.max(0, Math.min(this.#sel, matches.length - 1)), scope: scoped?.scope ?? null, query, kind: this.#kind };
 	}
 
 	/** 0.40.0 — tab flips CURRENT ↔ ALL. The filter owns every printable

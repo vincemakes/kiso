@@ -133,6 +133,8 @@ export const MENU_ITEMS: readonly MenuItem[] = [
 	// the /resume+/clear mini-spec: the session-navigation pair
 	{ name: "/clear", desc: "start a fresh conversation (the old session stays resumable)" },
 	{ name: "/resume", desc: "switch to another session; /resume <id> goes directly" },
+	// owner 2026-11-03: the web app's fork, one rule — after a reply, then switch
+	{ name: "/fork", desc: "a new session from after one of this session's replies, then switch to it" },
 	// 0.39.2: `/reload` has been dispatchable since §2.5 and `/help` lists
 	// it, and typing `/` never offered it — the one place a person who does
 	// not know a command exists goes to find one. Caught with `/copy` by the
@@ -1117,8 +1119,8 @@ export class Editor {
 	// ── TUI2-R2 ② — the session picker ───────────────────────────────
 
 	/** Open the picker on a bound card source (PickInput, S5). */
-	beginPick(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void, here?: string): void {
-		this.#pickInput.begin(cards, onPick, here);
+	beginPick(cards: () => readonly SessionCardView[], onPick: (id: string | null) => void, here?: string, kind?: "resume" | "fork"): void {
+		this.#pickInput.begin(cards, onPick, here, kind);
 	}
 
 	pickState(): SessionPickState | null {

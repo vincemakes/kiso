@@ -44,6 +44,9 @@ export interface SessionCardView {
 	/** 0.40.0: its project was inferred by the one-time migration, never
 	 *  recorded — the row says so. */
 	readonly inferred?: boolean;
+	/** /fork's card: the opened row says this instead of a session's facts
+	 *  (the line the reply answered). */
+	readonly detail?: string;
 }
 
 /** 0.40.0 — which sessions the picker shows. `here` is the running
@@ -300,6 +303,9 @@ export interface SessionPickState {
 	/** Graphite P1: the filter as typed — the title lights the letters it
 	 *  matched, and the band says how many match. Absent = no filter. */
 	readonly query?: string;
+	/** /fork (owner 2026-11-03): the same band picks a REPLY to fork after —
+	 *  its name, its enter and its empty line say so. Absent = /resume. */
+	readonly kind?: "resume" | "fork";
 }
 
 /*
@@ -503,6 +509,10 @@ export function sessionStarted(id: string): string | null {
 function openedRow(card: SessionCardView, W: number, where: string | null): string {
 	const p = palette();
 	const room = Math.max(0, W - 3);
+	if (card.detail !== undefined) {
+		const said = widthCut(escapeTerminal(card.detail), room);
+		return selectionBar(` ${p.dim}${said}${p.reset}`, visibleWidth(said) + 1, W);
+	}
 	const note = sessionNote(card);
 	const dash = note.indexOf(" — ");
 	const head = widthCut(dash < 0 ? note : note.slice(0, dash), room);
@@ -536,11 +546,12 @@ function resumeKeyRow(state: SessionPickState, W: number, table: number): string
 	const scope = state.scope ?? null;
 	const elsewhere = scope === null ? 0 : scope.total - scope.inHere;
 	const tab = scope === null ? null : scope.all ? "tab this workspace" : elsewhere > 0 ? `tab ${elsewhere} more elsewhere` : null;
-	const keys = ["↑↓ move", "⏎ resumes", tab, "esc"].filter((k): k is string => k !== null);
+	const enter = state.kind === "fork" ? "⏎ forks" : "⏎ resumes";
+	const keys = ["↑↓ move", enter, tab, "esc"].filter((k): k is string => k !== null);
 	const edge = Math.min(W, Math.max(table, visibleWidth(keys.join(" · ")) + count.length + 5));
 	const fits = (ks: readonly string[]): boolean => 2 + visibleWidth(ks.join(" · ")) + 2 + count.length + 1 <= edge;
 	let kept = keys;
-	for (const drop of [tab, "↑↓ move", "⏎ resumes", "esc"]) {
+	for (const drop of [tab, "↑↓ move", enter, "esc"]) {
 		if (fits(kept)) break;
 		kept = kept.filter((k) => k !== drop);
 	}
@@ -551,6 +562,7 @@ function resumeKeyRow(state: SessionPickState, W: number, table: number): string
 
 /** What the empty input says while the picker is up: typing there filters. */
 export const RESUME_FILTER_HINT = "filter by title or id";
+export const FORK_FILTER_HINT = "filter replies";
 
 /**
  * The whole band: the named hairline, the windowed table with the
@@ -564,13 +576,15 @@ export function sessionPickerRows(state: SessionPickState, W: number, now: numbe
 	const p = palette();
 	const scope = state.scope ?? null;
 	const query = state.query ?? "";
-	const rows: string[] = [bandHeader(scopeTitle(scope, query === "" ? null : { matches: state.matches.length, of: state.cards.length }), W)];
+	const filter = query === "" ? null : { matches: state.matches.length, of: state.cards.length };
+	const title = state.kind === "fork" ? (filter === null ? "fork after a reply" : `fork after a reply · ${filter.matches} of ${filter.of} match`) : scopeTitle(scope, filter);
+	const rows: string[] = [bandHeader(title, W)];
 	// the workspace column shows only when every workspace is listed
 	const where = scope !== null && scope.all ? scope.here : null;
 	const cols = resumeColumns(state.cards, W, now, where);
 	if (state.matches.length === 0) {
 		// an empty view says why, rather than an empty band
-		const empty = query !== "" ? `nothing matches “${escapeTerminal(query)}”` : scope !== null && !scope.all && scope.inHere === 0 ? "no session from this workspace yet" : "nothing to resume yet";
+		const empty = query !== "" ? `nothing matches “${escapeTerminal(query)}”` : state.kind === "fork" ? "no finished reply to fork after yet" : scope !== null && !scope.all && scope.inHere === 0 ? "no session from this workspace yet" : "nothing to resume yet";
 		rows.push(`${p.dim}${widthCut(`  ${empty}`, W)}${p.reset}`);
 		rows.push(resumeKeyRow(state, W, cols.table));
 		return rows;
