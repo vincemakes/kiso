@@ -12,6 +12,8 @@
 	"ExecutionRecord",
 	"ExecutionStatus",
 	"FollowUpOptions",
+	"ForkOrigin",
+	"ForkRefusedError",
 	"KisoExtension",
 	"PermissionPolicy",
 	"PermissionRule",

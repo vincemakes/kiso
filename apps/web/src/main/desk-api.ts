@@ -5,7 +5,7 @@ import { canonicalPath, claimProjectDir, projectDirFor } from "@vincemakes/kiso-
 import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
 import { contextParts } from "./context.js";
 import { rename } from "./names.js";
-import { forkNoteOf, forkWork } from "./fork.js";
+import { forkWork } from "./fork.js";
 import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
 import { commit, gitOf, openPr, prDraft } from "./git.js";
 import { existing, Refusal, resolveInside } from "./files.js";
@@ -83,7 +83,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			} catch {
 				// no model: the parts are still known, the compaction sizes are not
 			}
-			return req.method === "GET" ? json(200, contextParts(space.workspace, ctx.settings.tierOf(session), window, forkNoteOf(ctx.settings, session))) : json(405, {});
+			return req.method === "GET" ? json(200, contextParts(space.workspace, ctx.settings.tierOf(session), window)) : json(405, {});
 		}
 		if (path === "/desk/git") {
 			if (space === null) return json(404, {});

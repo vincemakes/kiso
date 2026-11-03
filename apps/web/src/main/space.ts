@@ -32,8 +32,6 @@ export interface SpaceOptions {
 	readonly model: (ctx?: { readonly sessionId: string; readonly sessionsDir: string }) => ModelChoice;
 	/** The permission tier of a Work. */
 	readonly tierOf: (sessionId: string) => PermissionMode;
-	/** a Work's own addition to its system prompt (a fork's notice), read when it is opened */
-	readonly noteOf?: (sessionId: string) => string | undefined;
 	readonly checkRunners: () => readonly string[];
 	readonly secretEnvNames?: readonly string[];
 	readonly exposeThinking: boolean;
@@ -112,7 +110,6 @@ export function createSpace(options: SpaceOptions): Space {
 				workspace: options.workspace,
 				model: options.model({ sessionId, sessionsDir: options.dir }),
 				tier: () => options.tierOf(sessionId),
-				...(options.noteOf?.(sessionId) !== undefined ? { note: options.noteOf(sessionId)! } : {}),
 				sessionId,
 				checkRunners: options.checkRunners(),
 				tasks,
