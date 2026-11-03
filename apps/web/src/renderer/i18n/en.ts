@@ -127,6 +127,7 @@ export const en = {
 	railNew: "new",
 	railOutputs: "Outputs",
 	railShowMore: "Show {n} more",
+	childWorks: "Its child Works",
 	railUnlisted: "{n} more not listed",
 	railNow: "now",
 	ctxConversation: "Conversation",
