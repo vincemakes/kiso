@@ -27,4 +27,10 @@ export const ago = (at: number, now: number): string => {
 };
 
 /** 1.2k, 42 — a token count as the terminal says it. */
-export const tokens = (n: number | null): string => (n === null ? "?" : n < 1000 ? String(n) : `${(Math.round(n / 100) / 10).toFixed(1)}k`);
+/** A token count: whole below a thousand, then k with one decimal, and from a million M as the terminal writes a window
+ *  (1M, 1.05M: owner 2026-11-03, "1000k" reads oddly). */
+export const tokens = (n: number | null): string =>
+	n === null ? "?" : n < 1000 ? String(n) : n < 999_950 ? `${(Math.round(n / 100) / 10).toFixed(1)}k` : `${String(Math.round(n / 10_000) / 100)}M`;
+
+/** A context window as the terminal's windowLabel writes it: 1M, 1.05M, 200k; a figure that is not round by tokens(). */
+export const windowLabel = (n: number): string => (n >= 1_000_000 && n % 10_000 === 0 ? `${n / 1_000_000}M` : n % 1000 === 0 ? `${n / 1000}k` : tokens(n));

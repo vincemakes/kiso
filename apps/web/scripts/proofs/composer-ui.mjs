@@ -111,6 +111,10 @@ await q(`window.__kiso.send("this hits a spent plan")`);
 check(await waitUntil(async () => (await app.count("[data-kind=run-end][data-outcome=error]")) === ends + 1, 20_000) && /The run failed: .*403.*An active subscription is required/.test(await text("[data-kind=run-end][data-outcome=error]")), `a refused request says so under the run, with the provider's words ("${await text("[data-kind=run-end]")}")`);
 await app.shot("run-end");
 
+// a window of a million reads as the terminal writes it (owner 2026-11-03: not "1000k")
+const ctxLine = () => q("document.querySelector('[data-field=context-pct]')?.parentElement.textContent.trim() ?? ''");
+check(await waitUntil(async () => /\/ 1M$/.test(await ctxLine()), 15_000), `the rail writes this model's window of a million as 1M (${await ctxLine()})`);
+
 // Settings' model field is the composer's menu too (owner 2026-11-03): each profile's model over its name, opening below its pill
 if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
 await q(`document.querySelector('.fn-h').click()`);
