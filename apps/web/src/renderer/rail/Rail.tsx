@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import type { ContextParts, EnvReply } from "../../shared/settings.js";
 import type { GitReply } from "../../shared/git.js";
 import type { TaskRow } from "../../shared/frames.js";
-import { clock, fmt, t, tokens } from "../i18n/index.js";
+import { clock, fmt, t, tokens, windowLabel } from "../i18n/index.js";
 import type { State } from "../state/model.js";
 import { useOpenPanel } from "../panels/context.js";
 import { artifactIcon, I } from "../stream/Icons.js";
@@ -131,7 +131,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 							<b>{t.railContext}</b>
 							<span className="grow" />
 							<span className="r-ctxv">
-								<b data-field="context-pct">{Math.round(share)}%</b> · {tokens(used ?? 0)} / {window % 1000 === 0 ? `${window / 1000}k` : tokens(window)}
+								<b data-field="context-pct">{Math.round(share)}%</b> · {tokens(used ?? 0)} / {windowLabel(window)}
 							</span>
 						</button>
 						<div className="r-meter" aria-hidden="true">
