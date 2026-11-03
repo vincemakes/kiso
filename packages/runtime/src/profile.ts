@@ -164,6 +164,32 @@ export function writeSessionName(root: string, sessionId: string, name: string |
 	writeTenants(root, sessionId, name === null ? tenants : { ...tenants, name });
 }
 
+/** Where a fork came from (SessionStore.fork): the parent session, the seq of the parent's `terminal` it was cut after,
+ *  when, and the parent's title then. The sidecar's fourth tenant; lineage, not authority. */
+export interface ForkOrigin {
+	readonly session: string;
+	readonly afterSeq: number;
+	readonly at: number;
+	readonly title: string;
+}
+
+/** The fork's origin, or null (not a fork, no sidecar, unreadable). */
+export function readForkOrigin(root: string, sessionId: string): ForkOrigin | null {
+	const f = currentTenants(root, sessionId).forkedFrom as Partial<ForkOrigin> | undefined;
+	return f !== undefined && typeof f.session === "string" && typeof f.afterSeq === "number" && typeof f.at === "number" && typeof f.title === "string" ? (f as ForkOrigin) : null;
+}
+
+/** A new fork's sidecar, whole: the parent's execution profile, the fork's name, and its origin. The parent's summary is
+ *  not carried: it may describe runs after the cut, and the fork writes its own. */
+export function writeForkSidecar(root: string, sessionId: string, tenants: { readonly profile?: unknown; readonly name: string; readonly forkedFrom: ForkOrigin }): void {
+	writeTenants(root, sessionId, { ...(tenants.profile !== undefined ? { profile: tenants.profile } : {}), name: tenants.name, forkedFrom: tenants.forkedFrom });
+}
+
+/** The parent's tenants, read for a fork. */
+export function tenantsOf(root: string, sessionId: string): Record<string, unknown> {
+	return currentTenants(root, sessionId);
+}
+
 function writeTenants(root: string, sessionId: string, tenants: Record<string, unknown>): void {
 	const path = profilePath(root, sessionId);
 	const tmpDir = mkdtempSync(join(root, ".meta-"));

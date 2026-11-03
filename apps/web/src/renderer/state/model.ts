@@ -149,18 +149,20 @@ export interface Attached {
 	readonly text: string;
 }
 
+/** The fork note's head (runtime fork.ts forkNote): before a fork's first input for the model, never shown as the person's. */
+const FORK_NOTE_HEAD = "This session was forked from the session ";
+
 /** An attached file as the composer sends it: a text block of its own, `<name>:` then the text in a fence. */
 const FILE_BLOCK = /^([^\n`]+):\n```\n([\s\S]*)\n```$/;
 
-/** The person's line split for showing it: what they typed, and the files they attached. A line with no attachment is a
- *  plain string (the composer sends it so), and a fence typed inside it stays text; a line in blocks carries attachments,
- *  and each block of the file shape is one. */
+/** The person's line split for showing it: what they typed and the files they attached (a line with no attachment is a plain
+ *  string, so a fence typed in it stays text; in a line of blocks each block of the file shape is one). */
 export function splitLine(content: unknown): { readonly text: string; readonly files: readonly Attached[] } {
 	if (!Array.isArray(content)) return { text: contentText(content), files: [] };
 	const files: Attached[] = [];
 	let text = "";
 	for (const b of content as readonly { type?: string; text?: unknown }[]) {
-		if (b?.type !== "text") continue;
+		if (b?.type !== "text" || String(b.text ?? "").startsWith(FORK_NOTE_HEAD)) continue;
 		const m = FILE_BLOCK.exec(String(b.text ?? ""));
 		if (m !== null) files.push({ name: m[1]!, text: m[2]! });
 		else text += String(b.text ?? "");

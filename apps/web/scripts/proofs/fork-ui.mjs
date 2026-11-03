@@ -1,14 +1,15 @@
 // Fork (plan PR 6, owner 2026-11-02). A Work with two runs is forked at the end of the first from the reply's own action: the new
 // Work's log is the parent's lines up to that run's terminal, byte for byte; its sidecar is the parent's profile under "… (fork)"; the
 // parent's files do not move, then or when the fork runs. The fork opens at once with one line naming its parent; it starts on the
-// parent's tier; its system prompt carries the fork notice (the Context breakdown counts it); the sidebar lists it right after its
+// parent's tier; its system prompt is the parent's, and its first input carries the fork note after the copied history (plan fork
+// rev 2: a note in the system prompt cost the fork's first request the whole history's cache), never shown as the person's; the
+// runtime makes it (SessionStore.fork); the sidebar lists it right after its
 // parent, one step in. A cut that is not a run's end, or one with a verdict still owed, is refused in words. Copy puts the reply's
 // text, or the person's line, on the clipboard; the relative time follows one rule. Screenshots go outside the repository.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
-import { forkNote } from "../../dist/main/fork.js";
 import { ago } from "../../dist/renderer/i18n/index.js";
 
 const { check, verdict } = checker("fork-ui");
@@ -53,15 +54,15 @@ await q("document.querySelectorAll('[data-kind=reply-acts]')[0].querySelector('[
 check(await waitUntil(async () => (await app.count("[data-kind=fork-note]")) === 1 && (await app.count("[data-kind=footer]")) === 1, 20_000), "the fork opens at once: the first run only, under one line naming where it came from");
 const id = readdirSync(dir()).find((f) => f.endsWith(".jsonl") && !["frk.jsonl", "unc.jsonl"].includes(f)).slice(0, -6);
 const prefix = readFileSync(file("frk")).subarray(0, raw.slice(0, cut + 1).reduce((n, l) => n + Buffer.byteLength(l) + 1, 0));
-const { name, ...profile } = JSON.parse(readFileSync(file(id, "meta.json"), "utf8"));
-const { name: _, ...parentProfile } = JSON.parse(readFileSync(file("frk", "meta.json"), "utf8"));
+const { name, profile, summary, forkedFrom } = JSON.parse(readFileSync(file(id, "meta.json"), "utf8"));
+const { profile: parentProfile } = JSON.parse(readFileSync(file("frk", "meta.json"), "utf8"));
 check(readFileSync(file(id)).equals(prefix), `the fork's log is the parent's lines up to the first run's terminal, byte for byte (${prefix.length} bytes)`);
-check(name === "Plan the release notes (fork)" && JSON.stringify(profile) === JSON.stringify(parentProfile) && sha(file("frk")) === parent.log && sha(file("frk", "meta.json")) === parent.meta, "its sidecar is the parent's profile under \"… (fork)\"; the parent's log and sidecar did not move");
+check(name === "Plan the release notes (fork)" && JSON.stringify(profile) === JSON.stringify(parentProfile) && summary === undefined && forkedFrom?.session === "frk" && forkedFrom.afterSeq === ends[0] && sha(file("frk")) === parent.log && sha(file("frk", "meta.json")) === parent.meta, "its sidecar is the parent's profile under \"… (fork)\"; the parent's log and sidecar did not move");
 const note = await app.text("[data-kind=fork-note]");
 const env = await desk(`/desk/env?session=${id}`);
 const [mine, theirs] = [await desk(`/desk/context?session=${id}`), await desk("/desk/context?session=frk")];
 check(/^Forked from Plan the release notes · just now\. Files are shared/.test(note) && env.mode === "plan" && env.fork?.parent === "frk", `the notice names the parent and the shared folder; the fork starts on the parent's tier (${env.mode})`);
-check(mine.system - theirs.system === Buffer.byteLength(`\n\n${forkNote("Plan the release notes")}`), `the fork's system prompt carries the fork notice (${mine.system - theirs.system} bytes more, as the Context breakdown counts)`);
+check(mine.system === theirs.system, `the fork's system prompt is the parent's, byte for byte (${mine.system} = ${theirs.system}): the cache's prefix stays whole`);
 const desktop = JSON.parse(readFileSync(join(data, "desktop.json"), "utf8"));
 check(desktop.forks?.[id]?.parent === "frk" && desktop.forks[id].atSeq === ends[0], "the lineage is the host's own record in desktop.json");
 if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
@@ -78,6 +79,9 @@ await app.shot("fork-1");
 await q(`window.__kiso.send("Take it another way")`);
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2, 30_000), "the fork runs on its own log");
 check(readFileSync(file(id)).subarray(0, prefix.length).equals(prefix) && sha(file("frk")) === parent.log, "its run appends after the copied lines; the parent's log did not move");
+const firstInput = readFileSync(file(id), "utf8").trim().split("\n").map((l) => JSON.parse(l).event).filter((e) => e.type === "user_input").at(-1);
+const shown = await q("[...document.querySelectorAll('[data-kind=me]')].at(-1)?.textContent ?? ''");
+check(Array.isArray(firstInput.content) && /^This session was forked from the session "Plan the release notes"/.test(firstInput.content[0].text) && firstInput.content[1]?.text === "Take it another way" && shown === "Take it another way", `the fork's first input carries the note before the person's words, after the copied history, and the bubble shows only their words ("${shown}")`);
 await app.click("[data-act=fork-parent]");
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2 && (await app.count("[data-kind=fork-note]")) === 0), "the notice's link opens the parent, both its runs");
 await sleep(200);

@@ -43,12 +43,15 @@ import {
 	type EventInput,
 	type RetryInfo,
 	type StreamOptions,
+	type ContentBlock,
+	type MessageSource,
 } from "@vincemakes/kiso-core";
 import { executionLedger } from "./ledger.js";
 import { overflowBelt, type OverflowMeasure } from "./overflow-belt.js";
 import { windowLearner } from "./window-learner.js";
 import { denialResult, type ContinuationScope } from "@vincemakes/kiso-core";
-import { buildProfile, readProfile, writeProfile, writeSummary } from "./profile.js";
+import { buildProfile, readForkOrigin, readProfile, writeProfile, writeSummary } from "./profile.js";
+import { forkNote } from "./fork.js";
 import { summarizeEvents } from "./session-summary.js";
 import { lookupModelMetadata, resolveReasoning, type ReasoningSetting } from "./provider/metadata.js";
 import {
@@ -1069,7 +1072,7 @@ export class AgentSession {
 		this.ensureHealthy();
 		if (this.#profilePending) this.#recordProfile(); // XP-1: legacy revision 1, before the first request
 		const config = options?.maxTurns !== undefined ? { ...this.#effectiveConfig(), maxTurns: options.maxTurns } : this.#effectiveConfig();
-		return new Run(this.#store, this.#remembering(this.#learning(this.#adapter)), config, this, input, options?.signal, false, options?.source, options?.via);
+		return new Run(this.#store, this.#remembering(this.#learning(this.#adapter)), config, this, this.#withForkNote(input, options?.source), options?.signal, false, options?.source, options?.via);
 	}
 
 	/**
@@ -1081,6 +1084,16 @@ export class AgentSession {
 	resume(): Run {
 		this.ensureHealthy();
 		return new Run(this.#store, this.#remembering(this.#learning(this.#adapter)), this.#effectiveConfig(), this, undefined, undefined, true);
+	}
+
+	/** A fork's first input carries the fork note before the person's words, once (plan fork rev 2): after the copied
+	 *  history, so the request's prefix is the parent's and a caching route reads it from the cache. "First" is the log
+	 *  still ending where it was cut; a runtime notice (source "system") never carries it. */
+	#withForkNote(input: string | readonly ContentBlock[], source: MessageSource | undefined): string | readonly ContentBlock[] {
+		if (source === "system") return input;
+		const origin = readForkOrigin(this.#store.root, this.id);
+		if (origin === null || this.log.lastSeq !== origin.afterSeq) return input;
+		return [{ type: "text", text: forkNote(origin.title) }, ...(typeof input === "string" ? [{ type: "text" as const, text: input }] : input)];
 	}
 
 	/** The adapter a run uses, noting each request it carries (the last one stands, without its signal) for followUp. */

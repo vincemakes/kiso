@@ -32,8 +32,6 @@ export interface SpaceOptions {
 	readonly model: (ctx?: { readonly sessionId: string; readonly sessionsDir: string }) => ModelChoice;
 	/** The permission tier of a Work. */
 	readonly tierOf: (sessionId: string) => PermissionMode;
-	/** a Work's own addition to its system prompt (a fork's notice), read when it is opened */
-	readonly noteOf?: (sessionId: string) => string | undefined;
 	readonly checkRunners: () => readonly string[];
 	readonly secretEnvNames?: readonly string[];
 	readonly exposeThinking: boolean;
@@ -85,11 +83,12 @@ export function createSpace(options: SpaceOptions): Space {
 	const sessions = new Map<string, Awaited<ReturnType<Agent["session"]>>>();
 	const followUps = new Map<string, Promise<string>>();
 	// owner 2026-11-03: a Work is titled by a summary of its first message, once, beside its first run; the person's
-	// own name wins, before or after, and a failure leaves the first request's title
+	// own name wins, before or after, and a failure leaves the first request's title. A first message sent in the last
+	// minute, not "a run is live": a quick run can end before its first event is seen here, and a replayed old one is old
 	const titled = new Set<string>();
 	const title = (sessionId: string, event: Extract<Event, { type: "user_input" }>): void => {
 		const session = sessions.get(sessionId);
-		if (options.titles !== true || session === undefined || titled.has(sessionId) || !service.isRunning(sessionId)) return;
+		if (options.titles !== true || session === undefined || titled.has(sessionId) || Date.now() - times.at(sessionId, event.seq) > 60_000) return;
 		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
 		titled.add(sessionId);
 		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" ? b.text : "")).join(" ");
@@ -112,7 +111,6 @@ export function createSpace(options: SpaceOptions): Space {
 				workspace: options.workspace,
 				model: options.model({ sessionId, sessionsDir: options.dir }),
 				tier: () => options.tierOf(sessionId),
-				...(options.noteOf?.(sessionId) !== undefined ? { note: options.noteOf(sessionId)! } : {}),
 				sessionId,
 				checkRunners: options.checkRunners(),
 				tasks,

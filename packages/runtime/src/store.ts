@@ -61,7 +61,8 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
-import { readSessionName } from "./profile.js";
+import { readForkOrigin, readSessionName, type ForkOrigin } from "./profile.js";
+import { forkSession } from "./fork.js";
 import {
 	LockedError,
 	nativeLockAdapter,
@@ -99,6 +100,8 @@ export interface SessionMeta {
 	readonly runs: number;
 	readonly createdAt: number;
 	readonly updatedAt: number;
+	/** the session this one was forked from (SessionStore.fork), when it is a fork */
+	readonly forkedFrom?: string;
 }
 
 /** Session ids become file names — keep them host-safe. */
@@ -458,6 +461,13 @@ export class SessionStore {
 	 * needs only the ids must never pay that. An empty log is skipped, as
 	 * list() skips it.
 	 */
+	/** Fork `parent` after the run that ended at `afterSeq` (absent: its last finished run): a new session with the
+	 *  conversation up to there and nothing after (fork.ts). Throws ForkRefusedError, in words, when it cannot. */
+	fork(parent: string, options?: { readonly afterSeq?: number }): { readonly id: string; readonly origin: ForkOrigin } {
+		this.pathFor(parent); // the id is checked before any file is read
+		return forkSession(this.root, parent, options?.afterSeq);
+	}
+
 	ids(): string[] {
 		const out: string[] = [];
 		for (const entry of readdirSync(this.root)) {
@@ -488,6 +498,7 @@ export class SessionStore {
 				runs: new Set(records.map((r) => r.runId)).size,
 				createdAt: records[0]?.ts ?? 0,
 				updatedAt: records.at(-1)?.ts ?? 0,
+				...((origin) => (origin === null ? {} : { forkedFrom: origin.session }))(readForkOrigin(this.root, id)),
 			});
 		}
 		return metas.sort((a, b) => a.id.localeCompare(b.id));
