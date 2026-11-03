@@ -1187,11 +1187,15 @@ async function chatLoop(
 				? {}
 				: {
 						titled: (firstMessage: string) => {
-							const id = session.id;
-							if (readSessionName(activeStoreDir, id) !== null) return;
-							void session.title(firstMessage).then((title) => {
-								if (title === "" || readSessionName(activeStoreDir, id) !== null) return;
-								writeSessionName(activeStoreDir, id, title);
+							// the session and its folder as they are NOW: a /resume or a switch before the title lands must not
+							// send it to another session, nor repaint another session's window title
+							const [titling, mine, dir] = [session, session.id, activeStoreDir];
+							if (readSessionName(dir, mine) !== null) return;
+							void titling.title(firstMessage, { signal: AbortSignal.timeout(15_000) }).then((title) => {
+								if (title === "" || readSessionName(dir, mine) !== null) return;
+								writeSessionName(dir, mine, title);
+								// `id` is the loop's: the session open now (a switch moves it on)
+								if (id !== mine) return;
 								setTitleName(title);
 								paintWindowTitle();
 							}, () => undefined);
