@@ -34,7 +34,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
-import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
+import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, writeSessionName, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
@@ -1181,6 +1181,22 @@ async function chatLoop(
 			sessions: () => agent.sessionIds(),
 			route: (sessionId: string) => routeSession(sessionId),
 			...(process.stdin.isTTY ? { pick: () => pickSession(agent, input) } : {}),
+			// owner 2026-11-03: a session is titled by a summary of its first message, in the background; the person's own
+			// name wins, before or after; off with KISO_AUTO_TITLE=off and with the faux model
+			...(currentFaux || process.env["KISO_AUTO_TITLE"] === "off"
+				? {}
+				: {
+						titled: (firstMessage: string) => {
+							const id = session.id;
+							if (readSessionName(activeStoreDir, id) !== null) return;
+							void session.title(firstMessage).then((title) => {
+								if (title === "" || readSessionName(activeStoreDir, id) !== null) return;
+								writeSessionName(activeStoreDir, id, title);
+								setTitleName(title);
+								paintWindowTitle();
+							}, () => undefined);
+						},
+					}),
 		};
 		const end = await chat(session, currentFaux, input, autoCompact, nav, seed);
 		if (end.next === "exit") {

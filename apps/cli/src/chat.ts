@@ -1411,6 +1411,8 @@ export interface ChatNav {
 	/** 0.40.0: an id outside this project's folder — refused, or opened where it is */
 	readonly route?: (id: string) => SessionRoute | null;
 	readonly pick?: () => Promise<string | null>;
+	/** the session's first message was sent: the caller may title the session from it (Session.title) */
+	readonly titled?: (firstMessage: string) => void;
 }
 
 export async function chat(session: AgentSession, faux: boolean, input: LineInput, autoCompact?: AutoCompact, nav?: ChatNav, seed?: readonly string[]): Promise<ChatEnd> {
@@ -1484,6 +1486,8 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// SKILL.md body, and a body that mentions `diagram.png` must not
 			// attach a file from the workspace the person never pointed at.
 			const content = via !== undefined ? text : attachImages(text, input.attachments?.(), protectedFiles());
+			// the person's first message of the session: a title is made from it beside the run, never in its way
+			if (via === undefined && !session.log.all.some((e) => e.type === "user_input")) nav?.titled?.(text);
 			// ADR-0058: a task notice is the runtime's input — source "system"
 			const run = via !== undefined ? session.run(content, { via, ...(via.kind === "tasks" ? { source: "system" as const } : {}) }) : session.run(content);
 			currentRun = run;
