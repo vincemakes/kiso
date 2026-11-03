@@ -100,7 +100,7 @@ check(editing.all && editing.focus && editing.border === "0px" && (await waitUnt
 await menu("wa"), await pick("fork");
 check(await waitUntil(async () => (await app.count("[data-kind=fork-note]")) === 1, 20_000), "Fork opens a fork of the Work at once");
 const fork = readdirSync(dir()).find((f) => f.endsWith(".jsonl") && ![`wa.jsonl`, `${wb}.jsonl`].includes(f)).slice(0, -6);
-check(await waitUntil(async () => (await rows()).slice(0, 3).join() === "#Pinned,wa,#Today" && (await rows()).includes(fork), 20_000), "a pin holds the one row: the fork of a pinned Work lists under Today");
+check(await waitUntil(async () => (await rows()).slice(0, 3).join() === "#Pinned,wa,#Recents" && (await rows()).includes(fork), 20_000), "a pin holds the one row: the fork of a pinned Work lists under Recents");
 
 // archive: the Work and its fork leave the list; Archived (1) brings it back
 await menu("wa"), await pick("archive");

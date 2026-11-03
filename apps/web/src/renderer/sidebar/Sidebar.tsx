@@ -84,7 +84,7 @@ const foldsRead = (): string[] => {
 	}
 };
 
-/** The history: pinned first, then by day; a row's ⋯ menu; the Archived line; the Functions fold at the bottom (v1: Settings). */
+/** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; the Functions fold at the bottom (v1: Settings). */
 export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, onAct, onRename, onFork, prOf }: Props): ReactNode {
 	const [fnOpen, setFnOpen] = useState(false);
 	const [menu, setMenu] = useState<{ readonly row: WorkRow; readonly at: DOMRect } | null>(null);

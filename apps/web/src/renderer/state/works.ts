@@ -4,7 +4,7 @@ import { t } from "../i18n/index.js";
 
 /**
  * The Works the page knows of: which one is open, where its routes are, how
- * the history groups by day.
+ * the history groups (Pinned, then Recents).
  */
 
 /** One Work: the session id, and the folder's key unless it is the folder in use. */
@@ -27,12 +27,9 @@ export interface Group {
 	readonly works: readonly WorkRow[];
 }
 
-/** Pinned (the latest pin first), then today, yesterday, earlier by the calendar day on this machine; the input is newest first and
- *  stays so. A fork follows its parent, except into Pinned: a pin holds the one row; an archived Work, with its forks, is left out
- *  (`archived` lists them). */
-export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[] {
-	const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-	const day = 86_400_000;
+/** Pinned (the latest pin first), then Recents; the input is newest first and stays so. A fork follows its parent, except into
+ *  Pinned: a pin holds the one row; an archived Work, with its forks, is left out (`archived` lists them). */
+export function groupWorks(works: readonly WorkRow[]): Group[] {
 	const id = (w: WorkRow, other = w.id): string => `${w.key}/${other}`;
 	const byId = new Map(works.map((w) => [id(w), w]));
 	const out = (w: WorkRow | undefined): boolean => w !== undefined && (w.archived === true || (w.parent !== undefined && out(byId.get(id(w, w.parent)))));
@@ -42,11 +39,11 @@ export function groupWorks(works: readonly WorkRow[], now = new Date()): Group[]
 	const kids = new Map<string, WorkRow[]>();
 	for (const w of shown) if (under(w)) kids.set(id(w, w.parent), [...(kids.get(id(w, w.parent!)) ?? []), w]);
 	const after = (w: WorkRow): WorkRow[] => [w, ...(kids.get(id(w)) ?? []).flatMap(after)];
-	const buckets: WorkRow[][] = [[], [], [], []];
+	const buckets: WorkRow[][] = [[], []];
 	const roots = shown.filter((w) => !under(w));
 	for (const root of [...roots.filter((w) => w.pinned !== undefined).sort((a, b) => a.pinned! - b.pinned!), ...roots.filter((w) => w.pinned === undefined)])
-		buckets[root.pinned !== undefined ? 0 : root.updatedAt >= midnight ? 1 : root.updatedAt >= midnight - day ? 2 : 3]!.push(...after(root));
-	const labels = [t.pinned, t.today, t.yesterday, t.earlier];
+		buckets[root.pinned !== undefined ? 0 : 1]!.push(...after(root));
+	const labels = [t.pinned, t.recents];
 	return buckets.flatMap((rows, i) => (rows.length === 0 ? [] : [{ label: labels[i]!, works: rows }]));
 }
 
