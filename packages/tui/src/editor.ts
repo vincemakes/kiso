@@ -622,6 +622,15 @@ export class Editor {
 		this.#queuePop = pop;
 	}
 
+	/** The follow-up (owner 2026-11-03): a line the person may send next, drawn dim in the EMPTY box; Tab takes it into
+	 *  the buffer as real text. Null clears it. Typing hides it (the box is no longer empty); it is never sent by itself. */
+	#ghost: string | null = null;
+	setGhost(text: string | null): void {
+		if (this.#ghost === text) return;
+		this.#ghost = text === "" ? null : text;
+		if (this.#chars.length === 0) this.#onRender();
+	}
+
 	/** ADR-0057: put text back into the buffer — the steers a stop handed
 	 *  back before they landed. It goes AHEAD of a draft already there, on
 	 *  its own line, and the draft stays recoverable (undo). */
@@ -873,6 +882,21 @@ export class Editor {
 		// the window, the markers and the cursor all count them the same
 		// way — N_MAX has always been about how tall the box may get, and
 		// a folded line is as tall as a pasted one.
+		if (this.#chars.length === 0 && this.#ghost !== null) {
+			// the follow-up stands in the empty box, dim, cut to one row; the cursor waits at its start
+			const budget = this.#budget();
+			let shownGhost = "";
+			for (const ch of this.#ghost) {
+				if (widthOf([...`${shownGhost}${ch}`].map((x) => x.codePointAt(0)!)) > budget - 1) {
+					shownGhost += "\u2026";
+					break;
+				}
+				shownGhost += ch;
+			}
+			const p = palette();
+			const line = `${p.dim}${shownGhost}${p.reset}`;
+			return { line, cursor: 0, lines: [line], cursorRow: 0, cursorCol: 0 };
+		}
 		const rows = this.#visualRows();
 		const cursorLine = this.#cursorVisualRow(rows);
 		const n = this.#visibleRows(rows.length);
@@ -1669,6 +1693,10 @@ export class Editor {
 				// KC3 §3: Tab accepts the selected path — the token becomes
 				// `@<path> `. Never the file's content.
 				this.#atAccept();
+				i += 1;
+			} else if (c === "\t" && this.#chars.length === 0 && this.#ghost !== null) {
+				// the follow-up: Tab on the empty box takes it as real text
+				this.restore(this.#ghost);
 				i += 1;
 			} else if (c === "\x16") {
 				// REL-0152-D15: ctrl+V asks for the clipboard. Inert with no

@@ -1485,6 +1485,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 			// 0.40.0: a skill turn is not scanned either — its text is a
 			// SKILL.md body, and a body that mentions `diagram.png` must not
 			// attach a file from the workspace the person never pointed at.
+			input.setGhost?.(null); // a new turn: the last run's follow-up no longer applies
 			const content = via !== undefined ? text : attachImages(text, input.attachments?.(), protectedFiles());
 			// the person's first message of the session: a title is made from it beside the run, never in its way
 			if (via === undefined && !session.log.all.some((e) => e.type === "user_input")) nav?.titled?.(text);
@@ -1534,6 +1535,14 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					// round 8: after EVERY turn the prompt is re-armed — the human
 					// never types blind after the first turn.
 					input.prompt();
+					// the follow-up (owner 2026-11-03): after a run that ended well, the line the person may send next,
+					// asked of the session's own model with the run's own prefix (Session.followUp); shown dim in the
+					// empty box only while no other turn has started or waits; off with the faux model and KISO_FOLLOWUP=off
+					if (last?.type === "terminal" && last.outcome.kind === "completed" && !faux && input.setGhost !== undefined && process.env["KISO_FOLLOWUP"] !== "off" && queued === 0) {
+						void session.followUp({ maxTokens: 200, signal: AbortSignal.timeout(15_000) }).then((line) => {
+							if (turnNo === myTurn && currentRun === null && queued === 0) input.setGhost?.(line === "" ? null : line);
+						}, () => undefined);
+					}
 					// the ergonomics batch C8: the opt-in auto-compact — checked AFTER the
 					// turn ended (the run's terminal is in the log, the ratio
 					// is post-run).

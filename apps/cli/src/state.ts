@@ -542,6 +542,9 @@ export interface LineInput {
 	/** ADR-0057: put text back into the editor — the steers a stop handed
 	 *  back before they landed. The pipe path has no editor; optional. */
 	restore?(text: string): void;
+	/** The follow-up: a line the person may send next, dim in the empty box, Tab takes it; null clears it. Optional: the
+	 *  readline input has no box to draw it in. */
+	setGhost?(text: string | null): void;
 	/** R3a: cross-session history — seed the recall buffer, register the
 	 *  append sink. The pipe path has no recall keys; optional. */
 	bindHistory?(seed: readonly string[], persist: (line: string) => void): void;

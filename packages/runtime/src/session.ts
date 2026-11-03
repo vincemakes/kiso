@@ -105,8 +105,9 @@ export interface SideQueryOptions {
 }
 
 export interface FollowUpOptions {
-	/** what is asked after the run's last reply, as the person's next message */
-	readonly ask: string;
+	/** what is asked after the run's last reply, as the person's next message; absent: the built-in ask for the line the
+	 *  person may send next (FOLLOW_UP_ASK), and the answer comes back as that one line (cleaned as the apps show it) */
+	readonly ask?: string;
 	readonly maxTokens?: number;
 	readonly signal?: AbortSignalLike;
 }
@@ -181,6 +182,19 @@ function summaryReasoning(model: string, baseUrl: string | undefined): { reasoni
 }
 
 type WireSetting = { readonly thinking?: "adaptive" | "enabled" | "disabled"; readonly effort?: string };
+
+/** The follow-up's built-in ask (Session.followUp with no `ask`): the line the person may send next. No language is
+ *  named: without the clause, Chinese conversations still gave Chinese lines (measured, owner 2026-11-03). */
+export const FOLLOW_UP_ASK =
+	"Write the one message the person is most likely to send you next, as they would type it, and nothing else. If the work is done and nothing naturally follows, answer with nothing.";
+
+/** The built-in follow-up's answer as a line: its first non-empty line, without quotes around it, at most 200
+ *  characters; "" for none. */
+export function followUpLine(text: string): string {
+	const first = text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "";
+	const bare = first.replace(/^["'`\u201c\u2018\u300c]+|["'`\u201d\u2019\u300d]+$/g, "").trim();
+	return [...bare].length > 200 ? `${[...bare].slice(0, 199).join("")}\u2026` : bare;
+}
 
 /** The session title's ask (Session.title): no language named, the model follows the message's own. */
 export const TITLE_PROMPT = "Write a short title (2 to 8 words) for a conversation that opens with the user's message. Only the title: no quotes, no punctuation at the end.";
@@ -1122,7 +1136,7 @@ export class AgentSession {
 		try {
 			for await (const ev of guarded.stream({
 				...last,
-				messages: [...last.messages, ...this.#after(last.messages), { role: "user", content: options.ask }],
+				messages: [...last.messages, ...this.#after(last.messages), { role: "user", content: options.ask ?? FOLLOW_UP_ASK }],
 				...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
 				...(options.signal !== undefined ? { signal: options.signal } : {}),
 			})) {
@@ -1131,7 +1145,7 @@ export class AgentSession {
 		} finally {
 			tracer.finishRun();
 		}
-		return text;
+		return options.ask === undefined ? followUpLine(text) : text;
 	}
 
 	/**

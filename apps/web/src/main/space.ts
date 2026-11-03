@@ -11,7 +11,6 @@ import { runRate, runTotals, usageFrameAt } from "./usage.js";
 import { webSanitize } from "./sanitize.js";
 import { TimeIndex } from "./times.js";
 import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
-import { FOLLOW_UP_ASK, oneLine } from "./follow-up.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
 
 /**
@@ -101,7 +100,7 @@ export function createSpace(options: SpaceOptions): Space {
 		const end = [...service.events(sessionId)].reverse().find((e) => e.type === "terminal");
 		if (options.followUps !== true || session === undefined || service.isRunning(sessionId) || end?.seq !== seq || end.outcome.kind !== "completed") return Promise.resolve("");
 		const at = `${sessionId}:${seq}`;
-		if (!followUps.has(at)) followUps.set(at, session.followUp({ ask: FOLLOW_UP_ASK, maxTokens: 200 }).then(oneLine, () => ""));
+		if (!followUps.has(at)) followUps.set(at, session.followUp({ maxTokens: 200 }).catch(() => ""));
 		return followUps.get(at)!;
 	};
 	const service = createSessionService({
