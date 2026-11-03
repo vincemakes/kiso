@@ -37,11 +37,8 @@ await reader;
 host.child.kill("SIGTERM");
 
 const state = initialState();
-let firstLine = null; // the thinking text at the moment its first line appeared
 const folds = inputs.map((x) => {
 	reduce(state, x);
-	const think = state.turns[0]?.items[0];
-	if (firstLine === null && think?.kind === "thinking" && think.lines.length > 0) firstLine = { text: think.text, lines: [...think.lines] };
 	return state.turns[0] && folded(state.turns[0], undefined);
 });
 const turn = state.turns[0];
@@ -51,8 +48,7 @@ const lastText = inputs.map((x) => x.kind === "event" && x.event.type === "text_
 check(state.turns.length === 1 && turn.phase === "ended" && turn.outcome === "completed", "one turn, ended: completed");
 check(folds.indexOf(true) === inputs.findIndex(isTerminal) && folds.indexOf(true) > lastText, "the process folds at the terminal, after the last answer text, never while the answer streams");
 check(proc.map((i) => i.kind).join() === "thinking,text,step,step,ask,step,ask" && answer?.text === ANSWER && openAsks.length === 0, `the process holds thinking, narration, three steps and two approvals; the answer is the trailing text: ${proc.map((i) => i.kind).join()}`);
-check(JSON.stringify(turn.items[0].lines) === '["First I will read the file.","Then I will change the steps.","And run the tests."]' && turn.items[0].endedAt >= turn.items[0].startedAt, "the thinking line pages through each paragraph's first sentence, with a start and an end");
-check(firstLine?.lines[0] === "First I will read the file." && !firstLine.text.includes("\n\n"), "the thinking line is shown before its paragraph has been written to the end");
+check(["First I will read the file.", "Then I will change the steps.", "And run the tests."].every((p) => turn.items[0].text.includes(p)) && turn.items[0].endedAt >= turn.items[0].startedAt, "the thinking holds its whole text, with a start and an end");
 const steps = turn.items.filter((i) => i.kind === "step");
 check(steps.every((x) => x.status === "done" && x.endedAt >= x.startedAt), "every step is done and timed");
 check(steps[0].output.head[0] === "Step one" && editDiff(steps[1].input).filter((l) => l.kind === "del").length === 2, "the read step has its first lines; the edit step has its diff");

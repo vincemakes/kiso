@@ -1,6 +1,5 @@
 import type { SessionState, WireEvent } from "@vincemakes/kiso-protocol";
 import type { AtFrame, TaskRow, TasksFrame, ToolOutputFrame, UsageFrame } from "../../shared/frames.js";
-import { ThinkingPager } from "../../shared/thinking.js";
 
 /**
  * The stream's model: wire events and host frames in, the turns the stream
@@ -19,7 +18,6 @@ export interface Thinking {
 	readonly seq: number;
 	text: string;
 	/** the first sentence of each paragraph so far — what the one line pages through */
-	lines: string[];
 	startedAt: number | null;
 	endedAt: number | null;
 }
@@ -131,7 +129,6 @@ export type Input =
 
 export const initialState = (): State => ({ turns: [], tasks: [], context: { tokens: null, window: null }, lastAt: null, last: null, snapshot: null, version: 0 });
 
-const pagers = new WeakMap<Thinking, ThinkingPager>();
 
 const currentTurn = (s: State): Turn | undefined => s.turns.at(-1);
 
@@ -149,16 +146,6 @@ function contentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) return content.map((b) => (b !== null && typeof b === "object" && (b as { type?: string }).type === "text" ? String((b as { text?: unknown }).text ?? "") : "")).join("");
 	return "";
-}
-
-/** The thinking text is complete once anything else happens: the pager's last paragraph gets its line. */
-function endThinkingText(turn: Turn): void {
-	const item = turn.items.at(-1);
-	if (item?.kind !== "thinking") return;
-	const pager = pagers.get(item);
-	if (pager === undefined) return;
-	for (const p of pager.flush()) if (p.kind === "line") item.lines[p.paragraph] = p.text;
-	pagers.delete(item);
 }
 
 function closeThinking(turn: Turn, ts: number | null): void {
@@ -183,7 +170,6 @@ export function reduce(s: State, input: Input): State {
 	const e = input.event;
 	const turn = currentTurn(s);
 	s.last = { seq: e.seq, type: e.type, itemId: null };
-	if (turn !== undefined && e.type !== "thinking") endThinkingText(turn);
 	const note = (item: Item): void => {
 		s.last = { seq: e.seq, type: e.type, itemId: item.id };
 	};
@@ -213,12 +199,10 @@ export function reduce(s: State, input: Input): State {
 			if (turn === undefined) return s;
 			let item = turn.items.at(-1);
 			if (item?.kind !== "thinking" || item.endedAt !== null) {
-				item = { kind: "thinking", id: `k${e.seq}`, seq: e.seq, text: "", lines: [], startedAt: s.lastAt, endedAt: null };
-				pagers.set(item, new ThinkingPager());
+				item = { kind: "thinking", id: `k${e.seq}`, seq: e.seq, text: "", startedAt: s.lastAt, endedAt: null };
 				turn.items.push(item);
 			}
 			item.text += e.text;
-			for (const p of pagers.get(item)!.push(e.text)) if (p.kind === "line") item.lines[p.paragraph] = p.text;
 			return s;
 		}
 		case "text_start":
