@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // fast: no browser, no kill -9 (a few seconds to a minute); full: everything (headless Chrome), for the end of a milestone, before a push, before a release
-const FAST = ["guard", "signin", "history", "desk", "files", "panels", "settings", "stream", "stream default", "model", "usage", "policy", "control", "tasks", "shell-artifacts"];
+const FAST = ["guard", "signin", "history", "history-listeners", "desk", "files", "panels", "settings", "stream", "stream default", "model", "usage", "policy", "control", "tasks", "shell-artifacts"];
 const FULL = [...FAST, "crash", "browser", "stream-ui", "composer-ui", "changes-git", "header-ui", "fork-ui", "sidebar-menu", "rail-lists", "groups", "chips", "pictures", "preview-pages", "preview-isolation", "switch-reconnect", "sidebar-ui", "rail-ui", "panels-ui", "layout-ui", "home-ui", "unadmitted", "interrupt", "reconnect", "two-tabs"];
 const log = process.env.KISO_WEB_PROOF_LOG ?? join(tmpdir(), "kiso-web-proofs.log");
 /** Append to the log (or start it); false when it cannot be written: no log is better than no proofs. */

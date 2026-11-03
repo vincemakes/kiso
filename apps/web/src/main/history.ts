@@ -119,18 +119,21 @@ export class History {
 		this.#inflight = dir;
 		const print = printOf(dir);
 		const worker = (this.#worker ??= new Worker(new URL("./history-worker.js", import.meta.url)));
+		// both listeners go when either answers: one read, one pair (the worker lives across reads, so a kept listener piles up)
 		const done = (message: { readonly dir: string; readonly metas?: readonly SessionMeta[]; readonly error?: string }): void => {
 			worker.off("message", done);
+			worker.off("error", failed);
 			// an unreadable folder is remembered empty: it is tried again when its files change
 			this.#reads.set(dir, { print, metas: message.metas ?? [], at: Date.now() });
 			this.#inflight = null;
 			this.#pump();
 		};
-		worker.on("message", done);
-		worker.once("error", (error: Error) => {
+		const failed = (error: Error): void => {
 			this.#worker = null;
 			done({ dir, error: error.message });
-		});
+		};
+		worker.on("message", done);
+		worker.on("error", failed);
 		worker.postMessage({ dir });
 	}
 
