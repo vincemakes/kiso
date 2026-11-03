@@ -1185,8 +1185,9 @@ async function chatLoop(
 			route: (sessionId: string) => routeSession(sessionId),
 			...(process.stdin.isTTY ? { pick: () => pickSession(agent, input) } : {}),
 			// owner 2026-11-03: a session is titled by a summary of its first message, in the background; the person's own
-			// name wins, before or after; off with KISO_AUTO_TITLE=off and with the faux model
-			...(currentFaux || process.env["KISO_AUTO_TITLE"] === "off"
+			// name wins, before or after; off with KISO_AUTO_TITLE=off and with the faux model, and never without a TTY:
+			// a piped chat is a script or a bench leg, where one more request per session is not the person's
+			...(currentFaux || process.env["KISO_AUTO_TITLE"] === "off" || process.stdin.isTTY !== true
 				? {}
 				: {
 						titled: (firstMessage: string) => {
