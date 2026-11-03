@@ -87,12 +87,8 @@ export function createSpace(options: SpaceOptions): Space {
 		const end = [...service.events(sessionId)].reverse().find((e) => e.type === "terminal");
 		if (options.followUps !== true || session === undefined || service.isRunning(sessionId) || end?.seq !== seq || end.outcome.kind !== "completed") return Promise.resolve("");
 		const at = `${sessionId}:${seq}`;
-		let line = followUps.get(at);
-		if (line === undefined) {
-			line = session.followUp({ ask: FOLLOW_UP_ASK, maxTokens: 200 }).then(oneLine, () => "");
-			followUps.set(at, line);
-		}
-		return line;
+		if (!followUps.has(at)) followUps.set(at, session.followUp({ ask: FOLLOW_UP_ASK, maxTokens: 200 }).then(oneLine, () => ""));
+		return followUps.get(at)!;
 	};
 	const service = createSessionService({
 		store,
