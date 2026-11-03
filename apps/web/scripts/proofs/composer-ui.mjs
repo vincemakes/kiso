@@ -19,9 +19,10 @@ const endpoint = createServer((req, res) => {
 	req.on("data", (d) => (body += d));
 	req.on("end", async () => {
 		seen.push(JSON.parse(body));
-		// checked first: this request carries the history, "take your time" included
 		if (body.includes("spent plan")) return void (res.writeHead(403, { "content-type": "application/json" }), res.end(JSON.stringify({ error: { message: "An active subscription is required to use this model." } })));
-		if (body.includes("take your time")) await new Promise((r) => (slow = r));
+		// only a request whose LAST line asks it waits: every later request carries this one in its history
+		const last = JSON.stringify(JSON.parse(body).messages.filter((m) => m.role === "user").at(-1) ?? "");
+		if (last.includes("take your time")) await new Promise((r) => (slow = r));
 		res.writeHead(200, { "content-type": "text/event-stream" });
 		res.end(chunk({ role: "assistant", content: "Seen." }) + chunk({}, "stop", { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 }) + "data: [DONE]\n\n");
 	});
@@ -84,6 +85,16 @@ check(await waitUntil(async () => (await q("document.querySelector('[data-kind=m
 await app.click("[data-kind=me-pictures] button");
 check(await waitUntil(async () => (await app.count("[data-kind=lightbox]")) === 1), "and opens in the lightbox");
 await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+// the attached file is a card on the pictures' row, not text in the bubble; it opens in the viewer (owner 2026-11-03)
+const bubble = await q("[...document.querySelectorAll('[data-kind=me]')].at(-1)?.textContent ?? ''");
+check((await app.count('[data-kind=me-pictures] [data-file="errors.log"]')) === 1 && bubble === "what is in the picture?" && (await text('[data-file="errors.log"] small')) === "2 lines", `the file is a card beside the picture (its name and lines) and the bubble holds only the words ("${bubble}")`);
+await app.shot("attachments-row");
+const heights = await q("[...document.querySelectorAll('[data-kind=me-pictures] > button')].map((e) => Math.round(e.getBoundingClientRect().height))");
+check(heights.length === 2 && new Set(heights).size === 1, `every attachment is one height, so the row reads as one (${heights.join(" / ")} px)`);
+await app.click('[data-file="errors.log"]');
+check(await waitUntil(async () => (await text("[data-kind=file-viewer] .fv-text")) === "line one\nline two\n"), "a click on the card shows its text in the viewer");
+await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
+check(await waitUntil(async () => (await app.count("[data-kind=file-viewer]")) === 0), "Esc closes it");
 await app.click("[data-act=tier]");
 await app.click("[data-tier=accept-edits]");
 check(await waitUntil(async () => (await text("[data-field=tier-pill]")) === "Edits allowed" && (await text("[data-field=tier]")) === "Edits allowed"), "with the Work started, the rail's footer follows the pill's tier");
@@ -104,6 +115,19 @@ const after = await fetch(`${app.host().origin}/desk/settings?session=comp`, { h
 check(refused.status === 409 && after.profile === "vision" && (await q("document.querySelector('[data-act=model]').disabled")), "while a call is in flight a switch is refused (409) and put back, and the pill is off");
 slow();
 await sleep(300);
+// a long line folds past six lines, fading; Show more opens it and Show less folds it again (owner 2026-11-03)
+const footers = await app.count("[data-kind=footer]");
+await q(`window.__kiso.send(${JSON.stringify(Array.from({ length: 12 }, (_, i) => `line ${i + 1} of a long message`).join("\n"))})`);
+await waitUntil(async () => (await app.count("[data-act=me-more]")) === 1, 20_000);
+const fold = () => q("(() => { const el = [...document.querySelectorAll('[data-kind=me]')].at(-1); return { h: el.clientHeight, full: el.scrollHeight, folded: el.classList.contains('folded'), label: document.querySelector('[data-act=me-more]')?.textContent }; })()");
+const shut = await fold();
+await app.shot("long-message-folded");
+await app.click("[data-act=me-more]");
+const opened = await waitUntil(async () => (await fold()).label === "Show less" && (await fold()).h >= (await fold()).full - 1);
+await app.click("[data-act=me-more]");
+check(shut.folded && shut.h < shut.full / 1.5 && shut.label === "Show more" && opened && (await fold()).folded, `a twelve-line message shows about six (${shut.h} of ${shut.full} px), Show more opens it whole, Show less folds it again`);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) === footers + 1, 20_000);
+
 // a refused request (a spent key or plan) is said under the run, with what the provider answered (owner 2026-11-03: the reply was blank)
 await waitUntil(async () => (await app.count("[data-kind=footer]")) > 0 && (await q("document.querySelector('.cbar') !== null")), 20_000);
 const ends = await app.count("[data-kind=run-end]");

@@ -92,6 +92,8 @@ export interface Turn {
 	readonly user: string;
 	/** the person's pictures in the line that started the run: `log:<seq>/<n>`, read from the log like a result's */
 	readonly pictures: readonly string[];
+	/** the files they attached to it (the composer sends each as its own text block, `<name>:` and a fence) */
+	readonly files: readonly Attached[];
 	readonly items: Item[];
 	phase: "running" | "ended";
 	startedAt: number | null;
@@ -142,6 +144,30 @@ export function noticeText(raw: string): string {
 /** The "moved to the background" sentence the shell's result carries. */
 const BACKGROUND = /\bbackground task (t\d+)\b/;
 
+export interface Attached {
+	readonly name: string;
+	readonly text: string;
+}
+
+/** An attached file as the composer sends it: a text block of its own, `<name>:` then the text in a fence. */
+const FILE_BLOCK = /^([^\n`]+):\n```\n([\s\S]*)\n```$/;
+
+/** The person's line split for showing it: what they typed, and the files they attached. A line with no attachment is a
+ *  plain string (the composer sends it so), and a fence typed inside it stays text; a line in blocks carries attachments,
+ *  and each block of the file shape is one. */
+export function splitLine(content: unknown): { readonly text: string; readonly files: readonly Attached[] } {
+	if (!Array.isArray(content)) return { text: contentText(content), files: [] };
+	const files: Attached[] = [];
+	let text = "";
+	for (const b of content as readonly { type?: string; text?: unknown }[]) {
+		if (b?.type !== "text") continue;
+		const m = FILE_BLOCK.exec(String(b.text ?? ""));
+		if (m !== null) files.push({ name: m[1]!, text: m[2]! });
+		else text += String(b.text ?? "");
+	}
+	return { text, files };
+}
+
 function contentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) return content.map((b) => (b !== null && typeof b === "object" && (b as { type?: string }).type === "text" ? String((b as { text?: unknown }).text ?? "") : "")).join("");
@@ -191,7 +217,8 @@ export function reduce(s: State, input: Input): State {
 				note(item);
 			} else {
 				const pictures = Array.isArray(e.content) ? (e.content as readonly { type?: string }[]).flatMap((b, n) => (b.type === "image" ? [`log:${e.seq}/${n}`] : [])) : [];
-				s.turns.push({ id: `t${e.seq}`, user: text, pictures, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, detail: null, live: null, footer: null, endSeq: null });
+				const line = splitLine(e.content);
+				s.turns.push({ id: `t${e.seq}`, user: line.text, pictures, files: line.files, items: [], phase: "running", startedAt: null, endedAt: null, outcome: null, detail: null, live: null, footer: null, endSeq: null });
 			}
 			return s;
 		}

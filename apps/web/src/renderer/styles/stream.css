@@ -232,6 +232,25 @@
 .cwarn { display: flex; align-items: center; gap: 8px; margin: 2px 0; padding: 7px 10px; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 12.5px; }
 .cnote { color: var(--red); font-size: 12.5px; padding: 0 2px; }
 /* the person's pictures, above their line */
-.me-pics { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin: 18px 0 -12px; }
-.me-pic { width: 88px; height: 88px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+/* everything the person attached is one height (owner 2026-11-03: a picture and a file card side by side read as one row) */
+.me-pics { --att: 64px; display: flex; justify-content: flex-end; align-items: stretch; flex-wrap: wrap; gap: 6px; margin: 18px 0 -12px; }
+.me-pic { width: var(--att); height: var(--att); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
 .me-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* an attached file: a card on the pictures' row (its type, name and lines); the viewer shows its text over the window */
+.me-file { display: flex; align-items: center; gap: 10px; height: var(--att); box-sizing: border-box; padding: 0 14px 0 11px; border-radius: 12px; background: #fff; border: 1px solid var(--line); text-align: left; max-width: 260px; }
+.me-file:hover { background: #fafafb; }
+.me-ft { flex: none; width: 36px; height: 42px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; font: 600 10px var(--mono); color: #6b6b70; }
+.me-fn { display: flex; flex-direction: column; min-width: 0; }
+.me-fn b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me-fn small { color: var(--mute); font-size: 12px; }
+.fviewer { position: fixed; inset: 0; z-index: 200; background: rgba(17, 17, 19, 0.32); display: grid; place-items: center; padding: 24px; animation: in 0.15s var(--ease) both; }
+.fv-box { width: min(760px, 100%); max-height: min(80vh, 900px); display: flex; flex-direction: column; background: #fff; border-radius: 14px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18); overflow: hidden; }
+.fv-h { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.fv-h b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fv-h span { margin-left: auto; color: var(--mute); }
+.fv-text { margin: 0; padding: 12px 16px; overflow: auto; font: 12.5px/1.6 var(--mono); color: #333; white-space: pre; }
+/* the person's words fold past six lines, fading at the fold; "Show more" opens them */
+.me.clamp { max-height: calc(9.6em + 18px); overflow: hidden; position: relative; }
+.me.folded::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3.2em; background: linear-gradient(rgba(243, 243, 245, 0), #f3f3f5); pointer-events: none; }
+.me-more { align-self: flex-end; margin: -2px 12px 0 0; font-size: 13px; color: #3a3a3e; }
+.me-more:hover { color: var(--ink); text-decoration: underline; }

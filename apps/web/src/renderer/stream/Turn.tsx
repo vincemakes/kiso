@@ -1,7 +1,7 @@
-import { memo, useContext, useState, type ReactNode } from "react";
+import { memo, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { TaskRow } from "../../shared/frames.js";
 import { ago, fmt, span, t, tokens } from "../i18n/index.js";
-import { split, type Ask, type Turn as TurnModel } from "../state/model.js";
+import { split, type Ask, type Attached, type Turn as TurnModel } from "../state/model.js";
 import { Answer } from "./Answer.js";
 import { Approval } from "./Approval.js";
 import { ForkContext, RunContext, WorkContext } from "./links.js";
@@ -91,10 +91,13 @@ function Made({ turn }: { readonly turn: TurnModel }): ReactNode {
 }
 
 /** The person's pictures in their line, small, in the bubble's corner; a click opens one in the lightbox. */
-function MePictures({ pictures }: { readonly pictures: readonly string[] }): ReactNode {
+/** What the person attached, on its own row above their words: pictures as thumbnails (the lightbox opens one), files as
+ *  cards (their type, name and lines; the viewer opens one). */
+function MeAttachments({ pictures, files }: { readonly pictures: readonly string[]; readonly files: readonly Attached[] }): ReactNode {
 	const work = useContext(WorkContext);
 	const lightbox = useContext(LightboxContext);
-	if (pictures.length === 0) return null;
+	const [open, setOpen] = useState<Attached | null>(null);
+	if (pictures.length === 0 && files.length === 0) return null;
 	return (
 		<div className="me-pics" data-kind="me-pictures">
 			{pictures.map((p) => {
@@ -105,7 +108,64 @@ function MePictures({ pictures }: { readonly pictures: readonly string[] }): Rea
 					</button>
 				);
 			})}
+			{files.map((f, i) => (
+				<button key={`${i}/${f.name}`} className="me-file" onClick={() => setOpen(f)} data-file={f.name} title={f.name}>
+					<span className="me-ft">{(f.name.split(".").pop() ?? "").slice(0, 4).toUpperCase() || "TXT"}</span>
+					<span className="me-fn">
+						<b>{f.name}</b>
+						<small>{fmt(t.fileLines, { n: linesOf(f.text) })}</small>
+					</span>
+				</button>
+			))}
+			{open !== null ? <FileViewer file={open} onClose={() => setOpen(null)} /> : null}
 		</div>
+	);
+}
+
+/** A file's lines: a last newline ends the last line, it does not start another. */
+const linesOf = (text: string): number => (text === "" ? 0 : text.replace(/\n$/, "").split("\n").length);
+
+/** An attached file's text, over the window: its name, lines and Copy; Esc or a click beside it closes it. */
+function FileViewer({ file, onClose }: { readonly file: Attached; readonly onClose: () => void }): ReactNode {
+	useEffect(() => {
+		const key = (e: KeyboardEvent): void => void (e.key === "Escape" && onClose());
+		addEventListener("keydown", key);
+		return () => removeEventListener("keydown", key);
+	}, [onClose]);
+	return (
+		<div className="fviewer" data-kind="file-viewer" role="dialog" aria-label={file.name} onClick={(e) => e.target === e.currentTarget && onClose()}>
+			<div className="fv-box">
+				<div className="fv-h">
+					<b>{file.name}</b>
+					<span>{fmt(t.fileLines, { n: linesOf(file.text) })}</span>
+					<CopyButton text={file.text} />
+				</div>
+				<pre className="fv-text">{file.text}</pre>
+			</div>
+		</div>
+	);
+}
+
+/** The person's words: past six lines they fold, fading, with "Show more" (and "Show less" once open). */
+function MeText({ text }: { readonly text: string }): ReactNode {
+	const box = useRef<HTMLDivElement>(null);
+	const [long, setLong] = useState(false);
+	const [open, setOpen] = useState(false);
+	useLayoutEffect(() => {
+		const el = box.current;
+		if (el !== null && !open) setLong(el.scrollHeight > el.clientHeight + 1);
+	}, [text, open]);
+	return (
+		<>
+			<div ref={box} className={`me${long && !open ? " folded" : ""}${open ? "" : " clamp"}`} data-kind="me">
+				{text}
+			</div>
+			{long ? (
+				<button className="me-more" onClick={() => setOpen(!open)} data-act="me-more" aria-expanded={open}>
+					{open ? t.showLess : t.showMore}
+				</button>
+			) : null}
+		</>
 	);
 }
 
@@ -131,12 +191,8 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	return (
 		<RunContext.Provider value={turn.id}>
 			<div className="turn">
-			<MePictures pictures={turn.pictures} />
-			{turn.user !== "" || turn.pictures.length === 0 ? (
-				<div className="me" data-kind="me">
-					{turn.user}
-				</div>
-			) : null}
+			<MeAttachments pictures={turn.pictures} files={turn.files} />
+			{turn.user !== "" || (turn.pictures.length === 0 && turn.files.length === 0) ? <MeText text={turn.user} /> : null}
 			{turn.user !== "" ? (
 				<div className="racts me-acts" data-kind="me-acts">
 					<CopyButton text={turn.user} />
