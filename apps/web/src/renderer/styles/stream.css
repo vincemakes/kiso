@@ -121,6 +121,8 @@
 .ans blockquote { margin: 8px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
 .ans hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .acts { color: var(--mute); font: 11.5px var(--mono); animation: in 0.4s var(--ease) both; }
+.run-end { margin: 6px 0 10px; padding: 8px 12px; border-radius: 10px; background: #fff7e6; color: #8a5300; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; animation: in 0.3s var(--ease) both; }
+.run-end.bad { background: #fef3f2; color: #b42318; }
 /* a message's actions: on hover of its run, copy and fork and when it finished (the person's line: copy only) */
 .racts { display: flex; align-items: center; gap: 2px; margin: 2px 0 10px -6px; color: var(--mute); font-size: 12px; opacity: 0; transition: opacity 0.15s; }
 .racts.me-acts { justify-content: flex-end; margin: -2px 0 0; }

@@ -19,6 +19,8 @@ const endpoint = createServer((req, res) => {
 	req.on("data", (d) => (body += d));
 	req.on("end", async () => {
 		seen.push(JSON.parse(body));
+		// checked first: this request carries the history, "take your time" included
+		if (body.includes("spent plan")) return void (res.writeHead(403, { "content-type": "application/json" }), res.end(JSON.stringify({ error: { message: "An active subscription is required to use this model." } })));
 		if (body.includes("take your time")) await new Promise((r) => (slow = r));
 		res.writeHead(200, { "content-type": "text/event-stream" });
 		res.end(chunk({ role: "assistant", content: "Seen." }) + chunk({}, "stop", { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 }) + "data: [DONE]\n\n");
@@ -99,7 +101,13 @@ const after = await fetch(`${app.host().origin}/desk/settings?session=comp`, { h
 check(refused.status === 409 && after.profile === "vision" && (await q("document.querySelector('[data-act=model]').disabled")), "while a call is in flight a switch is refused (409) and put back, and the pill is off");
 slow();
 await sleep(300);
-endpoint.close();
+// a refused request (a spent key or plan) is said under the run, with what the provider answered (owner 2026-11-03: the reply was blank)
+await waitUntil(async () => (await app.count("[data-kind=footer]")) > 0 && (await q("document.querySelector('.cbar') !== null")), 20_000);
+const ends = await app.count("[data-kind=run-end]");
+await q(`window.__kiso.send("this hits a spent plan")`);
+check(await waitUntil(async () => (await app.count("[data-kind=run-end][data-outcome=error]")) === ends + 1, 20_000) && /The run failed: .*403.*An active subscription is required/.test(await text("[data-kind=run-end][data-outcome=error]")), `a refused request says so under the run, with the provider's words ("${await text("[data-kind=run-end]")}")`);
+await app.shot("run-end");
+
 // Settings' model field is the composer's menu too (owner 2026-11-03): each profile's model over its name, opening below its pill
 if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
 await q(`document.querySelector('.fn-h').click()`);
@@ -111,5 +119,6 @@ await sleep(400);
 await app.shot("settings-model");
 await app.click("[data-kind=settings] [data-profile=vision]");
 check(listed === "mock-text/text,claude-sonnet-5-5/vision" && (await waitUntil(async () => (await text("[data-kind=settings] [data-field=profile]")) === "claude-sonnet-5-5")), `Settings lists each profile's model over its name in the composer's menu, and a pick shows in its pill (${listed})`);
+endpoint.close();
 await app.close();
 verdict();
