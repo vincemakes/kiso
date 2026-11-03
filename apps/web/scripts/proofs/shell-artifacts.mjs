@@ -41,7 +41,7 @@ host.child.kill("SIGTERM");
 const uris = (id) => (of(id)?.artifacts ?? []).map((a) => `${a.kind} ${a.uri}`).join();
 check(uris("c1") === "page file:out.html" && of("c1").artifacts[0].workId === "sa" && of("c1").artifacts[0].callId === "c1", `a command that writes out.html and prints its path: found, tied to its call and Work (${uris("c1")})`);
 check(uris("c2") === "" && !of("c2").isError, "a command that writes quiet.png without naming it: nothing found, and no error");
-check(uris("c3") === `image log:${of("c3").seq}/k0` && !of("c3").isError, `an old file named in the output and one in a dot-directory are not taken; a picture the step wrote outside the folder is, as a kept copy (${uris("c3")})`);
+check(uris("c3") === `image log:${of("c3").seq}/k0` && of("c3").artifacts[0].name === "far.png" && !of("c3").isError, `an old file named in the output and one in a dot-directory are not taken; a picture the step wrote outside the folder is, as a kept copy (${uris("c3")})`);
 check(shot.ok && shot.headers.get("content-type") === "image/png" && shotBody === "shot one", `the page reads the kept copy through the Work's image route, the step's own picture even after the outside file changed ("${shotBody}")`);
 check(uris("c6") === "", `outside the folder, an old picture, a page and an svg are not taken (${uris("c6")})`);
 check(uris("c4") === "page file:page.html" && uris("c5") === "", `a write of a page is an artifact; of a .txt is not (${uris("c4")} | ${uris("c5")})`);

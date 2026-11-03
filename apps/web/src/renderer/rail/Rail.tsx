@@ -6,6 +6,7 @@ import { clock, fmt, t, tokens } from "../i18n/index.js";
 import type { State } from "../state/model.js";
 import { useOpenPanel } from "../panels/context.js";
 import { artifactIcon, I } from "../stream/Icons.js";
+import { nameOf } from "../stream/Artifacts.js";
 import { useOpenArtifact } from "../stream/Lightbox.js";
 import { outputsOf, railOf, workChangesOf } from "./derive.js";
 import { Tip, type TipData } from "./Tip.js";
@@ -268,9 +269,9 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 					{outputs.length === 0 ? null : (
 						<Section id="outputs" name={t.railOutputs} count={outputs.length} open={!folded["outputs"]} onToggle={toggle("outputs")}>
 							{(allOutputs ? outputs : outputs.slice(0, SHOWN)).map((o) => (
-								<div className="r-row" key={o.focus} data-field="output" data-artifact={o.focus} title={o.focus.startsWith("log:") ? t.imageResult : o.focus} onClick={() => openArtifact(o.a)}>
+								<div className="r-row" key={o.focus} data-field="output" data-artifact={o.focus} title={o.focus.startsWith("log:") ? nameOf(o.focus) : o.focus} onClick={() => openArtifact(o.a)}>
 									<span className="r-ic">{artifactIcon(o.a.kind, o.focus)}</span>
-									<span className="r-nm">{o.focus.startsWith("log:") ? t.imageResult : o.focus.split("/").pop()}</span>
+									<span className="r-nm">{nameOf(o.focus)}</span>
 									<span className="r-mt">{o.at === null ? "" : ago(now - o.at)}</span>
 								</div>
 							))}

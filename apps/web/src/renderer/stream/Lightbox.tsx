@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, type ReactNode } from "react";
 import type { ArtifactRef } from "../../shared/frames.js";
 import { t } from "../i18n/index.js";
 import { useOpenPanel } from "../panels/context.js";
-import { focusOf, Picture, useImageSrc } from "./Artifacts.js";
+import { focusOf, nameOf, Picture, useImageSrc } from "./Artifacts.js";
 import { I } from "./Icons.js";
 
 /** Opens an image over the whole window; provided by the App, which draws the one lightbox. */
@@ -26,7 +26,7 @@ export function Lightbox({ focus, onClose }: { readonly focus: string; readonly 
 		addEventListener("keydown", key);
 		return () => removeEventListener("keydown", key);
 	}, [onClose]);
-	const name = focus.startsWith("log:") ? t.imageResult : (focus.split("/").pop() ?? focus);
+	const name = nameOf(focus);
 	return (
 		<div className="lightbox" data-kind="lightbox" role="dialog" aria-label={name} onClick={(e) => e.target === e.currentTarget && onClose()}>
 			<div className="lb-acts">

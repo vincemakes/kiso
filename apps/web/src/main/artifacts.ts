@@ -1,5 +1,5 @@
 import { closeSync, copyFileSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Event } from "@vincemakes/kiso-core";
 import type { ArtifactRef } from "../shared/frames.js";
 import { resolveInside } from "./files.js";
@@ -43,13 +43,19 @@ export interface CallInfo {
 /** `root`: the folder's real path; `dir`: the sessions directory, where a picture made outside the folder is kept. */
 export function artifactsOf(event: ToolResultEvent, workId: string, call: CallInfo | null, root: string, dir: string): ArtifactRef[] {
 	const out: ArtifactRef[] = [];
-	const ref = (n: number | string, kind: ArtifactRef["kind"], uri: string, mediaType?: string): void => {
-		out.push({ id: `${event.callId}:${n}`, workId, callId: event.callId, kind, uri, ...(mediaType !== undefined ? { mediaType } : {}) });
+	const ref = (n: number | string, kind: ArtifactRef["kind"], uri: string, mediaType?: string, name?: string): void => {
+		out.push({ id: `${event.callId}:${n}`, workId, callId: event.callId, kind, uri, ...(mediaType !== undefined ? { mediaType } : {}), ...(name !== undefined ? { name } : {}) });
 	};
-	if (Array.isArray(event.content))
+	if (Array.isArray(event.content)) {
+		const blocks = event.content.filter((b) => b.type === "image").length;
+		let k = 0;
 		event.content.forEach((b, n) => {
-			if (b.type === "image" && ((b.sourceType === "base64" && b.data !== undefined) || b.url?.startsWith("https:") === true)) ref(n, "image", `log:${event.seq}/${n}`, b.mediaType);
+			if (b.type !== "image" || !((b.sourceType === "base64" && b.data !== undefined) || b.url?.startsWith("https:") === true)) return;
+			// an image block has no file name: the tool, the result's number and, of several, its place
+			const ext = (b.mediaType ?? "image/png").split("/")[1]?.replace("jpeg", "jpg") ?? "png";
+			ref(n, "image", `log:${event.seq}/${n}`, b.mediaType, `${call?.name ?? "image"}-${event.seq}${blocks > 1 ? `-${(k += 1)}` : ""}.${ext}`);
 		});
+	}
 	if (event.isError || call === null) return out;
 	let kept = 0;
 	const outside = (full: string, since: number): void => {
@@ -67,7 +73,7 @@ export function artifactsOf(event: ToolResultEvent, workId: string, call: CallIn
 		} catch {
 			return;
 		}
-		ref(full, "image", `log:${event.seq}/k${kept}`, KEPT[ext]);
+		ref(full, "image", `log:${event.seq}/k${kept}`, KEPT[ext], basename(full));
 		kept += 1;
 	};
 	const file = (raw: string, since: number | null): void => {

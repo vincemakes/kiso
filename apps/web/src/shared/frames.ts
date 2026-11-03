@@ -53,6 +53,8 @@ export interface ArtifactRef {
 	readonly kind: "image" | "page" | "doc" | "media" | "file";
 	readonly uri: string;
 	readonly mediaType?: string;
+	/** what to call it: a kept picture's file name, or the tool and the result for an image block (a file is named by its path) */
+	readonly name?: string;
 }
 
 /** `event: at` — beside every wire event except the two delta types: when

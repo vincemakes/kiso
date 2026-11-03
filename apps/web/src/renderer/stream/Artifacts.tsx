@@ -15,10 +15,19 @@ import { FileIcon, KeyContext } from "./links.js";
 /** Whether the stream is pinned to the bottom (the person follows the newest): an image opens by itself only then. */
 export const PinnedContext = createContext<() => boolean>(() => true);
 
-export const artifactsOf = (step: Step): readonly ArtifactRef[] => step.output?.artifacts ?? [];
+export const artifactsOf = (step: Step): readonly ArtifactRef[] => {
+	const all = step.output?.artifacts ?? [];
+	for (const a of all) if (a.name !== undefined) NAMES.set(focusOf(a), a.name);
+	return all;
+};
 
 /** The Open panel's name for an artifact: a file's path, or `log:<work>/<seq>/<n>` for an image block of a result. */
 export const focusOf = (a: ArtifactRef): string => (a.uri.startsWith("file:") ? a.uri.slice(5) : `log:${a.workId}/${a.uri.slice(4)}`);
+
+/** What a focus is called where it is listed: a file's name; a picture of the log by the name the host gave it (the kept file's
+ *  name, or the tool and the result), read as its step is drawn; the generic words only for a log older than names. */
+const NAMES = new Map<string, string>();
+export const nameOf = (focus: string): string => (focus.startsWith("log:") ? (NAMES.get(focus) ?? t.imageResult) : (focus.split("/").pop() ?? focus));
 
 /** Where an image's bytes are: the log route for a block, the file door (a data URL) for a file. */
 export function useImageSrc(focus: string): string | null {
@@ -69,7 +78,7 @@ export function Thumb({ a }: { readonly a: ArtifactRef }): ReactNode {
 			className="tn"
 			data-thumb={a.kind}
 			data-artifact={focus}
-			title={focus.startsWith("log:") ? t.imageResult : focus}
+			title={focus.startsWith("log:") ? nameOf(focus) : focus}
 			onClick={(e) => {
 				e.stopPropagation();
 				open(a);

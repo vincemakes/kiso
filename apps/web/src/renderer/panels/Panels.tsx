@@ -6,6 +6,7 @@ import type { PanelKind, PanelMode } from "../state/panels.js";
 import { Changes } from "./Changes.js";
 import { Files } from "./Files.js";
 import { Open } from "./Open.js";
+import { nameOf } from "../stream/Artifacts.js";
 import { FileIcon } from "../stream/links.js";
 import { Preview } from "./Preview.js";
 import { COMMANDS, Term } from "./Term.js";
@@ -84,7 +85,7 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 					<span className="name" title={focus}>
 						{/* an image a tool returned has no file name: it is named as such */}
 						<FileIcon path={focus.startsWith("log:") ? "image.png" : focus} />
-						{focus.startsWith("log:") ? t.imageResult : focus}
+						{focus.startsWith("log:") ? nameOf(focus) : focus}
 					</span>
 				) : (
 					<span className="name">{NAMES[kind]}</span>

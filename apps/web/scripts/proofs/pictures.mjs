@@ -71,5 +71,8 @@ check(await waitUntil(async () => (await loaded("[data-thumb=image] img, .inplac
 const lb = async (sel) => (await app.click(sel), (await waitUntil(async () => (await loaded("[data-kind=lightbox] img")) === "240")) && (await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true")) && (await waitUntil(async () => (await app.count("[data-kind=lightbox]")) === 0)));
 check((await app.count("[data-kind=made] [data-made]")) === 2 && (await lb("[data-kind=made] [data-made]")), "each run lists what it made after its answer, and its picture opens in the lightbox");
 check((await app.count("[data-field=output]")) === 2 && (await lb("[data-field=output]")) && (await app.count("[data-kind=panel]")) === 0, "the rail's Outputs list both pictures of the Work, newest first, and open them the same way");
+// each picture by its own name, the tool and the result (owner 2026-11-03: three chips all read "An image a tool returned")
+const names = await q("[...document.querySelectorAll('[data-kind=made] [data-made], [data-field=output] .r-nm')].map((e) => e.textContent.trim())");
+check(names.length === 4 && new Set(names).size === 2 && names.some((n) => /^list_dir-\d+\.png$/.test(n)) && !names.some((n) => /tool returned/.test(n)), `each picture is listed by its own name (the tool's and the result's for an image block, the file's for a file), not by generic words (${names.join(", ")})`);
 await app.close();
 verdict();

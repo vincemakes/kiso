@@ -7,7 +7,7 @@ import { Approval } from "./Approval.js";
 import { ForkContext, RunContext, WorkContext } from "./links.js";
 import { useNow } from "./useNow.js";
 import { Process } from "./Process.js";
-import { artifactsOf, focusOf, Picture } from "./Artifacts.js";
+import { artifactsOf, focusOf, nameOf, Picture } from "./Artifacts.js";
 import { artifactIcon, Check, Copy, Fork } from "./Icons.js";
 import { LightboxContext, useOpenArtifact } from "./Lightbox.js";
 import type { ArtifactRef } from "../../shared/frames.js";
@@ -78,9 +78,9 @@ function Made({ turn }: { readonly turn: TurnModel }): ReactNode {
 		<div className="made" data-kind="made">
 			{made.map((a) => {
 				const focus = focusOf(a);
-				const name = focus.startsWith("log:") ? t.imageResult : (focus.split("/").pop() ?? focus);
+				const name = nameOf(focus);
 				return (
-					<button key={focus} className="made-c" data-made={focus} title={focus.startsWith("log:") ? t.imageResult : focus} onClick={() => open(a)}>
+					<button key={focus} className="made-c" data-made={focus} title={focus.startsWith("log:") ? name : focus} onClick={() => open(a)}>
 						{artifactIcon(a.kind, focus)}
 						<span>{name}</span>
 					</button>
