@@ -232,13 +232,14 @@
 .cwarn { display: flex; align-items: center; gap: 8px; margin: 2px 0; padding: 7px 10px; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 12.5px; }
 .cnote { color: var(--red); font-size: 12.5px; padding: 0 2px; }
 /* the person's pictures, above their line */
-.me-pics { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin: 18px 0 -12px; }
-.me-pic { width: 88px; height: 88px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+/* everything the person attached is one height (owner 2026-11-03: a picture and a file card side by side read as one row) */
+.me-pics { --att: 64px; display: flex; justify-content: flex-end; align-items: stretch; flex-wrap: wrap; gap: 6px; margin: 18px 0 -12px; }
+.me-pic { width: var(--att); height: var(--att); border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
 .me-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 /* an attached file: a card on the pictures' row (its type, name and lines); the viewer shows its text over the window */
-.me-file { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px 0 9px; border-radius: 12px; background: #fff; border: 1px solid var(--line); text-align: left; max-width: 260px; }
+.me-file { display: flex; align-items: center; gap: 10px; height: var(--att); box-sizing: border-box; padding: 0 14px 0 11px; border-radius: 12px; background: #fff; border: 1px solid var(--line); text-align: left; max-width: 260px; }
 .me-file:hover { background: #fafafb; }
-.me-ft { flex: none; width: 34px; height: 40px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; font: 600 10px var(--mono); color: #6b6b70; }
+.me-ft { flex: none; width: 36px; height: 42px; border-radius: 7px; background: var(--sunk); display: grid; place-items: center; font: 600 10px var(--mono); color: #6b6b70; }
 .me-fn { display: flex; flex-direction: column; min-width: 0; }
 .me-fn b { font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-fn small { color: var(--mute); font-size: 12px; }

@@ -89,6 +89,8 @@ await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
 const bubble = await q("[...document.querySelectorAll('[data-kind=me]')].at(-1)?.textContent ?? ''");
 check((await app.count('[data-kind=me-pictures] [data-file="errors.log"]')) === 1 && bubble === "what is in the picture?" && (await text('[data-file="errors.log"] small')) === "2 lines", `the file is a card beside the picture (its name and lines) and the bubble holds only the words ("${bubble}")`);
 await app.shot("attachments-row");
+const heights = await q("[...document.querySelectorAll('[data-kind=me-pictures] > button')].map((e) => Math.round(e.getBoundingClientRect().height))");
+check(heights.length === 2 && new Set(heights).size === 1, `every attachment is one height, so the row reads as one (${heights.join(" / ")} px)`);
 await app.click('[data-file="errors.log"]');
 check(await waitUntil(async () => (await text("[data-kind=file-viewer] .fv-text")) === "line one\nline two\n"), "a click on the card shows its text in the viewer");
 await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
