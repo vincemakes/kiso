@@ -34,7 +34,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
-import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
+import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, writeSessionName, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
 import { reverseMigration } from "./session-migration.js";
@@ -1181,6 +1181,26 @@ async function chatLoop(
 			sessions: () => agent.sessionIds(),
 			route: (sessionId: string) => routeSession(sessionId),
 			...(process.stdin.isTTY ? { pick: () => pickSession(agent, input) } : {}),
+			// owner 2026-11-03: a session is titled by a summary of its first message, in the background; the person's own
+			// name wins, before or after; off with KISO_AUTO_TITLE=off and with the faux model
+			...(currentFaux || process.env["KISO_AUTO_TITLE"] === "off"
+				? {}
+				: {
+						titled: (firstMessage: string) => {
+							// the session and its folder as they are NOW: a /resume or a switch before the title lands must not
+							// send it to another session, nor repaint another session's window title
+							const [titling, mine, dir] = [session, session.id, activeStoreDir];
+							if (readSessionName(dir, mine) !== null) return;
+							void titling.title(firstMessage, { signal: AbortSignal.timeout(15_000) }).then((title) => {
+								if (title === "" || readSessionName(dir, mine) !== null) return;
+								writeSessionName(dir, mine, title);
+								// `id` is the loop's: the session open now (a switch moves it on)
+								if (id !== mine) return;
+								setTitleName(title);
+								paintWindowTitle();
+							}, () => undefined);
+						},
+					}),
 		};
 		const end = await chat(session, currentFaux, input, autoCompact, nav, seed);
 		if (end.next === "exit") {
