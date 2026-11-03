@@ -49,11 +49,12 @@ export function isolatedEnv(extra = {}) {
 			// product's. The one test that exercises the check turns it
 			// back on and points it at a local stub.
 			KISO_NO_UPDATE_CHECK: "1",
-			// The session title is OFF for every e2e by default, the same way: a
-			// leg on a local mock endpoint would send one more request beside
-			// its first, and the tests that count requests or read the wire
-			// would see it. The title's own test turns it back on.
+			// The session title and the follow-up are OFF for every e2e by
+			// default, the same way: a leg on a local mock endpoint would send
+			// one more request beside or after its run, and the tests that
+			// count requests or read the wire would see it.
 			KISO_AUTO_TITLE: "off",
+			KISO_FOLLOWUP: "off",
 			// DC-48: invariant ① THROWS under test. In the field it cuts the
 			// row and says so once (compositor #checked) — the crash is the
 			// contract UNDER TEST, and a gate that lost its teeth here would

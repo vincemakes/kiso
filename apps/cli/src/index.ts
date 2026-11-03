@@ -347,6 +347,9 @@ function editorInput(editor: Editor): LineInput {
 			editor.bindQueue(state, pop);
 		},
 		// ADR-0057: the steers a stop handed back return to the buffer.
+		setGhost(text) {
+			editor.setGhost(text);
+		},
 		restore(text) {
 			editor.restore(text);
 		},

@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { defineTool, type Adapter, type StreamOptions } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
+import { FOLLOW_UP_ASK } from "../src/session.js";
 
 const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const ADD = defineTool({
@@ -67,6 +68,13 @@ describe("followUp", () => {
 		expect(last.map((m) => m.role)).toEqual(["user", "assistant", "tool"]);
 		expect(JSON.stringify(follow.slice(0, last.length))).toBe(JSON.stringify(last));
 		expect(follow.slice(last.length)).toEqual([{ role: "assistant", blocks: [{ type: "text", text: "It is 3." }] }, { role: "user", content: ASK }]);
+	});
+
+	it("with no ask: the built-in one, and the answer comes back as one clean line", async () => {
+		const { session, seen } = await fixture([say("First answer."), say('  "fix it"\nand more')]);
+		await drain(session.run("look at calc.js"));
+		expect(await session.followUp({})).toBe("fix it");
+		expect(seen[1]!.messages.at(-1)).toEqual({ role: "user", content: FOLLOW_UP_ASK });
 	});
 
 	it("writes nothing durable and is marked in the trace", async () => {
