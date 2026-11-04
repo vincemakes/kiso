@@ -1658,8 +1658,10 @@ async function tasksCommand(arg: string, ctx: DispatchCtx): Promise<void> {
 	else if (action === 1) stop(task);
 }
 
-/** /fork's rows: each finished run's reply, newest first, by its first line and when it ended; the opened row says the
- *  line it answered. The card's id is the seq of the run's terminal, where SessionStore.fork cuts. */
+/** /fork's rows: each finished run, newest first, by the person's message it answered and when it ended; the opened
+ *  row shows the reply's first line under it (owner 2026-11-04: the person knows a turn by what they asked, and an
+ *  "answered:" label over their own line read backwards). The card's id is the seq of the run's terminal, where
+ *  SessionStore.fork cuts. */
 export function replyCards(records: readonly StoreRecord[]): SessionCardView[] {
 	const cards: SessionCardView[] = [];
 	let asked = "";
@@ -1672,9 +1674,10 @@ export function replyCards(records: readonly StoreRecord[]): SessionCardView[] {
 		} else if (e.type === "tool_result") reply = "";
 		else if (e.type === "text_delta") reply += e.text;
 		else if (e.type === "terminal" && e.outcome.kind === "completed") {
-			// the row is how the person recognizes the reply: its first line, inline code read as plain text
+			// the row is the person's own line; the reply's first line, inline code read as plain text, opens under it
 			const first = (reply.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "(no reply text)").replace(/`([^`]*)`/g, "$1");
-			cards.unshift({ id: String(e.seq), title: first, badge: "completed", turns: null, updatedAt: ts, uncertain: 0, asks: 0, outcome: null, detail: `answered: ${asked.split("\n")[0] ?? ""}` });
+			const line = asked.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "(no message text)";
+			cards.unshift({ id: String(e.seq), title: line, badge: "completed", turns: null, updatedAt: ts, uncertain: 0, asks: 0, outcome: null, detail: `└ ${first}` });
 		}
 	}
 	return cards;
