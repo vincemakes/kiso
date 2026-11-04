@@ -82,13 +82,10 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 				<span className="s-time">{(ms / 1000).toFixed(1)}s</span>
 			</div>
 			{images && shown ? <InPlace step={step} /> : null}
-			{step.taskId !== null ? (
-				<div className={`s-bar${task === undefined || task.endedAt === null ? " live" : ""}`}>
-					<b />
-				</div>
-			) : null}
+			{/* a background task: one line, a spinner at its start while it runs (the sliding bar under it is gone) */}
 			{step.taskId !== null && task !== undefined ? (
 				<div className="s-req">
+					{!frozen && task.endedAt === null ? <span className="sp" /> : null}
 					{task.id} · {task.label} · {clock(task.elapsedMs)}
 				</div>
 			) : null}

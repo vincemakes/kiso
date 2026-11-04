@@ -77,13 +77,12 @@ function Group({ id, items, turn, tasks, onAnswer, interrupted, live }: Omit<Pro
 	return (
 		<div className={`grp${isFolded ? " folded" : ""}`} data-kind="group" data-folded={isFolded} {...(choice !== undefined ? { "data-hand": choice ? "closed" : "open" } : {})}>
 			<button className="ph" onClick={() => setChoice(!isFolded)} aria-expanded={!isFolded}>
-				<Chevron />
-				{live ? <span className="dotpulse" /> : null}
 				{/* the one live indicator of a run sits on its last group line: the label shimmers while it works */}
 				<span className={`lab${live ? " shimmer" : ""}`} {...(live ? { "data-kind": "live" } : {})}>
 					{steps.length === 0 ? t.working : groupLabel(steps, t.did, { more: t.didMore, moreOne: t.didMoreOne, failed: t.didFailed })}
 				</span>
 				<Delta d={groupDelta(steps)} />
+				<Chevron />
 				{live ? <span className="clk">{clock(now - (turn.startedAt ?? now))}</span> : null}
 				{live && turn.live?.output != null ? <span className="clk">{`${tokens(turn.live.output)} out`}</span> : null}
 				{/* a group line sums up a closed group: its pictures show on it only while it is folded */}
