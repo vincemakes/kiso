@@ -74,14 +74,25 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 	);
 }
 
-/** Which groups are folded, kept per browser (a convenience: it reads back empty when storage is not there). */
+/** Which groups (and which rows' nested sessions) are folded, kept per browser (a convenience: it reads back empty when storage is
+ *  not there). */
 const FOLDS = "kiso.web.folds";
-const foldsRead = (): string[] => {
+const KID_FOLDS = "kiso.web.kid-folds";
+const foldsRead = (key = FOLDS): string[] => {
 	try {
-		return JSON.parse(localStorage.getItem(FOLDS) ?? "[]") as string[];
+		return JSON.parse(localStorage.getItem(key) ?? "[]") as string[];
 	} catch {
 		return [];
 	}
+};
+
+/** What a row's dot says, by what the person should do: needs you (amber) > working (the ring) > finished unread (blue) > nothing. */
+type Dot = "waiting" | "running" | "unread" | "idle";
+const RANK: Readonly<Record<Dot, number>> = { waiting: 3, running: 2, unread: 1, idle: 0 };
+const stateOf = (row: WorkRow): Dot => (row.state === "idle" && row.unread === true ? "unread" : row.state);
+const dotOf = (row: WorkRow): ReactNode => {
+	const state = stateOf(row);
+	return state === "running" ? <span className="sp" title={t.runningNow} /> : state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : state === "unread" ? <span className="dot blue" title={t.unreadNow} data-dot="unread" /> : null;
 };
 
 /** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; the Functions fold at the bottom (v1: Settings). */
@@ -120,7 +131,20 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 		setRenaming(null);
 		if (draft.trim() !== row.title) void onRename(row, draft);
 	};
-	const rowOf = (row: WorkRow, className: string): ReactNode => (
+	const [shutKids, setShutKids] = useState<readonly string[]>(() => foldsRead(KID_FOLDS));
+	const foldKids = (row: WorkRow): void => {
+		const id = `${row.key}/${row.id}`;
+		const next = shutKids.includes(id) ? shutKids.filter((f) => f !== id) : [...shutKids, id];
+		setShutKids(next);
+		try {
+			localStorage.setItem(KID_FOLDS, JSON.stringify(next));
+		} catch {}
+	};
+	const rowOf = (row: WorkRow, className: string, nested: readonly WorkRow[] = []): ReactNode => {
+		const shut = nested.length > 0 && shutKids.includes(`${row.key}/${row.id}`);
+		// a folded parent shows the most urgent state of itself and what it folds
+		const urgent = shut ? [row, ...nested].reduce((a, b) => (RANK[stateOf(b)] > RANK[stateOf(a)] ? b : a)) : row;
+		return (
 		<div key={`${row.key}/${row.id}`} className={`row${same(menu?.row ?? null, row) ? " menu-open" : ""}`}>
 			{same(renaming, row) ? (
 				<div className={`item ${className}`}>
@@ -141,8 +165,15 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 				</div>
 			) : (
 				<button className={`item ${className}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
-					{row.state === "running" ? <span className="sp" title={t.runningNow} /> : row.state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : null}
+					{dotOf(urgent)}
 					<span className="tt">{row.title === "" ? t.untitled : row.title}</span>
+					{nested.length > 0 ? (
+						<span className={`kid-fold${shut ? " shut" : ""}`} role="button" aria-label={t.foldNested} aria-expanded={!shut} data-act="fold-nested" onClick={(e) => (e.stopPropagation(), foldKids(row))}>
+							<svg className="tri" viewBox="0 0 24 24" aria-hidden="true">
+								<path d="M4 7h16l-8 10z" />
+							</svg>
+						</span>
+					) : null}
 					<small>{row.folder}</small>
 				</button>
 			)}
@@ -152,8 +183,35 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 				</button>
 			)}
 		</div>
-	);
+		);
+	};
+	/** Under a folded row: how many sessions it folds, and how many of them finished unread; a click unfolds them. */
+	const kidsLine = (row: WorkRow, nested: readonly WorkRow[]): ReactNode => {
+		const unread = nested.filter((w) => stateOf(w) === "unread").length;
+		return (
+			<button key={`${row.key}/${row.id}/kids`} className="kids-line" onClick={() => foldKids(row)} data-act="unfold-nested">
+				{nested.length === 1 ? t.nestedOne : fmt(t.nested, { n: nested.length })}
+				{unread > 0 ? <em>{` · ${fmt(t.nUnread, { n: unread })}`}</em> : null}
+			</button>
+		);
+	};
 	const archived = works.filter((w) => w.archived === true);
+	/** A group's rows: a nested session (a fork, under the row it came from) follows its top row, which folds them all. */
+	const rowsOf = (rows: readonly WorkRow[]): ReactNode[] => {
+		const isChild = (row: WorkRow): boolean => row.parent !== undefined && row.pinned === undefined && rows.some((w) => w.key === row.key && w.id === row.parent);
+		const out: ReactNode[] = [];
+		for (let i = 0; i < rows.length; i++) {
+			const row = rows[i]!;
+			if (isChild(row)) continue;
+			let end = i + 1;
+			while (end < rows.length && isChild(rows[end]!)) end++;
+			const nested = rows.slice(i + 1, end);
+			out.push(rowOf(row, "", nested));
+			if (nested.length > 0 && shutKids.includes(`${row.key}/${row.id}`)) out.push(kidsLine(row, nested));
+			else nested.forEach((kid, k) => out.push(rowOf(kid, k < nested.length - 1 ? "child more" : "child")));
+		}
+		return out;
+	};
 	return (
 		<aside className="side" data-kind="sidebar">
 			<div className="side-in">
@@ -171,7 +229,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 								<path d="M6 9h12l-6 7z" />
 							</svg>
 						</button>
-						{folds.includes(group.label) ? null : group.works.map((row, i) => rowOf(row, row.parent !== undefined && row.pinned === undefined && group.works.some((w) => w.key === row.key && w.id === row.parent) ? (group.works[i + 1]?.parent === row.parent ? "child more" : "child") : ""))}
+						{folds.includes(group.label) ? null : rowsOf(group.works)}
 					</section>
 				))}
 				{archived.length > 0 ? (

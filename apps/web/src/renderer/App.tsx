@@ -188,7 +188,7 @@ export function App(): ReactNode {
 	useEffect(() => {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
-	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey ? { ...w, state: ownState } : w));
+	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request; folder · branch under it
 	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);

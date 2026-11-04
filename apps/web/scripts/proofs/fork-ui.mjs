@@ -3,9 +3,9 @@
 // parent's files do not move, then or when the fork runs. The fork opens at once with one line naming its parent; it starts on the
 // parent's tier; its system prompt is the parent's, and its first input carries the fork note after the copied history (plan fork
 // rev 2: a note in the system prompt cost the fork's first request the whole history's cache), never shown as the person's; the
-// runtime makes it (SessionStore.fork); the sidebar lists it right after its
-// parent, one step in. A cut that is not a run's end, or one with a verdict still owed, is refused in words. Copy puts the reply's
-// text, or the person's line, on the clipboard; the relative time follows one rule. Screenshots go outside the repository.
+// runtime makes it (SessionStore.fork); the sidebar lists it right after its parent, one step in, and the parent folds it to one line
+// that counts what finished unread. A cut that is not a run's end, or one with a verdict still owed, is refused in words. Copy puts the
+// reply's text, or the person's line, on the clipboard; the relative time follows one rule. Screenshots go outside the repository.
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -84,6 +84,17 @@ const shown = await q("[...document.querySelectorAll('[data-kind=me]')].at(-1)?.
 check(Array.isArray(firstInput.content) && /^This session was forked from the session "Plan the release notes"/.test(firstInput.content[0].text) && firstInput.content[1]?.text === "Take it another way" && shown === "Take it another way", `the fork's first input carries the note before the person's words, after the copied history, and the bubble shows only their words ("${shown}")`);
 await app.click("[data-act=fork-parent]");
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2 && (await app.count("[data-kind=fork-note]")) === 0), "the notice's link opens the parent, both its runs");
+
+// the fork finished out of sight (as the host marks it): a blue dot; folding the parent leaves one line that says so
+writeFileSync(join(data, "desktop.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(data, "desktop.json"), "utf8")), unread: [id] }));
+check(await waitUntil(async () => (await app.count(`.item[data-work="${id}"] .dot.blue`)) === 1, 15_000), "a nested Work that finished unread shows a blue dot");
+await app.click(`.item[data-work="frk"] [data-act=fold-nested]`);
+const line = await app.text(".kids-line");
+check((await app.count(`.item[data-work="${id}"]`)) === 0 && line === "1 nested session · 1 unread" && (await app.count(`.item[data-work="frk"] .dot.blue`)) === 1, `folded, the parent keeps one line ("${line}") and shows its nested Work's dot`);
+await sleep(400);
+await app.shot("fork-2");
+await app.click(".kids-line");
+check(await waitUntil(async () => (await app.count(`.item[data-work="${id}"]`)) === 1 && (await app.count(".kids-line")) === 0), "the line unfolds them");
 await sleep(200);
 await app.close();
 verdict();

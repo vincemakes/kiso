@@ -36,6 +36,17 @@
 .item small { color: var(--mute); font-size: 11.5px; flex: none; max-width: 38%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot.amber { background: var(--amber); }
+.dot.blue { background: var(--blue); }
+/* a row with nested sessions folds them: the triangle after its title points down while they show */
+.item .kid-fold { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-left: -4px; border-radius: 5px; color: #555; }
+.item .kid-fold:hover { color: var(--ink); background: rgba(0, 0, 0, 0.06); }
+.item .kid-fold .tri { width: 11px; height: 11px; fill: currentColor; transition: transform 0.2s var(--ease); }
+.item .kid-fold.shut .tri { transform: rotate(-90deg); }
+/* folded: one line under the row says what it holds, on the same elbow a nested row has */
+.kids-line { position: relative; display: block; width: 100%; text-align: left; padding: 3px 9px 7px 30px; font-size: 12.5px; color: var(--mute); border-radius: 10px; }
+.kids-line::before { content: ""; position: absolute; left: 16px; top: -2px; height: 11px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
+.kids-line:hover { color: var(--ink); }
+.kids-line em { font-style: normal; color: var(--blue); }
 .item .sp { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #d8d8d5; border-top-color: var(--blue); animation: sp 1s linear infinite; flex: none; }
 @keyframes sp { to { transform: rotate(360deg); } }
 .fn { border-top: 1px solid rgba(0, 0, 0, 0.06); margin: 8px -4px 0; padding-top: 6px; }

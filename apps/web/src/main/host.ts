@@ -123,7 +123,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	let presence: Presence | null = null;
 	const previews = new Previews(options.previewLog);
 	const requestLog = options.requestLog;
-	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence);
+	// written only when it changes: the person in front of a Work clears it every second
+	const unread = (sessionId: string, on: boolean): void => void ((options.settings.marksOf(sessionId).unread === true) !== on && options.settings.mark(sessionId, "unread", on));
+	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence, unread);
 	watch.start();
 	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews };
 
