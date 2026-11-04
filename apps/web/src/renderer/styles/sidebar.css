@@ -28,7 +28,7 @@
 .item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 9px; border-radius: 10px; transition: background 0.15s; }
 /* a fork under its parent: a small elbow, one line down through its siblings, clear of the title and of the parent row's edge */
 .item.child { padding-left: 30px; position: relative; }
-.item.child::before { content: ""; position: absolute; left: 16px; top: 3px; height: calc(50% - 6px); width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
+.item.child::before { content: ""; position: absolute; left: 16px; top: 3px; height: 12px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
 .item.child.more::after { content: ""; position: absolute; left: 16px; top: 3px; bottom: -4px; border-left: 1.5px solid #d6d6d2; }
 .item:hover { background: rgba(0, 0, 0, 0.045); }
 .item.on { background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04); }
@@ -42,9 +42,10 @@
 .item .kid-fold:hover { color: var(--ink); background: rgba(0, 0, 0, 0.06); }
 .item .kid-fold .tri { width: 11px; height: 11px; fill: currentColor; transition: transform 0.2s var(--ease); }
 .item .kid-fold.shut .tri { transform: rotate(-90deg); }
-/* folded: one line under the row says what it holds, on the same elbow a nested row has */
-.kids-line { position: relative; display: block; width: 100%; text-align: left; padding: 3px 9px 7px 30px; font-size: 12.5px; color: var(--mute); border-radius: 10px; }
-.kids-line::before { content: ""; position: absolute; left: 16px; top: 3px; height: 8px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
+/* folded: one line under the row says what it holds, on the same elbow a nested row has (same gap, same length, its text centred
+   where a nested row's is) */
+.kids-line { position: relative; display: block; width: 100%; text-align: left; padding: 8px 9px 6px 30px; font-size: 12.5px; line-height: 20px; color: var(--mute); border-radius: 10px; }
+.kids-line::before { content: ""; position: absolute; left: 16px; top: 3px; height: 12px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
 .kids-line:hover { color: var(--ink); }
 .kids-line em { font-style: normal; color: var(--blue); }
 .item .sp { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #d8d8d5; border-top-color: var(--blue); animation: sp 1s linear infinite; flex: none; }
