@@ -86,16 +86,16 @@ function seed(home: string, id: string): void {
 }
 
 describe("/fork in a real PTY", () => {
-	it("lists the replies newest first; the picked one's fork holds its run only, named and linked to its parent", () => {
+	it("lists the runs newest first by their messages; the picked one's fork holds its run only, named and linked to its parent", () => {
 		const { dirs, env } = isolatedEnv();
 		seed(dirs.home, "parent");
 		const faux = join(dirs.home, "faux.json");
 		const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 		writeFileSync(faux, JSON.stringify([say("It exports add and sub."), say("sub adds instead of subtracting.")]));
-		const screen = pty({ ...env, KISO_FAUX_SCRIPT: faux }, ["chat", "parent"], [["sub adds instead", "/fork\r"], ["fork after a reply", "\x1b[B"], ["answered: what does calc.js export?", "\r"]], ["forked"]);
+		const screen = pty({ ...env, KISO_FAUX_SCRIPT: faux }, ["chat", "parent"], [["sub adds instead", "/fork\r"], ["fork after a reply", "\x1b[B"], ["└ It exports add and sub.", "\r"]], ["forked"]);
 		expect(screen).toContain("fork after a reply");
 		expect(screen).toContain("⏎ forks");
-		expect(screen).toContain("answered: which one is wrong?");
+		expect(screen).toContain("└ sub adds instead of subtracting.");
 		const sessions = join(dirs.home, "sessions");
 		const fork = readdirSync(sessions).find((f) => f.endsWith(".jsonl") && f !== "parent.jsonl")!.slice(0, -6);
 		const events = readFileSync(join(sessions, `${fork}.jsonl`), "utf8").trim().split("\n").map((l) => JSON.parse(l).event);
