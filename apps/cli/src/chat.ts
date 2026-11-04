@@ -1540,7 +1540,7 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 					// empty box only while no other turn has started or waits; off with the faux model and KISO_FOLLOWUP=off
 					if (last?.type === "terminal" && last.outcome.kind === "completed" && !faux && input.setGhost !== undefined && process.env["KISO_FOLLOWUP"] !== "off" && queued === 0) {
 						void session.followUp({ maxTokens: 200, signal: AbortSignal.timeout(15_000) }).then((line) => {
-							if (turnNo === myTurn && currentRun === null && queued === 0) input.setGhost?.(line === "" ? null : line);
+							if (turnNo === myTurn && currentRun === null && queued === 0 && !leaving) input.setGhost?.(line === "" ? null : line);
 						}, () => undefined);
 					}
 					// the ergonomics batch C8: the opt-in auto-compact — checked AFTER the
@@ -1968,11 +1968,13 @@ export async function chat(session: AgentSession, faux: boolean, input: LineInpu
 		requestSwitch: (id: string) => {
 			switchTo = id;
 			leaving = true;
+			input.setGhost?.(null); // REL-0530-F1: the follow-up belongs to the session being left
 			resolveEnd();
 		},
 		requestReload: () => {
 			reloadReq = true;
 			leaving = true;
+			input.setGhost?.(null);
 			resolveEnd();
 		},
 		sessions: () => nav?.sessions() ?? [],
