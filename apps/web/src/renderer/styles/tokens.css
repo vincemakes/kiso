@@ -11,5 +11,5 @@
 	--ease: cubic-bezier(0.22, 0.9, 0.24, 1);
 	--spring: cubic-bezier(0.34, 1.4, 0.5, 1);
 	--mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-	--sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+	--sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", sans-serif;
 }

@@ -24,7 +24,7 @@
 .morebtn { position: relative; flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); }
 .morebtn:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 .menu { position: absolute; right: 12px; top: 50px; z-index: 120; min-width: 210px; background: #fff; border-radius: 14px; box-shadow: 0 12px 44px rgba(0, 0, 0, 0.16), 0 0 0 1px var(--line); padding: 6px; animation: in 0.2s var(--ease) both; }
-.menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 9px; text-align: left; }
+.menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 9px; text-align: left; font-size: 14px; }
 .menu button:hover { background: #f4f4f6; }
 .menu .ico { color: #777; }
 
