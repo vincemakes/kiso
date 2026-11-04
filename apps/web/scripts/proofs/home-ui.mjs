@@ -38,7 +38,7 @@ await app.click("[data-act=choose]");
 check(await waitUntil(async () => (await chip()) === "proj" && (await q("window.__kiso !== window.__kisoMark"))), "the shortcut opens it too: a folder in home, chosen by a click, opens a new Work");
 // notifications: off until a click turns them on (the browser's Notification is replaced by a recorder; a headless browser shows none)
 await q(`window.__notes = []; window.Notification = class { static permission = "default"; static async requestPermission() { this.permission = "granted"; return "granted"; } constructor(title, o) { this.title = title; Object.assign(this, o); window.__notes.push(this); } close() {} }; true`);
-await q("document.querySelector('[data-act=sidebar]').click(); document.querySelector('.fn-h').click()");
+await q("document.querySelector('[data-act=sidebar]').click()");
 await app.click("[data-act=settings]");
 check(await waitUntil(async () => (await q("document.querySelector('[data-field=notify]')?.dataset.state")) === "off"), "notifications are off at first");
 await app.click("[data-act=notify]");

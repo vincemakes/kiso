@@ -141,7 +141,6 @@ check(await waitUntil(async () => /\/ 1M$/.test(await ctxLine()), 15_000), `the 
 
 // Settings' model field is the composer's menu too (owner 2026-11-03): each profile's model over its name, opening below its pill
 if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]");
-await q(`document.querySelector('.fn-h').click()`);
 await app.click("[data-act=settings]");
 await waitUntil(async () => (await app.count("[data-kind=settings] [data-act=profile]")) === 1, 15_000);
 await app.click("[data-kind=settings] [data-act=profile]");

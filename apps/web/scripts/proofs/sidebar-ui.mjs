@@ -34,9 +34,8 @@ check(await waitUntil(async () => (await app.count("[data-kind=answer]")) === 0)
 await q(`window.__kiso.send("gamma task")`);
 check(await waitUntil(async () => (await q(`[...document.querySelectorAll('.item .tt')].map((n) => n.textContent).join()`)).startsWith("gamma task"), 20_000), "the new Work joins the list after its first request");
 await app.shot("sidebar-new-work");
-await q(`document.querySelector('.fn-h').click()`);
 await app.click("[data-act=settings]");
-check(await waitUntil(async () => (await app.count("[data-kind=settings] [data-act=mode]")) === 1), "Functions holds Settings, which opens in the window");
+check(await waitUntil(async () => (await app.count("[data-kind=settings] [data-act=mode]")) === 1), "the Settings row at the foot of the sidebar opens Settings in the window");
 check((await app.count("[data-kind=settings] select")) === 0, "Settings has no native select: its fields are the composer's menus (owner 2026-11-03)");
 await app.click("[data-kind=settings] [data-act=mode]");
 const below = await q(`(() => { const m = document.querySelector('[data-kind=settings] [data-menu=mode]'); const b = document.querySelector('[data-kind=settings] [data-act=mode]'); return m !== null && m.getBoundingClientRect().top >= b.getBoundingClientRect().bottom && m.querySelectorAll('.cm-i small').length > 0; })()`);
