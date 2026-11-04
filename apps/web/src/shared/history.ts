@@ -19,10 +19,8 @@ export interface WorkRow {
 	readonly events: number;
 	readonly runs: number;
 	readonly state: WorkState;
-	/** the Work this one was forked from, or that delegated it (the sidebar lists a child after it, one step in) */
+	/** the Work this one was forked from (the sidebar lists a fork after it, one step in) */
 	readonly parent?: string;
-	/** a delegated child's role ("reviewer"): its parent and role are read from its id, `sub-<parent>-…-<n>-<role>` (ADR-0032) */
-	readonly role?: string;
 	/** its place among the pinned Works (0: the latest pin) */
 	readonly pinned?: number;
 	/** kept out of the list; the sidebar's Archived line shows it */
