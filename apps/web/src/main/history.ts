@@ -25,16 +25,6 @@ interface Read {
 }
 
 /** What the host knows about a Work it holds open: a run live, or waiting for an answer. */
-/** A delegated child's parent (the longest id of its folder that `sub-<id>-` starts with: a parent id may have any shape) and its
- *  role (what follows the task's number; a role starts with a letter, a hex delegation id may be all digits); nothing for any
- *  other session. */
-export function delegated(id: string, ids: readonly string[]): Pick<WorkRow, "parent" | "role"> {
-	if (!id.startsWith("sub-")) return {};
-	const parent = ids.filter((p) => p !== id && id.startsWith(`sub-${p}-`)).sort((a, b) => b.length - a.length)[0];
-	const role = /-\d+-(\D.*)$/.exec(id.slice(4 + (parent?.length ?? 0)))?.[1];
-	return { ...(parent === undefined ? {} : { parent }), ...(role === undefined ? {} : { role }) };
-}
-
 export type LiveState = (key: string, sessionId: string) => Promise<WorkState>;
 
 /** The folder's files as one string: it changes when a log is added or written, or a Work's name file (`<id>.meta.json`, the
@@ -95,13 +85,11 @@ export class History {
 			if (due) this.#enqueue(folder.dir, folder.dir === current.dir);
 			if (read === undefined) continue;
 			const key = basename(folder.dir);
-			const ids = read.metas.map((m) => m.id);
 			for (const meta of read.metas) {
 				rows.push({
 					// a fork's parent: the store's own record (any app made it), else the host's (forks it made before)
 					...(meta.forkedFrom !== undefined ? { parent: meta.forkedFrom } : {}),
 					...this.#marksOf(meta.id),
-					...delegated(meta.id, ids),
 					id: meta.id,
 					key,
 					folder: basename(folder.workspace),

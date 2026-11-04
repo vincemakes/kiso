@@ -30,14 +30,6 @@
 .item.child { padding-left: 30px; position: relative; }
 .item.child::before { content: ""; position: absolute; left: 16px; top: -2px; height: calc(50% - 1px); width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
 .item.child.more::after { content: ""; position: absolute; left: 16px; top: -2px; bottom: -2px; border-left: 1.5px solid #d6d6d2; }
-/* as in the reference: one line down through the siblings, the curve only at the last */
-.item.child.more::before { display: none; }
-/* a parent's ▾ folds its children; folded, it counts them */
-.item .kids { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 2px 4px; margin: -2px 0; border-radius: 6px; color: var(--mute); }
-.item .kids:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
-.item .kids .tri { width: 13px; height: 13px; fill: currentColor; transform: rotate(-90deg); transition: transform 0.2s var(--ease); }
-.item .kids.open .tri { transform: none; }
-.item .kids b { font-weight: 400; font-size: 11.5px; }
 .item:hover { background: rgba(0, 0, 0, 0.045); }
 .item.on { background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04); }
 .item .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

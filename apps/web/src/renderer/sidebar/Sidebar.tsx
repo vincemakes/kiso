@@ -74,24 +74,15 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 	);
 }
 
-/** Which groups are folded, and which parents' children are shown or hidden, kept per browser (a convenience: each reads back
- *  empty when storage is not there). */
+/** Which groups are folded, kept per browser (a convenience: it reads back empty when storage is not there). */
 const FOLDS = "kiso.web.folds";
-const KIDS = "kiso.web.kids";
-const stored = <T,>(name: string, none: T): T => {
+const foldsRead = (): string[] => {
 	try {
-		return (JSON.parse(localStorage.getItem(name) ?? "null") as T | null) ?? none;
+		return JSON.parse(localStorage.getItem(FOLDS) ?? "[]") as string[];
 	} catch {
-		return none;
+		return [];
 	}
 };
-const store = (name: string, value: unknown): void => {
-	try {
-		localStorage.setItem(name, JSON.stringify(value));
-	} catch {}
-};
-/** a parent with more children than this starts with them folded: dozens of delegated children must not bury the list */
-const KIDS_SHOWN = 5;
 
 /** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; the Functions fold at the bottom (v1: Settings). */
 export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, onAct, onRename, onFork, prOf }: Props): ReactNode {
@@ -103,19 +94,13 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [showArchived, setShowArchived] = useState(false);
-	const [folds, setFolds] = useState<readonly string[]>(() => stored(FOLDS, []));
+	const [folds, setFolds] = useState<readonly string[]>(foldsRead);
 	const fold = (label: string): void => {
 		const next = folds.includes(label) ? folds.filter((f) => f !== label) : [...folds, label];
 		setFolds(next);
-		store(FOLDS, next);
-	};
-	// a parent's children: shown unless its fold says otherwise (or, never folded by hand, it has more than KIDS_SHOWN)
-	const [kids, setKids] = useState<Readonly<Record<string, boolean>>>(() => stored(KIDS, {}));
-	const kidsOpen = (id: string, n: number): boolean => kids[id] ?? n <= KIDS_SHOWN;
-	const toggleKids = (id: string, n: number): void => {
-		const next = { ...kids, [id]: !kidsOpen(id, n) };
-		setKids(next);
-		store(KIDS, next);
+		try {
+			localStorage.setItem(FOLDS, JSON.stringify(next));
+		} catch {}
 	};
 	const box = useRef<HTMLInputElement>(null);
 	const same = (a: WorkRow | null, b: WorkRow): boolean => a !== null && a.key === b.key && a.id === b.id;
@@ -135,7 +120,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 		setRenaming(null);
 		if (draft.trim() !== row.title) void onRename(row, draft);
 	};
-	const rowOf = (row: WorkRow, className: string, n = 0): ReactNode => (
+	const rowOf = (row: WorkRow, className: string): ReactNode => (
 		<div key={`${row.key}/${row.id}`} className={`row${same(menu?.row ?? null, row) ? " menu-open" : ""}`}>
 			{same(renaming, row) ? (
 				<div className={`item ${className}`}>
@@ -158,23 +143,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 				<button className={`item ${className}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
 					{row.state === "running" ? <span className="sp" title={t.runningNow} /> : row.state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : null}
 					<span className="tt">{row.title === "" ? t.untitled : row.title}</span>
-					{n > 0 ? (
-						<span
-							className={`kids${kidsOpen(`${row.key}/${row.id}`, n) ? " open" : ""}`}
-							role="button"
-							aria-expanded={kidsOpen(`${row.key}/${row.id}`, n)}
-							aria-label={t.childWorks}
-							data-act="fold-kids"
-							data-for={row.id}
-							onClick={(e) => (e.stopPropagation(), toggleKids(`${row.key}/${row.id}`, n))}
-						>
-							<svg className="tri" viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M6 9h12l-6 7z" />
-							</svg>
-							{kidsOpen(`${row.key}/${row.id}`, n) ? null : <b data-field="kids-count">{n}</b>}
-						</span>
-					) : null}
-					<small>{className.includes("child") ? (row.role ?? "") : row.folder}</small>
+					<small>{row.folder}</small>
 				</button>
 			)}
 			{same(renaming, row) ? null : (
@@ -184,18 +153,6 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			)}
 		</div>
 	);
-	// a group's rows as a tree: a child one step in under its parent (a line runs down through its siblings), hidden while an
-	// ancestor's children are folded; a parent counts its own children
-	const tree = (rows: readonly WorkRow[]): ReactNode[] => {
-		const ref = (w: WorkRow, id = w.id): string => `${w.key}/${id}`;
-		const here = new Map(rows.map((w) => [ref(w), w]));
-		const nested = (w: WorkRow): boolean => w.parent !== undefined && w.pinned === undefined && here.has(ref(w, w.parent));
-		const count = new Map<string, number>();
-		for (const w of rows) if (nested(w)) count.set(ref(w, w.parent), (count.get(ref(w, w.parent)) ?? 0) + 1);
-		const hidden = (w: WorkRow): boolean => nested(w) && (!kidsOpen(ref(w, w.parent), count.get(ref(w, w.parent)) ?? 0) || hidden(here.get(ref(w, w.parent))!));
-		const shown = rows.filter((w) => !hidden(w));
-		return shown.map((w, i) => rowOf(w, nested(w) ? (shown.slice(i + 1).some((x) => x.parent === w.parent && nested(x)) ? "child more" : "child") : "", count.get(ref(w)) ?? 0));
-	};
 	const archived = works.filter((w) => w.archived === true);
 	return (
 		<aside className="side" data-kind="sidebar">
@@ -214,7 +171,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 								<path d="M6 9h12l-6 7z" />
 							</svg>
 						</button>
-						{folds.includes(group.label) ? null : tree(group.works)}
+						{folds.includes(group.label) ? null : group.works.map((row, i) => rowOf(row, row.parent !== undefined && row.pinned === undefined && group.works.some((w) => w.key === row.key && w.id === row.parent) ? (group.works[i + 1]?.parent === row.parent ? "child more" : "child") : ""))}
 					</section>
 				))}
 				{archived.length > 0 ? (
