@@ -91,6 +91,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
 		titles: options.titles ?? true,
+		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread
+		onSettled: (sessionId) => void (watch.away(key, sessionId) && unread(sessionId, true)),
 	});
 
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it

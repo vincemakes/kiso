@@ -42,6 +42,8 @@ export interface SpaceOptions {
 	readonly followUps?: boolean;
 	/** title a Work from its first message (Session.title), beside its first run */
 	readonly titles?: boolean;
+	/** after each run has settled (however short): the host's what-next, read from the store */
+	readonly onSettled?: (sessionId: string, runId: string, store: SessionStore) => void;
 }
 
 export interface Space {
@@ -104,6 +106,7 @@ export function createSpace(options: SpaceOptions): Space {
 	};
 	const service = createSessionService({
 		store,
+		...(options.onSettled !== undefined ? { hooks: { onSettled: (s: { readonly sessionId: string; readonly runId: string }) => options.onSettled!(s.sessionId, s.runId, store) } } : {}),
 		open: async (sessionId) => {
 			opened.add(sessionId);
 			return createWebAgent({

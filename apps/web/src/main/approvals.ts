@@ -6,8 +6,8 @@ import type { Space } from "./space.js";
  * The page says where it is (`presence`: which Work, whether the tab has the focus), and every second this looks at the Works the host has
  * opened: an approval that waits and is not in front of the person is announced once, and so is a run that ended out of sight. Notices
  * are kept in a short numbered list the page reads (`/desk/notices`) and shows as a browser notification when the person turned them
- * on; a proof also gets a copy in a file. A run that ended out of sight also marks its Work unread (`unread`), until the person is in
- * front of it. What is announced is the tool's name and the folder's name, never what the tool was asked to
+ * on; a proof also gets a copy in a file. A Work marked unread (a run of it settled out of sight) is cleared once the person is in front
+ * of it. What is announced is the tool's name and the folder's name, never what the tool was asked to
  * do: a command can carry a secret.
  */
 
@@ -74,9 +74,19 @@ export class ApprovalWatch {
 		this.#notify?.(full);
 	}
 
-	async poll(): Promise<void> {
+	#here(): Presence | null {
 		const p = this.#presence();
-		const here = p !== null && p.focused && Date.now() - p.at < FRESH_MS ? p : null;
+		return p !== null && p.focused && Date.now() - p.at < FRESH_MS ? p : null;
+	}
+
+	/** Whether the person is looking at something other than this Work. */
+	away(key: string, sessionId: string): boolean {
+		const here = this.#here();
+		return here === null || here.key !== key || here.session !== sessionId;
+	}
+
+	async poll(): Promise<void> {
+		const here = this.#here();
 		if (here !== null) this.#unread(here.session, false);
 		for (const space of this.#spaces()) {
 			for (const sessionId of space.opened()) {
@@ -85,7 +95,7 @@ export class ApprovalWatch {
 				const folder = space.workspace.split("/").pop() ?? "";
 				const running = space.service.isRunning(sessionId);
 				if (running) this.#running.add(id);
-				else if (this.#running.delete(id) && away) (this.#announce({ kind: "done", key: space.key, sessionId, folder }), this.#unread(sessionId, true));
+				else if (this.#running.delete(id) && away) this.#announce({ kind: "done", key: space.key, sessionId, folder });
 				const pending = running ? await space.service.pendingApprovals(sessionId).catch(() => []) : [];
 				const told = this.#told.get(id) ?? new Set<string>();
 				const still = new Set<string>();
