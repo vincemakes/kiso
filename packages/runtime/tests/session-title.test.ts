@@ -41,6 +41,13 @@ describe("Session.title", () => {
 		expect(r.maxTokens).toBe(400);
 	});
 
+	it("names the language: the title is written in the language of the message (owner 2026-11-04)", () => {
+		// ds, a three-character Chinese greeting, 10 samples each: 5 English titles without the clause, 0 with it
+		expect(TITLE_PROMPT).toBe(
+			"Write a short title (2 to 8 words) for a conversation that opens with the user's message, in the language of that message. Only the title: no quotes, no punctuation at the end.",
+		);
+	});
+
 	it("asks for no thinking where the table says how: thinking disabled first-party, effort none (off) on Command Code", async () => {
 		const ds = await fixture([say("A title")], "deepseek-flash", "https://api.deepseek.com");
 		await ds.session.title("hello there");

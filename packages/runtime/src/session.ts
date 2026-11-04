@@ -199,8 +199,10 @@ export function followUpLine(text: string): string {
 	return [...bare].length > 200 ? `${[...bare].slice(0, 199).join("")}\u2026` : bare;
 }
 
-/** The session title's ask (Session.title): no language named, the model follows the message's own. */
-export const TITLE_PROMPT = "Write a short title (2 to 8 words) for a conversation that opens with the user's message. Only the title: no quotes, no punctuation at the end.";
+/** The session title's ask (Session.title). The language is named, unlike the follow-up's: the title sees one message
+ *  and no history, and a short greeting under an English ask came back English (ds, a three-character Chinese
+ *  greeting: 5 of 10 English titles without the clause, 0 of 10 with it; owner 2026-11-04). */
+export const TITLE_PROMPT = "Write a short title (2 to 8 words) for a conversation that opens with the user's message, in the language of that message. Only the title: no quotes, no punctuation at the end.";
 
 /** No thinking for a side answer, where the model table says how: thinking disabled, else effort `none`; null when the
  *  table knows neither (then nothing is sent: a raw field to an unknown model can be a 400). */
