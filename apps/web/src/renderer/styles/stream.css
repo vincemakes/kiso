@@ -1,8 +1,10 @@
 /* process: narration and groups of steps taking turns; each group folds to its own line */
 .proc { display: flex; flex-direction: column; gap: 10px; animation: in 0.5s var(--ease) both; }
 .ph { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--mute); font-size: 13.5px; padding: 4px 0; }
-/* a chevron left of its label, turned down while its row is open */
-.chev { flex: none; color: var(--faint); transition: transform 0.15s ease; }
+/* a chevron after its label, turned down while its row is open; on the process and thinking rows it shows on hover and while open */
+.chev { flex: none; color: var(--faint); transition: transform 0.15s ease, opacity 0.12s; }
+.ph .chev, .th-h .chev { opacity: 0; }
+.ph:hover .chev, .th-h:hover .chev, .ph:focus-visible .chev, .th-h:focus-visible .chev, .grp:not(.folded) > .ph .chev, .think.open .th-h .chev { opacity: 1; }
 .grp:not(.folded) > .ph .chev, .think.open .th-h .chev { transform: rotate(90deg); }
 .ph .lab { color: #555; font-weight: 500; }
 .ph .clk { font-variant-numeric: tabular-nums; }
@@ -14,15 +16,11 @@
 .pw { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
 .grp.folded > .pw { grid-template-rows: 0fr; }
 .pb { overflow: clip; min-height: 0; min-width: 0; }
-.pb-in { display: flex; flex-direction: column; gap: 12px; padding: 6px 0 4px 2px; }
-.dotpulse { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); position: relative; flex: none; }
-.dotpulse::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--blue); opacity: 0; animation: rg 1.5s ease-out infinite; }
-@keyframes rg { 0% { transform: scale(0.5); opacity: 0.6; } 100% { transform: scale(1.4); opacity: 0; } }
+.pb-in { display: flex; flex-direction: column; gap: 12px; padding: 6px 0 4px; }
 
 /* thinking: one line that pages, open for the whole text */
 .think { animation: in 0.5s var(--ease) both; }
 .th-h { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 13.5px; width: 100%; text-align: left; }
-.th-h .spark { width: 14px; height: 14px; color: #9a8cff; }
 /* the live label (Working, Thinking): a light passes over it */
 .ph .lab.shimmer, .th-h .lab.shimmer { background: linear-gradient(90deg, #8a8a8e 20%, #1c1c1e 50%, #8a8a8e 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 1.8s linear infinite; }
 @keyframes sh { to { background-position: -200% 0; } }
@@ -30,7 +28,7 @@
 .th-full { display: grid; grid-template-rows: 0fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
 .think.open .th-full { grid-template-rows: 1fr; }
 .th-full > div { overflow: clip; min-height: 0; min-width: 0; }
-.th-text { margin: 6px 0 2px 7px; padding: 2px 0 2px 14px; border-left: 2px solid #e8e6f6; color: #7c7c84; font-size: 12.5px; line-height: 1.75; white-space: pre-wrap; }
+.th-text { margin: 6px 0 2px; padding: 2px 0 2px 12px; border-left: 2px solid var(--line); color: var(--mute); font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
 
 /* narration between steps */
 .say { color: var(--ink); animation: in 0.4s var(--ease) both; font-size: 15px; line-height: 1.65; }
@@ -55,19 +53,16 @@
 .s-time { font: 11px var(--mono); color: var(--mute); flex: none; font-variant-numeric: tabular-nums; }
 .step.failed .s-verb, .step.denied .s-verb { color: var(--red); }
 .bgtag { font-size: 11px; color: var(--blue); background: #eef3ff; border-radius: 8px; padding: 1px 8px; flex: none; animation: in 0.4s var(--ease) both; }
-.s-bar { height: 3px; border-radius: 3px; background: #ececef; margin: 4px 0 0 25px; overflow: hidden; position: relative; }
-.s-bar b { display: block; height: 100%; width: 100%; background: var(--green); }
-.s-bar.live b { width: 35%; background: var(--blue); animation: slide 1.4s var(--ease) infinite; }
-@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-.s-out { margin: 4px 0 0 25px; background: var(--sunk); border-radius: 8px; padding: 7px 11px; font: 11.5px/1.6 var(--mono); color: #4a4a52; }
+.s-out { margin: 4px 0 0; background: var(--sunk); border-radius: 8px; padding: 7px 11px; font: 11.5px/1.6 var(--mono); color: #4a4a52; }
 /* lines are never wrapped (a diff, a table or a log keeps its columns); where one goes on past the edge, the edge fades */
 .s-lines { white-space: pre; overflow: hidden; }
 .s-lines[data-wide="true"] { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent); }
 .s-out .more { margin-top: 3px; color: var(--blue); font: 11px var(--sans); }
 .s-out .a { color: #176b3a; }
 .s-out .d { color: #a33636; }
-.s-req { margin: 3px 0 0 25px; font: 11px var(--mono); color: var(--mute); font-variant-numeric: tabular-nums; }
-.s-err { margin: 3px 0 0 25px; color: var(--red); font-size: 12px; }
+.s-req { margin: 3px 0 0; font: 11px var(--mono); color: var(--mute); font-variant-numeric: tabular-nums; }
+.s-req .sp { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 50%; border: 2px solid #dcdce0; border-top-color: var(--blue); animation: spn 1s linear infinite; }
+.s-err { margin: 3px 0 0; color: var(--red); font-size: 12px; }
 
 /* approval: never folded */
 .ask { border-radius: 16px; padding: 13px 15px; background: #fff; box-shadow: 0 0 0 1px #f0d9a8, 0 8px 30px rgba(217, 138, 26, 0.12); animation: in 0.45s var(--ease) both, pl 1.6s ease-in-out 0.5s infinite; }
@@ -150,7 +145,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.ph .lab.shimmer, .th-h .lab.shimmer { animation: none; color: var(--mute); background: none; }
-	.dotpulse::after, .ask { animation: none !important; }
+	.ask { animation: none !important; }
 	.pw, .th-full, .chev { transition: none; }
 	.brand { animation: none; }
 }
@@ -166,7 +161,7 @@
 .tn-more { font-size: 12px; color: var(--mute); }
 .s-row.click { cursor: pointer; }
 .step.shown .s-row .chev { transform: rotate(90deg); }
-.inplace { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 2px 25px; }
+.inplace { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 2px; }
 .ip-img { display: block; width: 100%; border-radius: 10px; box-shadow: 0 0 0 1px var(--line); cursor: zoom-in; }
 /* what a run made, after its answer: one chip each, opened the one way (an image in the lightbox, the rest in the Open panel) */
 .made { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
