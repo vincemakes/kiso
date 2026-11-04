@@ -15,7 +15,7 @@ import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
 import { Folders } from "./home/Folders.js";
-import { actOnWork, forkWork, renameWork, chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
+import { actOnWork, forkWork, renameWork, chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, linkPr, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
 import { CommitDialog, PrDialog } from "./rail/GitDialogs.js";
 import { Header } from "./rail/Header.js";
 import type { GitReply } from "../shared/git.js";
@@ -277,6 +277,7 @@ export function App(): ReactNode {
 					})
 				}
 				onRename={(row, name) => renameRow(keyOf(row), row.id, name)}
+				onLinkPr={(row, pr) => linkPr(keyOf(row), row.id, pr).then(() => reread(row.key))}
 				onFork={(row) =>
 					void forkWork(keyOf(row), row.id).then(
 						(r) => {
@@ -344,7 +345,7 @@ export function App(): ReactNode {
 				/>
 			) : null}
 			{dialog === "pr" && git?.branch != null && git.base !== null ? (
-				<PrDialog branch={git.branch} base={git.base} ahead={git.ahead} draft={prDraft} onCreate={(title, body) => postPr(target.key, title, body).then(() => (setDialog(null), refreshGit()))} onCancel={() => setDialog(null)} />
+				<PrDialog branch={git.branch} base={git.base} ahead={git.ahead} draft={prDraft} onCreate={(title, body) => postPr(target.key, title, body, target.sessionId).then(() => (setDialog(null), refreshGit()))} onCancel={() => setDialog(null)} />
 			) : null}
 			{lightbox !== null ? (
 				<KeyContext.Provider value={target.key}>

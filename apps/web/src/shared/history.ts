@@ -27,6 +27,8 @@ export interface WorkRow {
 	readonly archived?: true;
 	/** a run of it ended while the person looked elsewhere, and they have not looked at it since */
 	readonly unread?: true;
+	/** the pull request this Work made or was linked to, with the last state `gh` gave (none yet: not known) */
+	readonly pr?: { readonly number: number; readonly url: string; readonly state?: "OPEN" | "MERGED" | "CLOSED" };
 }
 
 export interface HistoryReply {
