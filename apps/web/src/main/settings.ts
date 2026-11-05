@@ -20,6 +20,7 @@ import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
 import type { ModelChoice, PermissionMode } from "./agent.js";
 import { fauxSkip } from "./faux.js";
 import { storeKey } from "./login.js";
+import type { Pr } from "./prs.js";
 import type { SettingsPatch, SettingsReply } from "../shared/settings.js";
 
 /**
@@ -52,6 +53,8 @@ interface Own {
 	readonly archived?: readonly string[];
 	/** Works whose run ended while the person looked elsewhere, until they look at it */
 	readonly unread?: readonly string[];
+	/** the pull request each Work made or was linked to */
+	readonly prs?: Readonly<Record<string, Pr>>;
 	readonly recent?: readonly string[];
 }
 
@@ -202,19 +205,26 @@ export class Settings {
 		this.write({ [list]: on ? [session, ...rest] : rest });
 	}
 
-	/** What the sidebar shows of a Work beyond its log: the fork's parent, its pin's place, whether it is archived or unread. */
-	marksOf(session: string): { readonly parent?: string; readonly pinned?: number; readonly archived?: true; readonly unread?: true } {
+	/** A Work's pull request, or none. */
+	setPr(session: string, pr: Pr | null): void {
+		const { [session]: _, ...rest } = this.#read().prs ?? {};
+		this.write({ prs: pr === null ? rest : { ...rest, [session]: pr } });
+	}
+
+	/** What the sidebar shows of a Work beyond its log: the fork's parent, its pin's place, whether it is archived or unread, its PR. */
+	marksOf(session: string): { readonly parent?: string; readonly pinned?: number; readonly archived?: true; readonly unread?: true; readonly pr?: Pr } {
 		const own = this.#read();
 		const parent = own.forks?.[session]?.parent;
 		const pinned = own.pins?.indexOf(session) ?? -1;
-		return { ...(parent !== undefined ? { parent } : {}), ...(pinned >= 0 ? { pinned } : {}), ...(own.archived?.includes(session) ? { archived: true as const } : {}), ...(own.unread?.includes(session) ? { unread: true as const } : {}) };
+		const pr = own.prs?.[session];
+		return { ...(parent !== undefined ? { parent } : {}), ...(pinned >= 0 ? { pinned } : {}), ...(own.archived?.includes(session) ? { archived: true as const } : {}), ...(own.unread?.includes(session) ? { unread: true as const } : {}), ...(pr !== undefined ? { pr } : {}) };
 	}
 
 	/** A deleted Work leaves nothing here; a fork's record of it stays (its notice still names the parent). */
 	forget(session: string): void {
 		const own = this.#read();
 		const drop = <T>(m: Readonly<Record<string, T>> | undefined): Record<string, T> => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => k !== session));
-		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session) });
+		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session), prs: drop(own.prs) });
 	}
 
 	restoreWork(session: string, work: Work | undefined): void {

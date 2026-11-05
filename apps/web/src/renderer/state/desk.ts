@@ -44,7 +44,9 @@ export const fetchGit = (key: string | null): Promise<GitReply> => call(withKey(
 export const fetchPrDraft = (key: string | null): Promise<{ readonly title: string; readonly body: string }> => call(withKey("/desk/git", key, { draft: "1" }));
 /** On the person's confirm only: commit the ticked files; push and open the pull request. */
 export const postCommit = (key: string | null, message: string, paths: readonly string[]): Promise<{ readonly sha: string }> => call(withKey("/desk/commit", key), { message, paths });
-export const postPr = (key: string | null, title: string, body: string): Promise<{ readonly number: number; readonly url: string }> => call(withKey("/desk/pr", key), { title, body });
+export const postPr = (key: string | null, title: string, body: string, session: string): Promise<{ readonly number: number; readonly url: string }> => call(withKey("/desk/pr", key), { title, body, session });
+/** Link a Work to a pull request (its URL or number), or unlink it (null). */
+export const linkPr = (key: string | null, session: string, pr: string | null): Promise<unknown> => call(withKey("/desk/work-pr", key), { session, pr });
 /** Name a Work (empty clears the name, back to its first-request title); the answer is the name kept. */
 export const renameWork = (key: string | null, session: string, name: string): Promise<{ readonly name: string | null }> => call(withKey("/desk/rename", key), { session, name });
 /** What a Work's requests always carry (bytes), and its compaction sizes. */

@@ -12,7 +12,7 @@ const run = (cwd: string, cmd: string, args: readonly string[], timeout = 3000):
 	new Promise((resolve, reject) =>
 		execFile(cmd, [...args], { cwd, timeout, maxBuffer: 1 << 23, env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GH_PROMPT_DISABLED: "1" } }, (err, out, errOut) => (err === null ? resolve(out) : reject(new Error((errOut || err.message).trim())))),
 	);
-const tryRun = (cwd: string, cmd: string, args: readonly string[], timeout?: number): Promise<string | null> => run(cwd, cmd, args, timeout).then((o) => o.trim(), () => null);
+export const tryRun = (cwd: string, cmd: string, args: readonly string[], timeout?: number): Promise<string | null> => run(cwd, cmd, args, timeout).then((o) => o.trim(), () => null);
 
 let ghSignedIn: Promise<boolean> | null = null;
 /** `gh auth status`, asked once per host process: a sign-in does not come and go between two clicks. */

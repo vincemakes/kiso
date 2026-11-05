@@ -61,7 +61,7 @@ const away = await waitUntil(async () => (await app.count("[data-kind=work-menu]
 await menu("wa");
 await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
 const esc = await waitUntil(async () => (await app.count("[data-kind=work-menu]")) === 0, 3000);
-check(items === "pr,pin,rename,fork,archive,delete" && keys === "GPRFAD" && icons === 0 && away && esc, `the menu lists Open PR (the branch has #7) first, then pin, rename, fork, archive and delete, each with its key and no icon, and closes on a click away and on Esc (${items} ${keys})`);
+check(items === "pr,link,pin,rename,fork,archive,delete" && keys === "GLPRFAD" && icons === 0 && away && esc, `the menu lists Open PR (the branch has #7) first, then link a PR, pin, rename, fork, archive and delete, each with its key and no icon, and closes on a click away and on Esc (${items} ${keys})`);
 
 // pin: the latest pin first, through a reload
 await menu("wa"), await pick("pin");

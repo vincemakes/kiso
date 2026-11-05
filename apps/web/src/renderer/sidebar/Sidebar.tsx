@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, t } from "../i18n/index.js";
 import { groupWorks } from "../state/works.js";
 import type { WorkRow } from "../../shared/history.js";
-import { Chevron, Plus, Sliders } from "../stream/Icons.js";
+import { Chevron, Plus, PullRequest, Sliders } from "../stream/Icons.js";
 import { Dialog } from "../rail/GitDialogs.js";
 
 export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete";
@@ -19,6 +19,8 @@ interface Props {
 	readonly onAct: (row: WorkRow, act: WorkAct) => Promise<void>;
 	readonly onRename: (row: WorkRow, name: string) => Promise<void>;
 	readonly onFork: (row: WorkRow) => void;
+	/** link the row's Work to a pull request (a URL or a number), or unlink it (null) */
+	readonly onLinkPr: (row: WorkRow, pr: string | null) => Promise<void>;
 	/** the open pull request of the row's folder branch, read when its menu opens */
 	readonly prOf: (row: WorkRow) => Promise<{ readonly number: number; readonly url: string } | null>;
 }
@@ -29,7 +31,7 @@ const svg = (d: ReactNode): ReactNode => (
 	</svg>
 );
 /** The menu's items in order, each with its key (pressed while the menu is open); null draws a line. */
-const KEYS = { pr: "G", pin: "P", unpin: "P", rename: "R", fork: "F", archive: "A", unarchive: "A", delete: "D" } as const;
+const KEYS = { pr: "G", link: "L", unlink: "L", pin: "P", unpin: "P", rename: "R", fork: "F", archive: "A", unarchive: "A", delete: "D" } as const;
 type Pick = keyof typeof KEYS;
 
 /** A row's ⋯ menu, laid over the window at the key (the list scrolls, the menu does not clip): a click away or Esc closes it, a
@@ -37,9 +39,13 @@ type Pick = keyof typeof KEYS;
 function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; readonly at: DOMRect; readonly onClose: () => void; readonly onPick: (what: Pick, pr?: string) => void; readonly prOf: Props["prOf"] }): ReactNode {
 	const box = useRef<HTMLDivElement>(null);
 	const [pr, setPr] = useState<{ readonly number: number; readonly url: string } | null>(null);
-	useEffect(() => void prOf(row).then(setPr, () => undefined), [row, prOf]);
+	// the Work's own PR first; else its folder branch's open one, read when the menu opens
+	useEffect(() => void (row.pr === undefined && prOf(row).then(setPr, () => undefined)), [row, prOf]);
+	const shown = row.pr ?? pr;
 	const items: (readonly [Pick, string, boolean?] | null)[] = [
-		...(pr !== null ? [["pr", fmt(t.openPr, { n: pr.number })] as const, null] : []),
+		...(shown !== null ? [["pr", fmt(t.openPr, { n: shown.number })] as const] : []),
+		row.pr !== undefined ? ["unlink", fmt(t.unlinkPr, { n: row.pr.number })] : ["link", t.linkPr],
+		null,
 		row.pinned !== undefined ? ["unpin", t.unpin] : ["pin", t.pin],
 		["rename", t.rename],
 		...(row.runs > 0 ? [["fork", t.fork] as const] : []),
@@ -52,7 +58,7 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 		const key = (e: KeyboardEvent): void => {
 			if (e.key === "Escape") return onClose();
 			const hit = e.metaKey || e.ctrlKey || e.altKey ? undefined : items.find((it) => it !== null && KEYS[it[0]] === e.key.toUpperCase());
-			if (hit) (e.preventDefault(), onPick(hit[0], pr?.url));
+			if (hit) (e.preventDefault(), onPick(hit[0], shown?.url));
 		};
 		addEventListener("mousedown", away);
 		addEventListener("keydown", key);
@@ -64,7 +70,7 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 				it === null ? (
 					<div key={i} className="sep" />
 				) : (
-					<button key={it[0]} className={it[2] === true ? "danger" : ""} data-menu-act={it[0]} onClick={() => onPick(it[0], pr?.url)}>
+					<button key={it[0]} className={it[2] === true ? "danger" : ""} data-menu-act={it[0]} onClick={() => onPick(it[0], shown?.url)}>
 						{it[1]}
 						<kbd>{KEYS[it[0]]}</kbd>
 					</button>
@@ -96,12 +102,14 @@ const dotOf = (row: WorkRow): ReactNode => {
 };
 
 /** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; the Functions fold at the bottom (v1: Settings). */
-export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, onAct, onRename, onFork, prOf }: Props): ReactNode {
+export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, onAct, onRename, onFork, onLinkPr, prOf }: Props): ReactNode {
 	const [fnOpen, setFnOpen] = useState(false);
 	const [menu, setMenu] = useState<{ readonly row: WorkRow; readonly at: DOMRect } | null>(null);
 	const [renaming, setRenaming] = useState<WorkRow | null>(null);
 	const [draft, setDraft] = useState("");
 	const [deleting, setDeleting] = useState<WorkRow | null>(null);
+	const [linking, setLinking] = useState<WorkRow | null>(null);
+	const [prDraft, setPrDraft] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [showArchived, setShowArchived] = useState(false);
@@ -124,6 +132,8 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			requestAnimationFrame(() => box.current?.select());
 		} else if (what === "fork") onFork(row);
 		else if (what === "pr") open(pr, "_blank", "noopener");
+		else if (what === "link") (setError(null), setPrDraft(""), setLinking(row));
+		else if (what === "unlink") void onLinkPr(row, null).then(() => setError(null), (e: Error) => setError(e.message));
 		else if (what === "delete") (setError(null), setDeleting(row));
 		else act(row, what);
 	};
@@ -167,6 +177,11 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 				<button className={`item ${className}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
 					{dotOf(urgent)}
 					<span className="tt">{row.title === "" ? t.untitled : row.title}</span>
+					{row.pr !== undefined ? (
+						<span className="pr-ico" role="link" data-pr-state={row.pr.state?.toLowerCase() ?? "unknown"} title={`${fmt(t.prOf, { n: row.pr.number })}${row.pr.state === undefined ? "" : ` · ${t.prStates.split("|")[["OPEN", "MERGED", "CLOSED"].indexOf(row.pr.state)]}`}`} data-act="row-pr" onClick={(e) => (e.stopPropagation(), open(row.pr!.url, "_blank", "noopener"))}>
+							<PullRequest />
+						</span>
+					) : null}
 					{nested.length > 0 ? (
 						<span className={`kid-fold${shut ? " shut" : ""}`} role="button" aria-label={t.foldNested} aria-expanded={!shut} data-act="fold-nested" onClick={(e) => (e.stopPropagation(), foldKids(row))}>
 							<svg className="tri" viewBox="0 0 24 24" aria-hidden="true">
@@ -220,7 +235,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 				{t.newTask}
 			</button>
 			<div className="hlist">
-				{error !== null && deleting === null ? <div className="side-err" data-kind="work-error">{error}</div> : null}
+				{error !== null && deleting === null && linking === null ? <div className="side-err" data-kind="work-error">{error}</div> : null}
 				{groupWorks(works).map((group) => (
 					<section key={group.label} className={folds.includes(group.label) ? "shut" : ""}>
 						<button className="grp gh" onClick={() => fold(group.label)} aria-expanded={!folds.includes(group.label)} data-act="fold-group">
@@ -242,6 +257,26 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 				) : null}
 			</div>
 			{menu !== null ? <WorkMenu row={menu.row} at={menu.at} onClose={() => setMenu(null)} onPick={(what, pr) => pick(menu.row, what, pr)} prOf={prOf} /> : null}
+			{linking !== null ? (
+				<Dialog
+					kind="link-pr"
+					title={fmt(t.linkPrTitle, { title: linking.title === "" ? t.untitled : linking.title })}
+					sub={linking.folder}
+					busy={busy}
+					error={error}
+					confirm={t.linkPrConfirm}
+					onCancel={() => setLinking(null)}
+					onConfirm={() => {
+						setBusy(true);
+						void onLinkPr(linking, prDraft).then(
+							() => (setBusy(false), setLinking(null), setError(null)),
+							(e: Error) => (setBusy(false), setError(e.message)),
+						);
+					}}
+				>
+					<input className="dlg-in" autoFocus value={prDraft} placeholder={t.linkPrHint} aria-label={t.linkPrHint} data-field="link-pr-input" onChange={(e) => setPrDraft(e.target.value)} />
+				</Dialog>
+			) : null}
 			{deleting !== null ? (
 				<Dialog
 					kind="delete"

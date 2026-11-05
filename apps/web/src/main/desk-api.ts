@@ -7,7 +7,8 @@ import { contextParts } from "./context.js";
 import { rename } from "./names.js";
 import { forkWork } from "./fork.js";
 import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
-import { commit, gitOf, openPr, prDraft } from "./git.js";
+import { commit, gitOf, openPr, prDraft, tryRun } from "./git.js";
+import { prOfUrl } from "./prs.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
 import type { Previews } from "./preview.js";
@@ -94,7 +95,24 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (space === null) return json(404, {});
 			const body = await readJson(req);
 			if (path === "/desk/commit") return json(200, await commit(space.workspace, str(body["message"]) ?? "", Array.isArray(body["paths"]) ? body["paths"].filter((p): p is string => typeof p === "string") : []));
-			return json(200, await openPr(space.workspace, str(body["title"]) ?? "", str(body["body"]) ?? ""));
+			const pr = await openPr(space.workspace, str(body["title"]) ?? "", str(body["body"]) ?? "");
+			const session = str(body["session"]) ?? "";
+			if (SAFE_ID.test(session) && space.store.ids().includes(session)) ctx.settings.setPr(session, pr);
+			return json(200, pr);
+		}
+		if (path === "/desk/work-pr") {
+			// link a Work to a pull request by its URL or its number in the folder's repository, or (pr: null) unlink it
+			if (!post) return json(405, {});
+			if (space === null) return json(404, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			if (body["pr"] === null) return (ctx.settings.setPr(session, null), json(200, { pr: null }));
+			const asked = (str(body["pr"]) ?? "").trim().replace(/^#/, "");
+			const pr = prOfUrl(asked) ?? (/^\d+$/.test(asked) ? prOfUrl((await tryRun(space.workspace, "gh", ["pr", "view", asked, "--json", "url", "--jq", ".url"], 8000)) ?? "") : null);
+			if (pr === null) throw new Refusal(400, "give a pull request's GitHub URL, or its number in this folder's repository");
+			ctx.settings.setPr(session, pr);
+			return json(200, { pr });
 		}
 		if (path === "/desk/rename") {
 			if (!post) return json(405, {});

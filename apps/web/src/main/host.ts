@@ -13,6 +13,7 @@ import { ApprovalWatch, type Notice, type Presence } from "./approvals.js";
 import { deskApi, type DeskContext } from "./desk-api.js";
 import { History } from "./history.js";
 import { Previews } from "./preview.js";
+import { PrStates, prOfEvents } from "./prs.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
@@ -91,8 +92,13 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
 		titles: options.titles ?? true,
-		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread
-		onSettled: (sessionId) => void (watch.away(key, sessionId) && unread(sessionId, true)),
+		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread; the PR its own
+		// `gh pr create` printed becomes the Work's (an earlier run's never replaces a later link)
+		onSettled: (sessionId, runId, store) => {
+			if (watch.away(key, sessionId)) unread(sessionId, true);
+			const pr = prOfEvents(store.load(sessionId).filter((r) => r.runId === runId).map((r) => r.event as Parameters<typeof prOfEvents>[0][number]));
+			if (pr !== null && options.settings.marksOf(sessionId).pr?.url !== pr.url) options.settings.setPr(sessionId, pr);
+		},
 	});
 
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
@@ -112,11 +118,16 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		return space;
 	};
 
+	const prStates = new PrStates();
 	const history = new History(home, async (key, sessionId): Promise<WorkState> => {
 		const space = spaces.get(key);
 		if (space === undefined || !space.service.isRunning(sessionId)) return "idle";
 		return (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
-	}, (id) => options.settings.marksOf(id));
+	}, (id) => {
+		const marks = options.settings.marksOf(id);
+		const state = marks.pr === undefined ? undefined : prStates.stateOf(marks.pr.url);
+		return marks.pr === undefined || state === undefined ? marks : { ...marks, pr: { ...marks.pr, state } };
+	});
 
 	const rendererDir = fileURLToPath(new URL("../../out/renderer/", import.meta.url));
 	const tokenBytes = Buffer.from(token);
