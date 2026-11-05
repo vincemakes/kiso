@@ -2,7 +2,7 @@
 import { deflateSync } from "node:zlib";
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -64,23 +64,71 @@ function chromePath() {
 	throw new Error("no Chrome found: set KISO_WEB_CHROME");
 }
 
-/** A headless Chrome with its own profile (its cookies are this browser's alone), reached over the DevTools protocol. */
+const alive = (pid) => { try { return process.kill(pid, 0); } catch (e) { return e.code === "EPERM"; } };
+const pidIn = (dir, name) => { try { return Number(readFileSync(join(dir, name), "utf8")) || 0; } catch { return 0; } };
+
+/** What a SIGKILLed proof left: a kiso profile whose owner.pid is dead. Its Chrome is killed by its recorded pid, only while that pid
+ *  is alive and runs on this exact profile; a profile with neither left alive is removed. Never a pattern kill. */
+function sweep() {
+	for (const dir of readdirSync(tmpdir()).filter((n) => n.startsWith("kiso-web-chrome-")).map((n) => join(tmpdir(), n))) {
+		const [chrome, owner] = [pidIn(dir, "chrome.pid"), pidIn(dir, "owner.pid")];
+		if (chrome === 0 || owner === 0 || alive(owner)) continue;
+		if (!alive(chrome)) { rmSync(dir, { recursive: true, force: true }); continue; }
+		let command = "";
+		try { command = execFileSync("ps", ["-ww", "-o", "command=", "-p", String(chrome)], { encoding: "utf8" }); } catch { continue; }
+		if (command.includes(`--user-data-dir=${dir} `)) process.kill(chrome, "SIGINT");
+	}
+}
+
+/** A spawned Chrome dies with its proof: on exit, on a signal (re-raised) and on an uncaught error (exit 1, as Node's own). SIGINT, not
+ *  SIGTERM: only a clean shutdown removes Chrome's 2 GB code-sign clone on macOS (SIGTERM leaves it). Returns the unbinding. */
+function dieWith(child) {
+	// once: a second SIGINT makes Chrome quit at once, leaving the clone
+	const kill = () => child.signalCode === null && child.exitCode === null && !child.killed && child.kill("SIGINT");
+	const unbind = () => { for (const [event, fn] of handlers) process.off(event, fn); };
+	const raise = (signal) => () => (kill(), unbind(), process.kill(process.pid, signal));
+	const fatal = (error) => (console.error(error), kill(), process.exit(1));
+	const handlers = [["exit", kill], ["SIGINT", raise("SIGINT")], ["SIGTERM", raise("SIGTERM")], ["SIGHUP", raise("SIGHUP")], ["uncaughtException", fatal], ["unhandledRejection", fatal]];
+	for (const [event, fn] of handlers) process.on(event, fn);
+	return unbind;
+}
+
+/** A DevTools socket: `cdp(method, params)` resolves with the result. */
+async function socket(url) {
+	const ws = new WebSocket(url);
+	await new Promise((r) => (ws.onopen = r));
+	const pending = new Map();
+	let id = 0;
+	ws.onmessage = (m) => pending.get(JSON.parse(m.data).id)?.(JSON.parse(m.data));
+	const cdp = (method, params) => new Promise((resolve) => (pending.set(++id, (msg) => resolve(msg.result)), ws.send(JSON.stringify({ id, method, params }))));
+	return { ws, cdp };
+}
+
+/** A headless Chrome over the DevTools protocol. Under all.mjs (KISO_WEB_CHROME_PORT) the run's one Chrome, in a browser context of this
+ *  proof's own (its cookies and storage, disposed with it); alone, a Chrome of its own with its own profile, which dies with the proof. */
 export async function startChrome() {
-	const profile = scratch("chrome");
-	const child = spawn(chromePath(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--window-size=1100,760", "--disable-gpu", ...(process.env.CI === "true" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
-	const portFile = join(profile, "DevToolsActivePort");
-	if (!(await waitUntil(() => existsSync(portFile) && readFileSync(portFile, "utf8").includes("\n"), 30_000))) throw new Error("Chrome did not open its debugging port");
-	const port = Number(readFileSync(portFile, "utf8").split("\n")[0]);
+	let port = Number(process.env.KISO_WEB_CHROME_PORT ?? 0);
+	let child;
+	let unbind;
+	let profile;
+	if (port === 0) {
+		sweep();
+		profile = scratch("chrome");
+		child = spawn(chromePath(), ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check", "--window-size=1100,760", "--disable-gpu", ...(process.env.CI === "true" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore" });
+		writeFileSync(join(profile, "owner.pid"), String(process.pid));
+		writeFileSync(join(profile, "chrome.pid"), String(child.pid));
+		unbind = dieWith(child);
+		const portFile = join(profile, "DevToolsActivePort");
+		if (!(await waitUntil(() => existsSync(portFile) && readFileSync(portFile, "utf8").includes("\n"), 30_000))) throw new Error("Chrome did not open its debugging port");
+		port = Number(readFileSync(portFile, "utf8").split("\n")[0]);
+	}
 	const http = (path) => fetch(`http://127.0.0.1:${port}${path}`, { method: "PUT" }).then((r) => r.json());
+	const browser = child === undefined ? await socket((await fetch(`http://127.0.0.1:${port}/json/version`).then((r) => r.json())).webSocketDebuggerUrl) : undefined;
+	const context = browser && (await browser.cdp("Target.createBrowserContext", { disposeOnDetach: true })).browserContextId;
 	/** A new tab on `url`, driven through its own socket. */
 	const open = async (url) => {
-		const target = await http(`/json/new?${encodeURIComponent(url)}`);
-		const ws = new WebSocket(target.webSocketDebuggerUrl);
-		await new Promise((r) => (ws.onopen = r));
-		const pending = new Map();
-		let id = 0;
-		ws.onmessage = (m) => pending.get(JSON.parse(m.data).id)?.(JSON.parse(m.data));
-		const cdp = (method, params) => new Promise((resolve) => (pending.set(++id, (msg) => resolve(msg.result)), ws.send(JSON.stringify({ id, method, params }))));
+		const tab = browser ? (await browser.cdp("Target.createTarget", { url, browserContextId: context })).targetId : (await http(`/json/new?${encodeURIComponent(url)}`)).id;
+		const { ws, cdp } = await socket(`ws://127.0.0.1:${port}/devtools/page/${tab}`);
 		const evaluate = async (expression) => (await cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }))?.result?.value;
 		/** A PNG of the tab, written outside the repository (KISO_WEB_SHOTS, else the temporary directory). */
 		const shot = async (name) => {
@@ -91,7 +139,7 @@ export async function startChrome() {
 		const text = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.textContent ?? null`);
 		const count = (q) => evaluate(`document.querySelectorAll(${JSON.stringify(q)}).length`);
 		const click = (q) => evaluate(`document.querySelector(${JSON.stringify(q)})?.click() ?? false`);
-		const close = async () => (ws.close(), await http(`/json/close/${target.id}`).catch(() => undefined));
+		const close = async () => (ws.close(), await http(`/json/close/${tab}`).catch(() => undefined));
 		// a tab behind another draws nothing (no animation frames): bring it to the front to look at it
 		const front = () => cdp("Page.bringToFront");
 		// signed in and the Work opened, or signed out
@@ -99,8 +147,11 @@ export async function startChrome() {
 		return { evaluate, shot, text, count, click, cdp, close, front };
 	};
 	const close = async () => {
-		child.kill("SIGTERM");
+		if (browser) return (await browser.cdp("Target.disposeBrowserContext", { browserContextId: context }), browser.ws.close());
+		unbind();
+		child.kill("SIGINT");
 		await new Promise((r) => (child.exitCode !== null ? r() : child.once("exit", r)));
+		rmSync(profile, { recursive: true, force: true });
 	};
 	return { open, close, port };
 }
