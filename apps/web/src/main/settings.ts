@@ -50,6 +50,8 @@ interface Own {
 	readonly pins?: readonly string[];
 	/** Works kept out of the list */
 	readonly archived?: readonly string[];
+	/** Works whose run ended while the person looked elsewhere, until they look at it */
+	readonly unread?: readonly string[];
 	readonly recent?: readonly string[];
 }
 
@@ -194,25 +196,25 @@ export class Settings {
 		return this.#read().forks?.[session];
 	}
 
-	/** Pin or archive a Work (a pin goes first), or take it off. */
-	mark(session: string, list: "pins" | "archived", on: boolean): void {
+	/** Pin, archive or mark unread a Work (a pin goes first), or take it off. */
+	mark(session: string, list: "pins" | "archived" | "unread", on: boolean): void {
 		const rest = (this.#read()[list] ?? []).filter((id) => id !== session);
 		this.write({ [list]: on ? [session, ...rest] : rest });
 	}
 
-	/** What the sidebar shows of a Work beyond its log: the fork's parent, its pin's place, whether it is archived. */
-	marksOf(session: string): { readonly parent?: string; readonly pinned?: number; readonly archived?: true } {
+	/** What the sidebar shows of a Work beyond its log: the fork's parent, its pin's place, whether it is archived or unread. */
+	marksOf(session: string): { readonly parent?: string; readonly pinned?: number; readonly archived?: true; readonly unread?: true } {
 		const own = this.#read();
 		const parent = own.forks?.[session]?.parent;
 		const pinned = own.pins?.indexOf(session) ?? -1;
-		return { ...(parent !== undefined ? { parent } : {}), ...(pinned >= 0 ? { pinned } : {}), ...(own.archived?.includes(session) ? { archived: true as const } : {}) };
+		return { ...(parent !== undefined ? { parent } : {}), ...(pinned >= 0 ? { pinned } : {}), ...(own.archived?.includes(session) ? { archived: true as const } : {}), ...(own.unread?.includes(session) ? { unread: true as const } : {}) };
 	}
 
 	/** A deleted Work leaves nothing here; a fork's record of it stays (its notice still names the parent). */
 	forget(session: string): void {
 		const own = this.#read();
 		const drop = <T>(m: Readonly<Record<string, T>> | undefined): Record<string, T> => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => k !== session));
-		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session) });
+		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session) });
 	}
 
 	restoreWork(session: string, work: Work | undefined): void {

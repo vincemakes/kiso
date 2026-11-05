@@ -56,13 +56,13 @@ function printOf(dir: string): string {
 export class History {
 	readonly #home: string;
 	readonly #live: LiveState;
-	readonly #marksOf: (id: string) => Pick<WorkRow, "parent" | "pinned" | "archived">;
+	readonly #marksOf: (id: string) => Pick<WorkRow, "parent" | "pinned" | "archived" | "unread">;
 	readonly #reads = new Map<string, Read>();
 	readonly #queue: string[] = [];
 	#worker: Worker | null = null;
 	#inflight: string | null = null;
 
-	constructor(home: string, live: LiveState, marksOf: (id: string) => Pick<WorkRow, "parent" | "pinned" | "archived"> = () => ({})) {
+	constructor(home: string, live: LiveState, marksOf: (id: string) => Pick<WorkRow, "parent" | "pinned" | "archived" | "unread"> = () => ({})) {
 		this.#home = home;
 		this.#live = live;
 		this.#marksOf = marksOf;

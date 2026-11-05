@@ -6,7 +6,8 @@ import type { Space } from "./space.js";
  * The page says where it is (`presence`: which Work, whether the tab has the focus), and every second this looks at the Works the host has
  * opened: an approval that waits and is not in front of the person is announced once, and so is a run that ended out of sight. Notices
  * are kept in a short numbered list the page reads (`/desk/notices`) and shows as a browser notification when the person turned them
- * on; a proof also gets a copy in a file. What is announced is the tool's name and the folder's name, never what the tool was asked to
+ * on; a proof also gets a copy in a file. A Work marked unread (a run of it settled out of sight) is cleared once the person is in front
+ * of it. What is announced is the tool's name and the folder's name, never what the tool was asked to
  * do: a command can carry a secret.
  */
 
@@ -36,6 +37,7 @@ export class ApprovalWatch {
 	readonly #spaces: () => Iterable<Space>;
 	readonly #notify: ((notice: Notice) => void) | undefined;
 	readonly #presence: () => Presence | null;
+	readonly #unread: (sessionId: string, on: boolean) => void;
 	/** decisions already announced, per `key/session`; forgotten once answered */
 	readonly #told = new Map<string, Set<string>>();
 	/** Works seen running at the last look */
@@ -44,10 +46,11 @@ export class ApprovalWatch {
 	#seq = 0;
 	#timer: ReturnType<typeof setInterval> | undefined;
 
-	constructor(spaces: () => Iterable<Space>, notify: ((notice: Notice) => void) | undefined, presence: () => Presence | null) {
+	constructor(spaces: () => Iterable<Space>, notify: ((notice: Notice) => void) | undefined, presence: () => Presence | null, unread: (sessionId: string, on: boolean) => void = () => undefined) {
 		this.#spaces = spaces;
 		this.#notify = notify;
 		this.#presence = presence;
+		this.#unread = unread;
 	}
 
 	start(everyMs = 1_000): void {
@@ -71,9 +74,20 @@ export class ApprovalWatch {
 		this.#notify?.(full);
 	}
 
-	async poll(): Promise<void> {
+	#here(): Presence | null {
 		const p = this.#presence();
-		const here = p !== null && p.focused && Date.now() - p.at < FRESH_MS ? p : null;
+		return p !== null && p.focused && Date.now() - p.at < FRESH_MS ? p : null;
+	}
+
+	/** Whether the person is looking at something other than this Work. */
+	away(key: string, sessionId: string): boolean {
+		const here = this.#here();
+		return here === null || here.key !== key || here.session !== sessionId;
+	}
+
+	async poll(): Promise<void> {
+		const here = this.#here();
+		if (here !== null) this.#unread(here.session, false);
 		for (const space of this.#spaces()) {
 			for (const sessionId of space.opened()) {
 				const id = `${space.key}/${sessionId}`;

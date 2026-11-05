@@ -91,6 +91,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
 		titles: options.titles ?? true,
+		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread
+		onSettled: (sessionId) => void (watch.away(key, sessionId) && unread(sessionId, true)),
 	});
 
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
@@ -123,7 +125,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	let presence: Presence | null = null;
 	const previews = new Previews(options.previewLog);
 	const requestLog = options.requestLog;
-	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence);
+	// written only when it changes: the person in front of a Work clears it every second
+	const unread = (sessionId: string, on: boolean): void => void ((options.settings.marksOf(sessionId).unread === true) !== on && options.settings.mark(sessionId, "unread", on));
+	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence, unread);
 	watch.start();
 	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews };
 

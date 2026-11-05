@@ -1,5 +1,5 @@
 // The page's own doors: picking a folder (validation, recents, a Work in it), a permission tier per Work, approval notices (once, only
-// when the person is elsewhere, never the command), and the first-run guide's doors (a key stored through the terminal's file and never
+// when the person is elsewhere, never the command), a run that ended out of sight marked unread until the person looks, and the first-run guide's doors (a key stored through the terminal's file and never
 // shown anywhere; the demo).
 import { mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -73,6 +73,11 @@ await s3.approve((await s3.state()).pendingApprovals[0].decisionId, true);
 check(await waitUntil(async () => lines().length === 2, 8000) && lines()[1].decisionId !== first.decisionId, "the next approval is a new one and is announced");
 await s3.approve((await s3.state()).pendingApprovals[0].decisionId, true);
 await settled(s3);
+// the run ended out of sight: unread (the sidebar's blue dot) until the person is in front of it
+const unread = async () => (await api("/desk/history?fresh=")).body.works.find((w) => w.id === "s3")?.unread === true && JSON.parse(readFileSync(join(data, "desktop.json"), "utf8")).unread?.includes("s3");
+check(await waitUntil(unread, 5000), "a run that ended while the person was elsewhere marks its Work unread, in the history and in desktop.json");
+await present(true, "s3");
+check(await waitUntil(async () => !(await unread()), 5000), "the person in front of it clears it");
 const fb = clientFor({ ...host, origin: `${host.origin}/w/${picked.body.key}` }).session("fb");
 await fb.run("hello in B").catch(() => null);
 check((await api(`/desk/fs/tree?key=${picked.body.key}`)).body.root.endsWith(wsB.split("/").pop()), "a Work in the picked folder is served by that folder's own routes");

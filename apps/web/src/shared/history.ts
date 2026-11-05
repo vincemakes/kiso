@@ -25,6 +25,8 @@ export interface WorkRow {
 	readonly pinned?: number;
 	/** kept out of the list; the sidebar's Archived line shows it */
 	readonly archived?: true;
+	/** a run of it ended while the person looked elsewhere, and they have not looked at it since */
+	readonly unread?: true;
 }
 
 export interface HistoryReply {
