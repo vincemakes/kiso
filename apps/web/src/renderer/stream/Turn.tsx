@@ -186,11 +186,14 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	const { process: items, answer, openAsks } = split(turn);
 	const inProcess = items.filter((i) => !(i.kind === "ask" && i.decision === "open"));
 	const live = turn.phase === "running" && !interrupted;
+	// a run seen running in this view: what it adds fades in; a run read back from the log (opening or switching to a Work) draws at once
+	const fresh = useRef(live);
+	if (live) fresh.current = true;
 	// the footer closes a run once its answer is drawn to the end, not while the steady release is still writing it
 	const [drawn, setDrawn] = useState(true);
 	return (
 		<RunContext.Provider value={turn.id}>
-			<div className="turn">
+			<div className={fresh.current ? "turn fresh" : "turn"}>
 			<MeAttachments pictures={turn.pictures} files={turn.files} />
 			{turn.user !== "" || (turn.pictures.length === 0 && turn.files.length === 0) ? <MeText text={turn.user} /> : null}
 			{turn.user !== "" ? (

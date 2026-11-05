@@ -2,7 +2,7 @@
    320 px; short of that the panel takes the stream's place (the stream's column is 0 wide, not covered). Full screen does the same. */
 .work { position: relative; flex: 1 1 0; min-width: 0; display: flex; }
 .chat { position: relative; flex: 1 1 320px; min-width: 320px; }
-.panel { position: relative; flex: 0 1 50%; min-width: 320px; background: #fff; border-left: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; animation: in 0.4s var(--ease) both; }
+.panel { position: relative; flex: 0 1 50%; min-width: 320px; background: #fff; border-left: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; animation: in 0.2s var(--ease) both; }
 .panel.full { flex: 1 1 100%; }
 .work.paneled:has(.panel.full) .chat { flex: 0 0 0; min-width: 0; overflow: hidden; }
 @container (max-width: 639px) {

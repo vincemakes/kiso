@@ -1,5 +1,5 @@
 /* process: narration and groups of steps taking turns; each group folds to its own line */
-.proc { display: flex; flex-direction: column; gap: 10px; animation: in 0.5s var(--ease) both; }
+.proc { display: flex; flex-direction: column; gap: 10px; }
 .ph { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--mute); font-size: 13.5px; padding: 4px 0; }
 /* a chevron after its label, turned down while its row is open; on the process and thinking rows it shows on hover and while open */
 .chev { flex: none; color: var(--faint); transition: transform 0.15s ease, opacity 0.12s; }
@@ -13,25 +13,24 @@
 .delta .minus { font-style: normal; color: var(--red); }
 .delta.mod { color: var(--faint); }
 /* opening and folding animate the height of a clipped box (0fr to 1fr): nothing inside is drawn outside it, so no row ever lies over the header */
-.pw { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
+.pw { display: grid; grid-template-rows: 1fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.2s var(--ease); }
 .grp.folded > .pw { grid-template-rows: 0fr; }
 .pb { overflow: clip; min-height: 0; min-width: 0; }
 .pb-in { display: flex; flex-direction: column; gap: 12px; padding: 6px 0 4px; }
 
 /* thinking: one line that pages, open for the whole text */
-.think { animation: in 0.5s var(--ease) both; }
 .th-h { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 13.5px; width: 100%; text-align: left; }
 /* the live label (Working, Thinking): a light passes over it */
 .ph .lab.shimmer, .th-h .lab.shimmer { background: linear-gradient(90deg, #8a8a8e 20%, #1c1c1e 50%, #8a8a8e 80%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sh 1.8s linear infinite; }
 @keyframes sh { to { background-position: -200% 0; } }
 .th-h .t { font-variant-numeric: tabular-nums; color: var(--faint); }
-.th-full { display: grid; grid-template-rows: 0fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.3s var(--ease); }
+.th-full { display: grid; grid-template-rows: 0fr; grid-template-columns: minmax(0, 1fr); transition: grid-template-rows 0.2s var(--ease); }
 .think.open .th-full { grid-template-rows: 1fr; }
 .th-full > div { overflow: clip; min-height: 0; min-width: 0; }
 .th-text { margin: 6px 0 2px; padding: 2px 0 2px 12px; border-left: 2px solid var(--line); color: var(--mute); font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
 
 /* narration between steps */
-.say { color: var(--ink); animation: in 0.4s var(--ease) both; font-size: 15px; line-height: 1.65; }
+.say { color: var(--ink); font-size: 15px; line-height: 1.65; }
 .say p { margin: 0; }
 .say p + p, .say ul, .say ol, .say pre, .say .tbl { margin-top: 10px; }
 .say code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 13px var(--mono); }
@@ -42,7 +41,6 @@
 .steer { align-self: flex-end; background: #f3f3f5; padding: 5px 12px; border-radius: 14px; font-size: 13px; }
 
 /* a step: verb, object, time, the first lines of output */
-.step { animation: in 0.45s var(--ease) both; }
 .s-row { display: flex; align-items: center; gap: 9px; min-height: 26px; }
 .s-ic { width: 16px; height: 16px; display: grid; place-items: center; color: #777; flex: none; }
 .s-ic .sp { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #dcdce0; border-top-color: var(--blue); animation: spn 1s linear infinite; }
@@ -52,7 +50,7 @@
 .s-sp { flex: 1; }
 .s-time { font: 11px var(--mono); color: var(--mute); flex: none; font-variant-numeric: tabular-nums; }
 .step.failed .s-verb, .step.denied .s-verb { color: var(--red); }
-.bgtag { font-size: 11px; color: var(--blue); background: #eef3ff; border-radius: 8px; padding: 1px 8px; flex: none; animation: in 0.4s var(--ease) both; }
+.bgtag { font-size: 11px; color: var(--blue); background: #eef3ff; border-radius: 8px; padding: 1px 8px; flex: none; }
 .s-out { margin: 4px 0 0; background: var(--sunk); border-radius: 8px; padding: 7px 11px; font: 11.5px/1.6 var(--mono); color: #4a4a52; }
 /* lines are never wrapped (a diff, a table or a log keeps its columns); where one goes on past the edge, the edge fades */
 .s-lines { white-space: pre; overflow: hidden; }
@@ -75,7 +73,7 @@
 .btn { height: 30px; padding: 0 13px; border-radius: 9px; background: #f1f1f3; transition: 0.2s; margin-right: 6px; }
 .btn.pri { background: var(--ink); color: #fff; }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.note { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 12.5px; animation: in 0.4s var(--ease) both; }
+.note { display: flex; align-items: center; gap: 8px; color: var(--mute); font-size: 12.5px; }
 .note .ok { width: 14px; height: 14px; border-radius: 50%; background: var(--green); position: relative; flex: none; }
 .note .ok::after { content: ""; position: absolute; left: 4.5px; top: 2px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 .note .no { width: 14px; height: 14px; border-radius: 50%; background: var(--red); flex: none; }
@@ -83,7 +81,7 @@
 /* the answer */
 /* one body size; headings are no larger than the body (weight and the space above them carry the hierarchy), and a heading
    sits closer to its own text than to the text before it */
-.ans { animation: in 0.4s var(--ease) both; color: var(--ink); line-height: 1.65; font-size: 15px; }
+.ans { color: var(--ink); line-height: 1.65; font-size: 15px; }
 .ans > :first-child { margin-top: 0; }
 .ans > :last-child { margin-bottom: 0; }
 .ans h1 { margin: 24px 0 6px; font-size: 16px; line-height: 1.5; font-weight: 600; }
@@ -114,8 +112,8 @@
 .ans th { background: #f7f7f8; font-weight: 600; white-space: nowrap; }
 .ans blockquote { margin: 8px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
 .ans hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
-.acts { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; animation: in 0.4s var(--ease) both; }
-.run-end { margin: 6px 0 10px; padding: 8px 12px; border-radius: 10px; background: #fff7e6; color: #8a5300; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; animation: in 0.3s var(--ease) both; }
+.acts { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
+.run-end { margin: 6px 0 10px; padding: 8px 12px; border-radius: 10px; background: #fff7e6; color: #8a5300; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .run-end.bad { background: #fef3f2; color: #b42318; }
 /* a message's actions: on hover of its run, copy and fork and when it finished (the person's line: copy only) */
 .racts { display: flex; align-items: center; gap: 2px; margin: 2px 0 10px -6px; color: var(--mute); font-size: 12px; opacity: 0; transition: opacity 0.15s; }
@@ -146,8 +144,8 @@
 @media (prefers-reduced-motion: reduce) {
 	.ph .lab.shimmer, .th-h .lab.shimmer { animation: none; color: var(--mute); background: none; }
 	.ask { animation: none !important; }
+	.turn.fresh :is(.me, .proc, .think, .say, .step, .bgtag, .note, .ans, .acts, .run-end) { animation: none; }
 	.pw, .th-full, .chev { transition: none; }
-	.brand { animation: none; }
 }
 
 /* what a step made: thumbnails at the right of a row or a group line (images scaled, a page as its icon and title), images in place */

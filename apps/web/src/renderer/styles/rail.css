@@ -3,7 +3,7 @@
 .railtoggle:hover { background: rgba(0, 0, 0, 0.06); color: var(--ink); }
 .railtoggle.on { background: #efeff1; color: var(--ink); }
 
-.rail { flex: none; width: 0; overflow: hidden; background: #fbfbfc; transition: width 0.5s var(--ease); }
+.rail { flex: none; width: 0; overflow: hidden; background: #fbfbfc; transition: width 0.2s var(--ease); }
 .win[data-rail="1"] .rail { width: 280px; }
 .rail-in { width: 280px; height: 100%; display: flex; flex-direction: column; border-left: 1px solid var(--line); min-width: 0; }
 .rail-h { height: 54px; flex: none; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line); color: var(--mute); font-size: 12.5px; }
