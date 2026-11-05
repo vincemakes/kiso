@@ -171,6 +171,7 @@ export const en = {
 	openInTab: "Open in a new tab",
 	railState: "State",
 	railEnv: "Environment",
+	railHere: "This computer",
 	railPath: "Folder",
 	railBranch: "Branch",
 	overview: "Overview",
