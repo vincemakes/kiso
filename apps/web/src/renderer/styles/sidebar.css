@@ -1,5 +1,5 @@
 /* the window is one row of columns: the sidebar, the Work (the stream and, beside it, the panel) and the rail. No column is laid over another, at any width. */
-:root { --sw: 264px; --side: #f5f5f6; }
+:root { --sw: 264px; --side: #fafafa; }
 .win { position: fixed; inset: 0; overflow: clip; background: #fff; display: flex; }
 .sidetoggle { position: absolute; left: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); transition: left 0.2s var(--ease); }
 .win[data-side="1"] .sidetoggle { left: calc(var(--sw) - 46px); }
@@ -13,26 +13,28 @@
 .side { flex: none; width: 0; overflow: hidden; background: var(--side); transition: width 0.2s var(--ease); }
 .win[data-side="1"] .side { width: var(--sw); }
 .side-in { width: var(--sw); height: 100%; display: flex; flex-direction: column; padding: 54px 10px 10px; }
-.newbtn { display: flex; align-items: center; gap: 8px; width: 100%; height: 38px; padding: 0 12px; margin-bottom: 8px; border-radius: 11px; background: rgba(255, 255, 255, 0.75); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04); transition: 0.2s; }
-.newbtn:hover { background: #fff; }
+.newbtn { display: flex; align-items: center; gap: 8px; width: 100%; height: 38px; padding: 0 12px; margin-bottom: 8px; border-radius: 11px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.07); transition: box-shadow 0.15s; }
+.newbtn:hover { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
 .hlist { flex: 1; overflow-y: auto; margin: 0 -6px; padding: 0 6px; scrollbar-width: thin; scrollbar-color: #cfcfcb transparent; }
 /* scoped to the sidebar: the stream's step groups are `.grp` too */
-.side .grp { font-size: 12px; color: var(--mute); padding: 12px 8px 4px; }
-/* a group's head folds it: the triangle points down while it is open */
+.side .grp { font-size: 12.5px; font-weight: 500; color: var(--mute); padding: 12px 10px 4px; }
+/* a group's head folds it: its chevron shows on hover (down while open) and stays, pointing right, while the group is folded */
 .hlist section + section { margin-top: 10px; }
 .side .grp.gh { display: flex; align-items: center; gap: 5px; width: 100%; text-align: left; }
 .side .grp.gh:hover { color: var(--ink); }
-.side .grp.gh .tri { width: 10px; height: 10px; fill: currentColor; transition: transform 0.2s var(--ease); }
-.side .shut > .grp.gh .tri { transform: rotate(-90deg); }
-.item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 7px 9px; border-radius: 10px; transition: background 0.15s; }
+.side .grp.gh .chev { color: inherit; opacity: 0; transform: rotate(90deg); }
+.side .grp.gh:hover .chev, .side .grp.gh:focus-visible .chev, .side .shut > .grp.gh .chev { opacity: 1; }
+.side .shut > .grp.gh .chev { transform: none; }
+.item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; text-align: left; padding: 0 10px; border-radius: 8px; color: var(--ink); font-size: 14.5px; transition: background 0.15s; }
 /* a fork under its parent: a small elbow, one line down through its siblings, clear of the title and of the parent row's edge */
-.item.child { padding-left: 30px; position: relative; }
+.item.child { padding-left: 30px; position: relative; color: #3a3a3e; font-size: 14px; }
 .item.child::before { content: ""; position: absolute; left: 16px; top: 3px; height: 12px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
 .item.child.more::after { content: ""; position: absolute; left: 16px; top: 3px; bottom: -4px; border-left: 1.5px solid #d6d6d2; }
 .item:hover { background: rgba(0, 0, 0, 0.045); }
-.item.on { background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04); }
+/* the open Work: one grey fill (no white card, no shadow) */
+.item.on { background: rgba(0, 0, 0, 0.065); font-weight: 500; }
 .item .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item small { color: var(--mute); font-size: 11.5px; flex: none; max-width: 38%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.item small { color: var(--faint); font-size: 12px; font-weight: 400; flex: none; max-width: 38%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot.amber { background: var(--amber); }
 .dot.blue { background: var(--blue); }
@@ -42,29 +44,24 @@
 .item .pr-ico[data-pr-state="open"] { color: #1f883d; }
 .item .pr-ico[data-pr-state="merged"] { color: #8250df; }
 .item .pr-ico[data-pr-state="closed"] { color: #cf222e; }
-/* a row with nested sessions folds them: the triangle after its title points down while they show */
-.item .kid-fold { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-left: -4px; border-radius: 5px; color: #555; }
+/* a row with nested sessions folds them: the chevron after its title shows on hover (down while they show) and stays, pointing
+   right, while they are folded, as a group head's does */
+.item .kid-fold { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-left: -4px; border-radius: 5px; color: var(--mute); }
 .item .kid-fold:hover { color: var(--ink); background: rgba(0, 0, 0, 0.06); }
-.item .kid-fold .tri { width: 11px; height: 11px; fill: currentColor; transition: transform 0.2s var(--ease); }
-.item .kid-fold.shut .tri { transform: rotate(-90deg); }
+.item .kid-fold .chev { color: inherit; opacity: 0; transform: rotate(90deg); }
+.item:hover .kid-fold .chev, .item .kid-fold:focus-visible .chev, .item .kid-fold.shut .chev { opacity: 1; }
+.item .kid-fold.shut .chev { transform: none; }
 /* folded: one line under the row says what it holds, on the same elbow a nested row has (same gap, same length, its text centred
    where a nested row's is) */
-.kids-line { position: relative; display: block; width: 100%; text-align: left; padding: 8px 9px 6px 30px; font-size: 12.5px; line-height: 20px; color: var(--mute); border-radius: 10px; }
+.kids-line { position: relative; display: block; width: 100%; text-align: left; padding: 8px 10px 8px 30px; font-size: 12.5px; line-height: 20px; color: var(--mute); border-radius: 8px; }
 .kids-line::before { content: ""; position: absolute; left: 16px; top: 3px; height: 12px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
 .kids-line:hover { color: var(--ink); }
 .kids-line em { font-style: normal; color: var(--blue); }
 .item .sp { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #d8d8d5; border-top-color: var(--blue); animation: sp 1s linear infinite; flex: none; }
 @keyframes sp { to { transform: rotate(360deg); } }
 .fn { border-top: 1px solid rgba(0, 0, 0, 0.06); margin: 8px -4px 0; padding-top: 6px; }
-.fn-h { display: flex; align-items: center; gap: 6px; width: 100%; padding: 7px 10px; color: var(--mute); border-radius: 10px; }
-.fn-h:hover { color: var(--ink); }
-.fn-h .chev { transition: transform 0.15s var(--ease); margin-left: auto; }
-.fn.open .fn-h .chev { transform: rotate(90deg); }
-.fn-b { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.2s var(--ease); }
-.fn.open .fn-b { grid-template-rows: 1fr; }
-.fn-b > div { overflow: hidden; }
-.fn-b button { display: flex; gap: 10px; align-items: center; width: 100%; padding: 7px 10px; border-radius: 10px; color: #444; }
-.fn-b button:hover, .fn-b button.on { background: rgba(0, 0, 0, 0.045); }
+.fn-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; color: var(--mute); font-size: 14px; border-radius: 10px; }
+.fn-h:hover, .fn-h.on { color: var(--ink); background: rgba(0, 0, 0, 0.04); }
 /* a row's ⋯ on hover (and while its menu is open), over the folder name; the menu is laid over the window at it */
 .row { position: relative; }
 .row .dots { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 24px; border-radius: 7px; display: none; place-items: center; color: #555; }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, t } from "../i18n/index.js";
 import { groupWorks } from "../state/works.js";
 import type { WorkRow } from "../../shared/history.js";
-import { Chevron, Plus, PullRequest, Sliders } from "../stream/Icons.js";
+import { Chevron, Gear, Plus, PullRequest } from "../stream/Icons.js";
 import { Dialog } from "../rail/GitDialogs.js";
 
 export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete";
@@ -101,9 +101,8 @@ const dotOf = (row: WorkRow): ReactNode => {
 	return state === "running" ? <span className="sp" title={t.runningNow} /> : state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : state === "unread" ? <span className="dot blue" title={t.unreadNow} data-dot="unread" /> : null;
 };
 
-/** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; the Functions fold at the bottom (v1: Settings). */
+/** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; Settings at the foot. */
 export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, onAct, onRename, onFork, onLinkPr, prOf }: Props): ReactNode {
-	const [fnOpen, setFnOpen] = useState(false);
 	const [menu, setMenu] = useState<{ readonly row: WorkRow; readonly at: DOMRect } | null>(null);
 	const [renaming, setRenaming] = useState<WorkRow | null>(null);
 	const [draft, setDraft] = useState("");
@@ -184,9 +183,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 					) : null}
 					{nested.length > 0 ? (
 						<span className={`kid-fold${shut ? " shut" : ""}`} role="button" aria-label={t.foldNested} aria-expanded={!shut} data-act="fold-nested" onClick={(e) => (e.stopPropagation(), foldKids(row))}>
-							<svg className="tri" viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M4 7h16l-8 10z" />
-							</svg>
+							<Chevron />
 						</span>
 					) : null}
 					<small>{row.folder}</small>
@@ -240,9 +237,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 					<section key={group.label} className={folds.includes(group.label) ? "shut" : ""}>
 						<button className="grp gh" onClick={() => fold(group.label)} aria-expanded={!folds.includes(group.label)} data-act="fold-group">
 							{group.label}
-							<svg className="tri" viewBox="0 0 24 24" aria-hidden="true">
-								<path d="M6 9h12l-6 7z" />
-							</svg>
+							<Chevron />
 						</button>
 						{folds.includes(group.label) ? null : rowsOf(group.works)}
 					</section>
@@ -298,19 +293,12 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 					<p className="dlg-p" data-kind="delete-what">{fmt(t.deleteWhat, { runs: deleting.runs === 1 ? t.oneRun : fmt(t.nRuns, { n: deleting.runs }) })}</p>
 				</Dialog>
 			) : null}
-			<div className={`fn${fnOpen ? " open" : ""}`}>
-				<button className="fn-h" onClick={() => setFnOpen(!fnOpen)} aria-expanded={fnOpen}>
-					{t.functions}
-					<Chevron />
+			{/* the foot of the sidebar: Settings, one row (the Functions fold that held only it is gone, owner 2026-11-04) */}
+			<div className="fn">
+				<button className={`fn-h${settingsOn ? " on" : ""}`} onClick={onSettings} data-act="settings">
+					<Gear />
+					{t.settings}
 				</button>
-				<div className="fn-b">
-					<div>
-						<button className={settingsOn ? "on" : ""} onClick={onSettings} data-act="settings">
-							<Sliders />
-							{t.settings}
-						</button>
-					</div>
-				</div>
 			</div>
 			</div>
 		</aside>

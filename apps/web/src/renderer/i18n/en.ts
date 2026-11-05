@@ -102,7 +102,6 @@ export const en = {
 	forkedFrom: "Forked from",
 	forkShared: "Files are shared with it: changes made there after this point are on disk here too.",
 	tookAt: "{at} · took {took}",
-	functions: "Functions",
 	settings: "Settings",
 	openSidebar: "Show the sidebar",
 	closeSidebar: "Hide the sidebar",
