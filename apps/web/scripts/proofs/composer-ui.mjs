@@ -97,7 +97,7 @@ await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
 check(await waitUntil(async () => (await app.count("[data-kind=file-viewer]")) === 0), "Esc closes it");
 await app.click("[data-act=tier]");
 await app.click("[data-tier=accept-edits]");
-check(await waitUntil(async () => (await text("[data-field=tier-pill]")) === "Edits allowed" && (await text("[data-field=tier]")) === "Edits allowed"), "with the Work started, the rail's footer follows the pill's tier");
+check(await waitUntil(async () => (await text("[data-field=tier-pill]")) === "Edits allowed" && (await envMode()) === "accept-edits"), "with the Work started, the pill's tier is the Work's");
 
 // `@` names a file of the folder
 await q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); el.focus(); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, 'look at @app'); el.selectionStart = el.selectionEnd = 12; el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);

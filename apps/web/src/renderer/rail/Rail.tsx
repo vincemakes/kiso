@@ -19,16 +19,16 @@ const SHOWN = 4;
 const CHANGES_SHOWN = 8;
 const CHANGES_MAX = 200;
 
-/** A section of the rail: a header that folds it (a 16 px chevron in the icon column, the name, a count, a figure at the right). */
+/** A section of the rail: a header that folds it (the name, a count, the chevron after them as in the stream, a figure at the right). */
 function Section({ id, name, count, extra, open, onToggle, children }: { readonly id: string; readonly name: string; readonly count?: number; readonly extra?: ReactNode; readonly open: boolean; readonly onToggle: () => void; readonly children: ReactNode }): ReactNode {
 	return (
 		<section className={`r-sec${open ? "" : " closed"}`} data-section={id}>
 			<button className="r-sh" onClick={onToggle} aria-expanded={open} data-act={`fold-${id}`}>
-				<span className="r-ic r-chev">
-					<I.chevron />
-				</span>
 				<b>{name}</b>
 				{count !== undefined ? <span className="r-cnt">{count}</span> : null}
+				<span className="r-chev">
+					<I.chevron />
+				</span>
 				<span className="grow" />
 				{extra}
 			</button>
@@ -54,9 +54,10 @@ const est = (bytes: number): number => Math.round(bytes / 4);
 const pctOf = (n: number, of: number | null): string => (of === null || of === 0 ? "" : `${((n / of) * 100).toFixed(1)}%`);
 
 /**
- * The rail: one column of hairline sections, glanceable, no cards. Context (folded to one row and a bar), the background tasks
- * (only when there are any; the finished ones folded into one row), the files this Work changed and its branch, everything it made
- * (opened the one way the stream opens them), and where it runs. It carries no state of the run itself: the stream shows the live
+ * The rail: one column of hairline sections, glanceable, no cards. Where it runs first (the computer, the folder and its parent,
+ * the branch), then Context (folded to one row and a bar), the background tasks (only when there are any; the finished ones folded
+ * into one row), the files this Work changed (with the branch when a commit or pull request is offered), and everything it made
+ * (opened the one way the stream opens them). It carries no state of the run itself: the stream shows the live
  * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
  */
 export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
@@ -92,6 +93,17 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 		...(parts.instructions > 0 ? [{ key: "instructions", name: t.ctxInstructions, tokens: est(parts.instructions) }] : []),
 		{ key: "tools", name: fmt(t.ctxTools, { n: parts.tools.count }), tokens: est(parts.tools.bytes) },
 	];
+	// Changes' branch row only when it carries an action (the branch itself is in Environment)
+	const action = g === null || g.pr !== null ? null : g.dirty ? (
+		<button className="r-act" onClick={onCommit} data-act="commit">
+			{t.commitOpen}
+		</button>
+	) : g.canPr && g.ahead > 0 ? (
+		<button className="r-act" onClick={onPr} data-act="create-pr">
+			{t.prOpen}
+		</button>
+	) : null;
+	const branch = g?.branch ?? env?.branch ?? null;
 	const segments = fixed === null || used === null ? null : [{ key: "conversation", name: t.ctxConversation, tokens: Math.max(0, used - fixed.reduce((n, f) => n + f.tokens, 0)) }, ...fixed];
 	const outputs = outputsOf(state);
 	const now = Date.now();
@@ -123,12 +135,39 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 			<div className="rail-in">
 				<div className="rail-h">{t.overview}</div>
 				<div className="rail-b">
+					{env === null ? null : (
+						<Section id="env" name={t.railEnv} open={!folded["env"]} onToggle={toggle("env")}>
+							<div className="r-row r-st" data-field="env-where">
+								<span className="r-ic">
+									<I.computer />
+								</span>
+								<span className="r-nm">{t.railHere}</span>
+							</div>
+							<div className="r-row r-st" data-field="env" {...over({ head: t.railEnv, rows: [[t.railPath, env.path], ...(env.branch === null ? [] : ([[t.railBranch, env.branch]] as const))] })}>
+								<span className="r-ic">
+									<I.folder />
+								</span>
+								<span className="r-nm">
+									{env.folder}
+									{env.path.includes("/") ? <span className="r-sub"> · {env.path.slice(0, env.path.lastIndexOf("/")) || "/"}</span> : null}
+								</span>
+							</div>
+							{env.branch === null ? null : (
+								<div className="r-row r-st" data-field="env-branch">
+									<span className="r-ic">
+										<I.branch />
+									</span>
+									<span className="r-nm mono">{env.branch}</span>
+								</div>
+							)}
+						</Section>
+					)}
 					<section className={`r-sec r-ctx${folded["context"] ? " closed" : ""}`} data-section="context">
 						<button className="r-sh" onClick={toggle("context")} aria-expanded={!folded["context"]} data-act="fold-context" data-field="context">
-							<span className="r-ic r-chev">
+							<b>{t.railContext}</b>
+							<span className="r-chev">
 								<I.chevron />
 							</span>
-							<b>{t.railContext}</b>
 							<span className="grow" />
 							<span className="r-ctxv">
 								<b data-field="context-pct">{Math.round(share)}%</b> · {tokens(used ?? 0)} / {windowLabel(window)}
@@ -202,7 +241,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 							{finished ? done.map(task) : null}
 						</Section>
 					)}
-					{rows.length === 0 && (g?.branch ?? env?.branch ?? null) === null ? null : (
+					{rows.length === 0 && action === null && g?.pr == null ? null : (
 						<Section
 							id="changes"
 							name={t.railChanges}
@@ -215,22 +254,14 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 							open={!folded["changes"]}
 							onToggle={toggle("changes")}
 						>
-							{(g?.branch ?? env?.branch ?? null) === null ? null : (
+							{action === null || branch === null ? null : (
 								<div className="r-row r-br" data-field="branch-row">
 									<span className="r-ic">
 										<I.branch />
 									</span>
-									<span className="r-nm mono" data-field="branch">{g?.branch ?? env?.branch}</span>
+									<span className="r-nm mono" data-field="branch">{branch}</span>
 									{g?.base != null && g.base !== g.branch ? <span className="r-mt">→ {g.base}{g.ahead > 0 ? ` ↑${g.ahead}` : ""}</span> : null}
-									{g === null || g.pr !== null ? null : g.dirty ? (
-										<button className="r-act" onClick={onCommit} data-act="commit">
-											{t.commitOpen}
-										</button>
-									) : g.canPr && g.ahead > 0 ? (
-										<button className="r-act" onClick={onPr} data-act="create-pr">
-											{t.prOpen}
-										</button>
-									) : null}
+									{action}
 								</div>
 							)}
 							{g?.pr == null ? null : (
@@ -284,25 +315,6 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 						</Section>
 					)}
 				</div>
-				{env === null ? null : (
-					<div className="r-env" data-field="env" {...over({ head: t.railEnv, rows: [[t.railPath, env.path], ...(env.branch === null ? [] : ([[t.railBranch, env.branch]] as const))] })}>
-						<span className="r-ic">
-							<I.folder />
-						</span>
-						<span className="r-env-f">{env.folder}</span>
-						{env.branch === null ? null : (
-							<>
-								<span className="r-ic">
-									<I.branch />
-								</span>
-								<span className="r-env-b mono">{env.branch}</span>
-							</>
-						)}
-						<span className="chip2" data-field="tier">
-							{t.tier[env.mode] ?? env.mode}
-						</span>
-					</div>
-				)}
 			</div>
 			<Tip tip={hover?.tip ?? null} {...(hover?.top !== undefined ? { top: hover.top } : {})} {...(hover?.bottom !== undefined ? { bottom: hover.bottom } : {})} />
 		</aside>
