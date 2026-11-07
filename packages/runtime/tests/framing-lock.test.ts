@@ -165,10 +165,18 @@ describe("lock semantics — legacy interop and the single-writer race (ADR-0050
 
 	it("JSON.parse('123') is a bare legacy pid, never an object without a pid", async () => {
 		const { dir } = tempStore();
-		// "123" parses as the NUMBER 123 — it must be read as pid 123. That
-		// pid is (almost certainly) not alive, so the lock is acquirable;
-		// the important part is it was never treated as "no pid".
-		writeFileSync(join(dir, "s.lock"), "123");
+		// "123" parses as the NUMBER 123 — it must be read as pid 123; the
+		// important part is it was never treated as "no pid". The fixture
+		// writes the same bare-number form, but with a pid that is provably
+		// dead: a literal 123 was alive on a CI runner (2026-11-05) and the
+		// lock was refused. spawnSync returns after the child is reaped, and
+		// the ESRCH check makes a (vanishingly rare) pid reuse fail here,
+		// not as a LockedError.
+		const { spawnSync } = await import("node:child_process");
+		const { pid } = spawnSync(process.execPath, ["-e", ""], { stdio: "ignore" });
+		expect(pid).toBeGreaterThan(0);
+		expect(() => process.kill(pid, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
+		writeFileSync(join(dir, "s.lock"), String(pid));
 		const store = new SessionStore(dir);
 		await store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
