@@ -30,7 +30,7 @@
 .th-text { margin: 6px 0 2px; padding: 2px 0 2px 12px; border-left: 2px solid var(--line); color: var(--mute); font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
 
 /* narration between steps */
-.say { color: var(--ink); font-size: 15px; line-height: 1.65; }
+.say { color: var(--ink); font-size: 14.5px; line-height: 1.65; }
 .say p { margin: 0; }
 .say p + p, .say ul, .say ol, .say pre, .say .tbl { margin-top: 10px; }
 .say code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 13px var(--mono); }
@@ -81,12 +81,12 @@
 /* the answer */
 /* one body size; headings are no larger than the body (weight and the space above them carry the hierarchy), and a heading
    sits closer to its own text than to the text before it */
-.ans { color: var(--ink); line-height: 1.65; font-size: 15px; }
+.ans { color: var(--ink); line-height: 1.65; font-size: 14.5px; }
 .ans > :first-child { margin-top: 0; }
 .ans > :last-child { margin-bottom: 0; }
-.ans h1 { margin: 24px 0 6px; font-size: 16px; line-height: 1.5; font-weight: 600; }
-.ans h2 { margin: 22px 0 6px; font-size: 15px; line-height: 1.6; font-weight: 600; }
-.ans h3, .ans h4 { margin: 18px 0 4px; font-size: 15px; line-height: 1.6; font-weight: 600; }
+.ans h1 { margin: 24px 0 6px; font-size: 15.5px; line-height: 1.5; font-weight: 600; }
+.ans h2 { margin: 22px 0 6px; font-size: 14.5px; line-height: 1.6; font-weight: 600; }
+.ans h3, .ans h4 { margin: 18px 0 4px; font-size: 14.5px; line-height: 1.6; font-weight: 600; }
 .ans p { margin: 0 0 14px; }
 .ans ul, .ans ol { margin: 0 0 14px; padding-left: 22px; }
 .ans li { margin: 2px 0; }
