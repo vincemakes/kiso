@@ -131,6 +131,37 @@ describe("replay from a sequence number", () => {
 		expect(service.highWater("s")).toBe(all.at(-1)!.seq);
 	});
 
+	// The crash proof's race: after a restart the client reconnects before the
+	// host records a verdict. The verdict is appended with no run live, and the
+	// resumed run's events must not reach the subscriber ahead of it.
+	it("an uncertain execution resolved with no run live reaches a subscriber already connected, before the resumed run's events", async () => {
+		const { store, service } = harness({ script: ONE_TURN });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "slow", input: {} });
+		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "slow", input: {} });
+		const seen: Event[] = [];
+		const off = await service.subscribe("s", 2, (e) => seen.push(e));
+		const [u] = await service.uncertainExecutions("s");
+		await service.resolveUncertain("s", u!.executionId, "abandoned");
+		expect(seen.map((e) => e.type)).toEqual(["tool_execution_resolved", "tool_result"]);
+		await (await service.resume("s")).done;
+		off();
+		expect(seen.map((e) => e.seq)).toEqual(service.events("s", 2).map((e) => e.seq));
+	});
+
+	it("an approval answered with no run live reaches a subscriber already connected", async () => {
+		const { store, service } = harness({ script: ONE_TURN, tools: [instant("deploy")], defer: ["deploy"] });
+		await store.append("s", "r1", { seq: 0, type: "user_input", content: "ship it" });
+		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "deploy", input: {} });
+		await store.append("s", "r1", { seq: 2, type: "permission_requested", decisionId: "d1", callId: "c1", name: "deploy", input: {} });
+		const seen: Event[] = [];
+		const off = await service.subscribe("s", 2, (e) => seen.push(e));
+		const { needsResume } = await service.approve("s", "d1", true);
+		off();
+		expect(needsResume).toBe(true);
+		expect(seen.map((e) => [e.seq, e.type])).toEqual([[3, "permission_decided"]]);
+	});
+
 	it("events(after) is a plain read of the log and opens nothing", async () => {
 		const { service, opened } = harness();
 		expect(service.events("never-opened")).toEqual([]);

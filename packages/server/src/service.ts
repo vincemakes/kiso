@@ -125,6 +125,9 @@ interface Held {
 	pumping: Promise<void> | null;
 	executing: number;
 	highWater: number;
+	/** The last seq fanned out to `listeners`. Everything after it on the
+	 *  open log is owed to them, whoever appended it. */
+	published: number;
 	/** Set once a settled run's terminal was not found on the service's store. */
 	mismatch: StoreMismatchError | null;
 	/** ADR-0057: what the latest run accepted and never admitted, keyed by its terminal. */
@@ -155,7 +158,7 @@ export class SessionService {
 		const opening = (async (): Promise<Held> => {
 			const agent = await this.#open(sessionId);
 			const session = await agent.session({ id: sessionId });
-			const held: Held = { id: sessionId, agent, session, listeners: new Set(), live: null, pumping: null, executing: 0, highWater: -1, mismatch: null, unadmitted: null };
+			const held: Held = { id: sessionId, agent, session, listeners: new Set(), live: null, pumping: null, executing: 0, highWater: -1, published: session.log.lastSeq, mismatch: null, unadmitted: null };
 			this.#held.set(sessionId, held);
 			return held;
 		})();
@@ -179,6 +182,28 @@ export class SessionService {
 		held.session = await agent.session({ id: sessionId });
 	}
 
+	/** Fan out every event on the open log after `published`, in seq order.
+	 *  A run's events arrive through `#pump`, but a verdict given while no
+	 *  run is live (`resolveUncertain`, an offline `approve`) is appended
+	 *  straight to the log; reading the log here — not the one event in
+	 *  hand — is what keeps an event appended outside a run from being
+	 *  skipped when a run's next event reaches a subscriber first. */
+	#publish(held: Held): void {
+		const log = held.session.log.all;
+		// the log's seq is its index (EventLog refuses a discontinuity)
+		for (let i = held.published + 1; i < log.length; i++) {
+			const event = log[i]!;
+			held.published = event.seq;
+			for (const listener of [...held.listeners]) {
+				try {
+					listener(event);
+				} catch {
+					held.listeners.delete(listener); // a throwing observer leaves; the run does not
+				}
+			}
+		}
+	}
+
 	// ---- runs -----------------------------------------------------------------
 
 	#pump(held: Held, run: Run): RunHandle {
@@ -191,13 +216,7 @@ export class SessionService {
 					if (event.type === "terminal") held.unadmitted = { runId: run.runId, terminalSeq: event.seq, items: run.unadmitted() };
 					held.executing = Math.max(0, held.executing + executionDelta(event));
 					held.highWater = Math.max(held.highWater, event.seq);
-					for (const listener of [...held.listeners]) {
-						try {
-							listener(event);
-						} catch {
-							held.listeners.delete(listener); // a throwing observer leaves; the run does not
-						}
-					}
+					this.#publish(held);
 				}
 			} finally {
 				if (held.live === run) {
@@ -309,6 +328,7 @@ export class SessionService {
 		const held = await this.#hold(sessionId);
 		const wasLive = held.live !== null;
 		await held.session.approve(decisionId, allow, reason);
+		this.#publish(held);
 		return { needsResume: !wasLive };
 	}
 
@@ -326,6 +346,7 @@ export class SessionService {
 	async resolveUncertain(sessionId: string, executionId: string, resolution: "rerun" | "abandoned"): Promise<{ readonly remaining: number }> {
 		const held = await this.#hold(sessionId);
 		await held.session.resolveUncertain(executionId, resolution);
+		this.#publish(held);
 		return { remaining: held.session.uncertainExecutions().length };
 	}
 
