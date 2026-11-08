@@ -14,7 +14,7 @@ for (const [ws, id, text] of [[wsA, "work-a", "alpha task"], [wsB, "work-b", "be
 	h.child.kill("SIGTERM");
 	await new Promise((r) => h.child.once("exit", r));
 }
-const app = await launchApp({ data, workspace: wsB, fauxScript: [say("Fresh answer.")] });
+const app = await launchApp({ data, workspace: wsB, fauxScript: [say("Fresh answer."), say("Delta answer.")] });
 const q = (js) => app.evaluate(js);
 const left = () => q(`Math.round(document.querySelector('.main').getBoundingClientRect().left)`);
 check((await q(`document.querySelector('.win').dataset.side`)) === "0" && (await left()) === 0 && (await app.count("[data-kind=brand]")) === 0, "the sidebar is closed at first, with the toggle alone at the top left: no logo");
@@ -24,9 +24,23 @@ check(await waitUntil(async () => (await left()) === 264), "opening it pushes th
 check(await waitUntil(async () => (await q(`(() => { const b = document.querySelector('[data-kind=brand]'); return !!b && b.textContent === "kiso" && !!b.querySelector('.mark') && getComputedStyle(b).opacity === "1" && b.getBoundingClientRect().right <= 264; })()`))), "open, the sidebar's top shows the mark and the word kiso, inside the sidebar");
 await app.shot("sidebar-open-top");
 check(await waitUntil(async () => (await app.count(".item")) === 2), "the history lists the Works of both folders");
-check((await q(`[...document.querySelectorAll('.item')].map((i) => i.querySelector('.tt').textContent + '@' + i.querySelector('small').textContent).join()`)).split(",").every((x, i) => x.startsWith(["beta task", "alpha task"][i])), "each row: title and folder name, newest first");
+const folders = () => q(`[...document.querySelectorAll('.fgrp')].map((f) => f.querySelector('.frow .tt').textContent + ':' + [...f.querySelectorAll('.item .tt')].map((i) => i.textContent).join('|')).join()`);
+const [nameA, nameB] = [wsA, wsB].map((w) => w.split("/").pop());
+check((await folders()) === `${nameB}:beta task,${nameA}:alpha task` && (await app.count(".item small")) === 0, "by default Recents lists by folder: a folder row, its Works under it, newest folder first, no folder tag on a row");
 check((await app.text(".grp")) === "Recents", "unpinned Works list under Recents");
 await app.shot("sidebar-open");
+await app.click(`.fgrp[data-folder] [data-act=fold-folder]`);
+check((await app.count(".item")) === 1 && (await q(`document.querySelector('.fgrp [data-act=fold-folder]').getAttribute('aria-expanded')`)) === "false", "a folder row folds its Works");
+await app.click(`.fgrp[data-folder] [data-act=fold-folder]`);
+await app.click("[data-act=side-menu]");
+check((await q(`[...document.querySelectorAll('[data-kind=side-menu] [aria-checked=true]')].map((b) => b.dataset.menuAct).join()`)) === "by-folder,sort-updated", "the Recents menu: by folder and last updated, checked by default");
+await new Promise((r) => setTimeout(r, 300));
+await app.shot("sidebar-recents-menu");
+await app.click("[data-menu-act=one-list]");
+check((await app.count(".fgrp")) === 0 && (await q(`[...document.querySelectorAll('.item')].map((i) => i.querySelector('.tt').textContent + '@' + i.querySelector('small').textContent).join()`)) === `beta task@${nameB},alpha task@${nameA}`, "One list: today's list, each row with its folder name, newest first");
+check((await q(`localStorage.getItem('kiso.web.side-view')`)) === '{"by":"list","sort":"updated"}', "the choice is kept per browser");
+await app.click("[data-act=side-menu]");
+await app.click("[data-menu-act=by-folder]");
 await q(`document.querySelector('.item[data-work=work-a]').click()`);
 check(await waitUntil(async () => (await app.text("[data-kind=answer]"))?.includes("alpha task done.")), "a click opens a Work of the other folder and replays its log");
 await app.click("[data-act=new]");
@@ -34,6 +48,10 @@ check(await waitUntil(async () => (await app.count("[data-kind=answer]")) === 0)
 await q(`window.__kiso.send("gamma task")`);
 check(await waitUntil(async () => (await q(`[...document.querySelectorAll('.item .tt')].map((n) => n.textContent).join()`)).startsWith("gamma task"), 20_000), "the new Work joins the list after its first request");
 await app.shot("sidebar-new-work");
+await app.evaluate(`document.querySelector('.fgrp:last-child [data-act=folder-new]').click()`);
+check(await waitUntil(async () => (await app.count("[data-kind=answer]")) === 0), "a folder row's compose button opens an empty Work");
+await q(`window.__kiso.send("delta task")`);
+check(await waitUntil(async () => (await folders()).startsWith(`${nameA}:delta task|alpha task,`), 20_000), `the new Work lands in that folder (${await folders()})`);
 await app.click("[data-act=settings]");
 check(await waitUntil(async () => (await app.count("[data-kind=settings] [data-act=mode]")) === 1), "the Settings row at the foot of the sidebar opens Settings in the window");
 check((await app.count("[data-kind=settings] select")) === 0, "Settings has no native select: its fields are the composer's menus (owner 2026-11-03)");

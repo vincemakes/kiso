@@ -77,3 +77,22 @@
 .side-err { margin: 6px 4px; padding: 7px 10px; border-radius: 9px; background: #fef3f2; color: #b42318; font-size: 12.5px; line-height: 1.45; }
 .archived-h { display: block; width: 100%; text-align: left; }
 .archived-h:hover { color: var(--ink); }
+/* Recents by folder: a folder row (its icon open while expanded; on hover, a new task in it), its Works one step in */
+.frow { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; color: var(--ink); font-size: 14.5px; text-align: left; transition: background 0.15s; }
+.frow:hover { background: rgba(0, 0, 0, 0.045); }
+.frow .i16 { color: var(--mute); }
+.frow .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fin .item { padding-left: 34px; }
+.fin .item.child, .fin .kids-line { padding-left: 54px; }
+.fin .item.child::before, .fin .item.child.more::after, .fin .kids-line::before { left: 40px; }
+.more-line { display: block; width: 100%; text-align: left; padding: 6px 10px 6px 34px; font-size: 12.5px; color: var(--mute); border-radius: 8px; }
+.hlist > section > .more-line { padding-left: 10px; }
+.more-line:hover { color: var(--ink); }
+/* the Recents head: its ⋯ on hover (and while its menu is open) organizes the sidebar */
+.ghead { position: relative; }
+.ghead .gmenu { position: absolute; right: 6px; bottom: 0; width: 26px; height: 24px; border-radius: 7px; display: none; place-items: center; color: #555; }
+.ghead:hover .gmenu, .ghead .gmenu.on { display: grid; }
+.ghead .gmenu:hover { background: rgba(0, 0, 0, 0.07); }
+.menu .mh { padding: 6px 10px 2px; font-size: 12px; color: var(--mute); }
+.menu .ck { margin-left: auto; display: grid; width: 16px; }
+.menu .ck .ico { color: var(--ink); }

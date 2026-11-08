@@ -47,6 +47,31 @@ export function groupWorks(works: readonly WorkRow[]): Group[] {
 	return buckets.flatMap((rows, i) => (rows.length === 0 ? [] : [{ label: labels[i]!, works: rows }]));
 }
 
+/** How the sidebar lists Recents (kept per browser): by folder (the default) or as one list; by last update or by creation. */
+export type SideBy = "folder" | "list";
+export type SideSort = "updated" | "created";
+
+export interface FolderGroup {
+	readonly key: string;
+	readonly folder: string;
+	readonly works: readonly WorkRow[];
+	/** its newest Work, by the sort in use */
+	readonly latest: number;
+}
+
+/** Recents by folder: each folder's rows in the list's order (a fork stays after its parent, which is in the same folder), the
+ *  folders newest first. */
+export function byFolder(rows: readonly WorkRow[], sort: SideSort): FolderGroup[] {
+	const groups = new Map<string, { key: string; folder: string; works: WorkRow[]; latest: number }>();
+	for (const w of rows) {
+		const g = groups.get(w.key) ?? { key: w.key, folder: w.folder, works: [], latest: 0 };
+		g.works.push(w);
+		g.latest = Math.max(g.latest, sort === "created" ? w.createdAt : w.updatedAt);
+		groups.set(w.key, g);
+	}
+	return [...groups.values()].sort((a, b) => b.latest - a.latest);
+}
+
 /** Where a Work runs: its folder, branch and permission tier — that Work's own when `session` is given (key null: the folder in use). */
 export async function fetchEnv(key: string | null, session?: string): Promise<EnvReply> {
 	const q = new URLSearchParams({ ...(key === null ? {} : { key }), ...(session === undefined ? {} : { session }) }).toString();
