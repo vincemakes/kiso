@@ -328,7 +328,9 @@ export class SessionService {
 		const held = await this.#hold(sessionId);
 		const wasLive = held.live !== null;
 		await held.session.approve(decisionId, allow, reason);
-		this.#publish(held);
+		// a live run appends the verdict itself and `#pump` fans it out once it
+		// is on disk; only a verdict appended with no run live is published here
+		if (held.live === null) this.#publish(held);
 		return { needsResume: !wasLive };
 	}
 
@@ -346,7 +348,7 @@ export class SessionService {
 	async resolveUncertain(sessionId: string, executionId: string, resolution: "rerun" | "abandoned"): Promise<{ readonly remaining: number }> {
 		const held = await this.#hold(sessionId);
 		await held.session.resolveUncertain(executionId, resolution);
-		this.#publish(held);
+		if (held.live === null) this.#publish(held);
 		return { remaining: held.session.uncertainExecutions().length };
 	}
 

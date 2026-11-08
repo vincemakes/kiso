@@ -11,10 +11,10 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { defineTool, type Event } from "@vincemakes/kiso-core";
 import { createFauxProvider, type FauxScript } from "@vincemakes/kiso-evals";
-import { createAgent, SessionStore } from "@vincemakes/kiso-runtime";
+import { AgentSession, createAgent, SessionStore } from "@vincemakes/kiso-runtime";
 import { createSessionService, DrainingError, InFlightError, OpenRunError, StoreMismatchError } from "../src/index.js";
 
 const ONE_TURN: FauxScript = [{ events: [{ type: "text_delta", text: "hello" }, { type: "stop", reason: "end_turn" }] }];
@@ -205,6 +205,40 @@ describe("approvals and abort", () => {
 		expect(seen.some((e) => e.type === "tool_execution_succeeded")).toBe(true);
 		expect(seen.at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
 		expect(await service.abort("s")).toEqual({ kind: "idle" });
+	});
+
+	// Persist-first holds for a live run's approval too: the run appends the
+	// verdict after approve() wakes it, then persists it, and a subscriber must
+	// not see it before it is on disk. A slow store and an approve() that
+	// returns after the run's append open that window on purpose.
+	it("an approval answered while a run is live reaches subscribers only once it is on disk", async () => {
+		const { store, service } = harness({ script: callThen("deploy"), tools: [instant("deploy")], defer: ["deploy"] });
+		const append = store.append.bind(store);
+		store.append = async (...args: Parameters<typeof store.append>) => {
+			await new Promise((r) => setTimeout(r, 20));
+			return append(...args);
+		};
+		const approve = AgentSession.prototype.approve;
+		AgentSession.prototype.approve = async function (this: AgentSession, ...args: Parameters<typeof approve>) {
+			const before = this.log.lastSeq;
+			await approve.apply(this, args);
+			// return once the woken run has appended the verdict: its persist is still in flight
+			while (this.log.lastSeq === before) await new Promise((r) => setImmediate(r));
+		};
+		onTestFinished(() => {
+			AgentSession.prototype.approve = approve;
+		});
+		const early: number[] = [];
+		await service.subscribe("s", -1, (e) => {
+			if (!store.load("s").some((r) => r.event.seq === e.seq)) early.push(e.seq);
+		});
+		const handle = await service.run("s", "ship it");
+		await awaitEvent(service, "s", "permission_requested");
+		const [pending] = await service.pendingApprovals("s");
+		const { needsResume } = await service.approve("s", pending!.decisionId, true);
+		expect(needsResume).toBe(false);
+		await handle.done;
+		expect(early).toEqual([]);
 	});
 
 	it("force aborts a parked run: the terminal is aborted, the hook runs, and the outcome is stopped", async () => {
