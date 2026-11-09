@@ -53,6 +53,9 @@ const sleeper = { events: [{ type: "tool_call_end", callId: "k1", name: "shell",
 await scenario("tool", 1500, [sleeper], [sleeper, { events: [{ type: "text_delta", text: "I will not assume it ran." }, end] }], async (s) => {
 	const [u] = (await s.state()).uncertain;
 	check(u !== undefined, "tool: the execution that was running is uncertain");
+	// the verdict lands after the client's stream is back (its backoff tops out at 800 ms): it is appended with no run live,
+	// so the stream must push it, not just replay it. On CI the reconnect used to win this race only sometimes.
+	await sleep(2000);
 	await s.resolveUncertain(u.executionId, "abandoned");
 	await s.resume();
 });
