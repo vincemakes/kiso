@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, t } from "../i18n/index.js";
-import { groupWorks } from "../state/works.js";
+import { byFolder, groupWorks, type FolderGroup } from "../state/works.js";
 import type { WorkRow } from "../../shared/history.js";
-import { Chevron, Gear, Plus, PullRequest } from "../stream/Icons.js";
+import { Chevron, Gear, I, Plus, PullRequest } from "../stream/Icons.js";
 import { Dialog } from "../rail/GitDialogs.js";
+import { SideMenu, viewRead, VIEW, type View } from "./SideMenu.js";
 
 export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete";
 
@@ -14,6 +15,8 @@ interface Props {
 	readonly settingsOn: boolean;
 	readonly onOpen: (row: WorkRow) => void;
 	readonly onNew: () => void;
+	/** a new task in that folder (a folder row's compose button) */
+	readonly onNewIn: (key: string) => void;
 	readonly onSettings: () => void;
 	/** a row's menu: each refusal comes back in words */
 	readonly onAct: (row: WorkRow, act: WorkAct) => Promise<void>;
@@ -80,10 +83,19 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 	);
 }
 
+/** A nested session (a fork, under the row it came from) when its parent is among these rows and it is not pinned. */
+const childIn = (rows: readonly WorkRow[], row: WorkRow): boolean => row.parent !== undefined && row.pinned === undefined && rows.some((w) => w.key === row.key && w.id === row.parent);
+/** A folder shows five Works (each with its nested sessions), then "Show N more"; the sidebar twelve folders, then "N more folders". */
+const PER_FOLDER = 5;
+const FOLDERS = 12;
+const RECENT_MS = 3 * 86_400_000;
+
 /** Which groups (and which rows' nested sessions) are folded, kept per browser (a convenience: it reads back empty when storage is
  *  not there). */
 const FOLDS = "kiso.web.folds";
 const KID_FOLDS = "kiso.web.kid-folds";
+/** a folder row's fold, set by the person (true: open); unset, a folder is open when it holds the open Work or one from the last three days */
+const FOLDER_FOLDS = "kiso.web.folder-folds";
 const foldsRead = (key = FOLDS): string[] => {
 	try {
 		return JSON.parse(localStorage.getItem(key) ?? "[]") as string[];
@@ -102,7 +114,7 @@ const dotOf = (row: WorkRow): ReactNode => {
 };
 
 /** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; Settings at the foot. */
-export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, onAct, onRename, onFork, onLinkPr, prOf }: Props): ReactNode {
+export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onSettings, onAct, onRename, onFork, onLinkPr, prOf }: Props): ReactNode {
 	const [menu, setMenu] = useState<{ readonly row: WorkRow; readonly at: DOMRect } | null>(null);
 	const [renaming, setRenaming] = useState<WorkRow | null>(null);
 	const [draft, setDraft] = useState("");
@@ -120,6 +132,33 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			localStorage.setItem(FOLDS, JSON.stringify(next));
 		} catch {}
 	};
+	const [view, setView] = useState(viewRead);
+	const [sideMenu, setSideMenu] = useState<DOMRect | null>(null);
+	const pickView = (next: View): void => {
+		setView(next);
+		setSideMenu(null);
+		try {
+			localStorage.setItem(VIEW, JSON.stringify(next));
+		} catch {}
+	};
+	const [folderFolds, setFolderFolds] = useState<Readonly<Record<string, boolean>>>(() => {
+		try {
+			return JSON.parse(localStorage.getItem(FOLDER_FOLDS) ?? "{}") as Record<string, boolean>;
+		} catch {
+			return {};
+		}
+	});
+	const openOf = (g: FolderGroup): boolean => folderFolds[g.key] ?? (g.key === active?.key || g.works.some((w) => Date.now() - w.updatedAt < RECENT_MS));
+	const foldFolder = (g: FolderGroup): void => {
+		const next = { ...folderFolds, [g.key]: !openOf(g) };
+		setFolderFolds(next);
+		try {
+			localStorage.setItem(FOLDER_FOLDS, JSON.stringify(next));
+		} catch {}
+	};
+	// "Show N more" and "N more folders" hold for this page only
+	const [more, setMore] = useState<readonly string[]>([]);
+	const [allFolders, setAllFolders] = useState(false);
 	const box = useRef<HTMLInputElement>(null);
 	const same = (a: WorkRow | null, b: WorkRow): boolean => a !== null && a.key === b.key && a.id === b.id;
 	const act = (row: WorkRow, what: WorkAct): void => void onAct(row, what).then(() => setError(null), (e: Error) => setError(e.message));
@@ -149,7 +188,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			localStorage.setItem(KID_FOLDS, JSON.stringify(next));
 		} catch {}
 	};
-	const rowOf = (row: WorkRow, className: string, nested: readonly WorkRow[] = []): ReactNode => {
+	const rowOf = (row: WorkRow, className: string, nested: readonly WorkRow[] = [], tag = true): ReactNode => {
 		const shut = nested.length > 0 && shutKids.includes(`${row.key}/${row.id}`);
 		// a folded parent shows the most urgent state of itself and what it folds
 		const urgent = shut ? [row, ...nested].reduce((a, b) => (RANK[stateOf(b)] > RANK[stateOf(a)] ? b : a)) : row;
@@ -186,7 +225,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 							<Chevron />
 						</span>
 					) : null}
-					<small>{row.folder}</small>
+					{tag ? <small>{row.folder}</small> : null}
 				</button>
 			)}
 			{same(renaming, row) ? null : (
@@ -208,9 +247,9 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 		);
 	};
 	const archived = works.filter((w) => w.archived === true);
-	/** A group's rows: a nested session (a fork, under the row it came from) follows its top row, which folds them all. */
-	const rowsOf = (rows: readonly WorkRow[]): ReactNode[] => {
-		const isChild = (row: WorkRow): boolean => row.parent !== undefined && row.pinned === undefined && rows.some((w) => w.key === row.key && w.id === row.parent);
+	/** A group's rows: a nested session follows its top row, which folds them all; `tag`: each row names its folder. */
+	const rowsOf = (rows: readonly WorkRow[], tag = true): ReactNode[] => {
+		const isChild = (row: WorkRow): boolean => childIn(rows, row);
 		const out: ReactNode[] = [];
 		for (let i = 0; i < rows.length; i++) {
 			const row = rows[i]!;
@@ -218,12 +257,49 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			let end = i + 1;
 			while (end < rows.length && isChild(rows[end]!)) end++;
 			const nested = rows.slice(i + 1, end);
-			out.push(rowOf(row, "", nested));
+			out.push(rowOf(row, "", nested, tag));
 			if (nested.length > 0 && shutKids.includes(`${row.key}/${row.id}`)) out.push(kidsLine(row, nested));
-			else nested.forEach((kid, k) => out.push(rowOf(kid, k < nested.length - 1 ? "child more" : "child")));
+			else nested.forEach((kid, k) => out.push(rowOf(kid, k < nested.length - 1 ? "child more" : "child", [], tag)));
 		}
 		return out;
 	};
+	/** Recents by folder: a folder row (it folds; on hover, a new task in it), then its Works one step in, newest first. */
+	const foldersOf = (rows: readonly WorkRow[]): ReactNode[] => {
+		const groups = byFolder(rows, view.sort);
+		const shown = allFolders ? groups : groups.slice(0, FOLDERS);
+		const out = shown.map((g) => {
+			const open = openOf(g);
+			const roots = g.works.filter((w) => !childIn(g.works, w));
+			const cut = more.includes(g.key) || roots.length <= PER_FOLDER ? g.works : g.works.slice(0, g.works.indexOf(roots[PER_FOLDER]!));
+			return (
+				<div key={g.key} className="fgrp" data-folder={g.key}>
+					<div className="row">
+						<button className="frow" aria-expanded={open} data-act="fold-folder" onClick={() => foldFolder(g)}>
+							{open ? <I.folderOpen /> : <I.folder />}
+							<span className="tt">{g.folder}</span>
+						</button>
+						<button className="dots" aria-label={fmt(t.newIn, { folder: g.folder })} title={fmt(t.newIn, { folder: g.folder })} data-act="folder-new" onClick={() => onNewIn(g.key)}>
+							<I.compose />
+						</button>
+					</div>
+					{open ? (
+						<div className="fin">
+							{rowsOf(cut, false)}
+							{cut.length < g.works.length ? (
+								<button className="more-line" data-act="folder-more" onClick={() => setMore([...more, g.key])}>
+									{fmt(t.showNMore, { n: roots.length - PER_FOLDER })}
+								</button>
+							) : null}
+						</div>
+					) : null}
+				</div>
+			);
+		});
+		return shown.length < groups.length
+			? [...out, <button key="more-folders" className="more-line" data-act="more-folders" onClick={() => setAllFolders(true)}>{fmt(t.moreFolders, { n: groups.length - shown.length })}</button>]
+			: out;
+	};
+	const listed = view.sort === "created" ? [...works].sort((a, b) => b.createdAt - a.createdAt) : works;
 	return (
 		<aside className="side" data-kind="sidebar">
 			<div className="side-in">
@@ -233,13 +309,20 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 			</button>
 			<div className="hlist">
 				{error !== null && deleting === null && linking === null ? <div className="side-err" data-kind="work-error">{error}</div> : null}
-				{groupWorks(works).map((group) => (
+				{groupWorks(listed).map((group) => (
 					<section key={group.label} className={folds.includes(group.label) ? "shut" : ""}>
-						<button className="grp gh" onClick={() => fold(group.label)} aria-expanded={!folds.includes(group.label)} data-act="fold-group">
-							{group.label}
-							<Chevron />
-						</button>
-						{folds.includes(group.label) ? null : rowsOf(group.works)}
+						<div className="ghead">
+							<button className="grp gh" onClick={() => fold(group.label)} aria-expanded={!folds.includes(group.label)} data-act="fold-group">
+								{group.label}
+								<Chevron />
+							</button>
+							{group.label === t.recents ? (
+								<button className={`gmenu${sideMenu !== null ? " on" : ""}`} aria-label={t.sideMenu} data-act="side-menu" onClick={(e) => setSideMenu(sideMenu !== null ? null : e.currentTarget.parentElement!.getBoundingClientRect())}>
+									{svg(<><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>)}
+								</button>
+							) : null}
+						</div>
+						{folds.includes(group.label) ? null : group.label === t.recents && view.by === "folder" ? foldersOf(group.works) : rowsOf(group.works)}
 					</section>
 				))}
 				{archived.length > 0 ? (
@@ -251,6 +334,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onSettings, 
 					</section>
 				) : null}
 			</div>
+			{sideMenu !== null ? <SideMenu at={sideMenu} view={view} onPick={pickView} onClose={() => setSideMenu(null)} /> : null}
 			{menu !== null ? <WorkMenu row={menu.row} at={menu.at} onClose={() => setMenu(null)} onPick={(what, pr) => pick(menu.row, what, pr)} prOf={prOf} /> : null}
 			{linking !== null ? (
 				<Dialog

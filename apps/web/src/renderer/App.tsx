@@ -293,6 +293,7 @@ export function App(): ReactNode {
 					setView("work");
 					setTarget({ key: null, sessionId: newWorkId() });
 				}}
+				onNewIn={(key) => goTo(key, newWorkId())}
 				onSettings={() => setView("settings")}
 			/>
 			<main className="main">
