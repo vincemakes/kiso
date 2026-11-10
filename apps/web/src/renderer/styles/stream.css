@@ -34,6 +34,8 @@
 .say p { margin-bottom: 0; }
 .say > * + * { margin-top: 10px; }
 .say > :first-child { margin-top: 0; }
+.say blockquote > * + * { margin-top: 10px; }
+.say blockquote > :first-child { margin-top: 0; }
 .say :is(h1, h2, h3, h4) { margin-bottom: 0; font-size: 14.5px; line-height: 1.6; font-weight: 600; }
 .say :is(blockquote, hr) { margin-bottom: 0; margin-inline: 0; }
 .say code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 13px var(--mono); }
