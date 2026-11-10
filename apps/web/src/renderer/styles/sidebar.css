@@ -1,4 +1,5 @@
-/* the window is one row of columns: the sidebar, the Work (the stream and, beside it, the panel) and the rail. No column is laid over another, at any width. */
+/* the window is one row of columns: the sidebar, the Work (the stream and, beside it, the panel) and the rail. No column is laid over another while the window can hold them (864 px and up); narrower, the Work is the whole window and the sidebar and the
+   overview float over it as drawers, one at a time, behind a veil a tap closes (owner 2026-11-10, reversing the 2026-11-02 ruling below that width). */
 :root { --sw: 264px; --side: #fafafa; }
 .win { position: fixed; inset: 0; overflow: clip; background: #fff; display: flex; }
 .sidetoggle { position: absolute; left: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); transition: left 0.2s var(--ease); }
@@ -96,3 +97,15 @@
 .menu .mh { padding: 6px 10px 2px; font-size: 12px; color: var(--mute); }
 .menu .ck { margin-left: auto; display: grid; width: 16px; }
 .menu .ck .ico { color: var(--ink); }
+
+@media (max-width: 863px) {
+	.side, .rail { position: absolute; top: 0; bottom: 0; z-index: 80; }
+	.win[data-side="1"] .side, .win[data-rail="1"] .rail { box-shadow: 0 0 40px rgba(0, 0, 0, 0.18); }
+	.side { left: 0; }
+	.rail { right: 0; }
+	.win[data-side="1"] .side { width: min(var(--sw), 82vw); }
+	.win[data-rail="1"] .rail { width: min(280px, 82vw); }
+	.win[data-side="1"]::after, .win[data-rail="1"]::after { content: ""; position: absolute; inset: 0; z-index: 75; background: rgba(20, 20, 24, 0.28); }
+	.sidetoggle, .brand { z-index: 90; }
+	.chat { min-width: 0; }
+}
