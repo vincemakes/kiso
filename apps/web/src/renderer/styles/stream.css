@@ -31,8 +31,11 @@
 
 /* narration between steps */
 .say { color: var(--ink); font-size: 14.5px; line-height: 1.65; }
-.say p { margin: 0; }
-.say p + p, .say ul, .say ol, .say pre, .say .tbl { margin-top: 10px; }
+.say p { margin-bottom: 0; }
+.say > * + * { margin-top: 10px; }
+.say > :first-child { margin-top: 0; }
+.say :is(h1, h2, h3, h4) { margin-bottom: 0; font-size: 14.5px; line-height: 1.6; font-weight: 600; }
+.say :is(blockquote, hr) { margin-bottom: 0; margin-inline: 0; }
 .say code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 13px var(--mono); }
 .say ul, .say ol { padding-left: 20px; margin-bottom: 0; }
 /* one caret, at the end of the last text released: after the last block, or inside the last item when that block is a list */
@@ -106,12 +109,16 @@
 /* a chip moves to the next line whole (its icon with its text); only one wider than the column breaks inside */
 .fchip { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: baseline; padding: 1px 6px; border-radius: 6px; background: #f3f4f6; color: var(--ink); cursor: pointer; }
 .fchip:hover { background: #e9ebef; }
-.ans .tbl { max-width: 100%; overflow-x: auto; margin: 10px 0; }
-.ans table { border-collapse: collapse; font-size: 13.5px; line-height: 1.5; }
-.ans th, .ans td { border: 1px solid var(--line); padding: 5px 10px; vertical-align: top; }
-.ans th { background: #f7f7f8; font-weight: 600; white-space: nowrap; }
-.ans blockquote { margin: 8px 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
-.ans hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.ans .tbl { margin: 10px 0; }
+/* the same elements in the answer and in narration: a wide table scrolls inside its own box, a header sits over its column's text */
+:is(.ans, .say) .tbl { max-width: 100%; overflow-x: auto; }
+:is(.ans, .say) table { border-collapse: collapse; font-size: 13.5px; line-height: 1.5; }
+:is(.ans, .say) th, :is(.ans, .say) td { border: 1px solid var(--line); padding: 5px 10px; vertical-align: top; }
+:is(.ans, .say) th { background: #f7f7f8; font-weight: 600; white-space: nowrap; text-align: left; }
+:is(.ans, .say) blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--line); color: #555; }
+.ans blockquote { margin: 8px 0; }
+:is(.ans, .say) hr { border: 0; border-top: 1px solid var(--line); }
+.ans hr { margin: 14px 0; }
 .acts { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .run-end { margin: 6px 0 10px; padding: 8px 12px; border-radius: 10px; background: #fff7e6; color: #8a5300; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .run-end.bad { background: #fef3f2; color: #b42318; }

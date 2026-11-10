@@ -233,7 +233,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 										<I.check />
 									</span>
 									<span className="r-nm">{fmt(t.railFinished, { n: done.length })}</span>
-									<span className={`r-ic r-chev${finished ? "" : " side"}`}>
+									<span className={`r-ic r-chev${finished ? "" : " turned"}`}>
 										<I.chevron />
 									</span>
 								</button>

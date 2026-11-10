@@ -26,6 +26,9 @@ const app = await launchApp({ data: scratch("ui-data"), workspace, env: { KISO_W
 	{ events: [...slow("Nothing to run for this, the answer is in what I read.", 9, 60, "thinking"), { type: "text_delta", text: "Yes." }, { type: "stop", reason: "end_turn" }] },
 	{ events: [call("c4", "read_file", { path: join(workspace, "missing/notes.txt") }), stop] },
 	{ events: [{ type: "text_delta", text: "Not there." }, { type: "stop", reason: "end_turn" }] },
+	// narration with a table, a heading and a table too wide for the column, then a step and the answer
+	{ events: [{ type: "text_delta", text: "## Plan\n\n| Step | Note |\n|---|---|\n| 1 | read |\n\nAfter the table.\n\n| A | B |\n|---|---|\n| 1 | " + "wide_name_that_cannot_wrap".repeat(12) + " |" }, call("c4", "read_file", { path: "README.md" }), use(900, 50, 0), stop] },
+	{ events: [{ type: "text_delta", text: "Read." }, { type: "stop", reason: "end_turn" }] },
 ] });
 // every frame: how much answer text is drawn, how many live indicators, and whether the process header is covered by anything
 await app.evaluate(`window.__frames = []; (function f() {
@@ -126,5 +129,13 @@ await waitUntil(async () => (await app.count("[data-kind=footer]")) === 3, 20_00
 const failed = await app.evaluate("JSON.stringify({ out: document.querySelectorAll('.step.failed .s-out').length, err: document.querySelector('.step.failed .s-err')?.textContent, obj: document.querySelector('.step.failed .s-obj')?.textContent })").then(JSON.parse);
 const name = workspace.split("/").pop();
 check(failed.out === 0 && failed.err.includes("missing/notes.txt") && !failed.err.includes("/folders/") && failed.obj === "missing/notes.txt" && (!failed.err.includes("root") || failed.err.includes(name)), `a failed step shows its message once, in red, without the folder's absolute path: ${failed.err}`);
+// narration is drawn like the answer: a table has borders and headers over their text, a wide one scrolls in its own box, a heading is body size
+await app.evaluate(`window.__kiso.send("show the plan")`);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) === 4, 20_000);
+await app.evaluate("[...document.querySelectorAll('[data-kind=process]')].at(-1).querySelector('.ph')?.click(); true");
+await sleep(500);
+const say = await app.evaluate(`(() => { const s = [...document.querySelectorAll('.say')].at(-1), cs = (e) => getComputedStyle(e), th = s.querySelector('th'), w = s.querySelectorAll('.tbl')[1], sc = document.querySelector('.scroll'); return JSON.stringify({ border: cs(th).borderTopWidth, align: cs(th).textAlign, scroll: cs(w).overflowX, wide: w.scrollWidth > w.clientWidth, h: cs(s.querySelector('h2')).fontSize, gap: Math.round(s.querySelector('p').getBoundingClientRect().top - s.querySelector('.tbl').getBoundingClientRect().bottom), side: sc.scrollWidth > sc.clientWidth, chev: [...document.querySelectorAll('.rail .r-chev')].map((c) => Math.round(c.getBoundingClientRect().width) + 'x' + Math.round(c.getBoundingClientRect().height)).join() }); })()`).then(JSON.parse);
+check(say.border === "1px" && say.align === "left" && say.scroll === "auto" && say.wide && say.h === "14.5px" && say.gap >= 8 && !say.side && say.chev !== '' && say.chev.split(',').every((c) => c === '18x18'), `narration markdown: bordered table, left headers, a wide table scrolls in its box, body-size heading, ${say.gap} px after a table, no sideways page scroll; with the sidebar open every rail chevron stays 18x18 ${JSON.stringify(say)}`);
+await app.shot("7-narration-table");
 await app.close();
 verdict();
