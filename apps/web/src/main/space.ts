@@ -88,13 +88,31 @@ export function createSpace(options: SpaceOptions): Space {
 	// own name wins, before or after, and a failure leaves the first request's title. A first message sent in the last
 	// minute, not "a run is live": a quick run can end before its first event is seen here, and a replayed old one is old
 	const titled = new Set<string>();
+	// a title that failed (a provider timeout, a refusal) is asked once more when the first run ends, so it does not compete with it;
+	// a first message that stays untitled would stay the Work's name for good
+	const again = new Map<string, string>();
+	const ask = (sessionId: string, text: string, second: boolean): void => {
+		const session = sessions.get(sessionId);
+		if (session === undefined) return;
+		const failed = (): void => {
+			if (second) return;
+			if (service.isRunning(sessionId)) again.set(sessionId, text);
+			else ask(sessionId, text, true);
+		};
+		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => (name === "" ? failed() : titleIfUnnamed(options.dir, sessionId, name)), failed);
+	};
+	const retitle = (sessionId: string): void => {
+		const text = again.get(sessionId);
+		again.delete(sessionId);
+		if (text !== undefined && !named(options.dir, sessionId)) ask(sessionId, text, true);
+	};
 	const title = (sessionId: string, event: Extract<Event, { type: "user_input" }>): void => {
 		const session = sessions.get(sessionId);
 		if (options.titles !== true || session === undefined || titled.has(sessionId) || Date.now() - times.at(sessionId, event.seq) > 60_000) return;
 		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
 		titled.add(sessionId);
 		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" ? b.text : "")).join(" ");
-		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => titleIfUnnamed(options.dir, sessionId, name), () => undefined);
+		ask(sessionId, text, false);
 	};
 	const followUp = (sessionId: string, seq: number): Promise<string> => {
 		const session = sessions.get(sessionId);
@@ -146,6 +164,7 @@ export function createSpace(options: SpaceOptions): Space {
 			frames.push({ event: "at", data: at });
 		}
 		if (event.type === "user_input") title(sessionId, event);
+		if (event.type === "terminal") retitle(sessionId);
 		frames.push(...derived(event, sessionId));
 		return frames;
 	};
