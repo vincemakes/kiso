@@ -18,7 +18,7 @@ export type Inline =
 	| { readonly t: "link"; readonly text: string; readonly href: string };
 
 export type Block =
-	| { readonly t: "h"; readonly level: 1 | 2 | 3; readonly inline: readonly Inline[] }
+	| { readonly t: "h"; readonly level: 1 | 2 | 3 | 4; readonly inline: readonly Inline[] }
 	| { readonly t: "p"; readonly inline: readonly Inline[] }
 	| { readonly t: "ul" | "ol"; readonly start: number; readonly items: readonly ListItem[] }
 	| { readonly t: "code"; readonly lang: string; readonly text: string }
@@ -113,7 +113,7 @@ export function inline(raw: string): Inline[] {
 	while (i < raw.length) {
 		const rest = raw.slice(i);
 		let m: RegExpExecArray | null;
-		if ((m = /^\\([|\\`*_~[\]])/.exec(rest)) !== null) {
+		if ((m = /^\\([|\\`*_~[\]().!#+<>{}-])/.exec(rest)) !== null) {
 			buf += m[1];
 			i += 2;
 		} else if ((m = /^`([^`]+)`/.exec(rest)) !== null) {
@@ -132,9 +132,10 @@ export function inline(raw: string): Inline[] {
 			flush();
 			out.push({ t: "i", children: inline(m[1]!) });
 			i += m[0].length;
-		} else if ((m = /^\[([^\]]+)\]\(([^)\s]+)\)/.exec(rest)) !== null) {
+		} else if ((m = /^!?\[([^\]]*)\]\(([^)\s]+)\)/.exec(rest)) !== null) {
+			// an image is never fetched from the model's address: its alt text is a link to it
 			flush();
-			out.push({ t: "link", text: m[1]!, href: m[2]! });
+			out.push({ t: "link", text: m[1] || m[2]!, href: m[2]! });
 			i += m[0].length;
 		} else {
 			buf += raw[i];
@@ -149,7 +150,7 @@ const ITEM = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
 const indentOf = (l: string): number => /^ */.exec(l)![0].length;
 const spaced = (l: string): string => l.replace(/^\t+/, (t) => "    ".repeat(t.length));
 /** Whether a line, dedented, starts a block of its own rather than continuing a paragraph. */
-const starts = (l: string): boolean => ITEM.test(l) || FENCE.test(l) || /^ {0,3}(>|#{1,3}\s)/.test(l) || HR.test(l);
+const starts = (l: string): boolean => ITEM.test(l) || FENCE.test(l) || /^ {0,3}(>|#{1,4}\s)/.test(l) || HR.test(l);
 
 /** The list that starts at lines[at]: its items and everything indented under them (sub-lists, code, more paragraphs, parsed in turn).
  *  Returns the index after the last line it took. A blank line between items keeps the list going. */
@@ -234,10 +235,10 @@ export function parse(raw: string): Block[] {
 			blocks.push({ t: "hr" });
 			continue;
 		}
-		const h = /^(#{1,3})\s+(.*)$/.exec(line);
+		const h = /^(#{1,4})\s+(.*)$/.exec(line);
 		if (h !== null) {
 			endPara();
-			blocks.push({ t: "h", level: h[1]!.length as 1 | 2 | 3, inline: inline(h[2]!) });
+			blocks.push({ t: "h", level: h[1]!.length as 1 | 2 | 3 | 4, inline: inline(h[2]!) });
 			continue;
 		}
 		if (ITEM.test(line)) {
