@@ -64,7 +64,7 @@ check(split(mid.turns[0]).openAsks.length === 1 && mid.turns[0].items.some((i) =
 // a runtime notice inside a live run is a quiet line; the interrupted-run state follows the host's snapshot
 const n = initialState();
 [{ type: "user_input", seq: 0, content: "go" }, { type: "user_input", seq: 1, content: '<kiso-task id="t1" status="exited" code="0" duration="8s"/>\nRuntime notice - not the user.', source: "system" }].forEach((event) => reduce(n, { kind: "event", event }));
-check(n.turns.length === 1 && n.turns[0].items[0]?.kind === "notice" && n.turns[0].items[0].text === "Task t1 exited", "a system notice is a line in the run, not a new turn");
+check(n.turns.length === 1 && n.turns[0].items[0]?.kind === "notice" && n.turns[0].items[0].text === "Task t1 finished" && n.turns[0].items[0].tone === "", "a system notice is a line in the run, not a new turn");
 reduce(n, { kind: "snapshot", state: { sessionId: "x", running: false, highWater: 1, openRun: "r1", pendingApprovals: [], uncertain: [] } });
 check(isInterrupted(n) && !isLive(n), "a running turn the host no longer runs is interrupted");
 const v = initialState();
