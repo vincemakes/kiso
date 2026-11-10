@@ -37,12 +37,13 @@ check((await q(`[...document.querySelectorAll('[data-kind=side-menu] [aria-check
 await new Promise((r) => setTimeout(r, 300));
 await app.shot("sidebar-recents-menu");
 await app.click("[data-menu-act=one-list]");
-check((await app.count(".fgrp")) === 0 && (await q(`[...document.querySelectorAll('.item')].map((i) => i.querySelector('.tt').textContent + '@' + i.querySelector('small').textContent).join()`)) === `beta task@${nameB},alpha task@${nameA}`, "One list: today's list, each row with its folder name, newest first");
+check((await app.count(".fgrp")) === 0 && (await q(`[...document.querySelectorAll('.item')].map((i) => i.querySelector('.tt').textContent).join()`)) === "beta task,alpha task" && (await app.count(".item small")) === 0, "One list: today's list, newest first, no folder name on a row (the folder view says it)");
 check((await q(`localStorage.getItem('kiso.web.side-view')`)) === '{"by":"list","sort":"updated"}', "the choice is kept per browser");
 await app.click("[data-act=side-menu]");
 await app.click("[data-menu-act=by-folder]");
 await q(`document.querySelector('.item[data-work=work-a]').click()`);
 check(await waitUntil(async () => (await app.text("[data-kind=answer]"))?.includes("alpha task done.")), "a click opens a Work of the other folder and replays its log");
+check(await q(`(() => { const w = (e) => getComputedStyle(e).fontWeight, on = document.querySelector('.item.on'), off = document.querySelector('.item:not(.on)'); return !!on && !!off && w(on) === w(off); })()`), "the open Work's title is no bolder than the others");
 await app.click("[data-act=new]");
 check(await waitUntil(async () => (await app.count("[data-kind=answer]")) === 0), "New task opens an empty Work");
 await q(`window.__kiso.send("gamma task")`);

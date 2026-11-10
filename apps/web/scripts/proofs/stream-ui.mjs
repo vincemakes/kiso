@@ -116,6 +116,7 @@ await app.click("[data-act=sidebar]");
 await app.evaluate(`window.__kiso.send("is that all?")`);
 const row = () => app.evaluate("document.querySelector('.item[data-work=ui]')?.dataset.state ?? null");
 check(await waitUntil(async () => (await row()) === "running", 10_000), "the sidebar row spins while the run works");
+check(await app.evaluate("(() => { const r = document.querySelector('.item[data-work=ui]'), s = r.querySelector('.sp').getBoundingClientRect(), t = r.querySelector('.tt').getBoundingClientRect(); return s.left >= t.right - 1; })()"), "the spinner sits at the right of the row, after its title");
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2, 20_000);
 const ended = Date.now();
 check((await waitUntil(async () => (await row()) === "idle", 1000, 50)) && Date.now() - ended <= 1000, `the row stops spinning ${Date.now() - ended} ms after the run's end (at most 1,000)`);
