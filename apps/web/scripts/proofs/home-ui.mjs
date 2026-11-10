@@ -12,10 +12,9 @@ const notices = join(data, "notices.jsonl");
 writeFileSync(notices, "");
 const home = scratch("home-home");
 mkdirSync(join(home, "proj"));
-// the system's folder picker, as a stub: it prints the path in `answer`, exits 1 for a cancel, and fails (exit 2) while there is no answer
 const pickDir = scratch("home-pick");
 const answer = (text) => writeFileSync(join(pickDir, "answer"), text);
-writeFileSync(join(pickDir, "picker"), '#!/bin/sh\nf="$(dirname "$0")/answer"\n[ -f "$f" ] || exit 2\na=$(cat "$f")\n[ "$a" = CANCEL ] && exit 1\necho "$a"\n', { mode: 0o755 });
+writeFileSync(join(pickDir, "picker"), '#!/bin/sh\nf="$(dirname "$0")/answer"\n[ -f "$f" ] || exit 2\na=$(cat "$f")\n[ "$a" = CANCEL ] && exit 1\n[ "$a" = SLOW ] && sleep 2\necho "$a"\n', { mode: 0o755 });
 const app = await launchApp({ data, workspace: wsA, env: { KISO_WEB_SESSION: "h1", KISO_WEB_NOTIFY_LOG: notices, HOME: home, KISO_WEB_PICKER: join(pickDir, "picker") }, fauxScript: [
 	{ events: [{ type: "tool_call_end", callId: "w", name: "write_file", input: { path: "x.txt", content: "hello" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "Written." }, { type: "stop", reason: "end_turn" }] },
@@ -42,8 +41,9 @@ check(await waitUntil(async () => (await chip()) === name(wsA)) && (await app.co
 answer("CANCEL");
 await app.click("[data-act=folder]");
 await app.click("[data-act=pick]");
-await sleep(800);
-check((await chip()) === name(wsA) && (await app.count("dialog[open]")) === 0, "cancelling the system picker changes nothing");
+check(!(await waitUntil(async () => (await app.count("dialog[open]")) > 0 || (await chip()) !== name(wsA), 800)), "cancelling the system picker changes nothing");
+const codes = await (answer("SLOW"), q(`Promise.all([1, 2].map(() => fetch("/desk/pick-folder", { method: "POST", body: "{}" }).then((r) => r.status))).then((s) => s.sort().join())`));
+check(codes === "200,409", `one system picker at a time: a second request while it is open is refused (${codes})`);
 await q(`window.__kisoMark = window.__kiso; window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true })); true`);
 await waitUntil(async () => (await app.count("dialog[open] [data-dir=proj]")) === 1);
 await app.click("[data-dir=proj]");

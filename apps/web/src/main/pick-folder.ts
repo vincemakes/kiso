@@ -16,11 +16,17 @@ function command(): { readonly cmd: string; readonly args: readonly string[] } |
 	return null;
 }
 
+/** One picker at a time: every request would otherwise put another system window on screen. */
+let open = false;
+
 export function pickFolder(): Promise<string | null> {
 	const run = command();
 	if (run === null) return Promise.reject(new Refusal(501, "this computer has no system folder picker the page can open"));
+	if (open) return Promise.reject(new Refusal(409, "a folder picker is already open"));
+	open = true;
 	return new Promise((resolve, reject) => {
 		execFile(run.cmd, [...run.args], { timeout: 10 * 60_000, encoding: "utf8" }, (err: ExecFileException | null, stdout, stderr) => {
+			open = false;
 			if (err === null) return resolve(stdout.trim().replace(/(.)\/$/, "$1") || null);
 			if (err.code === "ENOENT") return reject(new Refusal(501, `${run.cmd} is not installed`));
 			if (err.code === 1) return /canceled|cancelled/i.test(stderr) || stderr.trim() === "" ? resolve(null) : reject(new Refusal(500, stderr.trim().slice(0, 200)));
