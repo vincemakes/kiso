@@ -7,9 +7,11 @@ import { join } from "node:path";
 import { scratch, checker, launchApp, waitUntil } from "./lib.mjs";
 
 const { check, verdict } = checker("session-title");
+// the first two requests (the title and the run, together) time out: the title is asked once more when the run has ended
+const FAIL = { events: [{ type: "fail", code: "timeout", retryable: false, message: "Request timed out." }] };
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const data = scratch("st-data");
-const app = await launchApp({ data, workspace: scratch("st-ws"), fauxScript: [say("Ledger fix"), say("Ledger fix"), say("Done.")], env: { KISO_WEB_SESSION: "st", KISO_AUTO_TITLE: "on" } });
+const app = await launchApp({ data, workspace: scratch("st-ws"), fauxScript: [FAIL, FAIL, say("Ledger fix"), say("Done.")], env: { KISO_WEB_SESSION: "st", KISO_AUTO_TITLE: "on" } });
 const q = (js) => app.evaluate(js);
 await q(`window.__kiso.send("npm test fails because the ledger subtracts wrong, can you fix it?")`);
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 1, 30_000);
@@ -22,6 +24,6 @@ check(JSON.parse(readFileSync(join(dir, "st.meta.json"), "utf8")).name === "Ledg
 await q(`window.__kiso.send("and add a test")`);
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2, 30_000);
 const purposes = readFileSync(join(dir, "traces", "st.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((l) => l.kind === "request").map((l) => l.purpose ?? "run");
-check(purposes.filter((p) => p === "title").length === 1 && purposes.filter((p) => p === "run").length === 2, `one title for the Work: the second message asks nothing again (${purposes.join()})`);
+check(purposes.filter((p) => p === "title").length === 2 && purposes.filter((p) => p === "run").length === 2, `a title that failed is asked once more after the first run, then never again: the second message asks nothing (${purposes.join()})`);
 await app.close();
 verdict();
