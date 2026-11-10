@@ -21,6 +21,8 @@ const s = clientFor(host).session("rc");
 check((await s.state()).running, "with no tab open, the run goes on in the host");
 const tab = await app.chrome.open(`${host.origin}/#session=rc`);
 check((await tab.evaluate("window.__kiso !== undefined")) && (await tab.count("[data-kind=signedout]")) === 0, "the new tab is signed in by the cookie alone");
+// the replay is drawn a moment after the tab is signed in: wait (3 s at most) for its first characters rather than reading at once
+await waitUntil(async () => ((await tab.text("[data-kind=answer]")) ?? "") !== "", 3_000, 50);
 const partial = (await tab.text("[data-kind=answer]")) ?? "";
 check((await tab.count("[data-kind=live]")) === 1 && partial.length > 0 && partial.length < ANSWER.length, `it opens in the middle of the run: live, the answer partly there (${partial.length} of ${ANSWER.length} characters, ${Date.now() - closedAt} ms after the close)`);
 check(await waitUntil(async () => (await tab.text("[data-kind=footer]")) !== null, 20_000), "the stream resumes to the end of the run");
