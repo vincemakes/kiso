@@ -188,7 +188,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 			localStorage.setItem(KID_FOLDS, JSON.stringify(next));
 		} catch {}
 	};
-	const rowOf = (row: WorkRow, className: string, nested: readonly WorkRow[] = [], tag = true): ReactNode => {
+	const rowOf = (row: WorkRow, className: string, nested: readonly WorkRow[] = []): ReactNode => {
 		const shut = nested.length > 0 && shutKids.includes(`${row.key}/${row.id}`);
 		// a folded parent shows the most urgent state of itself and what it folds
 		const urgent = shut ? [row, ...nested].reduce((a, b) => (RANK[stateOf(b)] > RANK[stateOf(a)] ? b : a)) : row;
@@ -213,7 +213,6 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 				</div>
 			) : (
 				<button className={`item ${className}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
-					{dotOf(urgent)}
 					<span className="tt">{row.title === "" ? t.untitled : row.title}</span>
 					{row.pr !== undefined ? (
 						<span className="pr-ico" role="link" data-pr-state={row.pr.state?.toLowerCase() ?? "unknown"} title={`${fmt(t.prOf, { n: row.pr.number })}${row.pr.state === undefined ? "" : ` · ${t.prStates.split("|")[["OPEN", "MERGED", "CLOSED"].indexOf(row.pr.state)]}`}`} data-act="row-pr" onClick={(e) => (e.stopPropagation(), open(row.pr!.url, "_blank", "noopener"))}>
@@ -225,7 +224,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 							<Chevron />
 						</span>
 					) : null}
-					{tag ? <small>{row.folder}</small> : null}
+					{dotOf(urgent)}
 				</button>
 			)}
 			{same(renaming, row) ? null : (
@@ -247,8 +246,8 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 		);
 	};
 	const archived = works.filter((w) => w.archived === true);
-	/** A group's rows: a nested session follows its top row, which folds them all; `tag`: each row names its folder. */
-	const rowsOf = (rows: readonly WorkRow[], tag = true): ReactNode[] => {
+	/** A group's rows: a nested session follows its top row, which folds them all. */
+	const rowsOf = (rows: readonly WorkRow[]): ReactNode[] => {
 		const isChild = (row: WorkRow): boolean => childIn(rows, row);
 		const out: ReactNode[] = [];
 		for (let i = 0; i < rows.length; i++) {
@@ -257,9 +256,9 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 			let end = i + 1;
 			while (end < rows.length && isChild(rows[end]!)) end++;
 			const nested = rows.slice(i + 1, end);
-			out.push(rowOf(row, "", nested, tag));
+			out.push(rowOf(row, "", nested));
 			if (nested.length > 0 && shutKids.includes(`${row.key}/${row.id}`)) out.push(kidsLine(row, nested));
-			else nested.forEach((kid, k) => out.push(rowOf(kid, k < nested.length - 1 ? "child more" : "child", [], tag)));
+			else nested.forEach((kid, k) => out.push(rowOf(kid, k < nested.length - 1 ? "child more" : "child", [])));
 		}
 		return out;
 	};
@@ -284,7 +283,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 					</div>
 					{open ? (
 						<div className="fin">
-							{rowsOf(cut, false)}
+							{rowsOf(cut)}
 							{cut.length < g.works.length ? (
 								<button className="more-line" data-act="folder-more" onClick={() => setMore([...more, g.key])}>
 									{fmt(t.showNMore, { n: roots.length - PER_FOLDER })}
