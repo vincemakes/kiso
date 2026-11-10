@@ -189,11 +189,10 @@ export function App(): ReactNode {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
 	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
-	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request; folder · branch under it
+	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
 	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
 	const title = named[target.sessionId] ?? row?.title ?? session?.state.turns[0]?.user.split("\n")[0] ?? "";
-	const sub = env === null ? "" : env.branch === null ? env.folder : `${env.folder} · ${env.branch}`;
 	// a name shows at once; a cleared one waits for the listing, which reads names live, to give back the first-request title
 	// a row's folder key as the routes take it (null: the folder in use), and the listing read again for that folder
 	const keyOf = (row: WorkRow): string | null => (row.key === history?.current.key ? null : row.key);
@@ -206,7 +205,7 @@ export function App(): ReactNode {
 	const onRename = (name: string): Promise<void> => renameRow(target.key, target.sessionId, name);
 	const header =
 		railOn && session !== null ? (
-			<Header title={title} sub={sub} onRename={onRename}>
+			<Header title={title} onRename={onRename}>
 				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
 					<Overview />
 				</button>

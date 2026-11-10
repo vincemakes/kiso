@@ -53,6 +53,7 @@ await app.shot("header-1");
 
 // the title renames in place
 const first = await text("[data-field=title]");
+check((await app.count("[data-field=title-sub]")) === 0, "the header has the title alone: the folder and branch are in the overview");
 const logFile = () => join(data, "projects", readdirSync(join(data, "projects"))[0], "hdr.jsonl");
 const logSha = () => createHash("sha256").update(readFileSync(logFile())).digest("hex");
 const sha = logSha();

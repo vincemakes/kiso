@@ -97,7 +97,6 @@ select.chip { appearance: none; padding-right: 14px; cursor: pointer; font: inhe
 input.hdr-title.edit { width: min(440px, 55%); max-width: none; border: 0; outline: 0; background: transparent; font: inherit; font-weight: 600; font-size: 14px; }
 input.hdr-title.edit:hover { background: transparent; }
 .hdr-title.edit::selection { background: #cfe0ff; }
-.hdr-sub { min-width: 0; color: var(--faint); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* a panel's tabs of one kind in its top bar: pages in the browser, tasks in the terminal; + opens a page, each page closes */
 .ptabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; margin-right: auto; }
 .ptab { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 200px; height: 32px; padding: 0 6px 0 10px; border-radius: 9px; color: #555; font-size: 13px; cursor: pointer; white-space: nowrap; }
