@@ -31,6 +31,8 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 export const fetchDirs = (root: string | null, path: string): Promise<DirsReply> => call(`/desk/dirs?${new URLSearchParams({ ...(root === null ? {} : { root }), path }).toString()}`);
 
 export const chooseFolder = (path: string): Promise<{ readonly key: string; readonly folder: string }> => call("/desk/folder", { path });
+/** The system's own folder picker, on this computer: a path, or cancelled; a refusal (no picker here) sends the page to its own browser. */
+export const pickFolder = (): Promise<{ readonly path?: string; readonly cancelled?: true }> => call("/desk/pick-folder", {});
 export const fetchRecent = (): Promise<{ readonly recent: readonly { readonly folder: string; readonly path: string; readonly key: string }[] }> => call("/desk/recent");
 export const fetchSettings = (session?: string): Promise<SettingsReply> => call(`/desk/settings${session === undefined ? "" : `?session=${encodeURIComponent(session)}`}`);
 /** `key`: the folder the Work is in, so a Work's model change rebuilds it in its own space. */
