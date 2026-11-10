@@ -1,4 +1,4 @@
-import { Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { render, type Block, type Inline } from "../state/markdown.js";
 import { Chip, Link, pathish, pathsIn, useFound } from "./links.js";
 import { RootContext } from "./root.js";
@@ -70,7 +70,7 @@ function candidates(blocks: readonly Block[], root: string): string[] {
 function block(b: Block, i: number, ctx: Ctx = NONE): ReactNode {
 	switch (b.t) {
 		case "h":
-			return b.level === 1 ? <h1 key={i}>{inlines(b.inline, ctx)}</h1> : b.level === 2 ? <h2 key={i}>{inlines(b.inline, ctx)}</h2> : <h3 key={i}>{inlines(b.inline, ctx)}</h3>;
+			return createElement(`h${b.level}`, { key: i }, inlines(b.inline, ctx));
 		case "p":
 			return <p key={i}>{inlines(b.inline, ctx)}</p>;
 		case "ul":
