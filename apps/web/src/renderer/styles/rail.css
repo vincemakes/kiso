@@ -22,7 +22,7 @@
 /* the chevron after the title, as in the stream and the sidebar: on hover, and at rest while the section is folded */
 .r-chev { flex: none; display: grid; place-items: center; color: var(--mute); opacity: 0; transition: transform 0.15s var(--ease), opacity 0.12s; }
 .r-sh:hover .r-chev, .r-sh:focus-visible .r-chev, .closed > .r-sh .r-chev, .r-row .r-chev { opacity: 1; }
-.closed > .r-sh .r-chev, .r-chev.side { transform: rotate(-90deg); }
+.closed > .r-sh .r-chev, .r-chev.turned { transform: rotate(-90deg); }
 .r-row { width: calc(100% - 16px); margin: 0 8px; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 8px; font-size: 14.5px; color: var(--ink); text-align: left; cursor: pointer; }
 .r-row:hover { background: rgba(0, 0, 0, 0.05); }
 .r-row.dim { color: var(--mute); }
