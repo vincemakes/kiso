@@ -60,7 +60,7 @@ function candidates(blocks: readonly Block[], root: string): string[] {
 	};
 	for (const b of blocks) {
 		if (b.t === "h" || b.t === "p") walk(b.inline);
-		else if (b.t === "ul" || b.t === "ol") b.items.forEach(walk);
+		else if (b.t === "ul" || b.t === "ol") for (const it of b.items) (walk(it.inline), out.push(...candidates(it.children, root)));
 		else if (b.t === "table") [...b.head, ...b.rows.flat()].forEach(walk);
 		else if (b.t === "quote") out.push(...candidates(b.children, root));
 	}
@@ -74,21 +74,16 @@ function block(b: Block, i: number, ctx: Ctx = NONE): ReactNode {
 		case "p":
 			return <p key={i}>{inlines(b.inline, ctx)}</p>;
 		case "ul":
-			return (
-				<ul key={i}>
-					{b.items.map((it, j) => (
-						<li key={j}>{inlines(it, ctx)}</li>
-					))}
-				</ul>
-			);
-		case "ol":
-			return (
-				<ol key={i}>
-					{b.items.map((it, j) => (
-						<li key={j}>{inlines(it, ctx)}</li>
-					))}
-				</ol>
-			);
+		case "ol": {
+			const items = b.items.map((it, j) => (
+				<li key={j} className={it.task === null ? undefined : "tk"}>
+					{it.task === null ? null : <input type="checkbox" checked={it.task} readOnly disabled />}
+					{inlines(it.inline, ctx)}
+					{it.children.map((c, k) => block(c, k, ctx))}
+				</li>
+			));
+			return b.t === "ul" ? <ul key={i}>{items}</ul> : <ol key={i} start={b.start}>{items}</ol>;
+		}
 		case "code":
 			return (
 				<pre key={i}>

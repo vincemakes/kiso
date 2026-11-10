@@ -96,6 +96,10 @@
 .ans ul, .ans ol { margin: 0 0 14px; padding-left: 22px; }
 .ans li { margin: 2px 0; }
 .ans li::marker { color: var(--mute); }
+:is(.ans, .say) li > :is(ul, ol) { margin: 2px 0 0; }
+:is(.ans, .say) li > :is(p, pre, blockquote, .tbl) { margin: 6px 0 0; }
+:is(.ans, .say) li.tk { list-style: none; margin-left: -20px; }
+:is(.ans, .say) li.tk input { margin: 0 7px 0 0; vertical-align: -1px; }
 .ans code { background: #f3f3f5; border-radius: 5px; padding: 1px 5px; font: 13px var(--mono); }
 .ans pre { background: var(--sunk); border-radius: 10px; padding: 10px 14px; overflow: auto; font: 12.5px/1.6 var(--mono); }
 .ans pre code { background: none; padding: 0; }

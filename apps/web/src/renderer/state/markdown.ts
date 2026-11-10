@@ -20,11 +20,18 @@ export type Inline =
 export type Block =
 	| { readonly t: "h"; readonly level: 1 | 2 | 3; readonly inline: readonly Inline[] }
 	| { readonly t: "p"; readonly inline: readonly Inline[] }
-	| { readonly t: "ul" | "ol"; readonly items: readonly (readonly Inline[])[] }
+	| { readonly t: "ul" | "ol"; readonly start: number; readonly items: readonly ListItem[] }
 	| { readonly t: "code"; readonly lang: string; readonly text: string }
 	| { readonly t: "table"; readonly align: readonly Align[]; readonly head: readonly (readonly Inline[])[]; readonly rows: readonly (readonly (readonly Inline[])[])[] }
 	| { readonly t: "quote"; readonly children: readonly Block[] }
 	| { readonly t: "hr" };
+
+/** A list item: its own text, a task's checked state (null when not a task), and the blocks nested under it (a sub-list, a code block, more paragraphs). */
+export interface ListItem {
+	readonly inline: readonly Inline[];
+	readonly task: boolean | null;
+	readonly children: readonly Block[];
+}
 
 export type Align = "left" | "center" | "right" | null;
 
@@ -83,7 +90,7 @@ export function holdBack(raw: string): string {
 	const rowDone = endsWithPipe(last) && last.trim().length > 1 && !(inTable && /^[\s|:-]+$/.test(last));
 	if (last.trim() !== "" && (last.trimStart().startsWith("|") || inTable) && (!rowDone || !inTable)) cut = Math.min(cut, start);
 	// a line that is only a block marker so far (a list, a quote, a heading) becomes that block once its text starts: shown then, not as a paragraph first
-	if (/^\s*([-*+>#|]|\d+[.)]?)\s?$/.test(last)) cut = Math.min(cut, start);
+	if (/^\s*([-*+>#|]|\d+[.)]?)\s?$/.test(last) || /^\s*([-*]|\d+\.)\s+\[[ xX]?\]?\s*$/.test(last)) cut = Math.min(cut, start);
 	// a header row is drawn once the line under it says whether it heads a table: never as a paragraph that turns into one
 	const kept = outside.slice(0, cut);
 	if (kept.endsWith("\n")) {
@@ -138,6 +145,51 @@ export function inline(raw: string): Inline[] {
 	return out;
 }
 
+const ITEM = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
+const indentOf = (l: string): number => /^ */.exec(l)![0].length;
+const spaced = (l: string): string => l.replace(/^\t+/, (t) => "    ".repeat(t.length));
+/** Whether a line, dedented, starts a block of its own rather than continuing a paragraph. */
+const starts = (l: string): boolean => ITEM.test(l) || FENCE.test(l) || /^ {0,3}(>|#{1,3}\s)/.test(l) || HR.test(l);
+
+/** The list that starts at lines[at]: its items and everything indented under them (sub-lists, code, more paragraphs, parsed in turn).
+ *  Returns the index after the last line it took. A blank line between items keeps the list going. */
+function list(lines: readonly string[], at: number, blocks: Block[]): number {
+	const first = ITEM.exec(spaced(lines[at]!))!;
+	const base = first[1]!.length;
+	const kind = /\d/.test(first[2]!) ? "ol" : "ul";
+	const items: ListItem[] = [];
+	let i = at;
+	for (;;) {
+		const m = ITEM.exec(spaced(lines[i] ?? ""));
+		if (m === null || m[1]!.length !== base || (/\d/.test(m[2]!) ? "ol" : "ul") !== kind) break;
+		const sub: string[] = [];
+		for (i += 1; i < lines.length; i++) {
+			const l = spaced(lines[i]!);
+			if (l.trim() === "") {
+				let k = i + 1;
+				while (k < lines.length && lines[k]!.trim() === "") k += 1;
+				if (k < lines.length && indentOf(spaced(lines[k]!)) > base) sub.push("");
+				else break;
+			} else if (indentOf(l) > base) sub.push(l);
+			else break;
+		}
+		const cut = Math.min(...sub.filter((l) => l !== "").map(indentOf), Infinity);
+		const body = sub.map((l) => l.slice(Math.min(cut, indentOf(l))));
+		// lines right under the item's text that start no block continue its paragraph
+		let text = m[3]!;
+		let n = 0;
+		while (n < body.length && body[n]!.trim() !== "" && !starts(body[n]!)) text += " " + body[n++]!.trim();
+		const task = /^\[([ xX])\]\s+/.exec(text);
+		items.push({ inline: inline(task === null ? text : text.slice(task[0].length)), task: task === null ? null : task[1] !== " ", children: parse(body.slice(n).join("\n")) });
+		let k = i;
+		while (k < lines.length && lines[k]!.trim() === "") k += 1;
+		const nx = ITEM.exec(spaced(lines[k] ?? ""));
+		if (nx !== null && nx[1]!.length === base && (/\d/.test(nx[2]!) ? "ol" : "ul") === kind) i = k;
+	}
+	blocks.push({ t: kind, start: kind === "ol" ? Number.parseInt(first[2]!, 10) : 1, items });
+	return i;
+}
+
 export function parse(raw: string): Block[] {
 	const blocks: Block[] = [];
 	const lines = raw.split("\n");
@@ -188,14 +240,9 @@ export function parse(raw: string): Block[] {
 			blocks.push({ t: "h", level: h[1]!.length as 1 | 2 | 3, inline: inline(h[2]!) });
 			continue;
 		}
-		const li = /^\s*([-*]|\d+\.)\s+(.*)$/.exec(line);
-		if (li !== null) {
+		if (ITEM.test(line)) {
 			endPara();
-			const kind = /\d/.test(li[1]!) ? "ol" : "ul";
-			const last = blocks.at(-1);
-			const item = inline(li[2]!);
-			if (last?.t === kind) (last.items as Inline[][]).push(item);
-			else blocks.push({ t: kind, items: [item] });
+			i = list(lines, i, blocks) - 1;
 			continue;
 		}
 		if (line.trim() === "") endPara();
