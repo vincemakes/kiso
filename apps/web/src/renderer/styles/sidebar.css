@@ -32,9 +32,8 @@
 .item.child.more::after { content: ""; position: absolute; left: 16px; top: 3px; bottom: -4px; border-left: 1.5px solid #d6d6d2; }
 .item:hover { background: rgba(0, 0, 0, 0.045); }
 /* the open Work: one grey fill (no white card, no shadow) */
-.item.on { background: rgba(0, 0, 0, 0.065); font-weight: 500; }
+.item.on { background: rgba(0, 0, 0, 0.065); }
 .item .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item small { color: var(--faint); font-size: 12px; font-weight: 400; flex: none; max-width: 38%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot.amber { background: var(--amber); }
 .dot.blue { background: var(--blue); }
@@ -66,7 +65,8 @@
 .row { position: relative; }
 .row .dots { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 24px; border-radius: 7px; display: none; place-items: center; color: #555; }
 .row:hover .dots, .row.menu-open .dots { display: grid; }
-.row:hover .item small, .row.menu-open .item small { visibility: hidden; }
+/* a row's state mark sits at its right end, under the ⋯ that shows on hover */
+.row:hover .item :is(.sp, .dot), .row.menu-open .item :is(.sp, .dot) { visibility: hidden; }
 .row .dots:hover { background: rgba(0, 0, 0, 0.07); }
 .row-in { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 0; }
 .row-in::selection { background: #cfe0ff; }
