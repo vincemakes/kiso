@@ -30,7 +30,7 @@
 .th-text { margin: 6px 0 2px; padding: 2px 0 2px 12px; border-left: 2px solid var(--line); color: var(--mute); font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
 
 /* narration between steps */
-.say { color: var(--ink); font-size: 14.5px; line-height: 1.65; }
+.say { color: var(--ink); font-size: 14.5px; line-height: 1.65; overflow-wrap: break-word; }
 .say p { margin-bottom: 0; }
 .say > * + * { margin-top: 10px; }
 .say > :first-child { margin-top: 0; }
@@ -86,7 +86,7 @@
 /* the answer */
 /* one body size; headings are no larger than the body (weight and the space above them carry the hierarchy), and a heading
    sits closer to its own text than to the text before it */
-.ans { color: var(--ink); line-height: 1.65; font-size: 14.5px; }
+.ans { color: var(--ink); line-height: 1.65; font-size: 14.5px; overflow-wrap: break-word; }
 .ans > :first-child { margin-top: 0; }
 .ans > :last-child { margin-bottom: 0; }
 .ans h1 { margin: 24px 0 6px; font-size: 15.5px; line-height: 1.5; font-weight: 600; }
