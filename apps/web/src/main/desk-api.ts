@@ -13,6 +13,7 @@ import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
 import type { Previews } from "./preview.js";
 import { listDirs, validateFolder } from "./folders.js";
+import { pickFolder } from "./pick-folder.js";
 import { folderInfo } from "./folder-info.js";
 import type { History } from "./history.js";
 import type { Notice, Presence } from "./approvals.js";
@@ -223,6 +224,10 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			ctx.settings.write({ lastFolder: workspace });
 			const opened = ctx.spaceFor(basename(dir));
 			return opened === null ? json(500, {}) : json(200, { key: opened.key, folder: basename(workspace) });
+		}
+		if (path === "/desk/pick-folder" && post) {
+			const picked = await pickFolder();
+			return json(200, picked === null ? { cancelled: true } : { path: picked });
 		}
 		if (path === "/desk/recent" && req.method === "GET") {
 			const rows = ctx.settings.recents().flatMap((p) => {

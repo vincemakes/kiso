@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { EnvReply } from "../../shared/settings.js";
 import { t } from "../i18n/index.js";
-import { fetchRecent } from "../state/desk.js";
+import { fetchRecent, pickFolder, Refusal } from "../state/desk.js";
 
 interface Props {
 	readonly env: EnvReply | null;
-	/** choose a folder with the system's dialog */
+	/** the page's own folder browser: the fallback where the system has no picker the host can open */
 	readonly onPick: () => void;
 	/** a folder from the recent list */
 	readonly onOpen: (path: string) => void;
@@ -15,6 +15,8 @@ interface Props {
 export function Tray({ env, onPick, onOpen }: Props): ReactNode {
 	const [menu, setMenu] = useState(false);
 	const [recent, setRecent] = useState<readonly { readonly folder: string; readonly path: string }[]>([]);
+	// the system's own picker, asked of the host (the menu closes on the click; the picker window is the answer); where there is none the page's own browser opens instead (not while one is already open: 409)
+	const choose = (): void => void pickFolder().then((r) => r.path !== undefined && onOpen(r.path), (e: unknown) => (e instanceof Refusal && e.status === 409 ? undefined : onPick()));
 	useEffect(() => {
 		if (!menu) return;
 		void fetchRecent().then((r) => setRecent(r.recent), () => undefined);
@@ -41,15 +43,15 @@ export function Tray({ env, onPick, onOpen }: Props): ReactNode {
 				</button>
 				{menu ? (
 					<div className="menu fmenu" data-kind="folder-menu">
-						<button onClick={onPick} data-act="pick">
-							{t.folderChoose}
-						</button>
-						{recent.length > 0 ? <div className="mlabel">{t.folderRecent}</div> : null}
-						{recent.map((r) => (
+						{recent.slice(0, 6).map((r) => (
 							<button key={r.path} onClick={() => onOpen(r.path)} data-recent={r.path} title={r.path}>
 								{r.folder}
 							</button>
 						))}
+						{recent.length > 0 ? <div className="sep" /> : null}
+						<button onClick={choose} data-act="pick">
+							{t.folderChoose}
+						</button>
 					</div>
 				) : null}
 			</div>
