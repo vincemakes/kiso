@@ -8,7 +8,7 @@ import type { ToolContext } from "@vincemakes/kiso-core";
 import { editFileTool, listDirTool, readFileTool, searchTextTool, writeFileTool, type FileAccess } from "../src/index.js";
 
 const CTX: ToolContext = { signal: { aborted: false, addEventListener: () => {}, removeEventListener: () => {} }, sessionId: "s" };
-const dir = (): string => realpathSync(mkdtempSync(join(tmpdir(), "kiso-reach-")));
+const dir = (): string => realpathSync.native(mkdtempSync(join(tmpdir(), "kiso-reach-")));
 
 function world(access: FileAccess, stops: readonly string[] = []) {
 	const primary = dir();
@@ -135,7 +135,7 @@ describe("the primary does not change", () => {
 		const w = await writeFileTool(stopped).execute({ path: ".git/hook", content: "x", expectedRevision: "absent" } as never, CTX);
 		expect(w).toMatchObject({ isError: false });
 		const found = await searchTextTool(stopped).execute({ pattern: "needle" }, CTX);
-		expect(found.content).toContain("keys/k.txt");
+		expect(found.content).toContain(join("keys", "k.txt"));
 		expect(found.content).not.toContain(primary);
 	});
 

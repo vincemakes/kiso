@@ -233,7 +233,7 @@ interface Reach {
 /** The new reach stops short of these, on the canonical path: never the primary, whose rules do not change. */
 function guardReach(opts: WorkspaceToolsOptions, input: string, full: string, writing: boolean): void {
 	for (const stop of opts.stopRoots ?? []) {
-		if (isWithin(diskPath(stop), full)) throw new PathEscapeError(`${input} is in ${stop}, which the file tools do not reach outside the workspace`);
+		if (isWithin(diskPath(stop), diskPath(full))) throw new PathEscapeError(`${input} is in ${stop}, which the file tools do not reach outside the workspace`);
 	}
 	if (writing && full.split(sep).some((seg) => seg.toLowerCase() === ".git" || seg.toLowerCase() === ".kiso")) {
 		throw new PathEscapeError(`${input} is inside a .git or .kiso folder, which the file tools do not write outside the workspace`);
@@ -258,7 +258,7 @@ function resolveReach(opts: WorkspaceToolsOptions, input: string, sessionId: str
 			if (!isWithin(base, input)) continue;
 			const full = resolveWithinRoot(root, relative(base, input) || ".");
 			guardReach(opts, input, full, writing);
-			return { full, root, base: real };
+			return { full, root, base: diskPath(real) };
 		}
 	}
 	if (access.outside !== "allow") return primary();
@@ -765,7 +765,7 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 							source: re.source,
 							flags: re.flags,
 							// beyond the workspace the walk is relative to `base`, and its stops are named that way
-							excluded: reach.base === null ? (opts.excludeRoots ?? []) : [...(opts.excludeRoots ?? []), ...(opts.stopRoots ?? [])].map((ex) => relative(realOrSelf(reach.base!), realOrSelf(ex))),
+							excluded: reach.base === null ? (opts.excludeRoots ?? []) : [...(opts.excludeRoots ?? []), ...(opts.stopRoots ?? [])].map((ex) => relative(diskPath(reach.base!), diskPath(ex)).split(sep).join("/")),
 							maxEntries: MAX_DIR_ENTRIES,
 							maxVisited: opts.limits?.searchMaxFiles ?? SEARCH_MAX_FILES,
 							deadline,
@@ -778,7 +778,7 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 					const walk = outcome.reply;
 					if (walk?.error !== undefined) return { content: `list_dir failed: ${walk.error}`, isError: true, errorKind: "fatal" };
 					// beyond the workspace a result is an absolute path: a relative one would name a file in the primary
-					const files = (walk?.files ?? []).map((f) => (reach.base !== null ? under(reach.base, f) : f));
+					const files = (walk?.files ?? []).map((f) => (reach.base !== null ? join(reach.base, f) : f));
 					const body = files.length ? cap(files.join("\n")) : `(no match for ${glob})`;
 					// TWO truncations, different remedies, and neither claimed
 					// when it did not happen: a walk that silently returns less
@@ -980,11 +980,13 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 					return p;
 				}
 			};
-			const searchRootReal = realOrSelf(root);
+			const searchRootReal = reach.base !== null ? diskPath(root) : realOrSelf(root);
 			// beyond the workspace a match names an absolute path; a single file's is relative to its folder
-			const searchBase = reach.base === null ? null : single !== null ? dirname(searchRootReal) : realOrSelf(reach.base);
+			const searchBase = reach.base === null ? null : single !== null ? dirname(searchRootReal) : diskPath(reach.base);
+			// beyond the workspace, by the disk's own spelling: a Windows short name and its long name are one folder
+			const canon = reach.base !== null ? diskPath : realOrSelf;
 			const excluded = [...(opts.excludeRoots ?? []), ...(reach.base !== null ? (opts.stopRoots ?? []) : [])]
-				.map(realOrSelf)
+				.map(canon)
 				.filter((ex) => !(searchRootReal === ex || searchRootReal.startsWith(`${ex}/`)))
 				.map((ex) => relative(searchRootReal, ex));
 			const maxFileBytes = opts.limits?.searchMaxFileBytes ?? SEARCH_MAX_FILE_BYTES;
