@@ -77,7 +77,11 @@ export function App(): ReactNode {
 
 	useEffect(() => {
 		if (signedIn !== true) return;
+<<<<<<< HEAD
 		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, onRefused: () => setSignedIn(false) });
+=======
+		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, key: target.key });
+>>>>>>> 0ec4dc48 (fix(web): round-2 review fixes for the Environment page)
 		(window as unknown as { __kiso?: Session }).__kiso = next; // read by the proof scripts through the debugging port
 		setOpened({ target, session: next });
 		return () => next.stop();
@@ -143,7 +147,7 @@ export function App(): ReactNode {
 			envVersion: settingsBump,
 			addFolder: () => addFolderTo(target.key, target.sessionId).then((m) => (setSettingsBump((n) => n + 1), m)),
 		}),
-		[settings, target],
+		[settings, target, settingsBump],
 	);
 	const openPanel = useCallback((kind: PanelKind, focus?: string): void => setPanel((p) => ({ kind, mode: p?.mode ?? "half", focus: focus ?? null })), []);
 	useEffect(() => {

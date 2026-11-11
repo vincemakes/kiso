@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import type { Event as LogEvent } from "@vincemakes/kiso-core";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
+import { basename, dirname } from "node:path";
 import { cdTargets, isGhPrCreate } from "@vincemakes/kiso-code/policy";
 import type { EnvFolder, EnvRepo } from "../shared/settings.js";
 import { Refusal } from "./files.js";
@@ -60,14 +61,15 @@ export function scanLog(events: readonly LogEvent[], base: string, home: string,
 function derive(space: Space, session: string, linked: Pr | undefined): { readonly recent: readonly string[]; readonly repos: readonly EnvRepo[] } {
 	const records = space.store.load(session);
 	const seq = records.at(-1)?.event.seq ?? -1;
-	const held = cache.get(session);
+	const slot = `${space.key}\0${session}`; // two folders can hold a Work of the same id and the same last seq
+	const held = cache.get(slot);
 	// both sources, one row per repository: the Work's own link (the person's latest word) first, then what the log printed
 	const both = (log: readonly EnvRepo[]): readonly EnvRepo[] => [...(linked === undefined ? [] : [repoOf(linked)]), ...log].filter((r, i, all) => all.findIndex((x) => x.repo === r.repo) === i);
 	if (held !== undefined && held.seq === seq) return { recent: held.recent, repos: both(held.repos) };
 	const { recent, repos } = scanLog(records.map((r) => r.event), space.workspace, homedir());
 	const kept = [...new Set(recent)].filter((d, _, all) => !all.some((o) => o !== d && d.startsWith(`${o}/`))).slice(0, RECENT_MAX);
 	const out = { seq, recent: kept, repos: repos.filter((r, i) => repos.findIndex((x) => x.repo === r.repo) === i) };
-	cache.set(session, out);
+	cache.set(slot, out);
 	return { recent: out.recent, repos: both(out.repos) };
 }
 
@@ -77,7 +79,7 @@ const shown = (p: string): string => (p.startsWith(`${homedir()}/`) ? `~${p.slic
 export function environmentRows(space: Space, session: string, linked: Pr | undefined): NonNullable<import("../shared/settings.js").EnvReply["rows"]> {
 	const { added, damaged } = foldersOf(space, session);
 	const { recent, repos } = derive(space, session, linked);
-	const row = (kind: EnvFolder["kind"], path: string): EnvFolder => ({ kind, path, shown: shown(path), branch: branchOf(path), github: githubOf(path), missing: !existsSync(path) });
+	const row = (kind: EnvFolder["kind"], path: string): EnvFolder => ({ kind, path, shown: shown(path), name: basename(path) || path, parent: shown(dirname(path)), branch: branchOf(path), github: githubOf(path), missing: !existsSync(path) });
 	const roots = [space.workspace, ...added.map((a) => a.path)];
 	const inside = (d: string, root: string): boolean => d === root || d.startsWith(`${root}/`);
 	// a recent folder in an added folder is not shown; one in the primary, or around any root, is shown but can never be added (nested)

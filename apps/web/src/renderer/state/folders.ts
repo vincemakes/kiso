@@ -5,7 +5,7 @@ import { noteFolders } from "./envnote.js";
 export async function addFolderTo(key: string | null, session: string): Promise<string | null> {
 	try {
 		const r = await pickFolder();
-		if (r.path !== undefined) (await changeWorkFolders(key, session, { add: r.path }), noteFolders(session, `added ${r.path}. Use absolute paths there.`));
+		if (r.path !== undefined) (await changeWorkFolders(key, session, { add: r.path }), noteFolders(key, session, `added ${r.path}. Use absolute paths there.`));
 		return null;
 	} catch (e) {
 		return e instanceof Refusal ? e.message : null;

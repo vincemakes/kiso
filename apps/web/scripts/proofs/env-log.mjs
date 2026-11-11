@@ -2,11 +2,11 @@
 // no command; a cd or a `gh pr create` counts only in a line that is one && chain; the pull request is the LAST URL the command printed; a
 // folder's GitHub remote is origin's, else another GitHub one; an added folder's @ listing never names what the file tools refuse there.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checker } from "./lib.mjs";
-import { scanLog } from "../../dist/main/environment.js";
+import { environmentRows, scanLog } from "../../dist/main/environment.js";
 import { githubOf } from "../../dist/main/folder-info.js";
 import { atFiles } from "../../dist/main/fs-routes.js";
 
@@ -33,4 +33,24 @@ writeFileSync(join(root, ".ssh", "id"), "k");
 writeFileSync(join(root, "a.txt"), "x");
 const listed = atFiles({ workspace: join(tmp, "one") }, [root], [join(root, ".ssh")]).files;
 check(listed.includes(join(root, "a.txt")) && !listed.some((f) => f.includes("/.ssh/")), "an added folder's @ listing leaves out the stop roots");
+// an added folder replaced by a symlink is refused by the file tools, so @ must not list the new target's names
+const target = join(tmp, "elsewhere");
+mkdirSync(target);
+writeFileSync(join(target, "secret.txt"), "s");
+const swapped = join(tmp, "swapped");
+symlinkSync(target, swapped);
+check(!atFiles({ workspace: join(tmp, "one") }, [swapped], []).files.some((f) => f.endsWith("secret.txt")), "a root that is no longer its own real path (replaced by a symlink) is not listed");
+// the memory is per space AND Work: two folders can hold a Work of the same id with the same last seq
+const space = (key, dir) => ({ key, workspace: dir, dir: join(tmp, `d-${key}`), store: { load: () => call("a", { command: `cd ${dir}/sub && ls` }).map((event, i) => ({ event: { ...event, seq: i + 1 } })) } });
+const [a, b] = ["x", "y"].map((k) => { const dir = join(tmp, `w-${k}`); mkdirSync(join(dir, "sub"), { recursive: true }); mkdirSync(join(tmp, `d-${k}`)); return space(k, dir); });
+const rowsOf = (sp) => environmentRows(sp, "same", undefined).folders.filter((f) => f.kind === "recent").map((f) => f.path).join();
+check(rowsOf(a) === join(a.workspace, "sub") && rowsOf(b) === join(b.workspace, "sub") && rowsOf(a) === join(a.workspace, "sub"), "the rows cache is per space and Work: the same id and last seq in two folders keep their own recent folders");
+const row0 = environmentRows(a, "same", undefined).folders[0];
+check(row0.name === "w-x" && row0.parent === tmp, "a row's name and parent come from the host's path module");
+// a note told to one Work is not told to another of the same id in another folder
+const { noteFolders, withNote } = await import("../../src/renderer/state/envnote.ts");
+noteFolders("k1", "s", "added /a."); noteFolders("k2", "s", "added /b.");
+const lead = (w) => withNote(w, "s", "hi")[0]?.text ?? "";
+check(lead("k1").endsWith("added /a.") && lead("k2").endsWith("added /b.") && withNote("k1", "s", "hi") === "hi" && withNote(null, "s", "hi") === "hi", "a pending update line is per folder and Work, and is told once");
+check(scan(call("p", { command: "gh pr create && echo https://github.com/other/repo/pull/123" }, "https://github.com/a/b/pull/1\nhttps://github.com/other/repo/pull/123")).repos.length === 0, "a pull request counts only from a line that ends in gh pr create");
 verdict();

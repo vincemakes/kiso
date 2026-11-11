@@ -35,7 +35,11 @@ export interface Session {
 	readonly stop: () => void;
 }
 
+<<<<<<< HEAD
 export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; readonly onRefused?: () => void }): Session {
+=======
+export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; /** the Work's folder key (null: the one in use) */ readonly key: string | null }): Session {
+>>>>>>> 0ec4dc48 (fix(web): round-2 review fixes for the Environment page)
 	const client = createClient({ baseUrl: options.baseUrl });
 	const api: SessionClient = client.session(options.sessionId);
 	const state = initialState();
@@ -157,11 +161,11 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		link: () => link,
 		retryNow: () => api.retryNow(),
 		// an open run is resumed to its end first: the new line is not lost and the old run is not abandoned
-		send: (text) => act(() => api.run(withNote(options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
+		send: (text) => act(() => api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
 		steer: (text) =>
 			act(async () => {
 				try {
-					await api.steer(withNote(options.sessionId, text));
+					await api.steer(withNote(options.key, options.sessionId, text));
 				} catch (e) {
 					// no run to join, or it was already closing: the line starts a run of its own
 					if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await api.run(text);

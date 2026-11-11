@@ -61,6 +61,7 @@ describe("isGhPrCreate: a parsed command, not a mention", () => {
 		expect(isGhPrCreate("gh pr view 12")).toBe(false);
 		expect(isGhPrCreate("false && gh pr create --fill || echo https://github.com/a/b/pull/123")).toBe(false);
 		expect(isGhPrCreate("gh pr create; echo done")).toBe(false);
+		expect(isGhPrCreate("gh pr create && echo https://github.com/other/repo/pull/123")).toBe(false);
 		expect(isGhPrCreate("gh $SUB pr create")).toBe(false);
 		expect(isGhPrCreate("cat https://github.com/o/r/pull/1")).toBe(false);
 	});

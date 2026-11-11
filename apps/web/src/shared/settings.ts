@@ -31,6 +31,9 @@ export interface EnvFolder {
 	/** the full real path (what Copy path copies) and the home-shortened one the row shows */
 	readonly path: string;
 	readonly shown: string;
+	/** the folder's own name and the home-shortened folder it is in, as the host's path module spells them (the page splits no path) */
+	readonly name: string;
+	readonly parent: string;
 	readonly branch: string | null;
 	/** `owner/repo` of its GitHub remote, when it has one */
 	readonly github: string | null;

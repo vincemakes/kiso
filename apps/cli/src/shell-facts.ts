@@ -38,7 +38,8 @@ export function cdTargets(line: string, base: string, home: string): readonly st
 	return out;
 }
 
-/** Whether the line runs `gh pr create` as a command of one `&&` chain (a mention in an echo, or a `||` branch that may not have run, is not one). */
+/** Whether the line is one `&&` chain that ENDS in `gh pr create`: what its output ends with is the pull request it made (a mention in an echo, a `||` branch, or a command after it that prints another URL, is not one). */
 export function isGhPrCreate(line: string): boolean {
-	return (chainOf(line) ?? []).some((c) => literal(c.argv[0]) === "gh" && literal(c.argv[1]) === "pr" && literal(c.argv[2]) === "create");
+	const c = chainOf(line)?.at(-1);
+	return c !== undefined && literal(c.argv[0]) === "gh" && literal(c.argv[1]) === "pr" && literal(c.argv[2]) === "create";
 }

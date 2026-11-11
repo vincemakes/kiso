@@ -34,15 +34,15 @@ export function Environment({ env, where, session, onChanged }: { readonly env: 
 	}, [menu]);
 	const rows = env.rows;
 	if (rows === undefined) return null;
-	const change = (change: { readonly add: string } | { readonly remove: string }): void => void changeWorkFolders(where, session, change).then(() => (noteFolders(session, "add" in change ? `added ${change.add}. Use absolute paths there.` : `removed ${change.remove}.`), setErr(null), onChanged()), (e: unknown) => setErr(e instanceof Refusal ? e.message : String(e)));
+	const change = (change: { readonly add: string } | { readonly remove: string }): void => void changeWorkFolders(where, session, change).then(() => (noteFolders(where, session, "add" in change ? `added ${change.add}. Use absolute paths there.` : `removed ${change.remove}.`), setErr(null), onChanged()), (e: unknown) => setErr(e instanceof Refusal ? e.message : String(e)));
 	const add = (): void => void addFolderTo(where, session).then((m) => (setErr(m), onChanged()));
 	const door = (name: "reveal" | "terminal", i: number): readonly (readonly [string, () => void])[] => (rows.doors.includes(name) ? [[name === "reveal" ? t.envReveal : t.envTerminal, () => void openRow(where, session, i, name, rows.folders[i]!.path)]] : []);
 	const gh = (repo: string | null): readonly (readonly [string, () => void])[] => (repo === null ? [] : [[t.envGithub, () => void window.open(`https://github.com/${repo}`, "_blank", "noopener")]]);
 	const folders: Item[] = rows.folders.map((f, i) => ({
 		key: `f${i}`,
 		icon: <I.folder />,
-		name: f.path.slice(f.path.lastIndexOf("/") + 1) || "/",
-		sub: f.missing ? ` · ${t.envMissing}` : ` · ${f.shown.slice(0, f.shown.lastIndexOf("/")) || "/"}`,
+		name: f.name,
+		sub: f.missing ? ` · ${t.envMissing}` : ` · ${f.parent}`,
 		acts: [...door("reveal", i), ...gh(f.github), [t.envCopyPath, () => copy(f.path)], ...(f.kind === "primary" ? ([[t.envAddFolder, add]] as const) : []), ...door("terminal", i), ...(f.kind === "added" ? ([[t.envRemove, () => change({ remove: f.path })]] as const) : f.kind === "recent" && f.addable === true ? ([[t.envAddHere, () => change({ add: f.path })]] as const) : [])],
 	}));
 	const branchOf = (i: number): Item[] => (rows.folders[i]!.branch === null ? [] : [{ key: `b${i}`, icon: <I.branch />, name: rows.folders[i]!.branch!, mono: true, acts: [[t.envCopyBranch, () => copy(rows.folders[i]!.branch!)]] }]);
