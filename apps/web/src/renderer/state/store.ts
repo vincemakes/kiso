@@ -35,11 +35,7 @@ export interface Session {
 	readonly stop: () => void;
 }
 
-<<<<<<< HEAD
-export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; readonly onRefused?: () => void }): Session {
-=======
-export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; /** the Work's folder key (null: the one in use) */ readonly key: string | null }): Session {
->>>>>>> 0ec4dc48 (fix(web): round-2 review fixes for the Environment page)
+export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; /** the Work's folder key (null: the one in use) */ readonly key: string | null; readonly onRefused?: () => void }): Session {
 	const client = createClient({ baseUrl: options.baseUrl });
 	const api: SessionClient = client.session(options.sessionId);
 	const state = initialState();

@@ -77,11 +77,7 @@ export function App(): ReactNode {
 
 	useEffect(() => {
 		if (signedIn !== true) return;
-<<<<<<< HEAD
-		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, onRefused: () => setSignedIn(false) });
-=======
-		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, key: target.key });
->>>>>>> 0ec4dc48 (fix(web): round-2 review fixes for the Environment page)
+		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, key: target.key, onRefused: () => setSignedIn(false) });
 		(window as unknown as { __kiso?: Session }).__kiso = next; // read by the proof scripts through the debugging port
 		setOpened({ target, session: next });
 		return () => next.stop();
