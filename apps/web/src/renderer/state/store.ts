@@ -1,4 +1,4 @@
-import { ClientError, createClient, type SessionClient } from "@vincemakes/kiso-client";
+import { ClientError, createClient, type ConnectionState, type SessionClient } from "@vincemakes/kiso-client";
 import type { WireInput } from "@vincemakes/kiso-protocol";
 import { initialState, reduce, type Input, type State } from "./model.js";
 import { fmt, t } from "../i18n/index.js";
@@ -20,6 +20,10 @@ export interface Session {
 	readonly loaded: () => boolean;
 	/** a short message for the person (a refused stop), or null */
 	readonly message: () => string | null;
+	/** the stream's connection, and since when it has not been open; one object per change */
+	readonly link: () => { readonly state: ConnectionState; readonly since: number };
+	/** dial again now (the button; the browser also does it when it is back online, visible or focused) */
+	readonly retryNow: () => void;
 	/** a line: text, or text with pictures and files (content blocks) */
 	readonly send: (input: WireInput) => Promise<void>;
 	readonly steer: (input: WireInput) => Promise<void>;
@@ -30,7 +34,7 @@ export interface Session {
 	readonly stop: () => void;
 }
 
-export function openSession(options: { readonly baseUrl: string; readonly sessionId: string }): Session {
+export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; readonly onRefused?: () => void }): Session {
 	const client = createClient({ baseUrl: options.baseUrl });
 	const api: SessionClient = client.session(options.sessionId);
 	const state = initialState();
@@ -88,6 +92,10 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		}
 	};
 	const ctl = new AbortController();
+	let link = { state: { kind: "connecting" } as ConnectionState, since: Date.now() };
+	const wake = (): void => (document.hidden ? undefined : api.retryNow());
+	for (const e of ["online", "focus"]) addEventListener(e, wake);
+	document.addEventListener("visibilitychange", wake);
 	void refresh();
 	const handedBack = new Set<string>();
 	/** Input a steer handed to a run that never admitted it is the person's next message: a new run. A frame can be replayed
@@ -106,7 +114,16 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	};
 	void (async () => {
 		let stopped = false;
-		for await (const ev of api.events({ signal: ctl.signal, onReconnect: () => void setTimeout(refresh, 600) })) {
+		for await (const ev of api.events({
+			signal: ctl.signal,
+			paused: () => document.hidden,
+			onState: (state) => {
+				if (state.kind === "open" && link.state.kind !== "open") void refresh(); // back: ask again what the host knows
+				if (state.kind === "refused" && state.status === 401) options.onRefused?.(); // only a lost sign-in is the whole page's; another 4xx ends this Work's stream
+				link = { state, since: state.kind === "open" ? 0 : link.state.kind === "open" ? Date.now() : link.since };
+				for (const l of listeners) l();
+			},
+		})) {
 			if (ev.kind === "event") {
 				lastSeq = ev.event.seq;
 				loaded ||= target !== null && lastSeq >= target;
@@ -136,6 +153,8 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		version: () => state.version,
 		loaded: () => loaded,
 		message: () => message,
+		link: () => link,
+		retryNow: () => api.retryNow(),
 		// an open run is resumed to its end first: the new line is not lost and the old run is not abandoned
 		send: (text) => act(() => api.run(text, state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
 		steer: (text) =>
@@ -164,7 +183,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 				const reply = await api.resolveUncertain(executionId, resolution);
 				if (reply.remaining === 0) await api.resume(); // the last verdict is in: the run can go on
 			}),
-		stop: () => ctl.abort(),
+		stop: () => (ctl.abort(), removeEventListener("online", wake), removeEventListener("focus", wake), document.removeEventListener("visibilitychange", wake)),
 	};
 }
 

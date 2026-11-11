@@ -31,9 +31,17 @@ export interface ClientOptions {
 	readonly headers?: () => Record<string, string> | Promise<Record<string, string>>;
 	/** Injected for tests or non-global environments. Default: globalThis.fetch. */
 	readonly fetch?: typeof fetch;
-	/** Reconnect backoff for `events()`: first wait and cap, in ms. */
-	readonly reconnect?: { readonly initialMs?: number; readonly maxMs?: number };
+	/** Reconnect backoff for `events()`: first wait and cap, in ms (defaults 250 and 30 000), jittered to 0.5..1 of the step;
+	 *  `idleMs`: no frame (event or keepalive comment) for this long and the connection is dead (default 35 000). */
+	readonly reconnect?: { readonly initialMs?: number; readonly maxMs?: number; readonly idleMs?: number };
 }
+
+/** Where `events()` is: dialing, streaming, waiting to dial again (attempt, and the time of the next try), or turned away for good. */
+export type ConnectionState =
+	| { readonly kind: "connecting" }
+	| { readonly kind: "open" }
+	| { readonly kind: "retrying"; readonly attempt: number; readonly nextAt: number }
+	| { readonly kind: "refused"; readonly status: number; readonly code: WireErrorCode };
 
 /** A non-2xx reply, carrying the wire's error shape. */
 export class ClientError extends Error {
@@ -67,6 +75,10 @@ export interface EventsOptions {
 	readonly until?: (event: ClientEvent) => boolean;
 	/** Called before each reconnect with the attempt number and the wait. */
 	readonly onReconnect?: (attempt: number, waitMs: number) => void;
+	/** Called on every change of the connection's state. A refusal (a 4xx) is reported here and ends the stream. */
+	readonly onState?: (state: ConnectionState) => void;
+	/** While true no reconnect is tried (a hidden tab); `retryNow()` or the next check ends the wait. */
+	readonly paused?: () => boolean;
 }
 
 export interface RunStreamOptions extends Omit<EventsOptions, "until"> {
@@ -77,6 +89,12 @@ export interface RunStreamOptions extends Omit<EventsOptions, "until"> {
 export class SessionClient {
 	readonly #options: ClientOptions;
 	readonly id: string;
+	#wake: (() => void) | null = null;
+
+	/** Cut a sleeping reconnect wait short and dial now (the browser came back online, the tab became visible, a button). */
+	retryNow(): void {
+		this.#wake?.();
+	}
 
 	constructor(options: ClientOptions, sessionId: string) {
 		this.#options = options;
@@ -177,25 +195,37 @@ export class SessionClient {
 		let lastSeq = options.after ?? -1;
 		let attempt = 0;
 		const initial = this.#options.reconnect?.initialMs ?? 250;
-		const cap = this.#options.reconnect?.maxMs ?? 5_000;
+		const cap = this.#options.reconnect?.maxMs ?? 30_000;
+		const idle = this.#options.reconnect?.idleMs ?? 35_000;
+		const report = options.onState ?? (() => {});
 		for (;;) {
 			if (options.signal?.aborted) return;
-			let res: Response;
+			report({ kind: "connecting" });
+			// the watchdog: no frame for `idle` aborts this connection, and the loop below dials again
+			const conn = new AbortController();
+			const forward = (): void => conn.abort();
+			options.signal?.addEventListener("abort", forward, { once: true });
+			let dog: ReturnType<typeof setTimeout>;
+			const feed = (): void => {
+				clearTimeout(dog);
+				dog = setTimeout(forward, idle);
+			};
+			feed();
 			try {
-				res = await this.#request("GET", "events", undefined, {
-					headers: { accept: "text/event-stream", "last-event-id": String(lastSeq) },
-					...(options.signal !== undefined ? { signal: options.signal } : {}),
-				});
-			} catch (err) {
-				if (options.signal?.aborted) return;
-				res = null as never;
-				void err;
-			}
-			if (res !== null) {
-				if (res.status !== 200 || res.body === null) await this.#json(res, []); // a refusal is final: forbidden, not_found
-				attempt = 0;
-				try {
-					for await (const frame of readSse(res.body!)) {
+				const res = await this.#request("GET", "events", undefined, { headers: { accept: "text/event-stream", "last-event-id": String(lastSeq) }, signal: conn.signal });
+				if (res.status >= 400 && res.status < 500) {
+					try {
+						await this.#json(res, []);
+					} catch (err) {
+						if (err instanceof ClientError) report({ kind: "refused", status: err.status, code: err.code });
+					}
+					return; // a refusal is final, and now it is said
+				}
+				if (res.status === 200 && res.body !== null) {
+					attempt = 0;
+					report({ kind: "open" });
+					for await (const frame of readSse(res.body)) {
+						feed();
 						if (options.signal?.aborted) return;
 						const ev = toClientEvent(frame);
 						if (ev === null) continue;
@@ -206,16 +236,36 @@ export class SessionClient {
 						yield ev;
 						if (options.until?.(ev) === true) return;
 					}
-				} catch {
-					// the connection dropped mid-stream — fall through to reconnect
 				}
+			} catch {
+				// the connection dropped or went silent — fall through to reconnect
+			} finally {
+				clearTimeout(dog!);
+				options.signal?.removeEventListener("abort", forward);
 			}
 			if (options.signal?.aborted) return;
 			attempt += 1;
-			const wait = Math.min(cap, initial * 2 ** (attempt - 1));
+			const wait = (0.5 + Math.random() / 2) * Math.min(cap, initial * 2 ** (attempt - 1));
 			options.onReconnect?.(attempt, wait);
-			await sleep(wait, options.signal);
+			report({ kind: "retrying", attempt, nextAt: Date.now() + wait });
+			await this.#nap(wait, options.signal);
+			while (options.paused?.() === true && options.signal?.aborted !== true) await this.#nap(1_000, options.signal);
 		}
+	}
+
+	#nap(ms: number, signal?: AbortSignal): Promise<void> {
+		return new Promise((resolve) => {
+			const done = (): void => {
+				clearTimeout(timer);
+				signal?.removeEventListener("abort", done);
+				this.#wake = null;
+				resolve();
+			};
+			const timer = setTimeout(done, ms);
+			this.#wake = done;
+			if (signal?.aborted) done();
+			else signal?.addEventListener("abort", done, { once: true });
+		});
 	}
 }
 
@@ -247,17 +297,4 @@ function toClientEvent(frame: SseFrame): ClientEvent | null {
 
 function isWireError(value: unknown): value is WireError {
 	return typeof value === "object" && value !== null && typeof (value as { code?: unknown }).code === "string" && typeof (value as { message?: unknown }).message === "string";
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	return new Promise((resolve) => {
-		if (signal?.aborted) return resolve();
-		const timer = setTimeout(done, ms);
-		function done(): void {
-			clearTimeout(timer);
-			signal?.removeEventListener("abort", done);
-			resolve();
-		}
-		signal?.addEventListener("abort", done, { once: true });
-	});
 }

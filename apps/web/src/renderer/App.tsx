@@ -76,7 +76,7 @@ export function App(): ReactNode {
 
 	useEffect(() => {
 		if (signedIn !== true) return;
-		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId });
+		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, onRefused: () => setSignedIn(false) });
 		(window as unknown as { __kiso?: Session }).__kiso = next; // read by the proof scripts through the debugging port
 		setOpened({ target, session: next });
 		return () => next.stop();

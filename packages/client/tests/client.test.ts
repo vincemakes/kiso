@@ -200,3 +200,79 @@ describe("ADR-0057: steer", () => {
 		expect(h.service.events("s").some((e) => e.type === "user_input" && e.content === "only the editor tests")).toBe(true);
 	});
 });
+
+describe("connection: jitter, watchdog, retryNow, refusal", () => {
+	const sse = (chunks: string[], hang = false, signal?: AbortSignal): Response => {
+		const enc = new TextEncoder();
+		let i = 0;
+		const body = new ReadableStream<Uint8Array>({
+			pull(c) {
+				if (i < chunks.length) return c.enqueue(enc.encode(chunks[i++]!));
+				if (!hang) return c.close();
+				return new Promise<void>((_, rej) => signal?.addEventListener("abort", () => rej(new Error("aborted")), { once: true }));
+			},
+		});
+		return new Response(body, { status: 200 });
+	};
+	const quick = { initialMs: 10, maxMs: 40, idleMs: 60 };
+
+	it("waits random(0.5..1) x min(cap, initial x 2^n) between tries", async () => {
+		const waits: number[] = [];
+		const ctl = new AbortController();
+		const c = createClient({ baseUrl: "http://x", reconnect: { initialMs: 100, maxMs: 400 }, fetch: (async () => { throw new Error("down"); }) as never }).session("s");
+		for await (const _ of c.events({ signal: ctl.signal, paused: () => false, onReconnect: (_n, w) => { waits.push(w); if (waits.length === 5) ctl.abort(); } })) void _;
+		const steps = [100, 200, 400, 400, 400];
+		waits.forEach((w, i) => expect(w >= steps[i]! * 0.5 && w <= steps[i]!).toBe(true));
+	}, 10_000);
+
+	it("a silent stream trips the watchdog and the next connection resumes after the last seq", async () => {
+		const seen: (string | null)[] = [];
+		const ev = (seq: number) => `id: ${seq}\ndata: ${JSON.stringify({ seq, type: "x" })}\n\n`;
+		let n = 0;
+		const f = (async (_u: string, init: RequestInit) => {
+			seen.push(new Headers(init.headers).get("last-event-id"));
+			return n++ === 0 ? sse([ev(0)], true, init.signal as AbortSignal) : sse([ev(1)]);
+		}) as never;
+		const c = createClient({ baseUrl: "http://x", reconnect: quick, fetch: f }).session("s");
+		const got: number[] = [];
+		for await (const e of c.events({ until: (e) => e.kind === "event" && e.event.seq === 1 })) if (e.kind === "event") got.push(e.event.seq);
+		expect(got).toEqual([0, 1]);
+		expect(seen).toEqual(["-1", "0"]);
+	});
+
+	it("a stream with no events but regular keepalive comments is never cut", async () => {
+		let dials = 0;
+		const enc = new TextEncoder();
+		const f = (async (_u: string, init: RequestInit) => {
+			dials += 1;
+			let n = 0;
+			let timer: ReturnType<typeof setInterval>;
+			return new Response(new ReadableStream<Uint8Array>({ start(c) { init.signal?.addEventListener("abort", () => (clearInterval(timer), c.error(new Error("aborted"))), { once: true }); timer = setInterval(() => (n++ < 12 ? c.enqueue(enc.encode(": keepalive\n\n")) : (clearInterval(timer), c.close())), 25); }, cancel() { clearInterval(timer); } }), { status: 200 });
+		}) as never;
+		const c = createClient({ baseUrl: "http://x", reconnect: quick, fetch: f }).session("s");
+		let comments = 0;
+		for await (const e of c.events({ until: () => ++comments === 12 })) void e; // 12 x 25 ms = 300 ms of silence in events, over 4 idle periods (60 ms)
+		expect([dials, comments]).toEqual([1, 12]);
+	});
+
+	it("retryNow cuts a long wait short", async () => {
+		let n = 0;
+		const f = (async () => (n++ === 0 ? Promise.reject(new Error("down")) : sse([": hi\n\n"]))) as never;
+		const c = createClient({ baseUrl: "http://x", reconnect: { initialMs: 60_000, maxMs: 60_000 }, fetch: f }).session("s");
+		const t0 = Date.now();
+		const states: string[] = [];
+		for await (const e of c.events({ onState: (s) => { states.push(s.kind); if (s.kind === "retrying") setTimeout(() => c.retryNow(), 20); }, until: (e) => e.kind === "comment" })) void e;
+		expect(Date.now() - t0).toBeLessThan(5_000);
+		expect(states).toEqual(["connecting", "retrying", "connecting", "open"]);
+	});
+
+	it("a refusal (a 404 here, a 403 or 401 alike) is reported with its status and ends the stream; a 5xx is retried", async () => {
+		const reply = (status: number, code: string) => new Response(JSON.stringify({ code, message: "m" }), { status });
+		const seq = [reply(503, "internal"), reply(404, "not_found")];
+		const c = createClient({ baseUrl: "http://x", reconnect: quick, fetch: (async () => seq.shift()) as never }).session("s");
+		const states: unknown[] = [];
+		for await (const e of c.events({ onState: (s) => states.push(s) })) void e;
+		expect(states.map((s) => (s as { kind: string }).kind)).toEqual(["connecting", "retrying", "connecting", "refused"]);
+		expect(states.at(-1)).toEqual({ kind: "refused", status: 404, code: "not_found" });
+	});
+});

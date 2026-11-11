@@ -2,6 +2,7 @@ import { useContext, useRef, useState, type ClipboardEvent, type DragEvent, type
 import type { WireContentBlock, WireInput } from "@vincemakes/kiso-protocol";
 import { fmt, t } from "../i18n/index.js";
 import { ArrowUp, I, Plus } from "./Icons.js";
+import { LinkLine, type Down } from "./LinkLine.js";
 import { AtPicker, atHits, ControlsContext, Menu, ModelMenu, TierMenu } from "./ComposerMenus.js";
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
 	readonly onSend: (input: WireInput) => void;
 	readonly onSteer: (input: WireInput) => void;
 	readonly onStop: () => void;
+	/** the connection is down: the line says so, and Send waits (typing does not) */
+	readonly down?: Down | null;
 	/** the home screen draws the box in the middle, with the tray under it */
 	readonly inline?: boolean;
 	readonly children?: ReactNode;
@@ -53,7 +56,7 @@ function lineOf(text: string, attached: readonly Attachment[]): WireInput {
  * by `+`; `@` names a file of the folder. The bar under the box holds `+`, this Work's tier, and its model and effort. A picture
  * waits in the box, unsent, while the model in use is not known to read images.
  */
-export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, children }: Props): ReactNode {
+export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, children }: Props): ReactNode {
 	const c = useContext(ControlsContext);
 	const [text, setText] = useState("");
 	const [attached, setAttached] = useState<readonly Attachment[]>([]);
@@ -77,7 +80,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 		el.style.height = `${el.scrollHeight}px`;
 	};
 	const submit = (): void => {
-		if (!ready) return;
+		if (!ready || down !== null) return;
 		(running ? onSteer : onSend)(lineOf(text.trim(), attached));
 		setText("");
 		setAttached([]);
@@ -130,6 +133,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	};
 	return (
 		<div className={`comp${inline ? " inline" : ""}`} data-kind="composer">
+			{down !== null ? <LinkLine down={down} /> : null}
 			<div className={`box${drag ? " drag" : ""}`} onDragOver={over} onDragLeave={() => setDrag(false)} onDrop={drop} data-drag={drag ? "1" : "0"}>
 				{blocked ? (
 					<div className="cwarn" data-kind="images-held">
@@ -203,7 +207,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 							<i />
 						</button>
 					) : (
-						<button className={`sendb${ready ? " ready" : ""}`} aria-label={t.send} onClick={submit} data-act="send" disabled={blocked}>
+						<button className={`sendb${ready ? " ready" : ""}`} aria-label={t.send} onClick={submit} data-act="send" disabled={blocked || down !== null} title={down?.text}>
 							<ArrowUp />
 						</button>
 					)}
