@@ -118,8 +118,14 @@ export function createSpace(options: SpaceOptions): Space {
 		const session = sessions.get(sessionId);
 		const end = [...service.events(sessionId)].reverse().find((e) => e.type === "terminal");
 		if (options.followUps !== true || session === undefined || service.isRunning(sessionId) || end?.seq !== seq || end.outcome.kind !== "completed") return Promise.resolve("");
+		// work still going in the background: the run is not the end of it, so no "next message" is guessed
+		if (tasks.managerFor(sessionId).list().some((t) => t.endedAt === undefined)) return Promise.resolve("");
 		const at = `${sessionId}:${seq}`;
-		if (!followUps.has(at)) followUps.set(at, session.followUp({ maxTokens: 200 }).catch(() => ""));
+		if (!followUps.has(at)) {
+			// as the terminal does: a slow suggestion is no suggestion; and only the latest ones are kept
+			followUps.set(at, session.followUp({ maxTokens: 200, signal: AbortSignal.timeout(15_000) }).catch(() => ""));
+			for (const old of [...followUps.keys()].slice(0, -200)) followUps.delete(old);
+		}
 		return followUps.get(at)!;
 	};
 	const service = createSessionService({
