@@ -29,6 +29,10 @@ for (const width of [1500, 1000, 700]) {
 		const m = await settle(width, sideOpen);
 		configs += 1;
 		const here = `${width}px, sidebar ${sideOpen ? "open" : "closed"}`;
+		if (width < 864) {
+			if (m.main.w < width - 1 || (sideOpen && (m.side.pos !== "absolute" || m.side.w < 200))) problems.push(`${here}: narrow, the Work should be the whole window with the sidebar floating over it (Work ${m.main.w}, sidebar ${m.side.pos} ${m.side.w})`);
+			continue;
+		}
 		const cols = Object.entries(m).filter(([k, v]) => k !== "main" && v.w > 0.5);
 		for (const [i, [ka, a]] of cols.entries()) for (const [kb, b] of cols.slice(i + 1)) if (overlap(a, b)) problems.push(`${here}: ${ka} and ${kb} overlap`);
 		const order = [...cols].sort((a, b) => a[1].l - b[1].l).map(([k]) => k).join();
@@ -49,6 +53,8 @@ await settle(1000, false);
 await app.shot("layout-middle");
 await settle(700, true);
 await app.shot("layout-narrow");
+await q("document.elementFromPoint(innerWidth - 10, 400).click()");
+check(await waitUntil(async () => (await q("document.querySelector('.win').dataset.side")) === "0", 3000), "narrow: a tap on the veil beside the open sidebar closes it");
 m = await settle(1500, false);
 await app.click("[data-act=panel-full]");
 await sleep(700);
@@ -68,6 +74,13 @@ await app.click("[data-act=panel-close]");
 await sleep(800);
 m = await measure();
 check(Math.abs(m.rail.w - 280) < 1 && (await app.count("[data-kind=panel]")) === 0, "closing the panel gives the rail back");
+await settle(700, false);
+await app.click("[data-act=rail]");
+await sleep(600);
+m = await measure();
+check(m.rail.pos === "absolute" && m.rail.w >= 200 && m.main.w >= 699, `narrow: the overview opens over the Work without moving it (${m.rail.pos} ${m.rail.w} px, Work ${m.main.w} px)`);
+await q("document.elementFromPoint(10, 400).click()");
+check(await waitUntil(async () => (await q("document.querySelector('.win').dataset.rail")) === "0", 3000), "narrow: a tap on the veil closes the overview");
 await app.cdp("Emulation.clearDeviceMetricsOverride", {});
 await app.close();
 verdict();

@@ -2,8 +2,8 @@
 // durable log by this script (a call is its latest report, a run the sum of its calls). Context folds to one row and opens to the
 // detail; a background task has its row, its last output in the hover, and a stop that ends it; Changes names the branch and the
 // file the run edited; Outputs lists what it made and opens it the one way; there is no state of the run itself (no steps, no "Done");
-// the footer names the folder, branch and tier; and the rail takes width from the Work (also in a narrow window: a column of the
-// row, never laid over the Work). Screenshots go outside the repository.
+// the footer names the folder, branch and tier; and the rail takes width from the Work (in a window under 864 px it floats over the
+// Work as a drawer instead). Screenshots go outside the repository.
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalizeUsage, SessionStore } from "@vincemakes/kiso-runtime";
@@ -81,8 +81,8 @@ await app.click("[data-act=rail]");
 check(await waitUntil(async () => (await width()) === wide), "closing it gives the width back");
 await app.cdp("Emulation.setDeviceMetricsOverride", { width: 820, height: 700, deviceScaleFactor: 1, mobile: false });
 await app.click("[data-act=rail]");
-await waitUntil(async () => (await width()) === 820 - 280);
-check((await width()) === 820 - 280 && ["static", "relative"].includes(await q(`getComputedStyle(document.querySelector('.rail')).position`)), "in a narrow window the rail is still a column of the row, 280 wide, not laid over the Work");
+await waitUntil(async () => (await q(`getComputedStyle(document.querySelector('.rail')).width`)) === "280px");
+check((await width()) === 820 && (await q(`getComputedStyle(document.querySelector('.rail')).position`)) === "absolute", "in a window under 864 px the rail floats over the Work, 280 wide, and the Work keeps the whole window");
 await app.shot("rail-narrow");
 await app.close();
 verdict();
