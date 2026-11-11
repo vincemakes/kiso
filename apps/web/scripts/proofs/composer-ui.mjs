@@ -121,6 +121,8 @@ await q(`window.__kiso.send(${JSON.stringify(Array.from({ length: 12 }, (_, i) =
 await waitUntil(async () => (await app.count("[data-act=me-more]")) === 1, 20_000);
 const fold = () => q("(() => { const el = [...document.querySelectorAll('[data-kind=me]')].at(-1); return { h: el.clientHeight, full: el.scrollHeight, folded: el.classList.contains('folded'), label: document.querySelector('[data-act=me-more]')?.textContent }; })()");
 const shut = await fold();
+await app.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...(await q("(() => { const r = [...document.querySelectorAll('[data-kind=me]')].at(-1).getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + 20 }; })()")) });
+check(await waitUntil(async () => +(await q("getComputedStyle([...document.querySelectorAll('[data-kind=me-acts]')].at(-1)).opacity")) === 1, 2000, 50), "over a long message's bubble (Show more between it and its actions) the Copy button shows");
 await app.shot("long-message-folded");
 await app.click("[data-act=me-more]");
 const opened = await waitUntil(async () => (await fold()).label === "Show less" && (await fold()).h >= (await fold()).full - 1);
