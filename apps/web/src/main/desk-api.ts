@@ -122,7 +122,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const body = post ? await readJson(req) : {};
 			const session = post ? (str(body["session"]) ?? "") : (url.searchParams.get("session") ?? "");
 			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
-			if (post) changeFolders(space, session, str(body["add"]), str(body["remove"]));
+			if (post) await changeFolders(space, session, str(body["add"]), str(body["remove"]));
 			return json(200, foldersOf(space, session));
 		}
 		if (path === "/desk/rename") {

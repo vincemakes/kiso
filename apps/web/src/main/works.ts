@@ -21,6 +21,6 @@ export function workAct(space: Space, settings: Settings, session: string, act: 
 	// closed first: the store refuses any later write to it, so nothing brings the files back
 	space.store.close(session);
 	space.tasks.forget(session);
-	for (const path of [`${session}.jsonl`, `${session}.meta.json`, `${session}.environment.json`, `${session}.tasks`, `${session}.files`]) rmSync(join(space.dir, path), { recursive: true, force: true });
+	for (const path of [`${session}.jsonl`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.tasks`, `${session}.files`]) rmSync(join(space.dir, path), { recursive: true, force: true });
 	settings.forget(session);
 }

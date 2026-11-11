@@ -1,6 +1,7 @@
 /** ADR-0058 Amendment 19: what the file tools reach beyond the workspace, and where they stop. */
 
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -145,5 +146,33 @@ describe("the primary does not change", () => {
 		writeFileSync(join(away, "a.txt"), "x\n");
 		const r = await readFileTool({ workspaceRoot: primary }).execute({ path: join(away, "a.txt") }, CTX);
 		expect(r.content).toContain("absolute path outside the workspace");
+	});
+});
+
+describe("the review's cases (M5, M6)", () => {
+	it("an added folder replaced by a symlink grants nothing until it is added again", async () => {
+		const added = dir();
+		const away = dir();
+		writeFileSync(join(away, "secret.txt"), "s\n");
+		const { opts } = world({ added: [added], outside: "deny" });
+		renameSync(added, `${added}-old`);
+		symlinkSync(away, added);
+		const r = await readFileTool(opts).execute({ path: join(added, "secret.txt") }, CTX);
+		expect(r.content).toContain("[path denied]");
+	});
+
+	it("a folder swapped for a symlink to a stop path between the check and the commit: nothing is written there", async () => {
+		const away = dir();
+		const stop = dir();
+		const work = join(away, "work");
+		mkdirSync(work);
+		writeFileSync(join(work, "f.txt"), "x\n");
+		writeFileSync(join(stop, "f.txt"), "x\n");
+		const rev = `rev:${createHash("sha256").update("x\n").digest("hex").slice(0, 16)}`;
+		const swap = () => (renameSync(work, `${work}-old`), symlinkSync(stop, work), rev);
+		const opts = { workspaceRoot: dir(), access: () => ({ added: [], outside: "allow" as const }), stopRoots: [stop], observedRevision: swap };
+		const w = await writeFileTool(opts).execute({ path: join(work, "f.txt"), content: "changed\n" } as never, CTX);
+		expect(w.isError).toBe(true);
+		expect(readFileSync(join(stop, "f.txt"), "utf8")).toBe("x\n");
 	});
 });

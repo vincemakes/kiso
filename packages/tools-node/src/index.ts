@@ -219,6 +219,22 @@ function resolveReadable(opts: WorkspaceToolsOptions, input: string, sessionId?:
 	return resolveReach(opts, input, sessionId, false);
 }
 
+/** Beyond the workspace: has the target's folder come to resolve somewhere else since it was checked (a swap to a symlink)? */
+function movedUnder(parent: string | null, full: string): boolean {
+	return parent !== null && diskPath(dirname(full)) !== parent;
+}
+
+/** Beyond the workspace, after the write: did it land in a stop path after all? Not an OS sandbox; a check that says so instead of claiming success. */
+function landedInStop(opts: WorkspaceToolsOptions, input: string, written: string, parent: string | null): boolean {
+	if (parent === null) return false;
+	try {
+		guardReach(opts, input, diskPath(written), true);
+		return false;
+	} catch {
+		return true;
+	}
+}
+
 /** A result named under `base`, by concatenation: a match line holds the file's text, which a path join would normalize. */
 const under = (base: string, rest: string): string => (base.endsWith(sep) ? `${base}${rest}` : `${base}${sep}${rest}`);
 
@@ -228,6 +244,8 @@ interface Reach {
 	/** the root the containment and hard-link checks run against */
 	readonly root: string;
 	readonly base: string | null;
+	/** beyond the workspace: the target's folder as resolved, checked again just before the write commits */
+	readonly parent: string | null;
 }
 
 /** The new reach stops short of these, on the canonical path: never the primary, whose rules do not change. */
@@ -246,7 +264,7 @@ function guardReach(opts: WorkspaceToolsOptions, input: string, full: string, wr
  * at the next call. What it cannot place is refused exactly as `resolveWithinRoot` refuses it.
  */
 function resolveReach(opts: WorkspaceToolsOptions, input: string, sessionId: string | undefined, writing: boolean): Reach {
-	const primary = (): Reach => ({ full: resolveWithinRoot(opts.workspaceRoot, input), root: opts.workspaceRoot, base: null });
+	const primary = (): Reach => ({ full: resolveWithinRoot(opts.workspaceRoot, input), root: opts.workspaceRoot, base: null, parent: null });
 	if (opts.access === undefined || !isAbsolute(input)) return primary();
 	const rootReal = realpathSync(opts.workspaceRoot);
 	if (isWithin(opts.workspaceRoot, input) || isWithin(rootReal, input)) return primary();
@@ -254,17 +272,19 @@ function resolveReach(opts: WorkspaceToolsOptions, input: string, sessionId: str
 	for (const root of access.added) {
 		if (!existsSync(root)) continue;
 		const real = realpathSync(root);
+		// stored canonical when it was added: a root that now resolves elsewhere (replaced by a symlink) grants nothing until added again
+		if (real !== root) continue;
 		for (const base of [root, real]) {
 			if (!isWithin(base, input)) continue;
 			const full = resolveWithinRoot(root, relative(base, input) || ".");
 			guardReach(opts, input, full, writing);
-			return { full, root, base: diskPath(real) };
+			return { full, root, base: diskPath(real), parent: diskPath(dirname(full)) };
 		}
 	}
 	if (access.outside !== "allow") return primary();
 	const full = diskPath(resolve(input));
 	guardReach(opts, input, full, writing);
-	return { full, root: dirname(full), base: full };
+	return { full, root: dirname(full), base: full, parent: diskPath(dirname(full)) };
 }
 
 export function resolveWithinRoot(root: string, input: string): string {
@@ -1060,8 +1080,9 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			let expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
 			let full: string;
 			let reachRoot: string;
+			let reachParent: string | null;
 			try {
-				({ full, root: reachRoot } = resolveReach(opts, path, ctx?.sessionId, true));
+				({ full, root: reachRoot, parent: reachParent } = resolveReach(opts, path, ctx?.sessionId, true));
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
@@ -1159,6 +1180,11 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				if (exists) preservedMode = statSync(full).mode & 0o7777;
 				writeFileSync(tmp, content, "utf8");
 				if (preservedMode !== undefined) chmodSync(tmp, preservedMode);
+				if (movedUnder(reachParent, full)) {
+					unlinkSync(tmp);
+					dropCreatedDirs();
+					return escapeResult(`${path}: its folder changed while the write was prepared — nothing was written`);
+				}
 				committing = true;
 				if (!exists) {
 					// WR-1A ②: link(2) or refusal — atomic no-clobber, fail
@@ -1183,7 +1209,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				// the write landed outside the workspace — say so instead of
 				// claiming success. (The write itself cannot be undone.)
 				const written = realpathSync(full);
-				if (!isWithin(realpathSync(reachRoot), written)) {
+				if (!isWithin(realpathSync(reachRoot), written) || landedInStop(opts, path, written, reachParent)) {
 					// WR-1A ①: the rename HAPPENED — this is a post-effect
 					// verification failure, fatal, never a precondition.
 					return postEffectEscape("write", path);
@@ -1395,8 +1421,9 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 			const { hunks, single } = shape;
 			let full: string;
 			let reachRoot: string;
+			let reachParent: string | null;
 			try {
-				({ full, root: reachRoot } = resolveReach(opts, path, ctx?.sessionId, true));
+				({ full, root: reachRoot, parent: reachParent } = resolveReach(opts, path, ctx?.sessionId, true));
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
@@ -1529,9 +1556,13 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 					unlinkSync(tmp);
 					return stale;
 				}
+				if (movedUnder(reachParent, full)) {
+					unlinkSync(tmp);
+					return escapeResult(`${path}: its folder changed while the edit was prepared — nothing was written`);
+				}
 				renameSync(tmp, full);
 				const written = realpathSync(full);
-				if (!isWithin(realpathSync(reachRoot), written)) {
+				if (!isWithin(realpathSync(reachRoot), written) || landedInStop(opts, path, written, reachParent)) {
 					// WR-1A ①: post-effect — fatal, the rename already landed.
 					return postEffectEscape("edit", path);
 				}

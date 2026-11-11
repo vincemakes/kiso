@@ -10,12 +10,11 @@
  * A damaged file, or one of a version this kiso does not know, honours no added folder: the workspace keeps working.
  */
 
-import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, renameSync, statSync, writeSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
+import { LockedError, nativeLockAdapter, type LockHandle } from "./lock-adapter.js";
 
 const VERSION = 1;
-/** A holder writes a few hundred bytes; a lock older than this is a crash's residue. */
-const LOCK_STALE_MS = 10_000;
 const LOCK_WAIT_MS = 2_000;
 
 export const ENVIRONMENT_NOTE_HEAD = "Environment update from kiso (a fact about this session, not a request from the person)";
@@ -60,28 +59,29 @@ const within = (root: string, target: string): boolean => {
 	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
-function withLock<T>(path: string, work: () => T): T {
-	const lock = `${path}.lock`;
+/**
+ * The list's own lock: the session store's identity-confirmed link lock (ADR-0050), never taken from a live holder and released
+ * only by its owner. A dead holder is taken over by the adapter's rules; a live one is waited for briefly, then refused in words.
+ */
+async function withLock<T>(path: string, id: string, work: () => T): Promise<T> {
 	const deadline = Date.now() + LOCK_WAIT_MS;
+	let handle: LockHandle;
 	for (;;) {
 		try {
-			closeSync(openSync(lock, "wx", 0o600));
+			handle = await nativeLockAdapter.acquire(`${path}.lock`, id, () => undefined);
 			break;
 		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-			try {
-				if (Date.now() - statSync(lock).mtimeMs > LOCK_STALE_MS) rmSync(lock, { force: true });
-			} catch {
-				// gone between the two calls: the next attempt takes it
+			if (!(err instanceof LockedError) || Date.now() > deadline) {
+				throw err instanceof LockedError ? new EnvironmentRefusedError("this Work's folders are being changed elsewhere: try again") : err;
 			}
-			if (Date.now() > deadline) throw new EnvironmentRefusedError("this Work's folders are being changed elsewhere: try again");
-			Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+			await new Promise((r) => setTimeout(r, 20));
 		}
 	}
 	try {
+		if (!handle.verify()) throw new EnvironmentRefusedError("this Work's folders are being changed elsewhere: try again");
 		return work();
 	} finally {
-		rmSync(lock, { force: true });
+		handle.release();
 	}
 }
 
@@ -95,19 +95,23 @@ function replace(path: string, added: readonly string[]): void {
 		closeSync(fd);
 	}
 	renameSync(tmp, path);
-	const dir = openSync(dirname(path), "r");
+	// the rename is the commit: from here a failure must not be reported as one. A platform whose directories cannot be opened or
+	// flushed (Windows) keeps the rename.
 	try {
-		fsyncSync(dir);
+		const dir = openSync(dirname(path), "r");
+		try {
+			fsyncSync(dir);
+		} finally {
+			closeSync(dir);
+		}
 	} catch {
-		// a platform whose directories cannot be flushed (Windows): the rename stands
-	} finally {
-		closeSync(dir);
+		// the change stands
 	}
 }
 
-function update(root: string, id: string, change: (added: readonly string[]) => readonly string[]): readonly string[] {
+function update(root: string, id: string, change: (added: readonly string[]) => readonly string[]): Promise<readonly string[]> {
 	const path = join(root, environmentFile(id));
-	return withLock(path, () => {
+	return withLock(path, id, () => {
 		const now = readEnvironment(root, id);
 		if (now.damaged) throw new EnvironmentRefusedError(`this Work's folder list cannot be read: remove ${path} to start it again`);
 		const next = change(now.added);
@@ -117,7 +121,7 @@ function update(root: string, id: string, change: (added: readonly string[]) => 
 }
 
 /** Add `folder` to the Work. `primary` is where it started; `stops` are folders the new reach never enters. */
-export function addFolder(root: string, id: string, options: { readonly primary: string; readonly folder: string; readonly stops: readonly string[] }): readonly string[] {
+export async function addFolder(root: string, id: string, options: { readonly primary: string; readonly folder: string; readonly stops: readonly string[] }): Promise<readonly string[]> {
 	let real: string;
 	try {
 		real = realpathSync(options.folder);
@@ -142,7 +146,7 @@ export function addFolder(root: string, id: string, options: { readonly primary:
 	});
 }
 
-export function removeFolder(root: string, id: string, folder: string): readonly string[] {
+export async function removeFolder(root: string, id: string, folder: string): Promise<readonly string[]> {
 	return update(root, id, (added) => {
 		if (!added.includes(folder)) throw new EnvironmentRefusedError("this folder is not in the Work");
 		return added.filter((p) => p !== folder);
