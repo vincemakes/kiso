@@ -44,8 +44,6 @@
 .r-meter b:first-of-type { border-radius: 999px 0 0 999px; }
 .r-meter b:last-of-type { border-radius: 0 999px 999px 0; }
 .r-meter b:only-of-type { border-radius: 999px; }
-.r-meter .tick { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; border-radius: 1px; background: #8e8e96; }
-.r-meter .tick.soft { background: #c9c9cf; }
 /* the Context breakdown's colours: the conversation blue, the fixed parts warm, the free room the track */
 .seg-conversation { background: var(--blue) !important; }
 .seg-system { background: #8b5cf6 !important; }

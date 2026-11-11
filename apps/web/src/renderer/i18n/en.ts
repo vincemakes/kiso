@@ -163,8 +163,6 @@ export const en = {
 	ctxInstructions: "Project instructions",
 	ctxTools: "Tools ({n})",
 	ctxFree: "Free",
-	ctxStarts: "Compaction can start here",
-	ctxMust: "Compaction happens by here",
 	ctxCompaction: "Compaction can start at {starts} and happens by {must}.",
 	ctxEstimate: "≈ estimated from bytes; the total is the provider's count on the last request.",
 	commitOpen: "Commit…",
