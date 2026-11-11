@@ -20,6 +20,7 @@
  */
 
 import { OPENROUTER_ROWS } from "./openrouter-rows.js";
+import { MODEL_SNAPSHOT, MODEL_SNAPSHOT_AS_OF } from "./model-snapshot.js";
 
 export interface ModelCapabilities {
 	/** tokens of context the model accepts; null = unknown. */
@@ -777,12 +778,42 @@ export function lookupContextWindow(model: string, endpoint?: string, upstream?:
 	}
 	const identity = modelIdentity(model);
 	let found: ResolvedContextWindow | null = null;
+	let rowed = route !== null;
 	for (const entry of ENTRIES) {
 		const tokens = entry.capabilities.contextWindow;
-		if (tokens === null || modelIdentity(entry.model) !== identity) continue;
+		if (modelIdentity(entry.model) !== identity) continue;
+		rowed = true;
+		if (tokens === null) continue;
 		if (found === null || tokens < found.tokens) found = { tokens, source: "model", from: entry.model };
 	}
-	return found;
+	if (found !== null || rowed) return found; // a row that states no window lends none (CW-1): the snapshot does not overrule it
+	// last, for a model the table has no row for at all: the release's snapshot (kiso.work), by the same identity
+	const snap = snapshotOf(model);
+	return snap?.window != null ? { tokens: snap.window, source: "model", from: `${snap.key} (kiso.work, ${MODEL_SNAPSHOT_AS_OF})` } : null;
+}
+
+let dashed: Map<string, string> | null = null;
+/** The release snapshot's row for a model: by its folded name, by the weights it names (an alias), by a name that names the
+ *  same weights, and with dots and dashes read alike (`claude-fable-5.2` is the vendor's `claude-fable-5-2`). */
+function snapshotOf(model: string): { readonly key: string; readonly input: readonly string[] | null; readonly window: number | null } | null {
+	const folded = model.slice(model.lastIndexOf("/") + 1).toLowerCase();
+	const identity = modelIdentity(model);
+	const names = [folded, identity, ...Object.entries(MODEL_ALIASES).filter(([, a]) => a.is === identity).map(([n]) => n)];
+	for (const n of names) if (MODEL_SNAPSHOT[n] !== undefined) return { key: n, ...MODEL_SNAPSHOT[n]! };
+	dashed ??= new Map(Object.keys(MODEL_SNAPSHOT).map((k) => [k.replace(/\./g, "-"), k]));
+	for (const n of names) {
+		const k = dashed.get(n.replace(/\./g, "-"));
+		if (k !== undefined) return { key: k, ...MODEL_SNAPSHOT[k]! };
+	}
+	return null;
+}
+
+/**
+ * What a model takes in (owner, 2026-11-11): the table's row for this route when it says, else the release snapshot for the
+ * model's weights (whether a model reads pictures belongs to the weights), else null, unknown. A host decides what unknown means.
+ */
+export function lookupInputModalities(model: string, endpoint?: string): readonly string[] | null {
+	return lookupModelMetadata(model, endpoint)?.capabilities.inputModalities ?? snapshotOf(model)?.input ?? null;
 }
 
 function originOf(endpoint: string): string {

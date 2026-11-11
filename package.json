@@ -12,6 +12,7 @@
 		"typecheck": "tsc -p tsconfig.json && npm run typecheck -w @vincemakes/kiso-core && npm run typecheck -w @vincemakes/kiso-evals && npm run typecheck -w @vincemakes/kiso-provider-anthropic && npm run typecheck -w @vincemakes/kiso-provider-openai && npm run typecheck -w @vincemakes/kiso-provider-openai-responses && npm run typecheck -w @vincemakes/kiso-runtime && npm run typecheck -w @vincemakes/kiso-protocol && npm run typecheck -w @vincemakes/kiso-server && npm run typecheck -w @vincemakes/kiso-client && npm run typecheck -w @vincemakes/kiso-tui-cells && npm run typecheck -w @vincemakes/kiso-tui && npm run typecheck -w @vincemakes/kiso-tools-node && npm run typecheck -w @vincemakes/kiso-code && npm run typecheck -w @vincemakes/kiso-mcp-ext && npm run typecheck -w @vincemakes/kiso-subagent-ext && npm run typecheck -w @vincemakes/kiso-skills-ext && npm run typecheck -w @vincemakes/kiso-ask-ext",
 		"test": "npm run test:unit && npm run test:pty",
 		"test:unit": "vitest run -c vitest.unit.config.ts",
+		"models:snapshot": "node scripts/model-snapshot.mjs",
 		"test:pty": "vitest run -c vitest.pty.config.ts",
 		"size": "node scripts/check-size.mjs",
 		"pack:check": "node scripts/pack-check.mjs",
