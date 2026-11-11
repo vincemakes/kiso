@@ -64,6 +64,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const down = useLink(session);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
+	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);
 	const uncertain = (session.state.snapshot?.uncertain.length ?? 0) > 0;
@@ -203,7 +204,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					) : null}
 					{turns.length > 0 ? lead : null}
 					{turns.map((turn, i) => (
-						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={(id, allow) => void session.approve(id, allow)} />
+						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={session.stale() ? null : (id, allow) => void session.approve(id, allow)} />
 					))}
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}

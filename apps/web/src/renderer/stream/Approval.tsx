@@ -25,7 +25,7 @@ function summary(ask: Ask): string {
 }
 
 /** An approval, as its own card. It is never folded into the process while open. */
-export function Approval({ ask, onAnswer }: { readonly ask: Ask; readonly onAnswer: (decisionId: string, allow: boolean) => void }): ReactNode {
+export function Approval({ ask, onAnswer }: { readonly ask: Ask; readonly onAnswer: ((decisionId: string, allow: boolean) => void) | null }): ReactNode {
 	const [sent, setSent] = useState(false);
 	if (ask.decision !== "open") {
 		return (
@@ -38,7 +38,7 @@ export function Approval({ ask, onAnswer }: { readonly ask: Ask; readonly onAnsw
 	const { title, detail } = describe(ask);
 	const answer = (allow: boolean): void => {
 		setSent(true);
-		onAnswer(ask.decisionId, allow);
+		onAnswer?.(ask.decisionId, allow);
 	};
 	return (
 		<div className="ask" data-kind="ask" data-decision={ask.decisionId}>
@@ -53,10 +53,10 @@ export function Approval({ ask, onAnswer }: { readonly ask: Ask; readonly onAnsw
 					</div>
 				))}
 			</pre>
-			<button className="btn pri" disabled={sent} onClick={() => answer(true)} data-act="allow">
+			<button className="btn pri" disabled={sent || onAnswer === null} onClick={() => answer(true)} data-act="allow">
 				{t.allow}
 			</button>
-			<button className="btn" disabled={sent} onClick={() => answer(false)} data-act="deny">
+			<button className="btn" disabled={sent || onAnswer === null} onClick={() => answer(false)} data-act="deny">
 				{t.deny}
 			</button>
 		</div>

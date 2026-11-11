@@ -23,6 +23,7 @@ import { ControlsContext, type Controls } from "./stream/ComposerMenus.js";
 import { signIn } from "./state/auth.js";
 import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
+import { slotOf, workCache } from "./state/workcache.js";
 import { addFolderTo } from "./state/folders.js";
 import { fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
 import { ago, t } from "./i18n/index.js";
@@ -77,10 +78,14 @@ export function App(): ReactNode {
 
 	useEffect(() => {
 		if (signedIn !== true) return;
-		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, key: target.key, onRefused: () => setSignedIn(false) });
-		(window as unknown as { __kiso?: Session }).__kiso = next; // read by the proof scripts through the debugging port
+		// the Work's state is kept when it is left (a few Works, see workcache.ts); only the Work shown holds a stream
+		const slot = slotOf(target.key, target.sessionId);
+		const next = workCache.acquire(slot, () => openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, key: target.key, onRefused: () => setSignedIn(false) }));
+		next.attach();
+		(window as unknown as { __kiso?: Session; __works?: typeof workCache }).__kiso = next; // read by the proof scripts through the debugging port
+		(window as unknown as { __works?: typeof workCache }).__works = workCache;
 		setOpened({ target, session: next });
-		return () => next.stop();
+		return () => (next.detach(), workCache.release(slot));
 	}, [target, signedIn]);
 
 	const refresh = useCallback(
@@ -288,6 +293,7 @@ export function App(): ReactNode {
 				onOpen={openWork}
 				onAct={(row, act) =>
 					actOnWork(keyOf(row), row.id, act).then(() => {
+						if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
 						if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
 						return reread(row.key);
 					})
