@@ -63,7 +63,7 @@ await q(`document.querySelector('[data-kind=composer] textarea').dispatchEvent(n
 await q(`(() => { const dt = ${files("dt.items.add(new File(['line one\\nline two\\n'], 'errors.log', { type: 'text/plain' })); dt.items.add(new File([new Uint8Array([0, 1, 2, 0])], 'blob.bin'));")}; const box = document.querySelector('[data-kind=composer] .box'); box.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true })); box.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); return true; })()`);
 check(await waitUntil(async () => (await app.count("[data-attachment=image]")) === 1 && (await app.count("[data-attachment=file]")) === 1), "a pasted picture and a dropped text file wait in the box");
 check(/blob\.bin is not a text file/.test(await text("[data-kind=attach-note]")), "a dropped binary file is refused in words");
-check((await app.count("[data-kind=images-held]")) === 1 && /mock-text is not known to read pictures/.test(await text("[data-kind=images-held]")) && (await q("document.querySelector('[data-act=send]').disabled")), "on a model not known to read pictures, the picture is held, named, and the line cannot go");
+check((await app.count("[data-kind=images-held]")) === 0 && (await app.count("[data-kind=images-unknown]")) === 1 && /mock-text may not read pictures; they are sent/.test(await text("[data-kind=images-unknown]")) && !(await q("document.querySelector('[data-act=send]').disabled")), "on a model the table does not know, the picture is sent: one quiet line says so, and the line can go");
 await app.shot("composer-1-held");
 
 // switch this Work to the model that reads pictures, then send
@@ -72,7 +72,7 @@ await app.click("[data-act=model]");
 const shape = await q("(() => { const m = document.querySelector('[data-menu=model]').getBoundingClientRect(); const rows = [...document.querySelectorAll('[data-menu=model] [data-profile]')]; return { inside: m.top >= 0 && m.bottom <= innerHeight, one: rows.every((r) => r.getBoundingClientRect().height < 40), checked: rows.find((r) => r.getAttribute('aria-checked') === 'true')?.dataset.profile }; })()");
 check(shape.inside && shape.one && shape.checked === "text", `the model menu holds one line a model, sits whole in the window and checks the model in use (${JSON.stringify(shape)})`);
 await app.click("[data-profile=vision]");
-check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5" && (await app.count("[data-kind=images-held]")) === 0), "switching this Work to a model that reads pictures lets them go");
+check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5" && (await app.count("[data-kind=images-unknown]")) === 0), "switching this Work to a model that reads pictures drops the line");
 const own = await fetch(`${app.host().origin}/desk/settings?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
 const others = await fetch(`${app.host().origin}/desk/settings`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
 check(own.profile === "vision" && others.profile === "text", "the switch is this Work's only: new Works still start on the default");

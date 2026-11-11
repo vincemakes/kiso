@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launch, clientFor, scratch, checker, waitUntil } from "./lib.mjs";
+import { imagesOf } from "../../dist/main/settings.js";
 
 const { check, verdict } = checker("settings");
 const seen = [];
@@ -62,4 +63,5 @@ ctl.abort();
 await reader;
 host.child.kill("SIGTERM");
 endpoint.close();
+check(imagesOf(null) === null && imagesOf(undefined) === null && imagesOf(["text"]) === false && imagesOf(["text", "image"]) === true, "the table says pictures read (image listed), not read (modalities listed without it: evidence), or unknown (none listed: null)");
 verdict();

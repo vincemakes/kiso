@@ -113,7 +113,7 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 						{(s?.profiles ?? []).map((p) => (
 							<button type="button" key={p.name} className="cm-i one" role="menuitemradio" aria-checked={p.name === s?.profile} disabled={!p.available} data-profile={p.name} title={p.available ? `${p.model} · ${p.name}` : t.notSignedIn} onClick={() => change({ profile: p.name }, close)}>
 								<b>{p.model}</b>
-								{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
+								{p.images === true ? <span className="cm-tag">{t.readsImages}</span> : null}
 								<small>{p.available ? p.name : t.notSignedIn}</small>
 								{p.name === s?.profile ? <I.check /> : <span className="cm-nock" />}
 							</button>

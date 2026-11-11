@@ -5,8 +5,8 @@ export interface ProfileRow {
 	/** the model id the profile names */
 	readonly model: string;
 	readonly available: boolean;
-	/** the model table says this model reads images (unknown is false: an image is not sent to a model that might drop it) */
-	readonly images: boolean;
+	/** the model table says this model reads images (null: unknown, a picture is sent with a quiet line saying so; false: the table says it does not, the picture is held) */
+	readonly images: boolean | null;
 }
 
 export interface SettingsReply {

@@ -68,7 +68,8 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	useEffect(() => setFiles(null), [c?.envVersion]);
 	const pick = useRef<HTMLInputElement>(null);
 	const profile = c?.settings?.profiles.find((p) => p.name === c.settings?.profile) ?? null;
-	const blocked = attached.some((a) => a.kind === "image") && profile !== null && !profile.images;
+	const pictures = attached.some((a) => a.kind === "image") && profile !== null;
+	const blocked = pictures && profile!.images === false;
 	const ready = (text.trim() !== "" || attached.length > 0) && !blocked;
 	const add = async (list: readonly File[]): Promise<void> => {
 		const got = await Promise.all(list.map(attach));
@@ -140,6 +141,10 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 					<div className="cwarn" data-kind="images-held">
 						<I.image />
 						<span>{fmt(t.imagesHeld, { model: profile?.model ?? "" })}</span>
+					</div>
+				) : pictures && profile!.images === null ? (
+					<div className="cquiet" data-kind="images-unknown">
+						{fmt(t.imagesMaybe, { model: profile!.model })}
 					</div>
 				) : null}
 				{attached.length > 0 ? (
