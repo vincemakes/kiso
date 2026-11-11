@@ -19,7 +19,7 @@ writeFileSync(picked, docs);
 writeFileSync(join(bin, "picker"), `#!/bin/sh\ncat ${picked}\n`);
 chmodSync(join(bin, "picker"), 0o755);
 execFileSync("git", ["init", "-q", "-b", "feat/env"], { cwd: ws });
-execFileSync("git", ["remote", "add", "origin", "git@github.com:acme/api-server.git"], { cwd: ws });
+execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/api-server.git"], { cwd: ws });
 const sh = (callId, command) => ({ type: "tool_call_end", callId, name: "shell", input: { command } });
 const app = await launchApp({ data: scratch("env-data"), workspace: ws, env: { KISO_WEB_SESSION: "e1", KISO_WEB_MODE: "full-access", KISO_WEB_PICKER: join(bin, "picker"), PATH: `${bin}:${process.env.PATH}` }, fauxScript: [
 	{ events: [sh("c1", `cd ${docs} && ls`), sh("c2", "cd /nonexistent; echo hello"), sh("c3", "gh pr create --fill"), { type: "stop", reason: "tool_use" }] },
