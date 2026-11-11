@@ -48,7 +48,7 @@ check((await text("[data-field=tier-pill]")) === "Asks each time" && (await text
 
 // the tier: this Work's, and the rail agrees
 await app.click("[data-act=tier]");
-check((await app.count("[data-tier]")) === 4, "the tier menu offers the four tiers");
+check(await waitUntil(async () => (await app.count("[data-tier]")) === 4), "the tier menu offers the four tiers");
 await app.click("[data-tier=plan]");
 const envMode = () => fetch(`${app.host().origin}/desk/env?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json()).then((e) => e.mode);
 check(await waitUntil(async () => (await text("[data-field=tier-pill]")) === "Read-only" && (await envMode()) === "plan"), "choosing Read-only changes this Work's tier (the host reads plan for this Work)");
