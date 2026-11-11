@@ -42,8 +42,9 @@ function derive(space: Space, session: string, linked: Pr | undefined): { readon
 	const records = space.store.load(session);
 	const seq = records.at(-1)?.event.seq ?? -1;
 	const held = cache.get(session);
-	const base = linked === undefined ? [] : [repoOf(linked)];
-	if (held !== undefined && held.seq === seq) return { recent: held.recent, repos: held.repos.length > 0 || base.length === 0 ? held.repos : base };
+	// both sources, one row per repository: the Work's own link (the person's latest word) first, then what the log printed
+	const both = (log: readonly EnvRepo[]): readonly EnvRepo[] => [...(linked === undefined ? [] : [repoOf(linked)]), ...log].filter((r, i, all) => all.findIndex((x) => x.repo === r.repo) === i);
+	if (held !== undefined && held.seq === seq) return { recent: held.recent, repos: both(held.repos) };
 	const calls = new Map<string, string>();
 	const recent: string[] = [];
 	const repos: EnvRepo[] = [];
@@ -59,7 +60,7 @@ function derive(space: Space, session: string, linked: Pr | undefined): { readon
 	const kept = [...new Set(recent)].filter((d, _, all) => !all.some((o) => o !== d && d.startsWith(`${o}/`))).slice(0, RECENT_MAX);
 	const out = { seq, recent: kept, repos: repos.filter((r, i) => repos.findIndex((x) => x.repo === r.repo) === i) };
 	cache.set(session, out);
-	return { recent: out.recent, repos: out.repos.length > 0 || base.length === 0 ? out.repos : base };
+	return { recent: out.recent, repos: both(out.repos) };
 }
 
 const shown = (p: string): string => (p.startsWith(`${homedir()}/`) ? `~${p.slice(homedir().length)}` : p);
@@ -69,8 +70,10 @@ export function environmentRows(space: Space, session: string, linked: Pr | unde
 	const { added, damaged } = foldersOf(space, session);
 	const { recent, repos } = derive(space, session, linked);
 	const row = (kind: EnvFolder["kind"], path: string): EnvFolder => ({ kind, path, shown: shown(path), branch: branchOf(path), github: githubOf(path), missing: !existsSync(path) });
-	const known = new Set([space.workspace, ...added.map((a) => a.path)]);
-	const folders = [row("primary", space.workspace), ...added.map((a) => row("added", a.path)), ...recent.filter((d) => !known.has(d)).map((d) => row("recent", d))];
+	const roots = [space.workspace, ...added.map((a) => a.path)];
+	const inside = (d: string, root: string): boolean => d === root || d.startsWith(`${root}/`);
+	// a recent folder in an added folder is not shown; one in the primary, or around any root, is shown but can never be added (nested)
+	const folders = [row("primary", space.workspace), ...added.map((a) => row("added", a.path)), ...recent.filter((d) => !added.some((a) => inside(d, a.path)) && d !== space.workspace).map((d) => ({ ...row("recent", d), addable: !roots.some((r) => inside(d, r) || inside(r, d)) }))];
 	const withBranch = repos.map((r) => ({ ...r, ...(branchOfPr(r.url) === undefined ? {} : { branch: branchOfPr(r.url)! }) }));
 	return { folders, repos: withBranch, doors: process.platform === "darwin" ? ["reveal", "terminal"] : [], damaged };
 }

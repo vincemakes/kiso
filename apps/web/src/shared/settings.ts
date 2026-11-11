@@ -35,6 +35,8 @@ export interface EnvFolder {
 	/** `owner/repo` of its GitHub remote, when it has one */
 	readonly github: string | null;
 	readonly missing: boolean;
+	/** a recent folder that may be added (not inside, or around, the primary or an added folder: those are refused as nested) */
+	readonly addable?: boolean;
 }
 /** A repository this Work has a pull request in. */
 export interface EnvRepo {
