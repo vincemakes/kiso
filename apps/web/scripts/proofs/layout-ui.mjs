@@ -65,6 +65,7 @@ await app.click("[data-act=rail]");
 await sleep(800);
 m = await measure();
 check(Math.abs(m.rail.w - 280) < 1 && (await app.count("[data-kind=panel]")) === 0, "with a panel open, the rail's key closes the panel and the rail comes back at 280");
+check((await q(`[".side", ".rail", ".win"].map((s) => getComputedStyle(document.querySelector(s)).backgroundColor).join()`)) === "rgb(255, 255, 255),rgb(255, 255, 255),rgb(255, 255, 255)", "the sidebar and the rail are the stream's white: one page, no tinted strips beside it");
 await app.click("[data-act=panel-menu]");
 await app.click("[data-open=diff]");
 await sleep(800);

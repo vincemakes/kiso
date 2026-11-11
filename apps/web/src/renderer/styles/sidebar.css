@@ -1,6 +1,6 @@
 /* the window is one row of columns: the sidebar, the Work (the stream and, beside it, the panel) and the rail. No column is laid over another while the window can hold them (864 px and up); narrower, the Work is the whole window and the sidebar and the
    overview float over it as drawers, one at a time, behind a veil a tap closes (owner 2026-11-10, reversing the 2026-11-02 ruling below that width). */
-:root { --sw: 264px; --side: #fafafa; }
+:root { --sw: 264px; --side: #fff; }
 .win { position: fixed; inset: 0; overflow: clip; background: #fff; display: flex; }
 .sidetoggle { position: absolute; left: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); transition: left 0.2s var(--ease); }
 .win[data-side="1"] .sidetoggle { left: calc(var(--sw) - 46px); }
