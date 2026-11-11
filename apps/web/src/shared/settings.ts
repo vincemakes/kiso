@@ -41,6 +41,8 @@ export interface EnvRepo {
 	readonly repo: string;
 	readonly number: number;
 	readonly url: string;
+	/** the pull request's branch, once `gh` has said (asked in the background, as the state is) */
+	readonly branch?: string;
 }
 
 /** What `GET /desk/env?key=` answers: where a Work runs. `mode` is the permission tier's value. */

@@ -46,7 +46,7 @@ export function Environment({ env, session, onChanged }: { readonly env: EnvRepl
 		acts: [...door("reveal", i), ...gh(f.github), [t.envCopyPath, () => copy(f.path)], ...(f.kind === "primary" ? ([[t.envAddFolder, add]] as const) : []), ...door("terminal", i), ...(f.kind === "added" ? ([[t.envRemove, () => change({ remove: f.path })]] as const) : f.kind === "recent" ? ([[t.envAddHere, () => change({ add: f.path })]] as const) : [])],
 	}));
 	const branchOf = (i: number): Item[] => (rows.folders[i]!.branch === null ? [] : [{ key: `b${i}`, icon: <I.branch />, name: rows.folders[i]!.branch!, mono: true, acts: [[t.envCopyBranch, () => copy(rows.folders[i]!.branch!)]] }]);
-	const repos: Item[] = rows.repos.map((r) => ({ key: `r${r.url}`, icon: <I.pr />, name: r.repo, sub: ` · #${r.number}`, acts: [...gh(r.repo), [t.envCopyName, () => copy(r.repo)]] }));
+	const repos: Item[] = rows.repos.map((r) => ({ key: `r${r.url}`, icon: <I.pr />, name: r.repo, sub: ` · #${r.number}`, acts: [...gh(r.repo), [t.envCopyName, () => copy(r.repo)], ...(r.branch === undefined ? [] : ([[t.envCopyBranch, () => copy(r.branch!)]] as const))] }));
 	const group = (id: string, head: string | null, items: readonly Item[]): ReactNode =>
 		items.length === 0 ? null : (
 			<div className="r-grp" data-group={id}>

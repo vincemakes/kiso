@@ -5,6 +5,7 @@ import { cdTargets, isGhPrCreate } from "@vincemakes/kiso-code/policy";
 import type { EnvFolder, EnvRepo } from "../shared/settings.js";
 import { Refusal } from "./files.js";
 import { branchOf, githubOf } from "./folder-info.js";
+import { tryRun } from "./git.js";
 import { prOfUrl, type Pr } from "./prs.js";
 import type { Space } from "./space.js";
 import { foldersOf } from "./work-folders.js";
@@ -16,6 +17,17 @@ import { foldersOf } from "./work-folders.js";
  */
 const RECENT_MAX = 8;
 const cache = new Map<string, { readonly seq: number; readonly recent: readonly string[]; readonly repos: readonly EnvRepo[] }>();
+
+/** A pull request's branch from `gh`, asked once off the request (retried after a minute when it could not be read); the row shows it once known. */
+const branches = new Map<string, { branch?: string; at: number }>();
+function branchOfPr(url: string): string | undefined {
+	const held = branches.get(url);
+	if (held === undefined || (held.branch === undefined && Date.now() - held.at > 60_000)) {
+		branches.set(url, { at: Date.now() });
+		void tryRun(process.cwd(), "gh", ["pr", "view", url, "--json", "headRefName", "--jq", ".headRefName"], 8000).then((b) => b !== null && b !== "" && branches.set(url, { branch: b, at: Date.now() }));
+	}
+	return held?.branch;
+}
 
 const isDir = (p: string): boolean => {
 	try {
@@ -59,7 +71,8 @@ export function environmentRows(space: Space, session: string, linked: Pr | unde
 	const row = (kind: EnvFolder["kind"], path: string): EnvFolder => ({ kind, path, shown: shown(path), branch: branchOf(path), github: githubOf(path), missing: !existsSync(path) });
 	const known = new Set([space.workspace, ...added.map((a) => a.path)]);
 	const folders = [row("primary", space.workspace), ...added.map((a) => row("added", a.path)), ...recent.filter((d) => !known.has(d)).map((d) => row("recent", d))];
-	return { folders, repos, doors: process.platform === "darwin" ? ["reveal", "terminal"] : [], damaged };
+	const withBranch = repos.map((r) => ({ ...r, ...(branchOfPr(r.url) === undefined ? {} : { branch: branchOfPr(r.url)! }) }));
+	return { folders, repos: withBranch, doors: process.platform === "darwin" ? ["reveal", "terminal"] : [], damaged };
 }
 
 /** Show in Finder / Open in terminal: by Work and row index, the path recomputed here, never taken from the page. */
