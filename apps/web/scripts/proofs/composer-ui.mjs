@@ -32,7 +32,7 @@ const origin = `http://127.0.0.1:${endpoint.address().port}`;
 const home = scratch("comp-home");
 mkdirSync(home, { recursive: true });
 const profile = { kind: "openai-compat", baseUrl: `${origin}/v1`, apiKeyEnv: "MOCK_ENDPOINT_KEY" };
-writeFileSync(join(home, "config.json"), JSON.stringify({ model: "text", models: { text: { ...profile, model: "mock-text" }, vision: { ...profile, model: "claude-sonnet-5-5" } } }));
+writeFileSync(join(home, "config.json"), JSON.stringify({ model: "text", models: { text: { ...profile, model: "mock-text" }, vision: { ...profile, model: "claude-sonnet-5-5" }, glm: { ...profile, model: "glm-5.3" } } }));
 writeFileSync(join(home, "auth.json"), JSON.stringify({ version: 1, credentials: { [`endpoint:${origin}`]: { type: "api-key", key: "sk-test-0000", savedAt: 1 } } }));
 const workspace = scratch("comp-ws");
 mkdirSync(join(workspace, "src"), { recursive: true });
@@ -65,6 +65,13 @@ check(await waitUntil(async () => (await app.count("[data-attachment=image]")) =
 check(/blob\.bin is not a text file/.test(await text("[data-kind=attach-note]")), "a dropped binary file is refused in words");
 check((await app.count("[data-kind=images-held]")) === 0 && (await app.count("[data-kind=images-unknown]")) === 1 && /mock-text may not read pictures; they are sent/.test(await text("[data-kind=images-unknown]")) && !(await q("document.querySelector('[data-act=send]').disabled")), "on a model the table does not know, the picture is sent: one quiet line says so, and the line can go");
 await app.shot("composer-1-held");
+// a model the snapshot says is text-only (glm-5.3): the evidence holds the picture back, and Send cannot go
+await app.click("[data-act=model]");
+await app.click("[data-profile=glm]");
+check(await waitUntil(async () => (await app.count("[data-kind=images-held]")) === 1 && (await app.count("[data-kind=images-unknown]")) === 0 && /glm-5\.3 does not read pictures/.test((await app.text("[data-kind=images-held]")) ?? "") && (await q("document.querySelector('[data-act=send]').disabled"))), "on a model the table says is text-only, the picture is held and the line cannot go");
+await app.click("[data-act=model]");
+await app.click("[data-profile=text]");
+await waitUntil(async () => (await text("[data-field=model-pill]")) === "mock-text");
 
 // switch this Work to the model that reads pictures, then send
 await app.click("[data-act=model]");
@@ -150,7 +157,7 @@ const listed = await q("[...document.querySelectorAll('[data-kind=settings] [dat
 await sleep(400);
 await app.shot("settings-model");
 await app.click("[data-kind=settings] [data-profile=vision]");
-check(listed === "mock-text/text,claude-sonnet-5-5/vision" && (await waitUntil(async () => (await text("[data-kind=settings] [data-field=profile]")) === "claude-sonnet-5-5")), `Settings lists each profile's model over its name in the composer's menu, and a pick shows in its pill (${listed})`);
+check(listed === "mock-text/text,claude-sonnet-5-5/vision,glm-5.3/glm" && (await waitUntil(async () => (await text("[data-kind=settings] [data-field=profile]")) === "claude-sonnet-5-5")), `Settings lists each profile's model over its name in the composer's menu, and a pick shows in its pill (${listed})`);
 endpoint.close();
 await app.close();
 verdict();
