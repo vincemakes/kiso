@@ -15,6 +15,7 @@ import type { Previews } from "./preview.js";
 import { listDirs, validateFolder } from "./folders.js";
 import { pickFolder } from "./pick-folder.js";
 import { folderInfo } from "./folder-info.js";
+import { changeFolders, foldersOf } from "./work-folders.js";
 import type { History } from "./history.js";
 import type { Notice, Presence } from "./approvals.js";
 import type { Settings } from "./settings.js";
@@ -114,6 +115,15 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (pr === null) throw new Refusal(400, "give a pull request's GitHub URL, or its number in this folder's repository");
 			ctx.settings.setPr(session, pr);
 			return json(200, { pr });
+		}
+		if (path === "/desk/work-folders") {
+			// a Work's added folders: asked, or changed by path; refused in words (ADR-0058 Amendment 19)
+			if (space === null) return json(404, {});
+			const body = post ? await readJson(req) : {};
+			const session = post ? (str(body["session"]) ?? "") : (url.searchParams.get("session") ?? "");
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			if (post) changeFolders(space, session, str(body["add"]), str(body["remove"]));
+			return json(200, foldersOf(space, session));
 		}
 		if (path === "/desk/rename") {
 			if (!post) return json(405, {});

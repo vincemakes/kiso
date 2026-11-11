@@ -34,6 +34,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { Body, Editor, PROMPT, bannerLines, currentGround, currentGroundRgb, parseOscColor, resolveGround, setGround, escapeTerminal, extensionsBannerText, extensionsFact, idColumn, interactivePrompt, palette, renderSessionLine, sessionListFooter, sessionListHeader, sessionListRow, sessionListUnknownLine, slashCommandNames, type BannerExtension, type Rgb, type SessionCardView } from "@vincemakes/kiso-tui";
 import { disposeExtensions, SessionStore } from "@vincemakes/kiso-runtime";
+import { readEnvironment } from "@vincemakes/kiso-runtime";
 import { listSessionSidecars, migrateSummaries, readProfile, readSessionName, summaryMigrationPending, writeSessionName, type ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { skillMenuItems } from "./skill-invoke.js";
 import { canonicalPath, hasSession, locateSession, projectLayoutActive, sessionFolders, type SessionFolder, type SessionRoute } from "./projects.js";
@@ -1104,6 +1105,9 @@ async function chatLoop(
 			refused = true;
 			continue;
 		}
+		// ADR-0058 Amendment 19: the folders a web Work added; the tools here honour them too
+		const addedFolders = readEnvironment(activeStoreDir, id).added;
+		if (addedFolders.length > 0) bodyLog(`also working in: ${addedFolders.map(tildeOf).join(", ")}`);
 		opened = id;
 		if (rebuilt) {
 			rebuilt = false;

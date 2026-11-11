@@ -1366,3 +1366,17 @@ lives; that is the runtime's `adopt`, unchanged here, and the same for every
 promotion. (e) The 300 ms window cannot name the holder: a stalled event loop
 can hand over a command whose pipes were about to close; the task then ends at
 once, with no output lost.
+
+## Amendment 19 — the file tools' reach: added folders, and Full access (2026-11-11, owner-approved)
+
+**This reverses a sentence of §4, as restated on `extraReadRoots`:** "Nothing else widens: every other tool, and every relative path, stays inside the workspace." Under Full access the shell already reaches every path the person's account can, and the file tools alone refused them, so the boundary no longer did the job it appeared to. Owner, 2026-11-11: under Full access the file tools are not fenced by the workspace.
+
+1. **A Work's added folders.** One file per session, `<id>.environment.json`, `{ "version": 1, "added": [...] }`, apart from `<id>.meta.json` (whose writers replace the whole file without a lock), written under its own short lock and replaced atomically. A damaged file or an unknown version honours no added folder. A fork copies it.
+2. **Read on every call.** `tools-node` takes `access(sessionId)`, asked once per file-tool call: the added folders, and whether the mode allows the rest. No agent holds a copy, so an add, a removal or a mode change applies at the next call, and any time, including during a run. An operation already started finishes.
+3. **The new reach and its stops.** An absolute path may land in an added folder in any mode, following the mode as the workspace does, and anywhere else only under Full access. In that new reach the shared resolver refuses, on the canonical path, the host's `stopRoots` (`$KISO_HOME`, the credential homes the floor names) and a write into any `.git` or `.kiso`, whatever an approval said. **The workspace's own rules do not change**: a path inside it never reaches this check.
+4. **What this is not.** These are limits on the file tools. The shell is not bound by them, Full access remains a high-trust mode, and the stops are not complete protection of sensitive files.
+5. **The floor** treats an added folder, what is above it and its `.git` as it treats the workspace.
+6. **The model.** Authorisation never reads the conversation. A host may tell the model of a change, best effort; no schema, prompt or kernel change. A delegate child gets neither the list nor the outside reach.
+
+Measured by a byte gate: with no added folders, requests are those of the release before.
+

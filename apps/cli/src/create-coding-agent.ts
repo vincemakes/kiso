@@ -35,7 +35,7 @@ import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { sweepStaleMergeDirs } from "./temp-sweep.js";
 import { CODING_TOOL_RULES, composeSystemPrompt } from "./coding-prompt.js";
-import { createAgent, loadExtensions, loadProjectExtensions, SessionStore, type AgentDefinition, type ContextPolicy } from "@vincemakes/kiso-runtime";
+import { createAgent, loadExtensions, loadProjectExtensions, readEnvironment, SessionStore, type AgentDefinition, type ContextPolicy } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { preferences, startingEffort } from "./preferences.js";
 
@@ -278,7 +278,7 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	setUserProtectedPaths(userConfig?.protectedPaths);
 	const extensions = [
 		protectedShellExtension({ files: protectedFiles, workspaceRoot, env: () => ({ home: homedir(), kisoHome: kisoHome() }) }),
-		floorExtension(() => floorOn, workspaceRoot),
+		floorExtension(() => floorOn, workspaceRoot, undefined, () => (sessionId === undefined ? [] : readEnvironment(activeStoreDir, sessionId).added)),
 		breakerExtension(),
 		...modeExtensions(workspaceRoot),
 		readOnlyShellExtension(codingToolOptions),

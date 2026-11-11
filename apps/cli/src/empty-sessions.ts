@@ -77,6 +77,7 @@ export function findEmptySessions(dirs: readonly string[], alive: (pid: number) 
 			}
 			const files = [name];
 			if (names.includes(lock)) files.push(lock);
+			if (names.includes(`${id}.environment.json`)) files.push(`${id}.environment.json`);
 			if (existsSync(join(dir, "traces", `${id}.jsonl`))) files.push(join("traces", `${id}.jsonl`));
 			empty.push({ dir, id, files });
 		}

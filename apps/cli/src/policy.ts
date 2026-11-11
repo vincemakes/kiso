@@ -11,6 +11,7 @@
 export { CODING_TOOL_RULES, SYSTEM_PROMPT, composeSystemPrompt } from "./coding-prompt.js";
 export { breakerExtension } from "./breaker.js";
 export { floorExtension } from "./floor.js";
+export { fileStopRoots } from "./shell-words.js";
 export { MODE_LABEL, OFFERED_MODES, getMode, modeExtensions, modeSystemPrompt, setMode } from "./mode.js";
 export { protectedShellExtension } from "./protected-shell.js";
 export { guardSavedAllow, neverInheritedCall } from "./protected-writes.js";

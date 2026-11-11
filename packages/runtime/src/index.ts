@@ -41,6 +41,8 @@ export { Run, RunClosedError } from "./run.js";
 // store
 export { SessionStore, StaleWriterError, StoreCorruptionError } from "./store.js";
 export { ForkRefusedError } from "./fork.js";
+export { addFolder, EnvironmentRefusedError, isEnvironmentNote, readEnvironment, removeFolder } from "./environment.js";
+export type { EnvironmentState } from "./environment.js";
 export type { ForkOrigin } from "./profile.js";
 export type { Event, SessionMeta, StoreRecord } from "./store.js";
 

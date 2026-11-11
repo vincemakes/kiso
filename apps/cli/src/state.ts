@@ -14,13 +14,15 @@ import { fileURLToPath } from "node:url";
 import { AT_CAP, AT_SKIP, Dock, type AtItem, type Body, type PanelVerdict, type PanelView, type SaferAnswer, type SessionCardView } from "@vincemakes/kiso-tui";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
 import { projectMessages, type Event, type Message } from "@vincemakes/kiso-core";
-import { kisoHome, type KisoExtension, type StoreRecord } from "@vincemakes/kiso-runtime";
+import { kisoHome, readEnvironment, type KisoExtension, type StoreRecord } from "@vincemakes/kiso-runtime";
 import type { ReasoningSetting } from "@vincemakes/kiso-runtime/internal";
 import { TaskManager } from "@vincemakes/kiso-runtime/internal";
-import { processTaskBackend, readShowsWholeFile, type ShellTasks } from "@vincemakes/kiso-tools-node";
+import { processTaskBackend, readShowsWholeFile, type FileAccess, type ShellTasks } from "@vincemakes/kiso-tools-node";
 import { collectWriter } from "@vincemakes/kiso-subagent-ext";
 import { canonicalPath, LEGACY_SESSIONS_DIR, projectDirFor, projectLayoutActive } from "./projects.js";
 import { taskNoticeLines, taskWhat } from "./task-notice.js";
+import { getMode } from "./mode.js";
+import { fileStopRoots } from "./shell-words.js";
 
 /** finding #11: KISO_HOME is the ONE root — every default path derives from
  *  it (sessions, trust, extensions, mcp config, skills). The dedicated
@@ -58,11 +60,19 @@ export function setPrintRun(): void {
 	printRun = true;
 }
 
+/** ADR-0058 Amendment 19: the same list the web reads, per call; a delegate child gets none of it. */
+function fileAccess(sessionId: string | undefined): FileAccess {
+	if ((Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0) >= 1) return { added: [], outside: "deny" };
+	return { added: sessionId === undefined || activeStoreDir === "" ? [] : readEnvironment(activeStoreDir, sessionId).added, outside: getMode() === "full-access" ? "allow" : "deny" };
+}
+
 export function codingToolOptions(): {
 	readonly workspaceRoot: string;
 	readonly excludeRoots: readonly string[];
 	readonly secretEnvNames: readonly string[];
 	readonly protectedFiles: readonly string[];
+	readonly access: (sessionId: string | undefined) => FileAccess;
+	readonly stopRoots: readonly string[];
 	readonly tasks: (sessionId: string | undefined) => ShellTasks | undefined;
 	readonly observedRevision: (sessionId: string | undefined, full: string, kind?: "edit" | "write") => string | undefined;
 	readonly limits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
@@ -83,6 +93,8 @@ export function codingToolOptions(): {
 		excludeRoots: [kisoHome()],
 		secretEnvNames: secretEnvNamesOf(configModels),
 		protectedFiles: protectedFiles(),
+		access: fileAccess,
+		stopRoots: fileStopRoots(homedir(), kisoHome()),
 		tasks: tasksFor,
 		observedRevision: observedRevisionFromLog,
 		...(Object.keys(limits).length > 0 ? { limits } : {}),

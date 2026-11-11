@@ -165,7 +165,7 @@ export function locateSession(home: string, id: string, except: string): Session
  * repeated move is a no-op.
  */
 export function sessionFiles(id: string): readonly string[] {
-	return [join("traces", `${id}.jsonl`), `${id}.meta.json`, `${id}.lock`, `${id}.jsonl`];
+	return [join("traces", `${id}.jsonl`), `${id}.meta.json`, `${id}.environment.json`, `${id}.lock`, `${id}.jsonl`];
 }
 
 export function moveSessionFiles(fromDir: string, toDir: string, id: string, files: readonly string[] = sessionFiles(id)): number {

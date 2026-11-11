@@ -69,6 +69,7 @@ import {
 	type LockAdapter,
 	type LockHandle,
 } from "./lock-adapter.js";
+import { isEnvironmentNote } from "./environment.js";
 
 /** History that does not parse as a contiguous kiso trajectory. */
 export class StoreCorruptionError extends Error {
@@ -168,8 +169,9 @@ function contentText(content: unknown): string {
 	for (const block of content) {
 		if (block === null || typeof block !== "object") continue;
 		const b = block as { type?: unknown; text?: unknown };
-		if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
-		else if (b.type === "image") parts.push("(image)");
+		if (b.type === "text" && typeof b.text === "string") {
+			if (!isEnvironmentNote(b.text)) parts.push(b.text); // the host's line about a folder, never the person's words
+		} else if (b.type === "image") parts.push("(image)");
 	}
 	return parts.join(" ");
 }
