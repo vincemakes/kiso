@@ -67,6 +67,9 @@ m = await measure();
 check(Math.abs(m.rail.w - 280) < 1 && (await app.count("[data-kind=panel]")) === 0, "with a panel open, the rail's key closes the panel and the rail comes back at 280");
 check((await q(`[".side", ".rail", ".win"].map((s) => getComputedStyle(document.querySelector(s)).backgroundColor).join()`)) === "rgb(255, 255, 255),rgb(255, 255, 255),rgb(255, 255, 255)", "the sidebar and the rail are the stream's white: one page, no tinted strips beside it");
 check((await q(`getComputedStyle(document.querySelector(".side-in")).borderRightWidth + "," + getComputedStyle(document.querySelector(".rail-in")).borderLeftWidth`)) === "1px,1px", "the sidebar has a hairline on its right edge, as the rail has on its left");
+// Chrome cannot emulate display-mode, so the rule under (display-mode: standalone) is read from the stylesheet and applied on its own
+const top = await q(`(() => { const rule = [...document.styleSheets].flatMap((s) => [...s.cssRules]).find((r) => r.media?.mediaText === "(display-mode: standalone)")?.cssRules[0]; if (!rule) return "no rule"; const none = getComputedStyle(document.querySelector(".win"), "::before").content; const st = document.createElement("style"); st.textContent = rule.cssText; document.head.append(st); const h = getComputedStyle(document.querySelector(".win"), "::before").height; st.remove(); return none + "," + h; })()`);
+check(top === "none,1px", "in the installed app's window (display-mode: standalone) the page has a 1 px line along its top; in a browser tab it has none");
 await app.click("[data-act=panel-menu]");
 await app.click("[data-open=diff]");
 await sleep(800);

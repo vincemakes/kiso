@@ -2,6 +2,8 @@
    overview float over it as drawers, one at a time, behind a veil a tap closes (owner 2026-11-10, reversing the 2026-11-02 ruling below that width). */
 :root { --sw: 264px; --side: #fff; }
 .win { position: fixed; inset: 0; overflow: clip; background: #fff; display: flex; }
+/* in the installed app's own window (no browser bar above it) a hairline closes the page's top edge, as the sidebar's and the rail's close its sides */
+@media (display-mode: standalone) { .win::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: var(--line); z-index: 200; pointer-events: none; } }
 .sidetoggle { position: absolute; left: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); transition: left 0.2s var(--ease); }
 .win[data-side="1"] .sidetoggle { left: calc(var(--sw) - 46px); }
 /* the brand row, only at the top of the open sidebar: the toggle's height, mark and word on the left */
