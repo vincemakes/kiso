@@ -191,13 +191,16 @@ type WireSetting = { readonly thinking?: "adaptive" | "enabled" | "disabled"; re
 export const FOLLOW_UP_ASK =
 	"Write the one message the person is most likely to send you next, as they would type it, and nothing else. If the work is done and nothing naturally follows, answer with nothing.";
 
-/** The built-in follow-up's answer as a line: its first non-empty line, without quotes around it, at most 200
- *  characters; "" for none. */
+/** The built-in follow-up's answer as a line: its first non-empty line, without quotes around it; "" for none, and ""
+ *  for a line over 200 characters (a cut message is not one the person would send, so it is dropped, not shortened). */
 export function followUpLine(text: string): string {
 	const first = text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "";
 	const bare = first.replace(/^["'`\u201c\u2018\u300c]+|["'`\u201d\u2019\u300d]+$/g, "").trim();
-	return [...bare].length > 200 ? `${[...bare].slice(0, 199).join("")}\u2026` : bare;
+	return [...bare].length > 200 ? "" : bare;
 }
+
+/** The built-in follow-up's room when its thinking cannot be turned off: a one-line answer after the model's own thinking. */
+const FOLLOW_UP_THINKING_ROOM = 600;
 
 /** The session title's ask (Session.title). The language is named, unlike the follow-up's: the title sees one message
  *  and no history, and a short greeting under an English ask came back English (ds, a three-character Chinese
@@ -1147,12 +1150,19 @@ export class AgentSession {
 		});
 		tracer.init();
 		const guarded = traceGuard(tracer, idleGuard(this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
+		// The built-in line asks for no thinking where the model table says how, as the title does: half of the measured
+		// follow-ups spent 80-200 output tokens thinking about one line, and some were cut off by the budget. Not on the
+		// anthropic route, where changing the thinking setting drops the cached prefix this request exists to reuse. A model
+		// that cannot be quieted keeps its own setting and gets room for its thinking. A host's own `ask` is sent as before.
+		const quiet = options.ask === undefined && this.#provider !== "anthropic" ? quietReasoning(this.#model, this.#baseUrl) : null;
+		const maxTokens = options.ask === undefined && quiet === null && options.maxTokens !== undefined ? Math.max(options.maxTokens, FOLLOW_UP_THINKING_ROOM) : options.maxTokens;
 		let text = "";
 		try {
 			for await (const ev of guarded.stream({
 				...last,
+				...(quiet !== null ? { reasoning: quiet } : {}),
 				messages: [...last.messages, ...this.#after(last.messages), { role: "user", content: options.ask ?? FOLLOW_UP_ASK }],
-				...(options.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+				...(maxTokens !== undefined ? { maxTokens } : {}),
 				...(options.signal !== undefined ? { signal: options.signal } : {}),
 			})) {
 				if (ev.type === "text_delta") text += ev.text;

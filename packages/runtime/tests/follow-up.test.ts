@@ -98,3 +98,52 @@ describe("followUp", () => {
 		expect(seen).toHaveLength(1);
 	});
 });
+
+describe("followUp's built-in line asks for no thinking where it can (every model still answers)", () => {
+	async function bound(model: string, provider?: "anthropic" | "openai-compat", script: unknown[] = [say("First answer."), say("next")]) {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-fu-")));
+		const faux = createFauxProvider(script as never);
+		const seen: StreamOptions[] = [];
+		const adapter: Adapter = { stream: (options) => (seen.push(options), faux.stream(options)) };
+		const agent = createAgent({ model, store, systemPrompt: "you are a test", tools: [ADD], adapter, ...(provider !== undefined ? { provider } : {}) });
+		const session = await agent.session({ id: "fu" });
+		await drain(session.run("hello"));
+		return { session, seen };
+	}
+
+	it("a model the table can quiet: thinking disabled, the host's budget, the run's prefix otherwise", async () => {
+		const { session, seen } = await bound("deepseek-flash", "openai-compat");
+		expect(await session.followUp({ maxTokens: 200 })).toBe("next");
+		const [run, follow] = seen as [StreamOptions, StreamOptions];
+		expect(follow.reasoning).toEqual({ thinking: "disabled" });
+		expect(follow.maxTokens).toBe(200);
+		expect(follow.systemPrompt).toBe(run.systemPrompt);
+		expect(JSON.stringify(follow.messages.slice(0, run.messages.length))).toBe(JSON.stringify(run.messages));
+	});
+
+	it("a model the table does not know keeps its own setting and gets room for its thinking", async () => {
+		const { session, seen } = await bound("some-unknown-model", "openai-compat");
+		expect(await session.followUp({ maxTokens: 200 })).toBe("next");
+		const [run, follow] = seen as [StreamOptions, StreamOptions];
+		expect(follow.reasoning).toEqual(run.reasoning);
+		expect(follow.maxTokens).toBe(600);
+	});
+
+	it("the anthropic route keeps the run's thinking setting: changing it would drop the cached prefix", async () => {
+		const { session, seen } = await bound("deepseek-flash", "anthropic");
+		await session.followUp({ maxTokens: 200 });
+		expect(seen[1]!.reasoning).toEqual(seen[0]!.reasoning);
+	});
+
+	it("a host's own ask is sent exactly as before", async () => {
+		const { session, seen } = await bound("deepseek-flash", "openai-compat");
+		await session.followUp({ ask: ASK, maxTokens: 200 });
+		expect(seen[1]!.reasoning).toEqual(seen[0]!.reasoning);
+		expect(seen[1]!.maxTokens).toBe(200);
+	});
+
+	it("a line over 200 characters is dropped, not cut", async () => {
+		const { session } = await bound("m", undefined, [say("First answer."), say("x".repeat(201))]);
+		expect(await session.followUp({})).toBe("");
+	});
+});
