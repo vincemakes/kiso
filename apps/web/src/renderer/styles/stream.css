@@ -64,7 +64,9 @@
 .s-out .a { color: #176b3a; }
 .s-out .d { color: #a33636; }
 .s-req { margin: 3px 0 0; font: 11px var(--mono); color: var(--mute); font-variant-numeric: tabular-nums; }
-.s-req .sp { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 50%; border: 2px solid #dcdce0; border-top-color: var(--blue); animation: spn 1s linear infinite; }
+.link { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 8px; font-size: 13px; color: var(--mute); }
+.link button { color: var(--ink); text-decoration: underline; }
+.link .sp, .s-req .sp { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 50%; border: 2px solid #dcdce0; border-top-color: var(--blue); animation: spn 1s linear infinite; }
 .s-err { margin: 3px 0 0; color: var(--red); font-size: 12px; }
 
 /* approval: never folded */

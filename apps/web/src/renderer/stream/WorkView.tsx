@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalSt
 import { KeyContext, WorkContext } from "./links.js";
 import { PinnedContext } from "./Artifacts.js";
 import { Composer } from "./Composer.js";
+import { useLink } from "./LinkLine.js";
 import { Turn } from "./Turn.js";
 import { isInterrupted, isLive } from "../state/model.js";
 import { READING } from "../state/reading.js";
@@ -60,6 +61,7 @@ function useFollowUp(last: Session["state"]["turns"][number] | undefined): strin
 
 export function WorkView({ session, auto, home, focusDecision, onFocused, lead }: Props): ReactNode {
 	const version = useSyncExternalStore(session.subscribe, session.version);
+	const down = useLink(session);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
 	const suggestion = useFollowUp(turns.at(-1));
@@ -221,13 +223,13 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 				<div className="homebox" data-kind="home">
 					<h1>{t.homeTitle}</h1>
 					{home.guide ?? (
-						<Composer inline running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()}>
+						<Composer inline down={down} running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()}>
 							{home.tray}
 						</Composer>
 					)}
 				</div>
 			) : (
-				<Composer running={running} suggestion={suggestion} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
+				<Composer down={down} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

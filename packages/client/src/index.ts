@@ -7,6 +7,6 @@
  */
 
 export { ClientError, createClient, KisoClient, SessionClient } from "./client.js";
-export type { ClientEvent, ClientOptions, EventsOptions, RunStreamOptions } from "./client.js";
+export type { ClientEvent, ClientOptions, ConnectionState, EventsOptions, RunStreamOptions } from "./client.js";
 export { parseSseBlock, readSse } from "./sse.js";
 export type { SseFrame } from "./sse.js";
