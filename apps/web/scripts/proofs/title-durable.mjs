@@ -10,19 +10,12 @@ const FAIL = { events: [{ type: "fail", code: "timeout", retryable: false, messa
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const [data, workspace] = [scratch("td-data"), scratch("td-ws")];
 const env = { KISO_AUTO_TITLE: "on" };
-const nameOf = (id) => {
-	try {
-		return JSON.parse(readFileSync(join(data, "projects", readdirSync(join(data, "projects"))[0], `${id}.meta.json`), "utf8")).name ?? null;
-	} catch {
-		return null;
-	}
-};
+const nameOf = (id) => { try { return JSON.parse(readFileSync(join(data, "projects", readdirSync(join(data, "projects"))[0], `${id}.meta.json`), "utf8")).name ?? null; } catch { return null; } };
 const h1 = await launch({ data, workspace, fauxScript: [FAIL, FAIL, say("Named with no page"), FAIL, FAIL, FAIL], env });
-const s1 = clientFor(h1);
-await s1.session("t1").run("first Work: fix the ledger");
+await clientFor(h1).session("t1").run("first Work: fix the ledger");
 check(await waitUntil(async () => nameOf("t1") === "Named with no page", 15_000), "no page is watching: a title that failed during the first run is asked again when the run settles");
-await s1.session("t2").run("second Work: every ask fails");
-await waitUntil(async () => !(await s1.session("t2").state()).running);
+await clientFor(h1).session("t2").run("second Work: every ask fails");
+await waitUntil(async () => !(await clientFor(h1).session("t2").state()).running);
 await new Promise((r) => setTimeout(r, 1500));
 check(nameOf("t2") === null, "a Work whose asks all failed stays unnamed (two asks at most in a host's life)");
 process.kill(h1.pid, "SIGKILL");
