@@ -9,7 +9,7 @@ import { createWebAgent, routeOf, type ModelChoice, type PermissionMode } from "
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
 import { runRate, runTotals, usageFrameAt } from "./usage.js";
 import { webSanitize } from "./sanitize.js";
-import { TimeIndex } from "./times.js";
+import { StampCache, TimeIndex } from "./times.js";
 import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
 
@@ -162,6 +162,7 @@ export function createSpace(options: SpaceOptions): Space {
 		}
 	};
 	const times = new TimeIndex(store);
+	const stamps = new StampCache(store);
 	const augment: NonNullable<HttpHandlerOptions["augment"]> = (event: Event, sessionId: string): readonly WireFrame[] => {
 		const frames: WireFrame[] = [];
 		// when it happened: for every wire event but the two delta types, which are too many
@@ -200,7 +201,7 @@ export function createSpace(options: SpaceOptions): Space {
 			const events = service.events(sessionId);
 			const totals = runTotals(events, event.seq, route(sessionId));
 			// the rate reads the durable stamps, not the arrival clock: `usage` and the deltas are sent with no time, and one first asked for here would read as now
-			const stamp = new Map(store.load(sessionId).map((r) => [r.event.seq, r.ts] as const));
+			const stamp = stamps.upTo(sessionId, event.seq);
 			return totals === null ? [] : [{ event: "run_usage", data: { seq: event.seq, ...totals, tokPerSec: runRate(events, event.seq, totals.output, (seq) => stamp.get(seq) ?? times.at(sessionId, seq)) } }];
 		}
 		if (event.type === "tool_result") {

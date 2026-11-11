@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { checker } from "./lib.mjs";
 import { environmentRows, scanLog } from "../../dist/main/environment.js";
 import { githubOf } from "../../dist/main/folder-info.js";
+import { StampCache } from "../../dist/main/times.js";
 import { atFiles } from "../../dist/main/fs-routes.js";
 
 const { check, verdict } = checker("env-log");
@@ -53,4 +54,12 @@ noteFolders("k1", "s", "added /a."); noteFolders("k2", "s", "added /b.");
 const lead = (w) => withNote(w, "s", "hi")[0]?.text ?? "";
 check(lead("k1").endsWith("added /a.") && lead("k2").endsWith("added /b.") && withNote("k1", "s", "hi") === "hi" && withNote(null, "s", "hi") === "hi", "a pending update line is per folder and Work, and is told once");
 check(scan(call("p", { command: "gh pr create && echo https://github.com/other/repo/pull/123" }, "https://github.com/a/b/pull/1\nhttps://github.com/other/repo/pull/123")).repos.length === 0, "a pull request counts only from a line that ends in gh pr create");
+// opening a Work with many runs reads its log once, not once per run (a replay sends a terminal per run)
+let loads = 0;
+const records = Array.from({ length: 100 }, (_, i) => ({ ts: 1000 + i, event: { seq: i } }));
+const stamps = new StampCache({ load: () => (loads += 1, records) });
+for (const run of [10, 40, 70, 99]) stamps.upTo("s", run);
+check(loads === 1 && stamps.upTo("s", 99).get(50) === 1050, "a replay of a Work with many runs reads its log once");
+records.push({ ts: 5000, event: { seq: 100 } });
+check(stamps.upTo("s", 100).get(100) === 5000 && loads === 2, "a log that has grown past what is held is read again, once");
 verdict();
