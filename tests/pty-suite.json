@@ -236,7 +236,9 @@
   "tests/handoff-format.test.ts",
   "tests/sh1-gates.test.ts",
   "tests/tmpdir-root-pty.test.ts",
-  "tests/tool-schema-closed-world.test.ts"
+  "tests/tool-schema-closed-world.test.ts",
+  "packages/runtime/tests/environment.test.ts",
+  "packages/tools-node/tests/environment-access.test.ts"
  ],
  "exempt": [
   {
