@@ -88,23 +88,27 @@ export function createSpace(options: SpaceOptions): Space {
 	// own name wins, before or after, and a failure leaves the first request's title. A first message sent in the last
 	// minute, not "a run is live": a quick run can end before its first event is seen here, and a replayed old one is old
 	const titled = new Set<string>();
-	// a title that failed (a provider timeout, a refusal) is asked once more when the first run ends, so it does not compete with it;
-	// a first message that stays untitled would stay the Work's name for good
-	const again = new Map<string, string>();
-	const ask = (sessionId: string, text: string, second: boolean): void => {
+	// What is decided from the log and the name file, not from memory: a Work with no name and a first request is asked for a title whenever
+	// a run of it settles (no page needs to be watching), and when it is opened (a host that restarted since the first ask). A host life
+	// asks at most twice for a Work: the first time, and once more after a failure (a provider timeout, a refusal), so a Work whose only
+	// ask failed is not left with its first request as its name for good.
+	const tries = new Map<string, number>();
+	const firstText = (sessionId: string): string => {
+		const first = store.load(sessionId).map((r) => r.event).find((e) => e.type === "user_input");
+		if (first === undefined || first.type !== "user_input") return "";
+		const parts = typeof first.content === "string" ? [first.content] : first.content.map((b) => (b.type === "text" ? b.text : ""));
+		return parts.filter((p) => !isEnvironmentNote(p) && !p.startsWith("This session was forked from the session ")).join(" ").trim(); // the one note filter is the runtime's
+	};
+	const ensureTitle = (sessionId: string): void => {
+		const text = options.titles === true && (tries.get(sessionId) ?? 0) < 2 && !named(options.dir, sessionId) && !service.isRunning(sessionId) ? firstText(sessionId) : "";
+		if (text !== "") ask(sessionId, text);
+	};
+	const ask = (sessionId: string, text: string): void => {
 		const session = sessions.get(sessionId);
 		if (session === undefined) return;
-		const failed = (): void => {
-			if (second) return;
-			if (service.isRunning(sessionId)) again.set(sessionId, text);
-			else ask(sessionId, text, true);
-		};
+		tries.set(sessionId, (tries.get(sessionId) ?? 0) + 1);
+		const failed = (): void => ensureTitle(sessionId);
 		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => (name === "" ? failed() : titleIfUnnamed(options.dir, sessionId, name)), failed);
-	};
-	const retitle = (sessionId: string): void => {
-		const text = again.get(sessionId);
-		again.delete(sessionId);
-		if (text !== undefined && !named(options.dir, sessionId)) ask(sessionId, text, true);
 	};
 	const title = (sessionId: string, event: Extract<Event, { type: "user_input" }>): void => {
 		const session = sessions.get(sessionId);
@@ -112,7 +116,7 @@ export function createSpace(options: SpaceOptions): Space {
 		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
 		titled.add(sessionId);
 		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" && !isEnvironmentNote(b.text) ? b.text : "")).join(" ").trim();
-		ask(sessionId, text, false);
+		ask(sessionId, text);
 	};
 	const followUp = (sessionId: string, seq: number): Promise<string> => {
 		const session = sessions.get(sessionId);
@@ -130,7 +134,12 @@ export function createSpace(options: SpaceOptions): Space {
 	};
 	const service = createSessionService({
 		store,
-		...(options.onSettled !== undefined ? { hooks: { onSettled: (s: { readonly sessionId: string; readonly runId: string }) => options.onSettled!(s.sessionId, s.runId, store) } } : {}),
+		hooks: {
+			onSettled: (s: { readonly sessionId: string; readonly runId: string }) => {
+				options.onSettled?.(s.sessionId, s.runId, store);
+				setTimeout(() => ensureTitle(s.sessionId), 0); // after the run has let go of the Work
+			},
+		},
 		open: async (sessionId) => {
 			opened.add(sessionId);
 			return createWebAgent({
@@ -145,6 +154,7 @@ export function createSpace(options: SpaceOptions): Space {
 				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 				onSession: (sessionId, session) => {
 					sessions.set(sessionId, session);
+					setTimeout(() => ensureTitle(sessionId), 0); // a Work opened again after a restart, still unnamed
 					// the model hears how a task ended; nothing wakes an idle session
 					session.useTasks(tasks.managerFor(sessionId), { wake: false });
 				},
@@ -171,7 +181,6 @@ export function createSpace(options: SpaceOptions): Space {
 			frames.push({ event: "at", data: at });
 		}
 		if (event.type === "user_input") title(sessionId, event);
-		if (event.type === "terminal") retitle(sessionId);
 		frames.push(...derived(event, sessionId));
 		return frames;
 	};
