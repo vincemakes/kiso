@@ -251,6 +251,7 @@
 .att-x .i16 { width: 11px; height: 11px; stroke-width: 2.2; }
 .cwarn { display: flex; align-items: center; gap: 8px; margin: 2px 0; padding: 7px 10px; border-radius: 10px; background: #fffbeb; color: #92400e; font-size: 12.5px; }
 .cnote { color: var(--red); font-size: 12.5px; padding: 0 2px; }
+.cquiet { color: var(--mute); font-size: 12.5px; padding: 0 2px; }
 /* the person's pictures, above their line */
 /* everything the person attached is one height (owner 2026-11-03: a picture and a file card side by side read as one row) */
 .me-pics { --att: 64px; display: flex; justify-content: flex-end; align-items: stretch; flex-wrap: wrap; gap: 6px; margin: 18px 0 -12px; }

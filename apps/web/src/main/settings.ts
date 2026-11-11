@@ -16,7 +16,7 @@ import {
 	type ModelProfile,
 } from "@vincemakes/kiso-code/config";
 import { MODE_LABEL, OFFERED_MODES } from "@vincemakes/kiso-code/policy";
-import { lookupModelMetadata } from "@vincemakes/kiso-runtime/internal";
+import { lookupInputModalities } from "@vincemakes/kiso-runtime/internal";
 import type { ModelChoice, PermissionMode } from "./agent.js";
 import { fauxSkip } from "./faux.js";
 import { storeKey } from "./login.js";
@@ -73,8 +73,9 @@ export interface Fork {
 
 const MAX_RECENT = 10;
 const SAFE_SESSION = /^[A-Za-z0-9._-]+$/;
-/** Whether the model table says the profile's model reads images; unknown is no (nothing is sent that might be dropped). */
-const readsImages = (p: ModelProfile): boolean => lookupModelMetadata(p.model, p.baseUrl)?.capabilities.inputModalities?.includes("image") === true;
+/** What the model table (its route's row, else the release snapshot of the model's weights) says of reading pictures: true, false (its input modalities are listed without "image": evidence), or null (unknown). */
+export const imagesOf = (modalities: readonly string[] | null | undefined): boolean | null => (modalities === null || modalities === undefined ? null : modalities.includes("image"));
+const readsImages = (p: ModelProfile): boolean | null => imagesOf(lookupInputModalities(p.model, p.baseUrl));
 const isTier = (value: unknown): value is PermissionMode => OFFERED_MODES.some((m) => m === value);
 
 export class Settings {
