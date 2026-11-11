@@ -2,8 +2,7 @@
  * Two facts a UI may read from a shell line, conservatively: literal words only, and what the reader cannot read yields nothing.
  * They are DISPLAY facts (the web page's Recent folders and Repository rows): nothing here grants or refuses anything.
  */
-import { isAbsolute, resolve } from "node:path";
-import { parseShellLooseChecked, type LooseNode, type LooseWord } from "./shell-words.js";
+import { hostDialect, msysPath, parseShellLooseChecked, type LooseNode, type LooseWord } from "./shell-words.js";
 
 const literal = (w: LooseWord | undefined): string | null => (w === undefined || w.unknownAt !== -1 || w.variableOnly ? null : w.text);
 
@@ -16,6 +15,7 @@ export function cdTargets(line: string, base: string, home: string): readonly st
 	const { nodes, truncated } = parseShellLooseChecked(line);
 	if (truncated) return [];
 	const out: string[] = [];
+	const d = hostDialect(); // the shell's own spelling: Git Bash on Windows (`/c/x`, `C:/x`), POSIX elsewhere
 	let at = base;
 	for (const [i, node] of nodes.entries()) {
 		if (node.kind !== "cmd" || (i > 0 && node.joinedBy !== "&&")) break;
@@ -24,7 +24,10 @@ export function cdTargets(line: string, base: string, home: string): readonly st
 		if (next !== undefined && next.joinedBy !== "&&") break; // `cd x; …` exits with what follows: only `&&`, or being last, shows the cd worked
 		const raw = node.argv.length === 2 ? literal(node.argv[1]) : null;
 		if (raw === null || raw === "-" || raw.startsWith("-")) break;
-		at = resolve(raw === "~" || raw.startsWith("~/") ? home + raw.slice(1) : isAbsolute(raw) ? raw : resolve(at, raw));
+		const word = raw === "~" || raw.startsWith("~/") ? d.path.join(home, raw.slice(2)) : raw;
+		const read = d.msys ? msysPath(word) : { native: word };
+		if ("opaque" in read) break;
+		at = d.path.resolve(at, read.native);
 		out.push(at);
 	}
 	return out;

@@ -1,16 +1,20 @@
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cdTargets, isGhPrCreate } from "../src/shell-facts.js";
 
-const cd = (line: string) => cdTargets(line, "/w", "/h");
+// the lines are spelled for the host's shell (a drive on Windows) and compared as the host spells a path
+const A = (p: string): string => (process.platform === "win32" ? `C:${p}` : p);
+const R = (p: string): string => resolve(A(p));
+const cd = (line: string) => cdTargets(line, A("/w"), A("/h"));
 
 describe("cdTargets: the directories a line moves the shell to", () => {
 	it("reads a literal cd that is the first command, or reached only through &&", () => {
-		expect(cd("cd /a/b")).toEqual(["/a/b"]);
-		expect(cd("cd sub && ls")).toEqual(["/w/sub"]);
-		expect(cd("ls && cd /x")).toEqual(["/x"]);
-		expect(cd("cd /a && cd b")).toEqual(["/a", "/a/b"]);
-		expect(cd("cd ~/docs")).toEqual(["/h/docs"]);
-		expect(cd("cd ~")).toEqual(["/h"]);
+		expect(cd(`cd ${A("/a/b")}`)).toEqual([R("/a/b")]);
+		expect(cd("cd sub && ls")).toEqual([R("/w/sub")]);
+		expect(cd(`ls && cd ${A("/x")}`)).toEqual([R("/x")]);
+		expect(cd(`cd ${A("/a")} && cd b`)).toEqual([R("/a"), R("/a/b")]);
+		expect(cd("cd ~/docs")).toEqual([R("/h/docs")]);
+		expect(cd("cd ~")).toEqual([R("/h")]);
 	});
 	it("reads nothing it cannot be sure of", () => {
 		expect(cd("cd /nonexistent; echo hello")).toEqual([]);
@@ -26,6 +30,21 @@ describe("cdTargets: the directories a line moves the shell to", () => {
 		expect(cd("cd")).toEqual([]);
 		expect(cd("ls ~/Desktop")).toEqual([]);
 		expect(cd(`cd /a && ${"echo $(".repeat(80)}x${")".repeat(80)}`)).toEqual([]);
+	});
+});
+
+describe("cdTargets in Git Bash's spelling (the Windows host's dialect, read per call)", () => {
+	it("reads /c/x and C:/x as drives and joins ~ to the home folder", () => {
+		const was = process.platform;
+		Object.defineProperty(process, "platform", { value: "win32" });
+		try {
+			expect(cdTargets("cd /c/work/x && ls", "C:\\w", "C:\\h")).toEqual(["C:\\work\\x"]);
+			expect(cdTargets("cd D:/y; ls", "C:\\w", "C:\\h")).toEqual([]);
+			expect(cdTargets("cd sub && cd ~/docs", "C:\\w", "C:\\h")).toEqual(["C:\\w\\sub", "C:\\h\\docs"]);
+			expect(cdTargets("cd //server/share", "C:\\w", "C:\\h")).toEqual([]);
+		} finally {
+			Object.defineProperty(process, "platform", { value: was });
+		}
 	});
 });
 
