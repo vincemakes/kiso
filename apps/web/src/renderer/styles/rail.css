@@ -39,8 +39,11 @@
 .r-stop i { width: 8px; height: 8px; border-radius: 2px; background: var(--ink); }
 .r-ctxv { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--mute); white-space: nowrap; }
 .r-ctxv b { color: var(--ink); font-weight: 600; }
-.r-meter { position: relative; display: flex; gap: 1px; height: 6px; margin: 0 20px 6px; border-radius: 999px; background: #ebebef; }
-.r-meter b { flex: none; display: block; height: 100%; border-radius: 999px; background: var(--blue); transition: width 0.8s var(--ease); }
+.r-meter { position: relative; display: flex; height: 6px; margin: 0 20px 6px; border-radius: 999px; background: #ebebef; }
+.r-meter b { flex: none; display: block; height: 100%; background: var(--blue); transition: width 0.8s var(--ease); }
+.r-meter b:first-of-type { border-radius: 999px 0 0 999px; }
+.r-meter b:last-of-type { border-radius: 0 999px 999px 0; }
+.r-meter b:only-of-type { border-radius: 999px; }
 .r-meter .tick { position: absolute; top: -3px; width: 2px; height: 12px; margin-left: -1px; border-radius: 1px; background: #8e8e96; }
 .r-meter .tick.soft { background: #c9c9cf; }
 /* the Context breakdown's colours: the conversation blue, the fixed parts warm, the free room the track */
