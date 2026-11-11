@@ -199,13 +199,13 @@ export function App(): ReactNode {
 		};
 	}, [target, signedIn]);
 	const activeKey = target.key ?? history?.current.key ?? "";
-	// the Work on the page knows its own state first: its row follows the run's end at once, the host's list catches up on the next read
+	// the Work on the page knows its own state first (once it has read it): its row follows the run's end at once, the host's list catches up on the next read
 	const liveNow = session !== null && isLive(session.state);
 	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 ? "waiting" : "running";
 	useEffect(() => {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
-	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
+	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
 	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
