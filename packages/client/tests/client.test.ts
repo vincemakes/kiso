@@ -240,6 +240,21 @@ describe("connection: jitter, watchdog, retryNow, refusal", () => {
 		expect(seen).toEqual(["-1", "0"]);
 	});
 
+	it("a stream with no events but regular keepalive comments is never cut", async () => {
+		let dials = 0;
+		const enc = new TextEncoder();
+		const f = (async (_u: string, init: RequestInit) => {
+			dials += 1;
+			let n = 0;
+			let timer: ReturnType<typeof setInterval>;
+			return new Response(new ReadableStream<Uint8Array>({ start(c) { init.signal?.addEventListener("abort", () => (clearInterval(timer), c.error(new Error("aborted"))), { once: true }); timer = setInterval(() => (n++ < 12 ? c.enqueue(enc.encode(": keepalive\n\n")) : (clearInterval(timer), c.close())), 25); }, cancel() { clearInterval(timer); } }), { status: 200 });
+		}) as never;
+		const c = createClient({ baseUrl: "http://x", reconnect: quick, fetch: f }).session("s");
+		let comments = 0;
+		for await (const e of c.events({ until: () => ++comments === 12 })) void e; // 12 x 25 ms = 300 ms of silence in events, over 4 idle periods (60 ms)
+		expect([dials, comments]).toEqual([1, 12]);
+	});
+
 	it("retryNow cuts a long wait short", async () => {
 		let n = 0;
 		const f = (async () => (n++ === 0 ? Promise.reject(new Error("down")) : sse([": hi\n\n"]))) as never;
