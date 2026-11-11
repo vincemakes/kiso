@@ -368,7 +368,9 @@ export class SessionService {
 	events(sessionId: string, after = -1): Event[] {
 		const held = this.#held.get(sessionId);
 		const events = held !== undefined ? held.session.log.all : this.#store.load(sessionId).map((r) => r.event);
-		return events.filter((e) => e.seq > after);
+		// the log's seq is its index (EventLog refuses a discontinuity): no scan, and with no `after` no copy either — a
+		// host that read every event's frames through a filtered copy spent seconds per replay on a long Work. Read-only.
+		return (after < 0 ? events : events.slice(after + 1)) as Event[];
 	}
 
 	isRunning(sessionId: string): boolean {

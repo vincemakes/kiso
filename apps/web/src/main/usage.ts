@@ -28,12 +28,20 @@ export function callNumbers(route: string, ev: Extract<Event, { type: "usage" }>
 	return { fresh: c.input, output: c.output, cacheRead: ev.cacheRead === null ? null : c.cacheRead, costUsd: c.costUsd, known: ev.known };
 }
 
+/** Where the run holding `seq` starts: just after the terminal before it, found by walking back (a run, not the log: the
+ *  frames of a long Work were read from seq 0 for every usage report). The log's seq is its index. */
+function runStartBefore(events: readonly Event[], seq: number): number {
+	for (let i = Math.min(seq, events.length) - 1; i >= 0; i--) if (events[i]!.type === "terminal") return i + 1;
+	return 0;
+}
+
 /** The frame for the usage event at `seq`: the call, and the run so far. */
 export function usageFrameAt(events: readonly Event[], seq: number, route: string): UsageFrame | null {
 	let settled: UsageNumbers | null = null;
 	let inFlight: UsageNumbers | null = null;
 	let calls = 0;
-	for (const ev of events) {
+	for (let i = runStartBefore(events, seq); i < events.length; i++) {
+		const ev = events[i]!;
 		if (ev.seq > seq) break;
 		if (ev.type === "terminal") {
 			settled = null;
@@ -59,7 +67,8 @@ export function runTotals(events: readonly Event[], terminalSeq: number, route: 
 	let settled: UsageNumbers | null = null;
 	let inFlight: UsageNumbers | null = null;
 	let calls = 0;
-	for (const ev of events) {
+	for (let i = runStartBefore(events, terminalSeq); i < events.length; i++) {
+		const ev = events[i]!;
 		if (ev.seq > terminalSeq) break;
 		if (ev.type === "terminal") {
 			if (ev.seq === terminalSeq) {
@@ -84,9 +93,10 @@ const CALL_OUTPUT = new Set(["thinking", "text_start", "text_delta", "tool_call_
 /** The run's decode rate as the terminal times one call (TPS-1), summed: each call from its first output event to its last usage
  *  report (tool time falls between calls), output over the summed time; null under 0.5 s or with no output ("0 tok/s" is no measurement). */
 export function runRate(events: readonly Event[], terminalSeq: number, output: number | null, at: (seq: number) => number): number | null {
-	const start = events.reduce((n, ev) => (ev.type === "terminal" && ev.seq < terminalSeq ? ev.seq : n), -1);
+	const start = runStartBefore(events, terminalSeq) - 1;
 	let [ms, first, last] = [0, -1, -1];
-	for (const ev of events) {
+	for (let i = start + 1; i < events.length; i++) {
+		const ev = events[i]!;
 		if (ev.seq <= start || ev.seq > terminalSeq) continue;
 		if (CALL_OUTPUT.has(ev.type) && first < 0) first = ev.seq;
 		else if (ev.type === "usage" && first >= 0) last = ev.seq;

@@ -202,6 +202,8 @@ export class SessionStore {
 	readonly #fds = new Map<string, number>();
 	/** sessionId → the lock handle THIS instance holds (ADR-0050). */
 	readonly #lockHandles = new Map<string, LockHandle>();
+	/** sessionId → what the last load read: the file it was (device, inode, size, mtime), the byte after its last committed line, and the records (load's tail read). */
+	readonly #loaded = new Map<string, { dev: number; ino: number; size: number; mtimeMs: number; committed: number; lines: number; records: StoreRecord[] }>();
 	readonly #lockAdapter: LockAdapter;
 	/** round 4 (adversarial): serialize concurrent acquireLock calls ON this instance —
 	 *  two racing appends must not issue two acquisitions and fight each other. */
@@ -415,8 +417,80 @@ export class SessionStore {
 	 */
 	load(sessionId: string): StoreRecord[] {
 		const path = this.pathFor(sessionId);
-		if (!existsSync(path)) return [];
-		const raw = readFileSync(path, "utf8");
+		if (!existsSync(path)) {
+			this.#loaded.delete(sessionId);
+			return [];
+		}
+		const fresh = this.#loadTail(sessionId, path);
+		if (fresh !== null) return fresh;
+		const st = statSync(path);
+		const raw = readFileSync(path);
+		const records = this.#loadWhole(raw.toString("utf8"));
+		const end = raw.lastIndexOf(0x0a);
+		let lines = 0;
+		for (let i = 0; i <= end; i++) if (raw[i] === 0x0a) lines += 1;
+		this.#loaded.set(sessionId, { dev: st.dev, ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, committed: end + 1, lines, records });
+		return records.slice();
+	}
+
+	/**
+	 * The log read again only from where the last load stopped, when the file is the same file (device and inode) and has
+	 * only grown past that point, which is how this store writes it: append-only, a torn tail truncated. Anything else (a
+	 * shorter file, another inode, the same size with a new mtime, a last committed byte that is not a newline) is read whole
+	 * by the strict path below, so a cached read never stands in for one that would have refused. Each caller gets its own
+	 * array; the records themselves are shared and never mutated.
+	 */
+	#loadTail(sessionId: string, path: string): StoreRecord[] | null {
+		const held = this.#loaded.get(sessionId);
+		if (held === undefined) return null;
+		let st: ReturnType<typeof statSync>;
+		try {
+			st = statSync(path);
+		} catch {
+			return null;
+		}
+		if (st.dev !== held.dev || st.ino !== held.ino || st.size < held.committed) return null;
+		if (st.size === held.size && st.mtimeMs === held.mtimeMs) return held.records.slice();
+		if (st.size === held.size) return null;
+		const fd = openSync(path, "r");
+		let chunk: Buffer;
+		try {
+			const from = held.committed - 1;
+			chunk = Buffer.alloc(st.size - from);
+			let got = 0;
+			while (got < chunk.length) {
+				const n = readSync(fd, chunk, got, chunk.length - got, from + got);
+				if (n === 0) break;
+				got += n;
+			}
+			chunk = chunk.subarray(0, got);
+		} finally {
+			closeSync(fd);
+		}
+		if (held.committed > 0 && chunk[0] !== 0x0a) return null; // the byte before the new part must end a committed line
+		const body = held.committed > 0 ? chunk.subarray(1) : chunk;
+		const end = body.lastIndexOf(0x0a);
+		const records = held.records.slice();
+		let line = held.lines;
+		if (end >= 0) {
+			for (const text of body.subarray(0, end).toString("utf8").split("\n")) {
+				line += 1;
+				if (text === "") continue;
+				let parsed: unknown;
+				try {
+					parsed = JSON.parse(text);
+				} catch {
+					return null; // the strict path names it
+				}
+				if (!isRecord(parsed) || parsed.event.seq !== records.length) return null;
+				records.push(parsed);
+			}
+		}
+		this.#loaded.set(sessionId, { dev: st.dev, ino: st.ino, size: st.size, mtimeMs: st.mtimeMs, committed: held.committed + (end >= 0 ? end + 1 : 0), lines: line, records });
+		return records.slice();
+	}
+
+	#loadWhole(raw: string): StoreRecord[] {
 		const lines = raw.split("\n");
 		const nonEmpty: number[] = [];
 		for (let i = 0; i < lines.length; i++) {
