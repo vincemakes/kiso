@@ -95,6 +95,8 @@ interface Where {
 	readonly rootReal: string;
 	readonly homeReal: string;
 	readonly gitReal: string;
+	/** the Work's added folders: as unrecoverable as the workspace (ADR-0058 Amendment 19) */
+	readonly added: readonly string[];
 	readonly sys: readonly Named[];
 	readonly mounts: readonly Named[];
 	readonly temps: readonly string[];
@@ -106,9 +108,9 @@ interface Where {
  *  and resolving forty of them cost every shell call ~4 ms. */
 const WHERE = new Map<string, Where>();
 
-function where(root: string, home: string): Where {
+function where(root: string, home: string, added: readonly string[] = []): Where {
 	const dialect = hostDialect();
-	const key = `${dialect.msys ? "msys" : "posix"}\0${root}\0${home}`;
+	const key = `${dialect.msys ? "msys" : "posix"}\0${root}\0${home}\0${added.join("\0")}`;
 	const hit = WHERE.get(key);
 	if (hit !== undefined) return hit;
 	const { join } = dialect.path;
@@ -122,6 +124,7 @@ function where(root: string, home: string): Where {
 		rootReal,
 		homeReal: real(home),
 		gitReal: join(rootReal, ".git"),
+		added: added.map(real),
 		sys: named(roots.sys),
 		mounts: named(roots.mounts),
 		temps: [...new Set(roots.temps.map(real))],
@@ -164,6 +167,10 @@ function unrecoverable(w: Where, p: string, over: boolean): string | null {
 	if (same(p, w.homeReal)) return what("the home directory");
 	if (same(p, w.rootReal)) return what("the workspace root");
 	if (within(p, w.rootReal)) return what(`a directory above the workspace (${p})`);
+	for (const a of w.added) {
+		if (same(p, a) || within(p, a)) return what(`an added folder, or a directory above one (${p})`);
+		if (within(hostDialect().path.join(a, ".git"), p)) return what("an added folder's .git");
+	}
 	// R7: the workspace's history — without a remote, gone
 	if (within(w.gitReal, p)) return what("the workspace's .git");
 	// on Windows the temp root sits inside AppData: what is inside a temp
@@ -543,8 +550,8 @@ const child = (s: CdState): CdState => ({ cwds: [...s.cwds], lastCd: null, prev:
  * Would the floor refuse this command line? `workspaceRoot` is where the
  * shell runs it.
  */
-export function floorCheck(commandLine: string, workspaceRoot: string, home: string = homedir()): FloorVerdict {
-	const w = where(workspaceRoot, home);
+export function floorCheck(commandLine: string, workspaceRoot: string, home: string = homedir(), added: readonly string[] = []): FloorVerdict {
+	const w = where(workspaceRoot, home, added);
 	const seen = new Set<string>();
 	const tilde = (word: LooseWord): string => (word.tilde && (word.text === "~" || word.text.startsWith("~/")) ? home + word.text.slice(1) : word.text);
 
@@ -662,7 +669,7 @@ export function isDestructive(commandLine: string): boolean {
 const ABSTAIN: PolicyVerdict = { action: "abstain" };
 
 /** The chain member, at the chain's head: DENY or ABSTAIN. */
-export function floorExtension(on: () => boolean, workspaceRoot: () => string, check: typeof floorCheck = floorCheck): KisoExtension {
+export function floorExtension(on: () => boolean, workspaceRoot: () => string, check: typeof floorCheck = floorCheck, added: () => readonly string[] = () => []): KisoExtension {
 	return {
 		name: "floor",
 		approvals: [
@@ -677,7 +684,7 @@ export function floorExtension(on: () => boolean, workspaceRoot: () => string, c
 					// allow. The floor denies what it could not read.
 					let v: FloorVerdict;
 					try {
-						v = check(command, workspaceRoot());
+						v = check(command, workspaceRoot(), undefined, added());
 					} catch (err) {
 						return { action: "deny", reason: `the floor could not read this line (${err instanceof Error ? err.name : "error"}) — kiso does not run it.` };
 					}

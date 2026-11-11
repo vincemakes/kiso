@@ -25,6 +25,7 @@ import { bandHeader } from "@vincemakes/kiso-tui-cells/strings";
 import type { TaskDeliveryItem } from "@vincemakes/kiso-core";
 import { cappedWaitLine, taskNoticeLines, taskNoticeRows, taskWhat } from "./task-notice.js";
 import { isForkNote, type TaskInfo } from "@vincemakes/kiso-runtime/internal";
+import { isEnvironmentNote } from "@vincemakes/kiso-runtime";
 import type { NoticeMark } from "@vincemakes/kiso-tui";
 
 /** The Body surface the replay drives — the live run's own mutations. */
@@ -56,7 +57,7 @@ function askOf(e: Ev): string | null {
 	if (e.type !== "user_input" || e.source === "system") return null;
 	const via = e.via as { line?: unknown } | undefined;
 	// a fork's first input carries the fork note before the person's words: the model's, not the line they typed
-	const content = Array.isArray(e.content) ? (e.content as { type?: string; text?: string }[]).filter((b) => !(b.type === "text" && isForkNote(b.text ?? ""))) : e.content;
+	const content = Array.isArray(e.content) ? (e.content as { type?: string; text?: string }[]).filter((b) => !(b.type === "text" && (isForkNote(b.text ?? "") || isEnvironmentNote(b.text ?? "")))) : e.content;
 	const text = typeof via?.line === "string" ? via.line : echoText(content as Parameters<typeof echoText>[0]);
 	return text.trim() === "" ? null : text;
 }

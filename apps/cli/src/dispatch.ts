@@ -8,6 +8,7 @@ import type { SessionRoute } from "./projects.js";
 import { STATUS_GLYPHS, contextRows, contextSheetRows, contextUnavailableRows, contextUnavailableSheetRows, displayVerb, escapeTerminal, helpRows, toolTarget, infoSheetRows, kUnit, modePickView, modelPickView, namedPickView, settingsPickView, compactingStatus, liveRow, type CompactingProgress, palette, renderEvent, settledLabel, slashCommandNames, type PickOption, type PickResult } from "@vincemakes/kiso-tui";
 import { newSessionId } from "./session-id.js";
 import { buildAdapter, isForkNote, lookupModelMetadata, readSessionName, resolveContinuationScope, resolveReasoning, sessionTitle, tiersFor, writeSessionName, type StoreRecord } from "@vincemakes/kiso-runtime/internal";
+import { isEnvironmentNote } from "@vincemakes/kiso-runtime";
 import { ForkRefusedError, SessionStore, type AgentSession } from "@vincemakes/kiso-runtime";
 import type { SessionCardView } from "@vincemakes/kiso-tui";
 import { MODE_LABEL, MODE_NOTE, OFFERED_MODES, applyModeSetting, getDontAsk, getMode, modeDisplay, parseMode, setDontAsk, type ModeSetting } from "./mode.js";
@@ -1668,7 +1669,7 @@ export function replyCards(records: readonly StoreRecord[]): SessionCardView[] {
 	let reply = "";
 	for (const { event: e, ts } of records) {
 		if (e.type === "user_input" && e.source !== "system") {
-			const content = Array.isArray(e.content) ? (e.content as { type?: string; text?: string }[]).filter((b) => !(b.type === "text" && isForkNote(b.text ?? ""))) : e.content;
+			const content = Array.isArray(e.content) ? (e.content as { type?: string; text?: string }[]).filter((b) => !(b.type === "text" && (isForkNote(b.text ?? "") || isEnvironmentNote(b.text ?? "")))) : e.content;
 			asked = (typeof content === "string" ? content : content.map((b) => (b.type === "text" ? (b.text ?? "") : "")).join(" ")).trim();
 			reply = "";
 		} else if (e.type === "tool_result") reply = "";

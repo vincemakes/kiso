@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Agent, createAgent, kisoHome, runsACheck, type AgentDefinition, type SessionStore } from "@vincemakes/kiso-runtime";
+import { Agent, createAgent, kisoHome, readEnvironment, runsACheck, type AgentDefinition, type SessionStore } from "@vincemakes/kiso-runtime";
 import { adapterOptionsFor, type AdapterAuth, type ModelProfile } from "@vincemakes/kiso-code/config";
 import type { Adapter } from "@vincemakes/kiso-core";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
@@ -8,6 +8,7 @@ import {
 	CODING_TOOL_RULES,
 	breakerExtension,
 	composeSystemPrompt,
+	fileStopRoots,
 	floorExtension,
 	modeExtensions,
 	modeSystemPrompt,
@@ -105,6 +106,9 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 		excludeRoots: [kisoHome()],
 		secretEnvNames: options.secretEnvNames ?? [],
 		protectedFiles: protectedFiles(),
+		// ADR-0058 Amendment 19: read on every call, so an add, a removal or a mode change applies at the next one
+		access: (sessionId: string | undefined) => ({ added: readEnvironment(store.root, sessionId ?? options.sessionId).added, outside: options.tier() === "full-access" ? ("allow" as const) : ("deny" as const) }),
+		stopRoots: fileStopRoots(homedir(), kisoHome()),
 		tasks: options.tasks.shellTasks,
 		observedRevision: observedRevisionFrom(store, workspace),
 		...(options.toolLimits !== undefined ? { limits: options.toolLimits } : {}),
@@ -120,7 +124,7 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 		// the terminal's chain, in its order: the guards that deny speak first
 		extensions: [
 			protectedShellExtension({ files: protectedFiles, workspaceRoot: root, env: () => ({ home: homedir(), kisoHome: kisoHome() }) }),
-			floorExtension(() => true, root),
+			floorExtension(() => true, root, undefined, () => readEnvironment(store.root, options.sessionId).added),
 			breakerExtension(),
 			...modeExtensions(root, options.tier),
 			readOnlyShellExtension(() => ({ workspaceRoot: workspace, excludeRoots: toolOptions.excludeRoots })),

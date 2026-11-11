@@ -354,6 +354,11 @@ export function homeSubtrees(): readonly string[] {
 	return hostDialect().msys ? [...HOME_SUBTREES, "AppData"] : HOME_SUBTREES;
 }
 
+/** Folders the file tools' new reach never enters (ADR-0058 Amendment 19): kiso's own home and the credential homes. */
+export function fileStopRoots(home: string, kisoHome: string): readonly string[] {
+	return [kisoHome, ...homeSubtrees().map((s) => hostDialect().path.join(home, s))];
+}
+
 /** A real path in the case the DISK holds it. The JS realpath keeps the
  *  case it was given, so on a case-insensitive disk `.ENV` stayed `.ENV`
  *  and walked past every name-based predicate (the lead's review, B2). */

@@ -8,6 +8,7 @@
  * written first: the runtime reads a session's profile before its first event.
  */
 
+import { copyEnvironment } from "./environment.js";
 import { closeSync, fsyncSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { readSessionName, tenantsOf, writeForkSidecar, type ForkOrigin } from "./profile.js";
@@ -67,6 +68,7 @@ export function forkSession(root: string, parent: string, afterSeq?: number): { 
 	const id = newId();
 	const origin: ForkOrigin = { session: parent, afterSeq: cut.seq, at: Date.now(), title };
 	writeForkSidecar(root, id, { profile: tenantsOf(root, parent)["profile"], name: `${(title || "Session").slice(0, 110)} (fork)`, forkedFrom: origin });
+	copyEnvironment(root, parent, id); // before the log: a fork that is listed has its folders
 	durable(join(root, `${id}.jsonl`), log.subarray(0, cut.end));
 	return { id, origin };
 }

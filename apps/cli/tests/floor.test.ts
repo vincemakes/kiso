@@ -400,3 +400,15 @@ describe("B6 — the reader cannot be knocked out, and a knocked-out read denies
 		expect(v.reason).toContain("could not read this line");
 	});
 });
+
+describe("added folders (ADR-0058 Amendment 19)", () => {
+	// POSIX spelling: an unquoted Windows path is not one word to the shell reader (windows-paths.test.ts covers that dialect)
+	it.skipIf(process.platform === "win32")("an added folder, what is above it and its .git are unrecoverable; what is inside it is not", () => {
+		const added = join(home, "added-folder");
+		const withAdded = (cmd: string) => floorCheck(cmd, root, home, [added]);
+		expect(withAdded(`rm -rf ${added}`).refused).toBe(true);
+		expect(withAdded(`rm -rf ${added}/.git`).refused).toBe(true);
+		expect(withAdded(`rm -rf ${added}/build`).refused).toBe(false);
+		expect(check(`rm -rf ${added}`).refused).toBe(false);
+	});
+});

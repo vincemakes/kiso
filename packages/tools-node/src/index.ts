@@ -32,7 +32,7 @@ import { defineTool, type AbortSignalLike, type Tool, type ToolResult } from "@v
 // WR-1/WR-1A — the revision-guard primitives (unit-tested in wr1a-coda):
 import { strippedShellEnv } from "./secret-env.js";
 import { contentRevision, normalizeRevision, postEffectEscape, precondition, publishNewFile, revalidateBeforeRename } from "./wr1.js";
-import { isProtectedPath, protectedIdentity, protectedRefusalText, readUnlessProtected } from "./protected.js";
+import { diskPath, isProtectedPath, protectedIdentity, protectedRefusalText, readUnlessProtected } from "./protected.js";
 import { CORPUS_MAX_DEPTH, globToRegExp } from "./corpus.js";
 import { describeSearchMiss, regionForSearch } from "./search-miss.js";
 
@@ -216,7 +216,75 @@ function resolveReadable(opts: WorkspaceToolsOptions, input: string, sessionId?:
 			}
 		}
 	}
-	return { full: resolveWithinRoot(opts.workspaceRoot, input), root: opts.workspaceRoot };
+	return resolveReach(opts, input, sessionId, false);
+}
+
+/** Beyond the workspace: has the target's folder come to resolve somewhere else since it was checked (a swap to a symlink)? */
+function movedUnder(parent: string | null, full: string): boolean {
+	return parent !== null && diskPath(dirname(full)) !== parent;
+}
+
+/** Beyond the workspace, after the write: did it land in a stop path after all? Not an OS sandbox; a check that says so instead of claiming success. */
+function landedInStop(opts: WorkspaceToolsOptions, input: string, written: string, parent: string | null): boolean {
+	if (parent === null) return false;
+	try {
+		guardReach(opts, input, diskPath(written), true);
+		return false;
+	} catch {
+		return true;
+	}
+}
+
+/** A result named under `base`, by concatenation: a match line holds the file's text, which a path join would normalize. */
+const under = (base: string, rest: string): string => (base.endsWith(sep) ? `${base}${rest}` : `${base}${sep}${rest}`);
+
+/** Where a file tool's path landed: `base` is what a walk's results are relative to, null for the primary (whose results stay relative). */
+interface Reach {
+	readonly full: string;
+	/** the root the containment and hard-link checks run against */
+	readonly root: string;
+	readonly base: string | null;
+	/** beyond the workspace: the target's folder as resolved, checked again just before the write commits */
+	readonly parent: string | null;
+}
+
+/** The new reach stops short of these, on the canonical path: never the primary, whose rules do not change. */
+function guardReach(opts: WorkspaceToolsOptions, input: string, full: string, writing: boolean): void {
+	for (const stop of opts.stopRoots ?? []) {
+		if (isWithin(diskPath(stop), diskPath(full))) throw new PathEscapeError(`${input} is in ${stop}, which the file tools do not reach outside the workspace`);
+	}
+	if (writing && full.split(sep).some((seg) => seg.toLowerCase() === ".git" || seg.toLowerCase() === ".kiso")) {
+		throw new PathEscapeError(`${input} is inside a .git or .kiso folder, which the file tools do not write outside the workspace`);
+	}
+}
+
+/**
+ * The one resolution every file tool uses: the workspace as before, else (an absolute path only) one of the Work's added folders,
+ * else, where the host allows it, anywhere outside. `access` is read once per call, so an add, a removal or a mode change applies
+ * at the next call. What it cannot place is refused exactly as `resolveWithinRoot` refuses it.
+ */
+function resolveReach(opts: WorkspaceToolsOptions, input: string, sessionId: string | undefined, writing: boolean): Reach {
+	const primary = (): Reach => ({ full: resolveWithinRoot(opts.workspaceRoot, input), root: opts.workspaceRoot, base: null, parent: null });
+	if (opts.access === undefined || !isAbsolute(input)) return primary();
+	const rootReal = realpathSync(opts.workspaceRoot);
+	if (isWithin(opts.workspaceRoot, input) || isWithin(rootReal, input)) return primary();
+	const access = opts.access(sessionId);
+	for (const root of access.added) {
+		if (!existsSync(root)) continue;
+		const real = realpathSync(root);
+		// stored canonical when it was added: a root that now resolves elsewhere (replaced by a symlink) grants nothing until added again
+		if (real !== root) continue;
+		for (const base of [root, real]) {
+			if (!isWithin(base, input)) continue;
+			const full = resolveWithinRoot(root, relative(base, input) || ".");
+			guardReach(opts, input, full, writing);
+			return { full, root, base: diskPath(real), parent: diskPath(dirname(full)) };
+		}
+	}
+	if (access.outside !== "allow") return primary();
+	const full = diskPath(resolve(input));
+	guardReach(opts, input, full, writing);
+	return { full, root: dirname(full), base: full, parent: diskPath(dirname(full)) };
 }
 
 export function resolveWithinRoot(root: string, input: string): string {
@@ -281,6 +349,12 @@ export function canonicalTargetPath(input: string): string {
 	return missingTail.length > 0 ? join(ancestorReal, ...missingTail) : ancestorReal;
 }
 
+/** The Work's added folders, and whether its mode lets the file tools go anywhere else. */
+export interface FileAccess {
+	readonly added: readonly string[];
+	readonly outside: "deny" | "allow";
+}
+
 export interface WorkspaceToolsOptions {
 	/** The workspace the tools may touch; everything else is refused. */
 	readonly workspaceRoot: string;
@@ -310,6 +384,10 @@ export interface WorkspaceToolsOptions {
 	 *  widens: every other tool, and every relative path, stays inside the
 	 *  workspace. */
 	readonly extraReadRoots?: readonly string[];
+	/** ADR-0058 Amendment 19: what the file tools may reach beyond the workspace, asked once per call. Absent: nothing, as before. */
+	readonly access?: (sessionId: string | undefined) => FileAccess;
+	/** ADR-0058 Amendment 19: folders that reach never enters (the credential homes, kiso's own). The workspace is not limited by them. */
+	readonly stopRoots?: readonly string[];
 	/** ADR-0058 (3b): the session's tasks. With them the shell promotes a
 	 *  command that outlives its wait instead of killing it, can start one
 	 *  in the background, `task_stop` joins the tools, and `read_file`
@@ -675,7 +753,8 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 		promptGuidelines: ["narrow to a subdirectory when the listing caps at 200 entries"],
 		execute: async ({ path, glob }, ctx) => {
 			try {
-				const dir = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
+				const reach = resolveReach(opts, path ?? ".", ctx?.sessionId, false);
+				const dir = reach.full;
 				// ACI-8: with a pattern this is a recursive search over the
 				// SAME corpus `search_text` uses — one definition, so the two
 				// cannot drift the way they had.
@@ -701,11 +780,12 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 							token: 0,
 							// both realpath'd: a root and a start resolved differently
 							// named every file `../../…` under a symlinked workspace
-							workspaceRoot: realOrSelf(opts.workspaceRoot),
+							workspaceRoot: realOrSelf(reach.base ?? opts.workspaceRoot),
 							walkFrom: realOrSelf(dir),
 							source: re.source,
 							flags: re.flags,
-							excluded: opts.excludeRoots ?? [],
+							// beyond the workspace the walk is relative to `base`, and its stops are named that way
+							excluded: reach.base === null ? (opts.excludeRoots ?? []) : [...(opts.excludeRoots ?? []), ...(opts.stopRoots ?? [])].map((ex) => relative(diskPath(reach.base!), diskPath(ex)).split(sep).join("/")),
 							maxEntries: MAX_DIR_ENTRIES,
 							maxVisited: opts.limits?.searchMaxFiles ?? SEARCH_MAX_FILES,
 							deadline,
@@ -717,7 +797,8 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 					if (outcome.kind === "error") return { content: `list_dir failed: ${outcome.message}`, isError: true, errorKind: "fatal" };
 					const walk = outcome.reply;
 					if (walk?.error !== undefined) return { content: `list_dir failed: ${walk.error}`, isError: true, errorKind: "fatal" };
-					const files = walk?.files ?? [];
+					// beyond the workspace a result is an absolute path: a relative one would name a file in the primary
+					const files = (walk?.files ?? []).map((f) => (reach.base !== null ? join(reach.base, f) : f));
 					const body = files.length ? cap(files.join("\n")) : `(no match for ${glob})`;
 					// TWO truncations, different remedies, and neither claimed
 					// when it did not happen: a walk that silently returns less
@@ -890,8 +971,10 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 		promptGuidelines: ["narrow the pattern when the result caps — never re-run a broad search"],
 		execute: async ({ pattern, path, caseSensitive }, ctx) => {
 			let root: string;
+			let reach: Reach;
 			try {
-				root = resolveWithinRoot(opts.workspaceRoot, path ?? ".");
+				reach = resolveReach(opts, path ?? ".", ctx?.sessionId, false);
+				root = reach.full;
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
@@ -917,9 +1000,13 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 					return p;
 				}
 			};
-			const searchRootReal = realOrSelf(root);
-			const excluded = (opts.excludeRoots ?? [])
-				.map(realOrSelf)
+			const searchRootReal = reach.base !== null ? diskPath(root) : realOrSelf(root);
+			// beyond the workspace a match names an absolute path; a single file's is relative to its folder
+			const searchBase = reach.base === null ? null : single !== null ? dirname(searchRootReal) : diskPath(reach.base);
+			// beyond the workspace, by the disk's own spelling: a Windows short name and its long name are one folder
+			const canon = reach.base !== null ? diskPath : realOrSelf;
+			const excluded = [...(opts.excludeRoots ?? []), ...(reach.base !== null ? (opts.stopRoots ?? []) : [])]
+				.map(canon)
 				.filter((ex) => !(searchRootReal === ex || searchRootReal.startsWith(`${ex}/`)))
 				.map((ex) => relative(searchRootReal, ex));
 			const maxFileBytes = opts.limits?.searchMaxFileBytes ?? SEARCH_MAX_FILE_BYTES;
@@ -933,7 +1020,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 				// root uses: `full` is walked from a realpath'd root, and making
 				// a path relative between a resolved and an unresolved base
 				// yields `../..` the moment a symlink sits between them.
-				{ token: 0, root: searchRootReal, workspaceRoot: realOrSelf(opts.workspaceRoot), single, pattern, flags, excluded, protectedIdentity: protectedIdentity(opts.protectedFiles), maxFileBytes, maxFiles, deadline, maxMatches: MAX_SEARCH_MATCHES, sniffBytes: BINARY_SNIFF_BYTES },
+				{ token: 0, root: searchRootReal, workspaceRoot: searchBase ?? realOrSelf(opts.workspaceRoot), single, pattern, flags, excluded, protectedIdentity: protectedIdentity(opts.protectedFiles), maxFileBytes, maxFiles, deadline, maxMatches: MAX_SEARCH_MATCHES, sniffBytes: BINARY_SNIFF_BYTES },
 				deadline,
 				ctx.signal,
 			);
@@ -941,7 +1028,7 @@ export function searchTextTool(opts: WorkspaceToolsOptions): Tool<{ pattern: str
 			if (outcome.kind === "error") return { content: `search_text failed: ${outcome.message}`, isError: true, errorKind: "fatal" };
 			const r = outcome.reply;
 			if (r?.error !== undefined) return { content: `search_text failed: ${r.error}`, isError: true, errorKind: "fatal" };
-			const matches = r?.matches ?? [];
+			const matches = (r?.matches ?? []).map((m) => (searchBase !== null ? under(searchBase, m) : m));
 			const stopped = outcome.kind === "timeout" || (r?.stopped ?? false);
 			let content = matches.length ? cap(matches.join("\n")) : "(no matches)";
 			if (r !== undefined) {
@@ -992,8 +1079,10 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			// tolerance in the reader, strictness in the comparison.
 			let expectedRevision = citedRevision === undefined ? undefined : normalizeRevision(citedRevision);
 			let full: string;
+			let reachRoot: string;
+			let reachParent: string | null;
 			try {
-				full = resolveWithinRoot(opts.workspaceRoot, path);
+				({ full, root: reachRoot, parent: reachParent } = resolveReach(opts, path, ctx?.sessionId, true));
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
@@ -1056,6 +1145,8 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			// workspace; the directories this call creates are removed again
 			// if the file never lands.
 			let createdDirs: string | undefined;
+			// beyond the workspace: the folder must still be the one checked BEFORE anything is created or written in it (the review's M7)
+			if (movedUnder(reachParent, full)) return escapeResult(`${path}: its folder changed while the write was prepared — nothing was written`);
 			if (!exists) {
 				try {
 					createdDirs = mkdirSync(dirname(full), { recursive: true });
@@ -1089,8 +1180,17 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				// 0755 after replacement (rename drops the temp's default
 				// mode, so it is copied onto the temp first).
 				if (exists) preservedMode = statSync(full).mode & 0o7777;
+				if (movedUnder(reachParent, full)) {
+					dropCreatedDirs();
+					return escapeResult(`${path}: its folder changed while the write was prepared — nothing was written`);
+				}
 				writeFileSync(tmp, content, "utf8");
 				if (preservedMode !== undefined) chmodSync(tmp, preservedMode);
+				if (movedUnder(reachParent, full)) {
+					unlinkSync(tmp);
+					dropCreatedDirs();
+					return escapeResult(`${path}: its folder changed while the write was prepared — nothing was written`);
+				}
 				committing = true;
 				if (!exists) {
 					// WR-1A ②: link(2) or refusal — atomic no-clobber, fail
@@ -1115,7 +1215,7 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				// the write landed outside the workspace — say so instead of
 				// claiming success. (The write itself cannot be undone.)
 				const written = realpathSync(full);
-				if (!isWithin(realpathSync(opts.workspaceRoot), written)) {
+				if (!isWithin(realpathSync(reachRoot), written) || landedInStop(opts, path, written, reachParent)) {
 					// WR-1A ①: the rename HAPPENED — this is a post-effect
 					// verification failure, fatal, never a precondition.
 					return postEffectEscape("write", path);
@@ -1326,8 +1426,10 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 			if (typeof shape === "string") return { content: shape, isError: true, errorKind: "invalid_input" };
 			const { hunks, single } = shape;
 			let full: string;
+			let reachRoot: string;
+			let reachParent: string | null;
 			try {
-				full = resolveWithinRoot(opts.workspaceRoot, path);
+				({ full, root: reachRoot, parent: reachParent } = resolveReach(opts, path, ctx?.sessionId, true));
 			} catch (err) {
 				if (err instanceof PathEscapeError) return escapeResult(err.message);
 				throw err;
@@ -1451,6 +1553,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 				// ONE buffer is written and hashed: the revision returned is the
 				// file's on disk, CRLF or not (the review's finding)
 				const bytesOut = Buffer.from(crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
+				if (movedUnder(reachParent, full)) return escapeResult(`${path}: its folder changed while the edit was prepared — nothing was written`);
 				writeFileSync(tmp, bytesOut);
 				chmodSync(tmp, preservedMode);
 				// WR-1A ③: revalidate against the citation right before the
@@ -1460,9 +1563,13 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 					unlinkSync(tmp);
 					return stale;
 				}
+				if (movedUnder(reachParent, full)) {
+					unlinkSync(tmp);
+					return escapeResult(`${path}: its folder changed while the edit was prepared — nothing was written`);
+				}
 				renameSync(tmp, full);
 				const written = realpathSync(full);
-				if (!isWithin(realpathSync(opts.workspaceRoot), written)) {
+				if (!isWithin(realpathSync(reachRoot), written) || landedInStop(opts, path, written, reachParent)) {
 					// WR-1A ①: post-effect — fatal, the rename already landed.
 					return postEffectEscape("edit", path);
 				}

@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { SessionStore, type Agent } from "@vincemakes/kiso-runtime";
+import { isEnvironmentNote, SessionStore, type Agent } from "@vincemakes/kiso-runtime";
 import { named, titleIfUnnamed } from "./names.js";
 import { createSessionService, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
@@ -111,7 +111,7 @@ export function createSpace(options: SpaceOptions): Space {
 		if (options.titles !== true || session === undefined || titled.has(sessionId) || Date.now() - times.at(sessionId, event.seq) > 60_000) return;
 		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
 		titled.add(sessionId);
-		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" ? b.text : "")).join(" ");
+		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" && !isEnvironmentNote(b.text) ? b.text : "")).join(" ").trim();
 		ask(sessionId, text, false);
 	};
 	const followUp = (sessionId: string, seq: number): Promise<string> => {
