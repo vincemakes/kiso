@@ -54,7 +54,7 @@ export const renameWork = (key: string | null, session: string, name: string): P
 /** What a Work's requests always carry (bytes), and its compaction sizes. */
 export const fetchContext = (key: string | null, session: string): Promise<ContextParts> => call(withKey("/desk/context", key, { session }));
 /** The files `@` can name in a Work's folder (git's list, else a bounded walk). */
-export const fetchAtFiles = (key: string | null): Promise<{ readonly files: readonly string[]; readonly truncated: boolean }> => call(`/desk/at-files${key === null ? "" : `?key=${encodeURIComponent(key)}`}`);
+export const fetchAtFiles = (key: string | null, session?: string): Promise<{ readonly files: readonly string[]; readonly truncated: boolean }> => call(`/desk/at-files?${new URLSearchParams({ ...(key === null ? {} : { key }), ...(session === undefined ? {} : { session }) }).toString()}`);
 export const saveKey = (profile: string, key: string): Promise<{ readonly ok: true }> => call("/desk/login", { profile, key });
 /** Stop one background task of a Work (the rail's stop): the task manager's own stop, as `/tasks` does in the terminal. */
 export const stopTask = (key: string | null, session: string, task: string): Promise<{ readonly stopped: boolean }> => call(`/desk/task-stop${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { session, task });
@@ -64,3 +64,8 @@ export const forkWork = (key: string | null, session: string, atSeq?: number): P
 export const actOnWork = (key: string | null, session: string, act: string): Promise<{ readonly ok: true }> => call(withKey("/desk/work", key), { session, act });
 export const startDemo = (): Promise<{ readonly ok: true }> => call("/desk/demo", {});
 export const sendPresence = (key: string | null, session: string, focused: boolean): Promise<unknown> => call("/desk/presence", { key: key ?? "", session, focused });
+
+/** A Work's added folders: add or remove one (a refusal comes back in words); the Environment rows are read again after. */
+export const changeWorkFolders = (session: string, change: { readonly add: string } | { readonly remove: string }): Promise<unknown> => call("/desk/work-folders", { session, ...change });
+/** Show a row's folder in Finder or open it in a terminal: the host recomputes the row from its index, the page sends no path. */
+export const openRow = (session: string, index: number, door: "reveal" | "terminal"): Promise<unknown> => call("/desk/env-open", { session, index, door });

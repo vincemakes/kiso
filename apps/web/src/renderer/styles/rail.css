@@ -28,6 +28,12 @@
 .r-row.dim { color: var(--mute); }
 .r-row.r-br, .r-row.r-st { cursor: default; }
 .r-row.r-br:hover, .r-row.r-st:hover { background: none; }
+.r-grp { margin-top: 6px; }
+.r-gh { margin: 4px 20px 2px; font-size: 12px; color: var(--mute); }
+.r-more { display: block; margin: 0 20px; padding: 4px 12px; font-size: 12.5px; color: var(--mute); }
+.r-more:hover { color: var(--ink); }
+.r-note { margin: 4px 20px; font-size: 12.5px; color: var(--mute); }
+.r-note.err { color: #9a3412; }
 .r-nm { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .r-nm.mono { font-size: 13px; color: inherit; }
 .r-sub { color: var(--mute); }

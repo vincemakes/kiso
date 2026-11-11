@@ -25,6 +25,24 @@ export interface SettingsReply {
 	readonly signIn: { readonly ok: boolean; readonly text: string };
 }
 
+/** One folder row of a Work's Environment: where it came from decides what it grants (primary and added do; recent only records). */
+export interface EnvFolder {
+	readonly kind: "primary" | "added" | "recent";
+	/** the full real path (what Copy path copies) and the home-shortened one the row shows */
+	readonly path: string;
+	readonly shown: string;
+	readonly branch: string | null;
+	/** `owner/repo` of its GitHub remote, when it has one */
+	readonly github: string | null;
+	readonly missing: boolean;
+}
+/** A repository this Work has a pull request in. */
+export interface EnvRepo {
+	readonly repo: string;
+	readonly number: number;
+	readonly url: string;
+}
+
 /** What `GET /desk/env?key=` answers: where a Work runs. `mode` is the permission tier's value. */
 export interface EnvReply {
 	readonly folder: string;
@@ -35,6 +53,8 @@ export interface EnvReply {
 	readonly mode: string;
 	/** when the Work asked about is a fork: what it was forked from, and when */
 	readonly fork?: { readonly parent: string; readonly title: string; readonly at: number };
+	/** with a session: the Environment rows (primary, added, recent), its repositories, the doors the host can open, and whether the added list is damaged */
+	readonly rows?: { readonly folders: readonly EnvFolder[]; readonly repos: readonly EnvRepo[]; readonly doors: readonly ("reveal" | "terminal")[]; readonly damaged: boolean };
 }
 
 export interface SettingsPatch {

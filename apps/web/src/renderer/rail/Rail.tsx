@@ -9,6 +9,7 @@ import { artifactIcon, I } from "../stream/Icons.js";
 import { nameOf } from "../stream/Artifacts.js";
 import { useOpenArtifact } from "../stream/Lightbox.js";
 import { outputsOf, railOf, workChangesOf } from "./derive.js";
+import { Environment } from "./Environment.js";
 import { Tip, type TipData } from "./Tip.js";
 
 const money = (usd: number | null): string => (usd === null ? "—" : `$${usd.toFixed(4)}`);
@@ -40,6 +41,9 @@ function Section({ id, name, count, extra, open, onToggle, children }: { readonl
 interface Props {
 	readonly state: State;
 	readonly env: EnvReply | null;
+	/** the Work on the page, and what to do when its Environment changed (read the rows again) */
+	readonly session: string;
+	readonly onEnvChanged: () => void;
 	readonly onStopTask: (id: string) => void;
 	/** the folder's changes from git (null: not read yet); outside git the rail falls back to the Work's own edits from the log */
 	readonly git: GitReply | null;
@@ -60,7 +64,7 @@ const pctOf = (n: number, of: number | null): string => (of === null || of === 0
  * (opened the one way the stream opens them). It carries no state of the run itself: the stream shows the live
  * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
  */
-export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
+export function Rail({ state, env, session, onEnvChanged, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
 	const rail = railOf(state);
 	const openPanel = useOpenPanel();
 	const openArtifact = useOpenArtifact();
@@ -143,23 +147,7 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 								</span>
 								<span className="r-nm">{t.railHere}</span>
 							</div>
-							<div className="r-row r-st" data-field="env" {...over({ head: t.railEnv, rows: [[t.railPath, env.path], ...(env.branch === null ? [] : ([[t.railBranch, env.branch]] as const))] })}>
-								<span className="r-ic">
-									<I.folder />
-								</span>
-								<span className="r-nm">
-									{env.folder}
-									{env.path.includes("/") ? <span className="r-sub"> · {env.path.slice(0, env.path.lastIndexOf("/")) || "/"}</span> : null}
-								</span>
-							</div>
-							{env.branch === null ? null : (
-								<div className="r-row r-st" data-field="env-branch">
-									<span className="r-ic">
-										<I.branch />
-									</span>
-									<span className="r-nm mono">{env.branch}</span>
-								</div>
-							)}
+							<Environment env={env} session={session} onChanged={onEnvChanged} />
 						</Section>
 					)}
 					<section className={`r-sec r-ctx${folded["context"] ? " closed" : ""}`} data-section="context">

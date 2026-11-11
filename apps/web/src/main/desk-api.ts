@@ -16,6 +16,7 @@ import { listDirs, validateFolder } from "./folders.js";
 import { pickFolder } from "./pick-folder.js";
 import { folderInfo } from "./folder-info.js";
 import { changeFolders, foldersOf } from "./work-folders.js";
+import { environmentRows, openRow } from "./environment.js";
 import type { History } from "./history.js";
 import type { Notice, Presence } from "./approvals.js";
 import type { Settings } from "./settings.js";
@@ -74,7 +75,8 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 	try {
 		if (path === "/desk/at-files") {
 			if (space === null) return json(404, {});
-			return req.method === "GET" ? json(200, atFiles(space)) : json(405, {});
+			const session = url.searchParams.get("session") ?? "";
+			return req.method === "GET" ? json(200, atFiles(space, SAFE_ID.test(session) && space.store.ids().includes(session) ? foldersOf(space, session).added.filter((a) => !a.missing).map((a) => a.path) : [])) : json(405, {});
 		}
 		if (path === "/desk/context") {
 			if (space === null) return json(404, {});
@@ -203,7 +205,16 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (req.method !== "GET") return json(405, {});
 			const session = url.searchParams.get("session") ?? undefined;
 			const fork = session === undefined ? undefined : ctx.settings.forkOf(session);
-			return json(200, { ...folderInfo(space.workspace, ctx.settings.tierOf(session)), ...(fork === undefined ? {} : { fork: { parent: fork.parent, title: fork.title, at: fork.at } }) });
+			const rows = session !== undefined && SAFE_ID.test(session) && space.store.ids().includes(session) ? { rows: environmentRows(space, session, ctx.settings.marksOf(session).pr) } : {};
+			return json(200, { ...folderInfo(space.workspace, ctx.settings.tierOf(session)), ...rows, ...(fork === undefined ? {} : { fork: { parent: fork.parent, title: fork.title, at: fork.at } }) });
+		}
+		if (path === "/desk/env-open" && post) {
+			if (space === null) return json(404, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			openRow(space, session, ctx.settings.marksOf(session).pr, Number(body["index"]), str(body["door"]) ?? "");
+			return json(200, {});
 		}
 		if (path === "/desk/history") return req.method === "GET" ? json(200, await ctx.history.snapshot({ key: ctx.current.key, dir: ctx.current.dir }, url.searchParams.get("fresh") ?? undefined)) : json(405, {});
 		if (path === "/desk/settings") {

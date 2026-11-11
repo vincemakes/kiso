@@ -16,3 +16,4 @@ export { MODE_LABEL, OFFERED_MODES, getMode, modeExtensions, modeSystemPrompt, s
 export { protectedShellExtension } from "./protected-shell.js";
 export { guardSavedAllow, neverInheritedCall } from "./protected-writes.js";
 export { readOnlyShellExtension } from "./readonly-shell.js";
+export { cdTargets, isGhPrCreate } from "./shell-facts.js";

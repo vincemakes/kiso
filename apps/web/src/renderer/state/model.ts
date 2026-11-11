@@ -147,8 +147,7 @@ export interface Attached {
 	readonly text: string;
 }
 
-/** The fork note's head (runtime fork.ts forkNote): before a fork's first input for the model, never shown as the person's. */
-const FORK_NOTE_HEAD = "This session was forked from the session ";
+/** Notes before a line for the model, never shown as the person's: a fork's (runtime fork.ts forkNote) and the host's Environment update (state/envnote.ts). */
 
 /** An attached file as the composer sends it: a text block of its own, `<name>:` then the text in a fence. */
 const FILE_BLOCK = /^([^\n`]+):\n```\n([\s\S]*)\n```$/;
@@ -160,7 +159,7 @@ export function splitLine(content: unknown): { readonly text: string; readonly f
 	const files: Attached[] = [];
 	let text = "";
 	for (const b of content as readonly { type?: string; text?: unknown }[]) {
-		if (b?.type !== "text" || String(b.text ?? "").startsWith(FORK_NOTE_HEAD)) continue;
+		if (b?.type !== "text" || /^(This session was forked from the session |Environment update from kiso \()/.test(String(b.text ?? ""))) continue;
 		const m = FILE_BLOCK.exec(String(b.text ?? ""));
 		if (m !== null) files.push({ name: m[1]!, text: m[2]! });
 		else text += String(b.text ?? "");

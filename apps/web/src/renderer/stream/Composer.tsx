@@ -189,6 +189,14 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 										<small>{t.addFilesNote}</small>
 									</span>
 								</button>
+								{c === null ? null : (
+									<button type="button" className="cm-i" data-add="folder" onClick={() => (close(), void c.addFolder().then(setNote))}>
+										<I.folder />
+										<span className="cm-t">
+											<b>{t.envAddFolder}</b>
+										</span>
+									</button>
+								)}
 								<button type="button" className="cm-i" data-add="at" onClick={() => (close(), setText(`${text}${text === "" || text.endsWith(" ") ? "" : " "}@`), requestAnimationFrame(() => box.current !== null && (box.current.focus(), watchAt(box.current))))}>
 									<span className="cm-at">@</span>
 									<span className="cm-t">

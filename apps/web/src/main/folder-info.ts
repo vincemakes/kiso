@@ -17,7 +17,7 @@ function gitDir(from: string): string | null {
 }
 
 /** The branch a folder is on (a short commit when detached); null outside a git folder. */
-function branchOf(workspace: string): string | null {
+export function branchOf(workspace: string): string | null {
 	try {
 		const git = gitDir(workspace);
 		if (git === null) return null;
@@ -33,4 +33,16 @@ function branchOf(workspace: string): string | null {
 export function folderInfo(workspace: string, mode: string): EnvReply {
 	const home = homedir();
 	return { folder: basename(workspace), path: workspace.startsWith(`${home}/`) ? `~${workspace.slice(home.length)}` : workspace, root: workspace, branch: branchOf(workspace), mode };
+}
+
+/** `owner/repo` of a folder's GitHub remote (its `origin`, else the first remote), or null. */
+export function githubOf(folder: string): string | null {
+	try {
+		const git = gitDir(folder);
+		const config = git === null ? "" : readFileSync(join(git.replace(/\/worktrees\/[^/]+$/, ""), "config"), "utf8");
+		const m = /url\s*=\s*(?:https:\/\/|git@|ssh:\/\/git@)github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/m.exec(config);
+		return m === null ? null : m[1]!;
+	} catch {
+		return null;
+	}
 }

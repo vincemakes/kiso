@@ -40,10 +40,17 @@ const AT_CAP = 2000;
 const AT_SKIP = new Set([".git", "node_modules", ".kiso", "dist", "build", ".next", ".venv", "__pycache__"]);
 
 /** The files `@` can name, as the terminal lists them: git's own list (tracked and untracked, ignores honoured), else a bounded walk; `truncated` when the cap cut it. */
-export function atFiles(space: Space): { readonly files: readonly string[]; readonly truncated: boolean } {
+export function atFiles(space: Space, extra: readonly string[] = []): { readonly files: readonly string[]; readonly truncated: boolean } {
+	const own = rootFiles(space.workspace, "");
+	const files = extra.reduce((all, root) => [...all, ...rootFiles(root, `${root}/`)], own);
+	return { files: files.slice(0, AT_CAP), truncated: files.length > AT_CAP };
+}
+
+/** One root's files, each under `prefix` (the primary's are relative; an added folder's are absolute, as the model must name them). */
+function rootFiles(cwd: string, prefix: string): string[] {
 	let files: string[];
 	try {
-		files = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], { cwd: space.workspace, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24, timeout: 3000 }).split("\n").filter((p) => p !== "");
+		files = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24, timeout: 3000 }).split("\n").filter((p) => p !== "").map((p) => `${prefix}${p}`);
 	} catch {
 		files = [];
 		const walk = (dir: string, prefix: string): void => {
@@ -58,7 +65,7 @@ export function atFiles(space: Space): { readonly files: readonly string[]; read
 				// an unreadable directory adds nothing
 			}
 		};
-		walk(space.workspace, "");
+		walk(cwd, prefix);
 	}
-	return { files: files.slice(0, AT_CAP), truncated: files.length > AT_CAP };
+	return files;
 }
