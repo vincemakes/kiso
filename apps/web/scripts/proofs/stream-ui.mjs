@@ -116,6 +116,7 @@ await app.click("[data-act=sidebar]");
 await app.evaluate(`window.__kiso.send("is that all?")`);
 const row = () => app.evaluate("document.querySelector('.item[data-work=ui]')?.dataset.state ?? null");
 check(await waitUntil(async () => (await row()) === "running", 10_000), "the sidebar row spins while the run works");
+check(await app.evaluate("(() => { const r = document.querySelector('.item[data-work=ui]'), s = r.querySelector('.sp').getBoundingClientRect(), t = r.querySelector('.tt').getBoundingClientRect(); return s.left >= t.right - 1; })()"), "the spinner sits at the right of the row, after its title");
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2, 20_000);
 const ended = Date.now();
 check((await waitUntil(async () => (await row()) === "idle", 1000, 50)) && Date.now() - ended <= 1000, `the row stops spinning ${Date.now() - ended} ms after the run's end (at most 1,000)`);
@@ -136,6 +137,12 @@ await app.evaluate("[...document.querySelectorAll('[data-kind=process]')].at(-1)
 await sleep(500);
 const say = await app.evaluate(`(() => { const s = [...document.querySelectorAll('.say')].at(-1), cs = (e) => getComputedStyle(e), th = s.querySelector('th'), w = s.querySelectorAll('.tbl')[1], sc = document.querySelector('.scroll'); return JSON.stringify({ border: cs(th).borderTopWidth, align: cs(th).textAlign, scroll: cs(w).overflowX, wide: w.scrollWidth > w.clientWidth, h: cs(s.querySelector('h2')).fontSize, quote: cs(s.querySelector('blockquote > p')).marginTop, me: [...document.querySelectorAll('.me')].at(-1).scrollWidth > [...document.querySelectorAll('.me')].at(-1).clientWidth + 1, gap: Math.round(s.querySelector('p').getBoundingClientRect().top - s.querySelector('.tbl').getBoundingClientRect().bottom), side: sc.scrollWidth > sc.clientWidth, chev: [...document.querySelectorAll('.rail .r-chev')].map((c) => Math.round(c.getBoundingClientRect().width) + 'x' + Math.round(c.getBoundingClientRect().height)).join() }); })()`).then(JSON.parse);
 check(say.border === "1px" && say.align === "left" && say.scroll === "auto" && say.wide && say.h === "14.5px" && say.gap >= 8 && say.quote === '0px' && !say.side && !say.me && say.chev !== '' && say.chev.split(',').every((c) => c === '18x18'), `narration markdown: bordered table, left headers, a wide table scrolls in its box, body-size heading, ${say.gap} px after a table, no sideways page scroll with a 300-character word and code in it and in the person's message; with the sidebar open every rail chevron stays 18x18 ${JSON.stringify(say)}`);
+// the first message does not sit against the header: room above it, at the top of the stream
+const room0 = await sc("el.scrollTop = 0; return Math.round(document.querySelector('.me').getBoundingClientRect().top - el.getBoundingClientRect().top)");
+check(room0 >= 20, `the first message has ${room0} px above it at the top of the stream (at least 20)`);
+// the stream shows where the person is in it: a thin scroll bar, with the column still centered over the composer
+const bar = await app.evaluate("(() => { const m = (e) => Math.round(e.getBoundingClientRect().left + e.getBoundingClientRect().width / 2); return getComputedStyle(document.querySelector('.scroll')).scrollbarWidth + ' ' + (m(document.querySelector('.col')) - m(document.querySelector('.comp'))); })()");
+check(bar === "thin 0", `the stream has a scroll bar (${bar.split(" ")[0]}) and its column stays centered over the composer (off by ${bar.split(" ")[1]} px)`);
 await app.shot("7-narration-table");
 await app.close();
 verdict();

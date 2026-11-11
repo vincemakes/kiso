@@ -1,5 +1,6 @@
 import type { SessionState, WireEvent } from "@vincemakes/kiso-protocol";
 import type { AtFrame, TaskRow, TasksFrame, ToolOutputFrame, UsageFrame } from "../../shared/frames.js";
+import { noticeOf } from "./notice.js";
 
 /**
  * The stream's model: wire events and host frames in, the turns the stream
@@ -72,6 +73,10 @@ export interface Notice {
 	readonly id: string;
 	readonly seq: number;
 	readonly text: string;
+	/** how it reads: a failure is red, a stop quiet, anything else plain */
+	readonly tone: "" | "fail" | "stop";
+	/** "exit 2" beside a failure, else "" */
+	readonly code: string;
 }
 
 export type Item = Thinking | Text | Step | Ask | Steer | Notice;
@@ -133,13 +138,6 @@ export const initialState = (): State => ({ turns: [], tasks: [], context: { tok
 
 
 const currentTurn = (s: State): Turn | undefined => s.turns.at(-1);
-
-/** The line a runtime notice reads as; a task notice becomes "Task t1 exited". */
-export function noticeText(raw: string): string {
-	const task = /<kiso-task id="([^"]+)" status="([^"]+)"(?: code="(-?\d+)")?/.exec(raw);
-	if (task !== null) return `Task ${task[1]} ${task[2]}${task[3] !== undefined && task[3] !== "0" ? ` (exit ${task[3]})` : ""}`;
-	return raw.replace(/<[^>]*>/g, "").trim().split("\n")[0]!.slice(0, 120);
-}
 
 /** The "moved to the background" sentence the shell's result carries. */
 const BACKGROUND = /\bbackground task (t\d+)\b/;
@@ -207,7 +205,7 @@ export function reduce(s: State, input: Input): State {
 			if ((e as { source?: string }).source === "system") {
 				// a runtime notice, not the person: a quiet line inside a live run, nothing otherwise
 				if (turn !== undefined && turn.phase === "running") {
-					const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, text: noticeText(text) };
+					const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text) };
 					turn.items.push(item);
 					note(item);
 				}

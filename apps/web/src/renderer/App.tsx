@@ -39,11 +39,21 @@ const NO_VERSION = (): number => 0;
  * right), the Work in view or Settings. A Work is opened as a session on its
  * folder's routes; opening another closes the stream of the one before.
  */
+// under 864 px the Work is the whole window: the sidebar and the overview float over it (one at a time), closed until asked for
+const NARROW = "(max-width: 863px)";
+const isNarrow = (): boolean => matchMedia(NARROW).matches;
+const onNarrow = (cb: () => void): (() => void) => {
+	const m = matchMedia(NARROW);
+	m.addEventListener("change", cb);
+	return () => m.removeEventListener("change", cb);
+};
+
 export function App(): ReactNode {
 	// null while the page trades its connect code; false: no session (the page shows one line, "run kiso web")
 	const [signedIn, setSignedIn] = useState<boolean | null>(null);
 	useEffect(() => void signIn(launch.code).then(setSignedIn), []);
 	const [open, setOpen] = useState(false);
+	const narrow = useSyncExternalStore(onNarrow, isNarrow);
 	const [browsing, setBrowsing] = useState(false);
 	const [view, setView] = useState<"work" | "settings">("work");
 	const [target, setTarget] = useState<Target>(() => ({ key: null, sessionId: launch.sessionId ?? newWorkId() }));
@@ -58,7 +68,11 @@ export function App(): ReactNode {
 	// an approval a system notification pointed at: its card is scrolled to and focused once the Work shows it
 	const [focusDecision, setFocusDecision] = useState<string | null>(null);
 	// the rail is open unless the person closes it with the overview key; no window width closes it
-	const [railChoice, setRailChoice] = useState(true);
+	const [railChoice, setRailChoice] = useState(() => !isNarrow());
+	// narrow: both float closed when the window gets narrow and when another Work is opened; a tap on the veil closes the one open
+	useEffect(() => {
+		if (narrow) (setOpen(false), setRailChoice(false));
+	}, [narrow, target]);
 
 	useEffect(() => {
 		if (signedIn !== true) return;
@@ -206,7 +220,7 @@ export function App(): ReactNode {
 	const header =
 		railOn && session !== null ? (
 			<Header title={title} onRename={onRename}>
-				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
+				<button className={`railtoggle${railOpen ? " on" : ""}`} onClick={() => (narrow && setOpen(false), panel !== null ? (setPanel(null), setRailChoice(true)) : setRailChoice(!railChoice))} aria-label={t.overview} aria-pressed={railOpen} data-act="rail">
 					<Overview />
 				</button>
 				<PanelMenu onPick={openPanel} />
@@ -252,7 +266,7 @@ export function App(): ReactNode {
 		<PanelContext.Provider value={openPanel}>
 		<LightboxContext.Provider value={setLightbox}>
 		<ControlsContext.Provider value={controls}>
-		<div className="win" data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
+		<div className="win" onClick={(e) => { if (narrow && e.target === e.currentTarget) (setOpen(false), setRailChoice(false)); }} data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
 			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
 			{open ? (
@@ -261,7 +275,7 @@ export function App(): ReactNode {
 					<span className="word">kiso</span>
 				</div>
 			) : null}
-			<button className="sidetoggle" onClick={() => setOpen(!open)} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
+			<button className="sidetoggle" onClick={() => (narrow && !open && setRailChoice(false), setOpen(!open))} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
 			</button>
 			<Sidebar

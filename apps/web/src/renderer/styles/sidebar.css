@@ -1,4 +1,5 @@
-/* the window is one row of columns: the sidebar, the Work (the stream and, beside it, the panel) and the rail. No column is laid over another, at any width. */
+/* the window is one row of columns: the sidebar, the Work (the stream and, beside it, the panel) and the rail. No column is laid over another while the window can hold them (864 px and up); narrower, the Work is the whole window and the sidebar and the
+   overview float over it as drawers, one at a time, behind a veil a tap closes (owner 2026-11-10, reversing the 2026-11-02 ruling below that width). */
 :root { --sw: 264px; --side: #fafafa; }
 .win { position: fixed; inset: 0; overflow: clip; background: #fff; display: flex; }
 .sidetoggle { position: absolute; left: 12px; top: 10px; z-index: 70; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--mute); transition: left 0.2s var(--ease); }
@@ -32,9 +33,8 @@
 .item.child.more::after { content: ""; position: absolute; left: 16px; top: 3px; bottom: -4px; border-left: 1.5px solid #d6d6d2; }
 .item:hover { background: rgba(0, 0, 0, 0.045); }
 /* the open Work: one grey fill (no white card, no shadow) */
-.item.on { background: rgba(0, 0, 0, 0.065); font-weight: 500; }
+.item.on { background: rgba(0, 0, 0, 0.065); }
 .item .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item small { color: var(--faint); font-size: 12px; font-weight: 400; flex: none; max-width: 38%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .dot.amber { background: var(--amber); }
 .dot.blue { background: var(--blue); }
@@ -66,7 +66,8 @@
 .row { position: relative; }
 .row .dots { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 24px; border-radius: 7px; display: none; place-items: center; color: #555; }
 .row:hover .dots, .row.menu-open .dots { display: grid; }
-.row:hover .item small, .row.menu-open .item small { visibility: hidden; }
+/* a row's state mark sits at its right end, under the ⋯ that shows on hover */
+.row:hover .item :is(.sp, .dot), .row.menu-open .item :is(.sp, .dot) { visibility: hidden; }
 .row .dots:hover { background: rgba(0, 0, 0, 0.07); }
 .row-in { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 0; }
 .row-in::selection { background: #cfe0ff; }
@@ -96,3 +97,15 @@
 .menu .mh { padding: 6px 10px 2px; font-size: 12px; color: var(--mute); }
 .menu .ck { margin-left: auto; display: grid; width: 16px; }
 .menu .ck .ico { color: var(--ink); }
+
+@media (max-width: 863px) {
+	.side, .rail { position: absolute; top: 0; bottom: 0; z-index: 80; }
+	.win[data-side="1"] .side, .win[data-rail="1"] .rail { box-shadow: 0 0 40px rgba(0, 0, 0, 0.18); }
+	.side { left: 0; }
+	.rail { right: 0; }
+	.win[data-side="1"] .side { width: min(var(--sw), 82vw); }
+	.win[data-rail="1"] .rail { width: min(280px, 82vw); }
+	.win[data-side="1"]::after, .win[data-rail="1"]::after { content: ""; position: absolute; inset: 0; z-index: 75; background: rgba(20, 20, 24, 0.28); }
+	.sidetoggle, .brand { z-index: 90; }
+	.chat { min-width: 0; }
+}

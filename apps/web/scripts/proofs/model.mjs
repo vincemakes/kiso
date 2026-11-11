@@ -64,7 +64,7 @@ check(split(mid.turns[0]).openAsks.length === 1 && mid.turns[0].items.some((i) =
 // a runtime notice inside a live run is a quiet line; the interrupted-run state follows the host's snapshot
 const n = initialState();
 [{ type: "user_input", seq: 0, content: "go" }, { type: "user_input", seq: 1, content: '<kiso-task id="t1" status="exited" code="0" duration="8s"/>\nRuntime notice - not the user.', source: "system" }].forEach((event) => reduce(n, { kind: "event", event }));
-check(n.turns.length === 1 && n.turns[0].items[0]?.kind === "notice" && n.turns[0].items[0].text === "Task t1 exited", "a system notice is a line in the run, not a new turn");
+check(n.turns.length === 1 && n.turns[0].items[0]?.kind === "notice" && n.turns[0].items[0].text === "Task t1 finished" && n.turns[0].items[0].tone === "", "a system notice is a line in the run, not a new turn");
 reduce(n, { kind: "snapshot", state: { sessionId: "x", running: false, highWater: 1, openRun: "r1", pendingApprovals: [], uncertain: [] } });
 check(isInterrupted(n) && !isLive(n), "a running turn the host no longer runs is interrupted");
 const v = initialState();
@@ -85,6 +85,8 @@ const forms = [...TABLE].map((_, i) => render(TABLE.slice(0, i + 1), true));
 const firstTable = forms.findIndex((f) => f.some((b) => b.t === "table"));
 check(firstTable > 0 && forms.slice(firstTable).every((f) => f.some((b) => b.t === "table")) && !forms.some((f) => JSON.stringify(f).includes("--") || f.some((b) => b.t === "p" && JSON.stringify(b).includes('"text":"|'))) && JSON.stringify(forms.at(-1)) === JSON.stringify(render(TABLE, false)), "every prefix while streaming: the delimiter and the header are never paragraph text, a table once drawn stays a table, and the last live form equals the final render");
 check(JSON.stringify(render("<script>alert(1)</script> **x", true)).includes('"text":"<script>alert(1)</script>"') && parse("```sh\nnpm ci\nnpm test\n```")[0].text === "npm ci\nnpm test", "markup stays text; a fenced block keeps its lines");
+// #### is a heading; an image is its alt text as a link, never fetched; an escaped dot or hash is plain text
+check(parse("#### Four")[0].level === 4 && parse("##### Five")[0].t === "p" && parse("![a cat](https://x.test/c.png)")[0].inline[0].t === "link" && parse("![a cat](https://x.test/c.png)")[0].inline[0].text === "a cat" && parse("1\\. not a list \\# nor a heading")[0].inline[0].text === "1. not a list # nor a heading", "####, an image as its alt text, and an escaped dot or hash");
 // lists: levels, a continued item, numbering that survives a break, tasks, code under an item
 const li = (t) => parse(t)[0].items;
 check(li("- a\n  - b\n    - c\n- d").length === 2 && li("- a\n  - b\n    - c\n- d")[0].children[0].items[0].children[0].t === "ul" && li("1. foo\n  - under a numbered item\n2. bar")[0].children[0].t === "ul", "a sub-list keeps its level, under a bullet or a number, however far it is indented");
