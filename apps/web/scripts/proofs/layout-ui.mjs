@@ -66,6 +66,7 @@ await sleep(800);
 m = await measure();
 check(Math.abs(m.rail.w - 280) < 1 && (await app.count("[data-kind=panel]")) === 0, "with a panel open, the rail's key closes the panel and the rail comes back at 280");
 check((await q(`[".side", ".rail", ".win"].map((s) => getComputedStyle(document.querySelector(s)).backgroundColor).join()`)) === "rgb(255, 255, 255),rgb(255, 255, 255),rgb(255, 255, 255)", "the sidebar and the rail are the stream's white: one page, no tinted strips beside it");
+check((await q(`getComputedStyle(document.querySelector(".side-in")).borderRightWidth + "," + getComputedStyle(document.querySelector(".rail-in")).borderLeftWidth`)) === "1px,1px", "the sidebar has a hairline on its right edge, as the rail has on its left");
 await app.click("[data-act=panel-menu]");
 await app.click("[data-open=diff]");
 await sleep(800);
