@@ -175,12 +175,6 @@ export function Rail({ state, env, onStopTask, git, parts, onCommit, onPr }: Pro
 						</button>
 						<div className="r-meter" aria-hidden="true">
 							{segments !== null && window !== null ? segments.map((x) => <b key={x.key} className={`seg-${x.key}`} style={{ width: `${(x.tokens / window) * 100}%` }} />) : <b style={{ width: `${share ?? 0}%` }} />}
-							{parts?.compaction != null && window !== null ? (
-								<>
-									<i className="tick soft" style={{ left: `${(parts.compaction.starts / window) * 100}%` }} title={t.ctxStarts} />
-									<i className="tick" style={{ left: `${(parts.compaction.must / window) * 100}%` }} title={t.ctxMust} />
-								</>
-							) : null}
 						</div>
 						{folded["context"] ? null : (
 							<div className="r-kv" data-field="context-detail">
