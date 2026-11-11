@@ -82,6 +82,11 @@
 .note .ok { width: 14px; height: 14px; border-radius: 50%; background: var(--green); position: relative; flex: none; }
 .note .ok::after { content: ""; position: absolute; left: 4.5px; top: 2px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); }
 .note .no { width: 14px; height: 14px; border-radius: 50%; background: var(--red); flex: none; }
+/* a task's end, in the stream: the streamed text's colour and a size up; a failure is red, a stop quiet */
+.note[data-kind="notice"] { color: var(--ink); font-size: 14px; line-height: 1.5; gap: 6px; }
+.note[data-kind="notice"].fail { color: var(--red); }
+.note[data-kind="notice"].stop { color: var(--mute); }
+.note[data-kind="notice"] small { color: var(--mute); font-size: 13px; }
 
 /* the answer */
 /* one body size; headings are no larger than the body (weight and the space above them carry the hierarchy), and a heading

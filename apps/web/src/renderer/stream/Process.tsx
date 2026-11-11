@@ -129,8 +129,9 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 							{seg.item.text}
 						</div>
 					) : seg.item.kind === "notice" ? (
-						<div key={seg.item.id} className="note" data-kind="notice">
+						<div key={seg.item.id} className={`note ${seg.item.tone}`} data-kind="notice">
 							{seg.item.text}
+							{seg.item.code === "" ? null : <small>{seg.item.code}</small>}
 						</div>
 					) : null;
 				if (!lines.includes(seg)) return seg.items.map((item) => (item.kind === "thinking" ? <Thinking key={item.id} item={item} /> : null));
