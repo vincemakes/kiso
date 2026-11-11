@@ -30,3 +30,25 @@ export class TimeIndex {
 		return ts;
 	}
 }
+
+/** The durable time of every event of a Work, read once and kept while the log has not grown past what was asked for: a replay sends a
+ *  terminal event per run, and each one reading the whole log again would cost a Work with many runs seconds to open. */
+export class StampCache {
+	readonly #store: SessionStore;
+	readonly #held = new Map<string, { readonly seq: number; readonly ts: ReadonlyMap<number, number> }>();
+
+	constructor(store: SessionStore) {
+		this.#store = store;
+	}
+
+	/** The times of the log up to at least `seq` (the log is read again only when it has grown past what is held). */
+	upTo(sessionId: string, seq: number): ReadonlyMap<number, number> {
+		let held = this.#held.get(sessionId);
+		if (held === undefined || held.seq < seq) {
+			const records = this.#store.load(sessionId);
+			held = { seq: records.at(-1)?.event.seq ?? -1, ts: new Map(records.map((r) => [r.event.seq, r.ts] as const)) };
+			this.#held.set(sessionId, held);
+		}
+		return held.ts;
+	}
+}

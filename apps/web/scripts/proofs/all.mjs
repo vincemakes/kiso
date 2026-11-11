@@ -10,7 +10,7 @@ import { startChrome } from "./lib.mjs";
 
 // fast: no browser, no kill -9 (a few seconds to a minute); full: everything (headless Chrome), for the end of a milestone, before a push, before a release
 const FAST = ["guard", "signin", "history", "history-listeners", "desk", "files", "panels", "settings", "stream", "stream default", "model", "usage", "policy", "control", "tasks", "shell-artifacts", "env-log"];
-const FULL = [...FAST, "crash", "browser", "stream-ui", "composer-ui", "changes-git", "header-ui", "fork-ui", "sidebar-menu", "work-pr", "rail-lists", "followup", "session-title", "groups", "chips", "pictures", "preview-pages", "preview-isolation", "switch-reconnect", "sidebar-ui", "rail-ui", "panels-ui", "layout-ui", "home-ui", "unadmitted", "interrupt", "reconnect", "link-ui", "env-ui", "switch-state", "two-tabs"];
+const FULL = [...FAST, "crash", "browser", "stream-ui", "composer-ui", "changes-git", "header-ui", "fork-ui", "sidebar-menu", "work-pr", "rail-lists", "followup", "session-title", "groups", "chips", "pictures", "preview-pages", "preview-isolation", "switch-reconnect", "sidebar-ui", "rail-ui", "panels-ui", "layout-ui", "home-ui", "unadmitted", "interrupt", "reconnect", "link-ui", "env-ui", "switch-state", "rate-live", "two-tabs"];
 const log = process.env.KISO_WEB_PROOF_LOG ?? join(tmpdir(), "kiso-web-proofs.log");
 /** Append to the log (or start it); false when it cannot be written: no log is better than no proofs. */
 const save = (text, fresh = false) => { try { mkdirSync(dirname(log), { recursive: true }); (fresh ? writeFileSync : appendFileSync)(log, text); return true; } catch { return false; } };
