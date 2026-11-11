@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { t } from "../i18n/index.js";
 import { notifyState, turnOff, turnOn, type NotifyState } from "../state/notify.js";
 import type { SettingsPatch, SettingsReply } from "../../shared/settings.js";
-import { Menu, TIER_CLASS } from "../stream/ComposerMenus.js";
+import { Menu } from "../stream/ComposerMenus.js";
 import { I } from "../stream/Icons.js";
 
 /** A field's pill: what is chosen, and the chevron that says it opens (the composer's menus, opening down). */
@@ -88,7 +88,7 @@ export function Settings(): ReactNode {
 					{(close) =>
 						s.modes.map((m) => (
 							<button type="button" key={m.value} className="cm-i" role="menuitemradio" aria-checked={m.value === s.mode} data-tier={m.value} onClick={() => (change({ mode: m.value }), close())}>
-								<span className={`cm-dot ${TIER_CLASS[m.value] ?? ""}`} />
+								<span className="cm-dot" />
 								<span className="cm-t">
 									<b>{t.tier[m.value] ?? m.label}</b>
 									<small>{t.tierNote[m.value] ?? ""}</small>

@@ -43,15 +43,12 @@ export function Menu({ label, className, act, disabled, title, down, children }:
 	);
 }
 
-export const TIER_CLASS: Readonly<Record<string, string>> = { plan: "plan", "full-access": "full" };
-
 /** The Work's permission tier: read-only, ask, edits allowed, full access; a change reaches this Work only. */
 export function TierMenu({ c }: { readonly c: Controls }): ReactNode {
 	const mode = c.settings?.mode ?? "default";
 	return (
 		<Menu
 			act="tier"
-			className={TIER_CLASS[mode] ?? ""}
 			label={
 				<>
 					<svg className="i16" viewBox="0 0 24 24" aria-hidden="true">
@@ -66,7 +63,7 @@ export function TierMenu({ c }: { readonly c: Controls }): ReactNode {
 					<div className="cm-h">{t.tierHead}</div>
 					{(c.settings?.modes ?? []).map((m) => (
 						<button type="button" key={m.value} className="cm-i" role="menuitemradio" aria-checked={m.value === mode} data-tier={m.value} onClick={() => void c.setTier(m.value).then(close)}>
-							<span className={`cm-dot ${TIER_CLASS[m.value] ?? ""}`} />
+							<span className="cm-dot" />
 							<span className="cm-t">
 								<b>{t.tier[m.value] ?? m.label}</b>
 								<small>{t.tierNote[m.value] ?? ""}</small>
@@ -79,6 +76,9 @@ export function TierMenu({ c }: { readonly c: Controls }): ReactNode {
 		</Menu>
 	);
 }
+
+/** The model as the person reads it: its own name, without the provider or route in front of it (`deepseek/deepseek-v4.1-flash` is `deepseek-v4.1-flash`). */
+const short = (model: string): string => model.slice(model.lastIndexOf("/") + 1);
 
 /** The Work's model and effort: the profiles of the shared configuration, and the levels the chosen one's route accepts. */
 export function ModelMenu({ c, running }: { readonly c: Controls; readonly running: boolean }): ReactNode {
@@ -99,7 +99,7 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 			{...(running ? { title: t.modelWhileRunning } : {})}
 			label={
 				<>
-					<span data-field="model-pill">{current?.model ?? t.noModel}</span>
+					<span data-field="model-pill">{current === null ? t.noModel : short(current.model)}</span>
 					{effort !== null ? <span className="sub">· {t.effort[effort] ?? effort}</span> : null}
 					<I.chevron />
 				</>
@@ -112,9 +112,9 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 					<div className="cm-list" ref={(el) => el?.querySelector("[aria-checked=true]")?.scrollIntoView({ block: "nearest" })}>
 						{(s?.profiles ?? []).map((p) => (
 							<button type="button" key={p.name} className="cm-i one" role="menuitemradio" aria-checked={p.name === s?.profile} disabled={!p.available} data-profile={p.name} title={p.available ? `${p.model} · ${p.name}` : t.notSignedIn} onClick={() => change({ profile: p.name }, close)}>
-								<b>{p.model}</b>
+								<b>{short(p.model)}</b>
 								{p.images ? <span className="cm-tag">{t.readsImages}</span> : null}
-								<small>{p.available ? p.name : t.notSignedIn}</small>
+								<small>{p.available ? ((s?.profiles ?? []).filter((x) => short(x.model) === short(p.model)).length > 1 ? p.name : "") : t.notSignedIn}</small>
 								{p.name === s?.profile ? <I.check /> : <span className="cm-nock" />}
 							</button>
 						))}
