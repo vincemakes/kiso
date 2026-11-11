@@ -81,6 +81,8 @@ export function artifactsOf(event: ToolResultEvent, workId: string, call: CallIn
 		const kind = artifactKind(rel);
 		if (rel.startsWith("..") && isAbsolute(raw) && since !== null) return outside(raw, since);
 		if (kind === undefined || rel.startsWith("..") || out.some((a) => a.uri === `file:${rel}`)) return;
+		// a file that is not there is the common case in a replay: no refusal is built for it
+		if (!existsSync(resolve(root, rel))) return;
 		try {
 			const stat = statSync(resolveInside(root, rel));
 			if (stat.isFile() && (since === null || stat.mtimeMs >= since - SLACK_MS)) ref(rel, kind, `file:${rel}`);

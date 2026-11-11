@@ -176,14 +176,22 @@ export function createSpace(options: SpaceOptions): Space {
 		return frames;
 	};
 	/** The tool, input and execution start of the call a result answers, from the log before it. */
+	// an index of each Work's calls, extended as its log grows (a replay asked once per result, from seq 0, before)
+	const calls = new Map<string, { upTo: number; byId: Map<string, { name: string; input: Record<string, unknown>; started: number | null }> }>();
 	const callOf = (sessionId: string, callId: string): CallInfo | null => {
-		let call: { name: string; input: Record<string, unknown> } | null = null;
-		let startedAt: number | null = null;
-		for (const e of service.events(sessionId)) {
-			if (e.type === "tool_call_end" && e.callId === callId) call = { name: e.name, input: e.input as Record<string, unknown> };
-			if (e.type === "tool_execution_started" && e.callId === callId) startedAt = times.at(sessionId, e.seq);
+		const events = service.events(sessionId);
+		let held = calls.get(sessionId);
+		if (held === undefined || held.upTo > events.length) calls.set(sessionId, (held = { upTo: 0, byId: new Map() }));
+		for (; held.upTo < events.length; held.upTo++) {
+			const e = events[held.upTo]!;
+			if (e.type === "tool_call_end") held.byId.set(e.callId, { name: e.name, input: (e.input ?? {}) as Record<string, unknown>, started: held.byId.get(e.callId)?.started ?? null });
+			else if (e.type === "tool_execution_started") {
+				const c = held.byId.get(e.callId);
+				if (c !== undefined) c.started = e.seq;
+			}
 		}
-		return call === null ? null : { ...call, startedAt };
+		const c = held.byId.get(callId);
+		return c === undefined ? null : { name: c.name, input: c.input, startedAt: c.started === null ? null : times.at(sessionId, c.started) };
 	};
 	const realWorkspace = (): string => {
 		try {
