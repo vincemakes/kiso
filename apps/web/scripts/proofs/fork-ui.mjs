@@ -88,6 +88,9 @@ check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2 
 // the fork finished out of sight (as the host marks it): a blue dot; folding the parent leaves one line that says so
 writeFileSync(join(data, "desktop.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(data, "desktop.json"), "utf8")), unread: [id] }));
 check(await waitUntil(async () => (await app.count(`.item[data-work="${id}"] .dot.blue`)) === 1, 15_000), "a nested Work that finished unread shows a blue dot");
+const over = await q(`(() => { const r = document.querySelector('.item[data-work="frk"]').getBoundingClientRect(); return { x: r.x + 60, y: r.y + r.height / 2 }; })()`);
+await app.cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: over.x, y: over.y });
+check(await q(`(() => { const f = document.querySelector('.item[data-work="frk"] .kid-fold').getBoundingClientRect(), d = document.querySelector('.row:hover .dots')?.getBoundingClientRect(); return !!d && f.right <= d.left; })()`), "hovering a row with nested sessions: its fold chevron stands left of the row's dots, not under them");
 await app.click(`.item[data-work="frk"] [data-act=fold-nested]`);
 const line = await app.text(".kids-line");
 check((await app.count(`.item[data-work="${id}"]`)) === 0 && line === "1 nested session · 1 unread" && (await app.count(`.item[data-work="frk"] .dot.blue`)) === 1, `folded, the parent keeps one line ("${line}") and shows its nested Work's dot`);

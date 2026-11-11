@@ -47,6 +47,7 @@
 /* a row with nested sessions folds them: the chevron after its title shows on hover (down while they show) and stays, pointing
    right, while they are folded, as a group head's does */
 .item .kid-fold { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-left: -4px; border-radius: 5px; color: var(--mute); }
+.row:hover .item .kid-fold, .row.menu-open .item .kid-fold { margin-right: 26px; } /* the row's ⋯ takes the right edge on hover: the chevron stands left of it */
 .item .kid-fold:hover { color: var(--ink); background: rgba(0, 0, 0, 0.06); }
 .item .kid-fold .chev { color: inherit; opacity: 0; transform: rotate(90deg); }
 .item:hover .kid-fold .chev, .item .kid-fold:focus-visible .chev, .item .kid-fold.shut .chev { opacity: 1; }
