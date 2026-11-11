@@ -40,9 +40,10 @@ const AT_CAP = 2000;
 const AT_SKIP = new Set([".git", "node_modules", ".kiso", "dist", "build", ".next", ".venv", "__pycache__"]);
 
 /** The files `@` can name, as the terminal lists them: git's own list (tracked and untracked, ignores honoured), else a bounded walk; `truncated` when the cap cut it. */
-export function atFiles(space: Space, extra: readonly string[] = []): { readonly files: readonly string[]; readonly truncated: boolean } {
+export function atFiles(space: Space, extra: readonly string[] = [], stops: readonly string[] = []): { readonly files: readonly string[]; readonly truncated: boolean } {
 	const own = rootFiles(space.workspace, "");
-	const files = extra.reduce((all, root) => [...all, ...rootFiles(root, `${root}/`)], own);
+	// an added folder's names never include what the file tools refuse there (`~/.ssh`, `~/.aws`, the kiso home ...)
+	const files = extra.reduce((all, root) => [...all, ...rootFiles(root, `${root}/`).filter((f) => !stops.some((s) => f === s || f.startsWith(`${s}/`)))], own);
 	return { files: files.slice(0, AT_CAP), truncated: files.length > AT_CAP };
 }
 

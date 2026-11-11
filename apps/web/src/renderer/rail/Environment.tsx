@@ -19,7 +19,7 @@ const SHOWN = 3;
 const copy = (text: string): void => void navigator.clipboard?.writeText(text).catch(() => undefined);
 
 /** The Environment card's folder, branch and repository rows (the primary and added folders grant access; recent folders and repositories only record). */
-export function Environment({ env, session, onChanged }: { readonly env: EnvReply; readonly session: string; readonly onChanged: () => void }): ReactNode {
+export function Environment({ env, where, session, onChanged }: { readonly env: EnvReply; readonly where: string | null; readonly session: string; readonly onChanged: () => void }): ReactNode {
 	const [menu, setMenu] = useState<{ readonly key: string; readonly at: DOMRect } | null>(null);
 	const [more, setMore] = useState<readonly string[]>([]);
 	const [err, setErr] = useState<string | null>(null);
@@ -34,9 +34,9 @@ export function Environment({ env, session, onChanged }: { readonly env: EnvRepl
 	}, [menu]);
 	const rows = env.rows;
 	if (rows === undefined) return null;
-	const change = (change: { readonly add: string } | { readonly remove: string }): void => void changeWorkFolders(session, change).then(() => (noteFolders(session, "add" in change ? `added ${change.add}. Use absolute paths there.` : `removed ${change.remove}.`), setErr(null), onChanged()), (e: unknown) => setErr(e instanceof Refusal ? e.message : String(e)));
-	const add = (): void => void addFolderTo(session).then((m) => (setErr(m), onChanged()));
-	const door = (name: "reveal" | "terminal", i: number): readonly (readonly [string, () => void])[] => (rows.doors.includes(name) ? [[name === "reveal" ? t.envReveal : t.envTerminal, () => void openRow(session, i, name)]] : []);
+	const change = (change: { readonly add: string } | { readonly remove: string }): void => void changeWorkFolders(where, session, change).then(() => (noteFolders(session, "add" in change ? `added ${change.add}. Use absolute paths there.` : `removed ${change.remove}.`), setErr(null), onChanged()), (e: unknown) => setErr(e instanceof Refusal ? e.message : String(e)));
+	const add = (): void => void addFolderTo(where, session).then((m) => (setErr(m), onChanged()));
+	const door = (name: "reveal" | "terminal", i: number): readonly (readonly [string, () => void])[] => (rows.doors.includes(name) ? [[name === "reveal" ? t.envReveal : t.envTerminal, () => void openRow(where, session, i, name, rows.folders[i]!.path)]] : []);
 	const gh = (repo: string | null): readonly (readonly [string, () => void])[] => (repo === null ? [] : [[t.envGithub, () => void window.open(`https://github.com/${repo}`, "_blank", "noopener")]]);
 	const folders: Item[] = rows.folders.map((f, i) => ({
 		key: `f${i}`,

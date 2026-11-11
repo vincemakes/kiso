@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { Event as LogEvent } from "@vincemakes/kiso-core";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { cdTargets, isGhPrCreate } from "@vincemakes/kiso-code/policy";
@@ -6,7 +7,7 @@ import type { EnvFolder, EnvRepo } from "../shared/settings.js";
 import { Refusal } from "./files.js";
 import { branchOf, githubOf } from "./folder-info.js";
 import { tryRun } from "./git.js";
-import { prOfUrl, type Pr } from "./prs.js";
+import { lastPrOfText, type Pr } from "./prs.js";
 import type { Space } from "./space.js";
 import { foldersOf } from "./work-folders.js";
 
@@ -38,6 +39,24 @@ const isDir = (p: string): boolean => {
 };
 const repoOf = (pr: Pr): EnvRepo => ({ repo: /github\.com\/([\w.-]+\/[\w.-]+)\//.exec(pr.url)![1]!, number: pr.number, url: pr.url });
 
+/** What a log says: the folders a shell moved to and the repositories a `gh pr create` printed, newest first. A call whose arguments did not parse (`input` null) reads as no command. */
+export function scanLog(events: readonly LogEvent[], base: string, home: string, dir: (p: string) => boolean = isDir): { readonly recent: string[]; readonly repos: EnvRepo[] } {
+	const calls = new Map<string, string>();
+	const recent: string[] = [];
+	const repos: EnvRepo[] = [];
+	for (const e of events) {
+		const input = e.type === "tool_call_end" ? (e.input as unknown) : null;
+		if (e.type === "tool_call_end" && e.name === "shell" && typeof input === "object" && input !== null && typeof (input as { command?: unknown }).command === "string") calls.set(e.callId, (input as { command: string }).command);
+		if (e.type !== "tool_result" || e.isError || !calls.has(e.callId)) continue;
+		const line = calls.get(e.callId)!;
+		for (const d of cdTargets(line, base, home)) if (dir(d)) recent.unshift(d);
+		const text = typeof e.content === "string" ? e.content : e.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+		const pr = isGhPrCreate(line) ? lastPrOfText(text) : null; // the last URL printed: the one the command made comes after any it quoted
+		if (pr !== null) repos.unshift(repoOf(pr));
+	}
+	return { recent, repos };
+}
+
 function derive(space: Space, session: string, linked: Pr | undefined): { readonly recent: readonly string[]; readonly repos: readonly EnvRepo[] } {
 	const records = space.store.load(session);
 	const seq = records.at(-1)?.event.seq ?? -1;
@@ -45,18 +64,7 @@ function derive(space: Space, session: string, linked: Pr | undefined): { readon
 	// both sources, one row per repository: the Work's own link (the person's latest word) first, then what the log printed
 	const both = (log: readonly EnvRepo[]): readonly EnvRepo[] => [...(linked === undefined ? [] : [repoOf(linked)]), ...log].filter((r, i, all) => all.findIndex((x) => x.repo === r.repo) === i);
 	if (held !== undefined && held.seq === seq) return { recent: held.recent, repos: both(held.repos) };
-	const calls = new Map<string, string>();
-	const recent: string[] = [];
-	const repos: EnvRepo[] = [];
-	for (const { event: e } of records) {
-		if (e.type === "tool_call_end" && e.name === "shell" && typeof (e.input as { command?: unknown }).command === "string") calls.set(e.callId, (e.input as { command: string }).command);
-		if (e.type !== "tool_result" || e.isError || !calls.has(e.callId)) continue;
-		const line = calls.get(e.callId)!;
-		for (const dir of cdTargets(line, space.workspace, homedir())) if (isDir(dir)) recent.unshift(dir);
-		const text = typeof e.content === "string" ? e.content : e.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-		const pr = isGhPrCreate(line) ? prOfUrl(text) : null;
-		if (pr !== null) repos.unshift(repoOf(pr));
-	}
+	const { recent, repos } = scanLog(records.map((r) => r.event), space.workspace, homedir());
 	const kept = [...new Set(recent)].filter((d, _, all) => !all.some((o) => o !== d && d.startsWith(`${o}/`))).slice(0, RECENT_MAX);
 	const out = { seq, recent: kept, repos: repos.filter((r, i) => repos.findIndex((x) => x.repo === r.repo) === i) };
 	cache.set(session, out);
@@ -75,13 +83,17 @@ export function environmentRows(space: Space, session: string, linked: Pr | unde
 	// a recent folder in an added folder is not shown; one in the primary, or around any root, is shown but can never be added (nested)
 	const folders = [row("primary", space.workspace), ...added.map((a) => row("added", a.path)), ...recent.filter((d) => !added.some((a) => inside(d, a.path)) && d !== space.workspace).map((d) => ({ ...row("recent", d), addable: !roots.some((r) => inside(d, r) || inside(r, d)) }))];
 	const withBranch = repos.map((r) => ({ ...r, ...(branchOfPr(r.url) === undefined ? {} : { branch: branchOfPr(r.url)! }) }));
-	return { folders, repos: withBranch, doors: process.platform === "darwin" ? ["reveal", "terminal"] : [], damaged };
+	return { folders, repos: withBranch, doors: process.platform === "darwin" || process.env["KISO_WEB_OPENER"] !== undefined ? ["reveal", "terminal"] : [], damaged };
 }
 
 /** Show in Finder / Open in terminal: by Work and row index, the path recomputed here, never taken from the page. */
-export function openRow(space: Space, session: string, linked: Pr | undefined, index: number, door: string): void {
+export function openRow(space: Space, session: string, linked: Pr | undefined, index: number, door: string, path: string): void {
 	const folder = environmentRows(space, session, linked).folders[index];
 	if (folder === undefined || !existsSync(folder.path)) throw new Refusal(404, "that folder is not there any more");
-	if (process.platform !== "darwin" || (door !== "reveal" && door !== "terminal")) throw new Refusal(501, "this host cannot open it");
-	execFile("open", door === "reveal" ? ["-R", folder.path] : ["-a", "Terminal", folder.path], () => undefined);
+	// the page sends the row's path only to be compared: the rows moved since it drew them when they differ
+	if (folder.path !== path) throw new Refusal(409, "the folders changed; try again");
+	if ((process.platform !== "darwin" && process.env["KISO_WEB_OPENER"] === undefined) || (door !== "reveal" && door !== "terminal")) throw new Refusal(501, "this host cannot open it");
+	const custom = process.env["KISO_WEB_OPENER"]; // the proofs: a program run as `opener <door> <path>` instead of the system's
+	if (custom !== undefined && custom !== "") execFile(custom, [door, folder.path], () => undefined);
+	else execFile("open", door === "reveal" ? ["-R", folder.path] : ["-a", "Terminal", folder.path], () => undefined);
 }

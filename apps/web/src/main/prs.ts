@@ -13,6 +13,13 @@ export interface Pr {
 
 const PR_URL = /https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/(\d+)/;
 
+/** The last pull request URL in a text (a command's output: what it quoted comes before what it made). */
+export const lastPrOfText = (text: string): Pr | null => {
+	const all = [...text.matchAll(new RegExp(PR_URL, "g"))];
+	const m = all.at(-1);
+	return m === undefined ? null : { number: Number(m[1]), url: m[0] };
+};
+
 export const prOfUrl = (text: string): Pr | null => {
 	const m = PR_URL.exec(text);
 	return m === null ? null : { number: Number(m[1]), url: m[0] };

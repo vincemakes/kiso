@@ -35,13 +35,17 @@ export function folderInfo(workspace: string, mode: string): EnvReply {
 	return { folder: basename(workspace), path: workspace.startsWith(`${home}/`) ? `~${workspace.slice(home.length)}` : workspace, root: workspace, branch: branchOf(workspace), mode };
 }
 
-/** `owner/repo` of a folder's GitHub remote (its `origin`, else the first remote), or null. */
+/** `owner/repo` of a folder's GitHub remote: `origin`'s, else any other remote that is on GitHub. */
 export function githubOf(folder: string): string | null {
 	try {
 		const git = gitDir(folder);
 		const config = git === null ? "" : readFileSync(join(git.replace(/\/worktrees\/[^/]+$/, ""), "config"), "utf8");
-		const m = /url\s*=\s*(?:https:\/\/|git@|ssh:\/\/git@)github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\s*$/m.exec(config);
-		return m === null ? null : m[1]!;
+		const urls = [...config.matchAll(/\[remote "([^"]+)"\][^\[]*?url\s*=\s*(\S+)/g)].map((m) => [m[1]!, m[2]!] as const);
+		for (const [, url] of [...urls.filter(([n]) => n === "origin"), ...urls.filter(([n]) => n !== "origin")]) {
+			const m = /^(?:https:\/\/|git@|ssh:\/\/git@)github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?$/.exec(url);
+			if (m !== null) return m[1]!;
+		}
+		return null;
 	} catch {
 		return null;
 	}

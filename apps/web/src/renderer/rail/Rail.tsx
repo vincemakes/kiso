@@ -43,6 +43,8 @@ interface Props {
 	readonly env: EnvReply | null;
 	/** the Work on the page, and what to do when its Environment changed (read the rows again) */
 	readonly session: string;
+	/** the folder the Work is in (null: the one in use) */
+	readonly where: string | null;
 	readonly onEnvChanged: () => void;
 	readonly onStopTask: (id: string) => void;
 	/** the folder's changes from git (null: not read yet); outside git the rail falls back to the Work's own edits from the log */
@@ -64,7 +66,7 @@ const pctOf = (n: number, of: number | null): string => (of === null || of === 0
  * (opened the one way the stream opens them). It carries no state of the run itself: the stream shows the live
  * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
  */
-export function Rail({ state, env, session, onEnvChanged, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
+export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
 	const rail = railOf(state);
 	const openPanel = useOpenPanel();
 	const openArtifact = useOpenArtifact();
@@ -147,7 +149,7 @@ export function Rail({ state, env, session, onEnvChanged, onStopTask, git, parts
 								</span>
 								<span className="r-nm">{t.railHere}</span>
 							</div>
-							<Environment env={env} session={session} onChanged={onEnvChanged} />
+							<Environment env={env} where={where} session={session} onChanged={onEnvChanged} />
 						</Section>
 					)}
 					<section className={`r-sec r-ctx${folded["context"] ? " closed" : ""}`} data-section="context">

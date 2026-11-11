@@ -15,7 +15,7 @@ import type { Previews } from "./preview.js";
 import { listDirs, validateFolder } from "./folders.js";
 import { pickFolder } from "./pick-folder.js";
 import { folderInfo } from "./folder-info.js";
-import { changeFolders, foldersOf } from "./work-folders.js";
+import { changeFolders, foldersOf, stopRoots } from "./work-folders.js";
 import { environmentRows, openRow } from "./environment.js";
 import type { History } from "./history.js";
 import type { Notice, Presence } from "./approvals.js";
@@ -76,7 +76,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 		if (path === "/desk/at-files") {
 			if (space === null) return json(404, {});
 			const session = url.searchParams.get("session") ?? "";
-			return req.method === "GET" ? json(200, atFiles(space, SAFE_ID.test(session) && space.store.ids().includes(session) ? foldersOf(space, session).added.filter((a) => !a.missing).map((a) => a.path) : [])) : json(405, {});
+			return req.method === "GET" ? json(200, atFiles(space, SAFE_ID.test(session) && space.store.ids().includes(session) ? foldersOf(space, session).added.filter((a) => !a.missing).map((a) => a.path) : [], stopRoots())) : json(405, {});
 		}
 		if (path === "/desk/context") {
 			if (space === null) return json(404, {});
@@ -213,7 +213,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const body = await readJson(req);
 			const session = str(body["session"]) ?? "";
 			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
-			openRow(space, session, ctx.settings.marksOf(session).pr, Number(body["index"]), str(body["door"]) ?? "");
+			openRow(space, session, ctx.settings.marksOf(session).pr, Number(body["index"]), str(body["door"]) ?? "", str(body["path"]) ?? "");
 			return json(200, {});
 		}
 		if (path === "/desk/history") return req.method === "GET" ? json(200, await ctx.history.snapshot({ key: ctx.current.key, dir: ctx.current.dir }, url.searchParams.get("fresh") ?? undefined)) : json(405, {});
