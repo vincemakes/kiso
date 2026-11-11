@@ -5,7 +5,7 @@ import { WorkCache, slotOf, weigh } from "../../src/renderer/state/workcache.ts"
 
 const { check, verdict } = checker("work-cache");
 // the cache: least recently shown first by count and by estimated size; the shown Work is never dropped; a Work is its folder AND its id
-const fake = (turns) => { const s = { state: { turns, tasks: [] }, gone: false, detach() { this.gone = true; } }; return s; };
+const fake = (turns) => { const s = { state: { turns, tasks: [] }, view: { pos: null, draft: null }, gone: false, detach() { this.gone = true; } }; return s; };
 const turn = (n) => ({ user: "x", detail: null, items: [{ kind: "text", text: "y".repeat(n) }] });
 const keep = (cache, k, w) => (cache.acquire(slotOf(null, k), () => w), cache.release(slotOf(null, k)), w);
 const c = new WorkCache(3, 1e6);
@@ -21,26 +21,35 @@ check(slotOf("k1", "s") !== slotOf("k2", "s") && slotOf(null, "s") === slotOf(nu
 // the page
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const ask = { events: [{ type: "tool_call_end", callId: "k", name: "shell", input: { command: "echo asked" } }, { type: "stop", reason: "tool_use" }] };
-const app = await launchApp({ data: scratch("wc-data"), workspace: scratch("wc-ws"), env: { KISO_WEB_SESSION: "big", KISO_WEB_MODE: "default" }, fauxScript: [...Array.from({ length: 6 }, (_, i) => say(`answer ${i}`)), say("small one"), ask, say("after the ask")] });
+const app = await launchApp({ data: scratch("wc-data"), workspace: scratch("wc-ws"), env: { KISO_WEB_SESSION: "big", KISO_WEB_MODE: "default" }, fauxScript: [...Array.from({ length: 12 }, (_, i) => say(`answer ${i}`)), say("small one"), ask, say("after the ask")] });
 const h = clientFor(app.host());
 const q = (js) => app.evaluate(js);
-for (let i = 0; i < 6; i++) { await h.session("big").run(`question ${i}`); await waitUntil(async () => !(await h.session("big").state()).running); }
+for (let i = 0; i < 12; i++) { await h.session("big").run(`question ${i}`); await waitUntil(async () => !(await h.session("big").state()).running); }
 await h.session("small").run("hi");
-await waitUntil(async () => (await app.count("[data-kind=footer]")) === 6 && (await q("window.__kiso.loaded()")), 30_000);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) === 12 && (await q("window.__kiso.loaded()")), 30_000);
 await app.click("[data-act=sidebar]");
 await waitUntil(async () => (await app.count(".item[data-work=small]")) === 1);
 await q("window.__big = window.__kiso");
+// the reading position and the unsent line are kept with the Work
+const put = (v) => q(`(() => { const t = document.querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ${JSON.stringify(v)}); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+await q("document.querySelector('.scroll').scrollTop = 200");
+await sleep(300);
+await put("a line not sent yet");
 await app.click(".item[data-work=small]");
 await waitUntil(async () => (await q("window.__kiso.state.turns.length")) === 1);
 // while away, the big Work asks for an approval
 await h.session("big").run("run a command");
 await waitUntil(async () => (await h.session("big").state()).pendingApprovals.length === 1);
+await put("small draft");
 const t0 = Date.now();
 await app.click(".item[data-work=big]");
-check(await waitUntil(async () => (await q("window.__kiso === window.__big && window.__kiso.state.turns.length === 7")), 200, 10), `back on the big Work its runs are drawn at once, from the kept state, not a new one (${Date.now() - t0} ms)`);
+check(await waitUntil(async () => (await q("window.__kiso === window.__big && window.__kiso.state.turns.length === 13")), 200, 10), `back on the big Work its runs are drawn at once, from the kept state, not a new one (${Date.now() - t0} ms)`);
+await sleep(300);
+const back = await q("JSON.stringify({ top: document.querySelector('.scroll').scrollTop, draft: document.querySelector('textarea').value, latest: !!document.querySelector('[data-act=latest]') })").then(JSON.parse);
+check(Math.abs(back.top - 200) < 60 && back.draft === "a line not sent yet" && back.latest, `back on the big Work the reading position (${back.top} of 200) and the unsent line are back, and the way to the end is offered`);
 check(await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && (await q("document.querySelector('[data-act=allow]').disabled")) === false && !(await q("window.__kiso.stale()")), 10_000), "the approval that came while it was away shows, and is answerable once the host has been read");
 await app.click("[data-act=allow]");
-check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 7 && (await app.count("[data-kind=answer]")) === 7, 20_000), "answering it finishes the run: seven answers, none lost, none doubled");
+check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 13 && (await app.count("[data-kind=answer]")) === 13, 20_000), "answering it finishes the run: thirteen answers, none lost, none doubled");
 await app.closeTab();
 await app.chrome.close();
 verdict();

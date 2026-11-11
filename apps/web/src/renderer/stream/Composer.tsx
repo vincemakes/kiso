@@ -3,6 +3,7 @@ import type { WireContentBlock, WireInput } from "@vincemakes/kiso-protocol";
 import { fmt, t } from "../i18n/index.js";
 import { ArrowUp, I, Plus } from "./Icons.js";
 import { LinkLine, type Down } from "./LinkLine.js";
+import type { Attachment, View } from "../state/view.js";
 import { AtPicker, atHits, ControlsContext, Menu, ModelMenu, TierMenu } from "./ComposerMenus.js";
 
 interface Props {
@@ -14,13 +15,13 @@ interface Props {
 	readonly onStop: () => void;
 	/** the connection is down: the line says so, and Send waits (typing does not) */
 	readonly down?: Down | null;
+	/** the Work's memo: the line not yet sent is kept in it, and comes back with the Work */
+	readonly view?: View;
 	/** the home screen draws the box in the middle, with the tray under it */
 	readonly inline?: boolean;
 	readonly children?: ReactNode;
 }
 
-/** A thing added to the line: a picture (sent as an image block) or a text file (sent as its text, named). */
-type Attachment = { readonly kind: "image"; readonly name: string; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif"; readonly data: string } | { readonly kind: "file"; readonly name: string; readonly text: string };
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const IMAGE_CAP = 5 * 1024 * 1024;
@@ -56,10 +57,11 @@ function lineOf(text: string, attached: readonly Attachment[]): WireInput {
  * by `+`; `@` names a file of the folder. The bar under the box holds `+`, this Work's tier, and its model and effort. A picture
  * waits in the box, unsent, while the model in use is not known to read images.
  */
-export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, children }: Props): ReactNode {
+export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, view, children }: Props): ReactNode {
 	const c = useContext(ControlsContext);
-	const [text, setText] = useState("");
-	const [attached, setAttached] = useState<readonly Attachment[]>([]);
+	const [text, setText] = useState(view?.draft?.text ?? "");
+	const [attached, setAttached] = useState<readonly Attachment[]>(view?.draft?.attached ?? []);
+	useEffect(() => void (view !== undefined && (view.draft = text === "" && attached.length === 0 ? null : { text, attached })), [view, text, attached]);
 	const [note, setNote] = useState<string | null>(null);
 	const [drag, setDrag] = useState(false);
 	const [at, setAt] = useState<{ readonly query: string; readonly from: number; readonly active: number } | null>(null);

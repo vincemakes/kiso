@@ -194,7 +194,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 	const [drawn, setDrawn] = useState(true);
 	return (
 		<RunContext.Provider value={turn.id}>
-			<div className={fresh.current ? "turn fresh" : "turn"}>
+			<div className={fresh.current ? "turn fresh" : "turn"} data-turn={turn.id}>
 			<MeAttachments pictures={turn.pictures} files={turn.files} />
 			{turn.user !== "" || (turn.pictures.length === 0 && turn.files.length === 0) ? <MeText text={turn.user} /> : null}
 			{turn.user !== "" ? (
