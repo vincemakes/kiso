@@ -23,6 +23,7 @@ import { ControlsContext, type Controls } from "./stream/ComposerMenus.js";
 import { signIn } from "./state/auth.js";
 import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
+import { addFolderTo } from "./state/folders.js";
 import { fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
 import { ago, t } from "./i18n/index.js";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
@@ -76,7 +77,7 @@ export function App(): ReactNode {
 
 	useEffect(() => {
 		if (signedIn !== true) return;
-		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, onRefused: () => setSignedIn(false) });
+		const next = openSession({ baseUrl: sessionsUrl(location.origin, target.key), sessionId: target.sessionId, key: target.key, onRefused: () => setSignedIn(false) });
 		(window as unknown as { __kiso?: Session }).__kiso = next; // read by the proof scripts through the debugging port
 		setOpened({ target, session: next });
 		return () => next.stop();
@@ -126,7 +127,7 @@ export function App(): ReactNode {
 
 	useEffect(() => {
 		if (view === "work" && signedIn === true) void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined);
-	}, [target, view, settingsBump, signedIn]);
+	}, [target, view, settingsBump, signedIn, lastPhase]);
 	const railOn = started && view === "work";
 	// an open panel takes the rail's place; closing it gives the rail back
 	const railOpen = railOn && railChoice && panel === null;
@@ -138,9 +139,11 @@ export function App(): ReactNode {
 			settings,
 			setTier: (mode) => saveSettings({ mode, session: target.sessionId }, target.key).then((r) => (setSettings(r), setSettingsBump((n) => n + 1))),
 			setModel: (patch) => saveSettings({ ...patch, session: target.sessionId }, target.key).then((r) => setSettings(r)),
-			atFiles: () => fetchAtFiles(target.key).then((r) => r.files),
+			atFiles: () => fetchAtFiles(target.key, target.sessionId).then((r) => r.files),
+			envVersion: settingsBump,
+			addFolder: () => addFolderTo(target.key, target.sessionId).then((m) => (setSettingsBump((n) => n + 1), m)),
 		}),
-		[settings, target],
+		[settings, target, settingsBump],
 	);
 	const openPanel = useCallback((kind: PanelKind, focus?: string): void => setPanel((p) => ({ kind, mode: p?.mode ?? "half", focus: focus ?? null })), []);
 	useEffect(() => {
@@ -348,7 +351,7 @@ export function App(): ReactNode {
 					</div>
 				)}
 			</main>
-			{railOn && session !== null ? <Rail state={session.state} env={env} git={git} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => void stopTask(target.key, target.sessionId, id)} /> : null}
+			{railOn && session !== null ? <Rail state={session.state} env={env} session={target.sessionId} where={target.key} onEnvChanged={() => setSettingsBump((n) => n + 1)} git={git} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => void stopTask(target.key, target.sessionId, id)} /> : null}
 			{dialog === "commit" && git?.branch != null ? (
 				<CommitDialog
 					branch={git.branch}

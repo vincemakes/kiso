@@ -40,17 +40,34 @@ const AT_CAP = 2000;
 const AT_SKIP = new Set([".git", "node_modules", ".kiso", "dist", "build", ".next", ".venv", "__pycache__"]);
 
 /** The files `@` can name, as the terminal lists them: git's own list (tracked and untracked, ignores honoured), else a bounded walk; `truncated` when the cap cut it. */
-export function atFiles(space: Space): { readonly files: readonly string[]; readonly truncated: boolean } {
+export function atFiles(space: Space, extra: readonly string[] = [], stops: readonly string[] = []): { readonly files: readonly string[]; readonly truncated: boolean } {
+	const own = rootFiles(space.workspace, "");
+	// only a root that is still its own real path (one replaced by a symlink is refused by the file tools, so it is not listed), and the walk
+	// itself leaves out the stop roots (`~/.ssh`, `~/.aws`, the kiso home ...): they are not listed and filtered out afterwards
+	const roots = extra.filter((r) => {
+		try {
+			return realpathSync(r) === r;
+		} catch {
+			return false;
+		}
+	});
+	const files = roots.reduce((all, root) => [...all, ...rootFiles(root, `${root}/`, stops)], own);
+	return { files: files.slice(0, AT_CAP), truncated: files.length > AT_CAP };
+}
+
+/** One root's files, each under `prefix` (the primary's are relative; an added folder's are absolute, as the model must name them). */
+function rootFiles(cwd: string, prefix: string, stops: readonly string[] = []): string[] {
 	let files: string[];
+	const out = stops.filter((s) => s.startsWith(`${cwd}/`)).map((s) => `:(exclude)${s.slice(cwd.length + 1)}`);
 	try {
-		files = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], { cwd: space.workspace, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24, timeout: 3000 }).split("\n").filter((p) => p !== "");
+		files = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard", ...(out.length > 0 ? ["--", ".", ...out] : [])], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 1 << 24, timeout: 3000 }).split("\n").filter((p) => p !== "").map((p) => `${prefix}${p}`);
 	} catch {
 		files = [];
 		const walk = (dir: string, prefix: string): void => {
 			try {
 				for (const e of readdirSync(dir, { withFileTypes: true })) {
 					if (files.length > AT_CAP) return;
-					if (AT_SKIP.has(e.name)) continue;
+					if (AT_SKIP.has(e.name) || stops.includes(`${dir}/${e.name}`)) continue;
 					if (e.isDirectory()) walk(`${dir}/${e.name}`, `${prefix}${e.name}/`);
 					else if (e.isFile()) files.push(`${prefix}${e.name}`);
 				}
@@ -58,7 +75,7 @@ export function atFiles(space: Space): { readonly files: readonly string[]; read
 				// an unreadable directory adds nothing
 			}
 		};
-		walk(space.workspace, "");
+		walk(cwd, prefix);
 	}
-	return { files: files.slice(0, AT_CAP), truncated: files.length > AT_CAP };
+	return files;
 }

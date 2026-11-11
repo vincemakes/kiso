@@ -3,6 +3,7 @@ import type { WireInput } from "@vincemakes/kiso-protocol";
 import { initialState, reduce, type Input, type State } from "./model.js";
 import { fmt, t } from "../i18n/index.js";
 import { unadmittedInput } from "./unadmitted.js";
+import { withNote } from "./envnote.js";
 
 /**
  * The page's one connection to the host: a long-lived event stream into the
@@ -34,7 +35,7 @@ export interface Session {
 	readonly stop: () => void;
 }
 
-export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; readonly onRefused?: () => void }): Session {
+export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; /** the Work's folder key (null: the one in use) */ readonly key: string | null; readonly onRefused?: () => void }): Session {
 	const client = createClient({ baseUrl: options.baseUrl });
 	const api: SessionClient = client.session(options.sessionId);
 	const state = initialState();
@@ -156,11 +157,11 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		link: () => link,
 		retryNow: () => api.retryNow(),
 		// an open run is resumed to its end first: the new line is not lost and the old run is not abandoned
-		send: (text) => act(() => api.run(text, state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
+		send: (text) => act(() => api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
 		steer: (text) =>
 			act(async () => {
 				try {
-					await api.steer(text);
+					await api.steer(withNote(options.key, options.sessionId, text));
 				} catch (e) {
 					// no run to join, or it was already closing: the line starts a run of its own
 					if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await api.run(text);

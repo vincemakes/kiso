@@ -10,6 +10,10 @@ export interface Controls {
 	readonly setModel: (patch: { readonly profile?: string; readonly effort?: string }) => Promise<void>;
 	/** the files `@` can name in this Work's folder (fetched when the picker first opens) */
 	readonly atFiles: () => Promise<readonly string[]>;
+	/** choose a folder and add it to this Work (the host's refusal in words, or null) */
+	readonly addFolder: () => Promise<string | null>;
+	/** changes when the Work's folders do: the `@` list is read again */
+	readonly envVersion: number;
 }
 export const ControlsContext = createContext<Controls | null>(null);
 

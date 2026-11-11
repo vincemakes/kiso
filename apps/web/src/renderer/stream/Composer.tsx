@@ -1,4 +1,4 @@
-import { useContext, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { WireContentBlock, WireInput } from "@vincemakes/kiso-protocol";
 import { fmt, t } from "../i18n/index.js";
 import { ArrowUp, I, Plus } from "./Icons.js";
@@ -65,6 +65,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	const [at, setAt] = useState<{ readonly query: string; readonly from: number; readonly active: number } | null>(null);
 	const [files, setFiles] = useState<readonly string[] | null>(null);
 	const box = useRef<HTMLTextAreaElement>(null);
+	useEffect(() => setFiles(null), [c?.envVersion]);
 	const pick = useRef<HTMLInputElement>(null);
 	const profile = c?.settings?.profiles.find((p) => p.name === c.settings?.profile) ?? null;
 	const blocked = attached.some((a) => a.kind === "image") && profile !== null && !profile.images;
@@ -189,6 +190,14 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 										<small>{t.addFilesNote}</small>
 									</span>
 								</button>
+								{c === null ? null : (
+									<button type="button" className="cm-i" data-add="folder" onClick={() => (close(), void c.addFolder().then(setNote))}>
+										<I.folder />
+										<span className="cm-t">
+											<b>{t.envAddFolder}</b>
+										</span>
+									</button>
+								)}
 								<button type="button" className="cm-i" data-add="at" onClick={() => (close(), setText(`${text}${text === "" || text.endsWith(" ") ? "" : " "}@`), requestAnimationFrame(() => box.current !== null && (box.current.focus(), watchAt(box.current))))}>
 									<span className="cm-at">@</span>
 									<span className="cm-t">
