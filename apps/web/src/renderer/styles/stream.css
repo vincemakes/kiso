@@ -156,10 +156,12 @@
 /* the "Latest" pill: the person scrolled up while the stream goes on */
 .latest { position: absolute; left: 50%; bottom: 124px; transform: translateX(-50%); background: #fff; color: var(--ink); font-size: 12.5px; padding: 5px 13px; border-radius: 15px; box-shadow: 0 0 0 1px var(--line), 0 6px 18px rgba(0, 0, 0, 0.1); animation: in 0.25s var(--ease) both; }
 /* a Work being opened: shown after a moment, so a quick one never flashes it */
-.loading { color: var(--mute); font-size: 13px; display: flex; flex-direction: column; gap: 10px; animation: in 0.3s var(--ease) 0.15s both; }
-.loading i { display: block; height: 12px; border-radius: 6px; background: #f1f1f3; }
-.loading i:nth-child(2) { width: 70%; }
-.loading i:nth-child(3) { width: 45%; }
+.loading { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; animation: in 0.3s var(--ease) 0.3s both; }
+.loading i { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, #f1f1f3 30%, #e7e7ea 50%, #f1f1f3 70%) 0 0 / 200% 100%; animation: sheen 1.4s linear infinite; }
+.loading .me-sk { align-self: flex-end; width: 42%; height: 38px; border-radius: 18px; margin-bottom: 12px; }
+.loading i:nth-child(3) { width: 85%; }
+.loading i:nth-child(4) { width: 55%; }
+@keyframes sheen { to { background-position: -200% 0; } }
 
 @media (prefers-reduced-motion: reduce) {
 	.ph .lab.shimmer, .th-h .lab.shimmer { animation: none; color: var(--mute); background: none; }

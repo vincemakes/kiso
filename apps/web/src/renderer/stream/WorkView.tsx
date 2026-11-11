@@ -25,10 +25,11 @@ interface Props {
 	readonly lead?: ReactNode;
 }
 
-/** A Work on its way: quiet lines, shown after a moment so a quick open never flashes them. */
+/** A Work on its way: nothing for the first 300 ms (a quick open never flashes it), then a few grey rows shaped like messages, with a light
+ *  shimmer, until the first turn is drawn. */
 export const Loading = (): ReactNode => (
-	<div className="loading" data-kind="loading" aria-busy="true">
-		{t.loading}
+	<div className="loading" data-kind="loading" role="status" aria-label={t.loading} aria-busy="true">
+		<i className="me-sk" />
 		<i />
 		<i />
 		<i />
