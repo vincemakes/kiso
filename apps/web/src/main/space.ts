@@ -164,8 +164,10 @@ export function createSpace(options: SpaceOptions): Space {
 	const times = new TimeIndex(store);
 	const augment: NonNullable<HttpHandlerOptions["augment"]> = (event: Event, sessionId: string): readonly WireFrame[] => {
 		const frames: WireFrame[] = [];
-		// when it happened: for every wire event but the two delta types, which are too many
-		if (!DELTAS.has(event.type) && toWireEvent(event) !== null) {
+		// when it happened: for every wire event but the two delta types, which are too many to send; a delta is still stamped on arrival (no frame),
+		// or the run's rate would read the call's first delta at the run's end, and a run would read slower or faster live than read back
+		if (DELTAS.has(event.type)) times.at(sessionId, event.seq);
+		else if (toWireEvent(event) !== null) {
 			const at: AtFrame = { seq: event.seq, ts: times.at(sessionId, event.seq) };
 			frames.push({ event: "at", data: at });
 		}
