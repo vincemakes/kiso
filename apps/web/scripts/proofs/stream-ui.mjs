@@ -140,6 +140,9 @@ check(say.border === "1px" && say.align === "left" && say.scroll === "auto" && s
 // the first message does not sit against the header: room above it, at the top of the stream
 const room0 = await sc("el.scrollTop = 0; return Math.round(document.querySelector('.me').getBoundingClientRect().top - el.getBoundingClientRect().top)");
 check(room0 >= 20, `the first message has ${room0} px above it at the top of the stream (at least 20)`);
+// the stream shows where the person is in it: a thin scroll bar, with the column still centered over the composer
+const bar = await app.evaluate("(() => { const m = (e) => Math.round(e.getBoundingClientRect().left + e.getBoundingClientRect().width / 2); return getComputedStyle(document.querySelector('.scroll')).scrollbarWidth + ' ' + (m(document.querySelector('.col')) - m(document.querySelector('.comp'))); })()");
+check(bar === "thin 0", `the stream has a scroll bar (${bar.split(" ")[0]}) and its column stays centered over the composer (off by ${bar.split(" ")[1]} px)`);
 await app.shot("7-narration-table");
 await app.close();
 verdict();
