@@ -1,7 +1,7 @@
 /** ADR-0058 Amendment 19: what the file tools reach beyond the workspace, and where they stop. */
 
 import { createHash } from "node:crypto";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -171,8 +171,29 @@ describe("the review's cases (M5, M6)", () => {
 		const rev = `rev:${createHash("sha256").update("x\n").digest("hex").slice(0, 16)}`;
 		const swap = () => (renameSync(work, `${work}-old`), symlinkSync(stop, work), rev);
 		const opts = { workspaceRoot: dir(), access: () => ({ added: [], outside: "allow" as const }), stopRoots: [stop], observedRevision: swap };
+		const before = statSync(stop).mtimeMs;
 		const w = await writeFileTool(opts).execute({ path: join(work, "f.txt"), content: "changed\n" } as never, CTX);
 		expect(w.isError).toBe(true);
 		expect(readFileSync(join(stop, "f.txt"), "utf8")).toBe("x\n");
+		// not even a temporary file was created and removed there: the folder's own entry list never changed (the review's M7)
+		expect(readdirSync(stop)).toEqual(["f.txt"]);
+		expect(statSync(stop).mtimeMs).toBe(before);
+	});
+
+	it("the same holds for edit_file", async () => {
+		const away = dir();
+		const stop = dir();
+		const work = join(away, "work");
+		mkdirSync(work);
+		writeFileSync(join(work, "f.txt"), "x\n");
+		writeFileSync(join(stop, "f.txt"), "x\n");
+		const rev = `rev:${createHash("sha256").update("x\n").digest("hex").slice(0, 16)}`;
+		const swap = () => (renameSync(work, `${work}-old`), symlinkSync(stop, work), rev);
+		const opts = { workspaceRoot: dir(), access: () => ({ added: [], outside: "allow" as const }), stopRoots: [stop], observedRevision: swap };
+		const before = statSync(stop).mtimeMs;
+		const e = await editFileTool(opts).execute({ path: join(work, "f.txt"), edits: [{ oldText: "x", newText: "y" }] } as never, CTX);
+		expect(e.isError).toBe(true);
+		expect(readdirSync(stop)).toEqual(["f.txt"]);
+		expect(statSync(stop).mtimeMs).toBe(before);
 	});
 });

@@ -1145,6 +1145,8 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 			// workspace; the directories this call creates are removed again
 			// if the file never lands.
 			let createdDirs: string | undefined;
+			// beyond the workspace: the folder must still be the one checked BEFORE anything is created or written in it (the review's M7)
+			if (movedUnder(reachParent, full)) return escapeResult(`${path}: its folder changed while the write was prepared — nothing was written`);
 			if (!exists) {
 				try {
 					createdDirs = mkdirSync(dirname(full), { recursive: true });
@@ -1178,6 +1180,10 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				// 0755 after replacement (rename drops the temp's default
 				// mode, so it is copied onto the temp first).
 				if (exists) preservedMode = statSync(full).mode & 0o7777;
+				if (movedUnder(reachParent, full)) {
+					dropCreatedDirs();
+					return escapeResult(`${path}: its folder changed while the write was prepared — nothing was written`);
+				}
 				writeFileSync(tmp, content, "utf8");
 				if (preservedMode !== undefined) chmodSync(tmp, preservedMode);
 				if (movedUnder(reachParent, full)) {
@@ -1547,6 +1553,7 @@ export function editFileTool(opts: WorkspaceToolsOptions): Tool<EditFileInput> {
 				// ONE buffer is written and hashed: the revision returned is the
 				// file's on disk, CRLF or not (the review's finding)
 				const bytesOut = Buffer.from(crlf ? edited.replace(/\n/g, "\r\n") : edited, "utf8");
+				if (movedUnder(reachParent, full)) return escapeResult(`${path}: its folder changed while the edit was prepared — nothing was written`);
 				writeFileSync(tmp, bytesOut);
 				chmodSync(tmp, preservedMode);
 				// WR-1A ③: revalidate against the citation right before the
