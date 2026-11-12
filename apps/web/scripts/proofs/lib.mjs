@@ -181,7 +181,7 @@ export async function launchApp({ data, workspace, fauxScript, env = {} }) {
 		await page.close();
 		await chrome.close();
 		host.child.kill("SIGTERM");
-		await new Promise((r) => (host.child.exitCode !== null ? r() : host.child.once("exit", r)));
+		await new Promise((r) => (host.child.exitCode !== null || host.child.signalCode !== null ? r() : host.child.once("exit", r)));
 	};
 	return { ...page, closeTab: page.close, host: () => host, chrome, restart, close };
 }
