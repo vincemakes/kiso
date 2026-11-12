@@ -99,7 +99,6 @@ await t2.click(`[data-menu-act="Remove from this Work"]`);
 check(await waitUntil(async () => (await t2.count("[data-group=added] .r-row")) === 0), "Remove reaches it too");
 check(await t2.evaluate("window.__posts.filter((u) => /work-folders|env-open/.test(u)).length === 3 && window.__posts.filter((u) => /work-folders|env-open/.test(u)).every((u) => u.includes('key='))"), "each of the three carried the Work's folder key");
 await t2.close();
-await app.closeTab();
-await app.chrome.close();
+await app.close();
 verdict();
 process.exit(process.exitCode ?? 0);

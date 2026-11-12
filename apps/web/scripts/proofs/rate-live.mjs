@@ -18,7 +18,6 @@ await waitUntil(async () => (await back.count("[data-kind=footer]")) > 0, 10_000
 const read = await rate(back);
 check(live > 130 && live < 280 && Math.abs(live - read) <= read * 0.25, `the run's rate is the same live (${live}) and read back (${read}): a 3 s tool wait is not decode time`);
 await back.close();
-await app.closeTab();
-await app.chrome.close();
+await app.close();
 verdict();
 process.exit(process.exitCode ?? 0);

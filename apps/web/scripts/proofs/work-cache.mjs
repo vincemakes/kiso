@@ -50,7 +50,6 @@ check(Math.abs(back.top - 200) < 60 && back.draft === "a line not sent yet" && b
 check(await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && (await q("document.querySelector('[data-act=allow]').disabled")) === false && !(await q("window.__kiso.stale()")), 10_000), "the approval that came while it was away shows, and is answerable once the host has been read");
 await app.click("[data-act=allow]");
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 13 && (await app.count("[data-kind=answer]")) === 13, 20_000), "answering it finishes the run: thirteen answers, none lost, none doubled");
-await app.closeTab();
-await app.chrome.close();
+await app.close();
 verdict();
 process.exit(process.exitCode ?? 0);

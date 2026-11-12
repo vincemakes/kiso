@@ -15,7 +15,6 @@ await app.evaluate(`(() => { window.__seen = []; const row = () => document.quer
 await sleep(1500);
 const seen = await app.evaluate("[...new Set(window.__seen)].join()");
 check(seen === "running+sp", `the running Work's row is running with its spinner on every frame after the switch (${seen})`);
-await app.closeTab();
-await app.chrome.close();
+await app.close();
 verdict();
 process.exit(process.exitCode ?? 0);
