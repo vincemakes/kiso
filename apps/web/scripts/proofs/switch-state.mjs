@@ -8,7 +8,7 @@ const app = await launchApp({ data: scratch("sw-data"), workspace: scratch("sw-w
 await app.evaluate(`window.__kiso.send("one")`);
 await waitUntil(async () => (await app.count("[data-kind=footer]")) > 0);
 await clientFor(app.host()).session("b2").run("two");
-await app.click("[data-act=sidebar]");
+if ((await app.evaluate("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]"); // it opens at first
 await waitUntil(async () => (await app.count(".item[data-work=b2] .sp")) === 1);
 // sample the row on every frame from the click until the page has read the Work
 await app.evaluate(`(() => { window.__seen = []; const row = () => document.querySelector('.item[data-work=b2]'); row().click(); const tick = () => { window.__seen.push(row().dataset.state + (row().querySelector('.sp') ? '+sp' : '')); if (window.__seen.length < 40) requestAnimationFrame(tick); }; tick(); })()`);
