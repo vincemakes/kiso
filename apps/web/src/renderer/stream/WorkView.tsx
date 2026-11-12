@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { KeyContext, WorkContext } from "./links.js";
 import { PinnedContext } from "./Artifacts.js";
 import { Composer } from "./Composer.js";
@@ -99,6 +99,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	};
 	const toBottom = (smooth = false): void => {
 		pinned.current = true;
+		session.view.pos = null;
 		setBehind(false);
 		room(0);
 		raise(0);
@@ -114,7 +115,22 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 		const top = el.getBoundingClientRect().top;
 		const at = Array.from(el.querySelectorAll(READING)).find((e) => e.getBoundingClientRect().top >= top);
 		anchor.current = at === undefined ? null : { el: at, top: at.getBoundingClientRect().top };
+		// kept with the Work, so a switch back finds them where they were: the block (its turn and its place among the turn's blocks) and its offset
+		const turnEl = at?.closest("[data-turn]");
+		session.view.pos = at === undefined || turnEl === null || turnEl === undefined ? null : { turn: turnEl.getAttribute("data-turn")!, n: Array.from(turnEl.querySelectorAll(READING)).indexOf(at), top: at.getBoundingClientRect().top - top };
 	};
+	// shown again where the person was reading, not at the end (before the first paint)
+	useLayoutEffect(() => {
+		const el = scroller.current;
+		const saved = session.view.pos;
+		const at = saved === null ? undefined : Array.from(column.current?.querySelector(`[data-turn="${CSS.escape(saved.turn)}"]`)?.querySelectorAll(READING) ?? [])[saved.n];
+		if (el === null || at === undefined || saved === null) return;
+		pinned.current = false;
+		anchor.current = { el: at, top: el.getBoundingClientRect().top + saved.top };
+		el.scrollTop += at.getBoundingClientRect().top - anchor.current.top;
+		mark(el);
+		setBehind(true);
+	}, []);
 	useEffect(() => {
 		const el = scroller.current;
 		const col = column.current;
@@ -181,6 +197,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 						if (gap(el) > 40) setBehind(true);
 					} else if (down && gap(el) < 40) {
 						pinned.current = true;
+						session.view.pos = null;
 						setBehind(false);
 						if (gap(el) < -1) {
 							// a wheel during the glide cancels it: glide again from wherever it stopped, never drop the room under the view
@@ -224,13 +241,13 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 				<div className="homebox" data-kind="home">
 					<h1>{t.homeTitle}</h1>
 					{home.guide ?? (
-						<Composer inline down={down} running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()}>
+						<Composer inline down={down} view={session.view} running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()}>
 							{home.tray}
 						</Composer>
 					)}
 				</div>
 			) : (
-				<Composer down={down} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
+				<Composer down={down} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

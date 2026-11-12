@@ -4,6 +4,7 @@ import { initialState, reduce, type Input, type State } from "./model.js";
 import { fmt, t } from "../i18n/index.js";
 import { unadmittedInput } from "./unadmitted.js";
 import { withNote } from "./envnote.js";
+import type { View } from "./view.js";
 
 /**
  * A Work's page state and its connection to the host, kept apart: the state (the reducer's turns, the unsent bits of a conversation)
@@ -35,6 +36,8 @@ export interface Session {
 	readonly verdict: (executionId: string, resolution: "rerun" | "abandoned") => Promise<void>;
 	/** what is drawn is from before a switch away: until the host has been asked again, an approval or a running state in it is not current */
 	readonly stale: () => boolean;
+	/** how the Work was left (reading position, unsent line): kept with its state */
+	readonly view: View;
 	/** open the stream: a first time it replays the log; after a detach it resumes from the last event the reducer applied */
 	readonly attach: () => void;
 	/** close the stream and apply what it brought, keeping the state */
@@ -48,6 +51,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	const listeners = new Set<() => void>();
 	let queue: Input[] = [];
 	// the last event the reducer APPLIED (not merely received: the queue drains once a frame): where a stream resumes after a detach
+	const view: View = { pos: null, draft: null };
 	let applied = -1;
 	let stale = false;
 	let attached = false;
@@ -236,6 +240,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 				if (reply.remaining === 0) await api.resume(); // the last verdict is in: the run can go on
 			}),
 		stale: () => stale,
+		view,
 		attach,
 		detach,
 	};

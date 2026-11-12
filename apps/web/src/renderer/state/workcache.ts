@@ -1,5 +1,6 @@
 import type { Item, State } from "./model.js";
 import type { Session } from "./store.js";
+import type { View } from "./view.js";
 
 /**
  * A few Works' page state, kept so that switching back shows one at once. It holds the reducer's built state (turns and their items), no
@@ -31,6 +32,9 @@ export function weigh(state: State): number {
 	return chars * 2 + state.tasks.length * 600;
 }
 
+/** What an unsent line holds (a picture is its base64). */
+const draftBytes = (v: View): number => (v.draft === null ? 0 : v.draft.text.length * 2 + v.draft.attached.reduce((n, a) => n + (a.kind === "image" ? a.data.length : a.text.length) * 2, 0));
+
 export class WorkCache {
 	readonly #held = new Map<string, { readonly session: Session; bytes: number }>();
 	readonly #max: number;
@@ -61,7 +65,7 @@ export class WorkCache {
 	/** The Work was left: what it holds is weighed again (it grew or shrank while it was shown). */
 	release(slot: string): void {
 		const e = this.#held.get(slot);
-		if (e !== undefined) e.bytes = weigh(e.session.state);
+		if (e !== undefined) e.bytes = weigh(e.session.state) + draftBytes(e.session.view);
 	}
 
 	/** The Work is gone (deleted): nothing of it is kept. */
