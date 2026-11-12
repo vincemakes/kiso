@@ -123,6 +123,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	let ctl: AbortController | null = null;
 	let link = { state: { kind: "connecting" } as ConnectionState, since: Date.now() };
 	const wake = (): void => (document.hidden ? undefined : api.retryNow());
+	const seen = (): void => void (document.hidden || refresh()); // the tab is back in front: what the host says now (a restart while it was away)
 	let stopped = false;
 	const handedBack = new Set<string>();
 	/** Input a steer handed to a run that never admitted it is the person's next message: a new run. A frame can be replayed
@@ -153,6 +154,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		link = { state: { kind: "connecting" } as ConnectionState, since: Date.now() };
 		for (const e of ["online", "focus"]) addEventListener(e, wake);
 		document.addEventListener("visibilitychange", wake);
+		document.addEventListener("visibilitychange", seen);
 		void refresh();
 		void (async () => {
 			for await (const ev of api.events({
@@ -191,6 +193,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		removeEventListener("online", wake);
 		removeEventListener("focus", wake);
 		document.removeEventListener("visibilitychange", wake);
+		document.removeEventListener("visibilitychange", seen);
 	};
 	const act = async (fn: () => Promise<unknown>): Promise<void> => {
 		try {

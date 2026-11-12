@@ -2,7 +2,7 @@
 // (by pid) and the main process starts another one on the same port and token. What the page then shows is the proof:
 // the window stays, a resume prompt for the open run, a verdict panel for an execution that may or may not have run,
 // a refused stop while an approval is waiting, and a task notice as a quiet line.
-import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
+import { scratch, checker, clientFor, launchApp, waitUntil, sleep } from "./lib.mjs";
 
 const { check, verdict } = checker("interrupt");
 const call = (callId, name, input) => ({ type: "tool_call_end", callId, name, input });
@@ -25,13 +25,26 @@ check((await app.text("[data-kind=answer]")) === "part one, part two" && (await 
 await app.close();
 
 // 2. killed while a command ran: kiso cannot say whether it ran; the person decides
-app = await launch([{ events: [call("k1", "shell", { command: "sleep 20; echo should-not-be-trusted" }), stop] }, end("I will not assume it ran.")], { KISO_WEB_MODE: "full-access", KISO_WEB_AUTORUN: "go" });
+app = await launch([{ events: [call("k1", "shell", { command: "sleep 20; echo should-not-be-trusted" }), stop] }, end("I will not assume it ran."), end("Second answer.")], { KISO_WEB_MODE: "full-access", KISO_WEB_AUTORUN: "go" });
 check(await waitUntil(async () => (await app.count(".step.running")) === 1), "the command is running");
 await killHost(app);
 check(await waitUntil(async () => (await app.count("[data-kind=verdicts]")) === 1) && /sleep 20/.test(await app.text("[data-kind=verdicts]")), "the page asks about the execution it cannot vouch for, naming the command");
 await app.shot("8-verdict-panel");
+check(/may or may not have finished/.test(await app.text("[data-kind=verdicts]")) && /Run it again: runs it again from the start\. Skip it: tells the model it did not run/.test(await app.text("[data-kind=verdicts]")), "the card says what happened in plain words, and what each button does");
+// a line typed while the verdict waits is not lost: it stays in the box, Send waits with the reason, nothing reaches the host
+const put = (v) => app.evaluate(`(() => { const t = document.querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ${JSON.stringify(v)}); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+await put("my message");
+const inputs = async () => (await clientFor(app.host()).session("int").replay()).events.filter((e) => e.type === "user_input").length;
+check(await waitUntil(async () => /Answer the card above first/.test((await app.text("[data-kind=held]")) ?? "") && (await app.evaluate("document.querySelector('[data-act=send]').disabled")) && (await app.evaluate("document.querySelector('textarea').value")) === "my message") && (await inputs()) === 1, "a line typed while the verdict waits stays in the box, Send waits with the reason, and nothing reaches the host");
 await app.click("[data-act=abandon]");
 check(await waitUntil(async () => (await app.text("[data-kind=footer]")) !== null, 20_000) && (await app.text("[data-kind=answer]")) === "I will not assume it ran." && (await app.count("[data-kind=verdicts]")) === 0, "Skip it: the last verdict resumes the run, which answers");
+check((await app.count("[data-kind=held]")) === 0 && !(await app.evaluate("document.querySelector('[data-act=send]').disabled")) && (await app.evaluate("document.querySelector('textarea').value")) === "my message", "once the verdict is given the kept line can go");
+// a send the host refuses puts the line back, with the host's words
+await app.evaluate(`window.__once = 1; const f = window.fetch; window.fetch = (u, o) => (o?.method === "POST" && /\\/run(\\?|$)/.test(String(u)) && window.__once-- > 0 ? Promise.resolve(new Response(JSON.stringify({ code: "open_run", message: "a run is open: resume it first" }), { status: 409 })) : f(u, o))`);
+await app.click("[data-act=send]");
+check(await waitUntil(async () => (await app.evaluate("document.querySelector('textarea').value")) === "my message" && /a run is open/.test((await app.text("[data-kind=attach-note]")) ?? "")), "a send the host refuses puts the line back in the box with the host's words, not lost");
+await app.click("[data-act=send]");
+check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2 && (await app.count("[data-kind=me]")) === 2, 20_000) && (await app.evaluate("document.querySelector('textarea').value")) === "", "sent again, it goes");
 await app.close();
 
 // 3. a stop while an approval waits is refused with a message; denying it lets the run go on. The page's question about the run

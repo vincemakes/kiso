@@ -69,6 +69,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);
 	const uncertain = (session.state.snapshot?.uncertain.length ?? 0) > 0;
+	const held = uncertain ? t.verdictFirst : null;
 	const message = session.message();
 	// Stick to the bottom while the person is there. Once they scroll up, the view is never moved for them: whatever the content does
 	// (a step grows, the process folds at the end), the line they were reading stays where it was, and a "Latest" pill offers the way down.
@@ -242,13 +243,13 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 				<div className="homebox" data-kind="home">
 					<h1>{t.homeTitle}</h1>
 					{home.guide ?? (
-						<Composer inline down={down} view={session.view} running={running} onSend={(x) => void session.send(x)} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()}>
+						<Composer inline down={down} held={held} view={session.view} running={running} onSend={(x) => session.send(x)} onSteer={(x) => session.steer(x)} onStop={() => void session.abort()}>
 							{home.tray}
 						</Composer>
 					)}
 				</div>
 			) : (
-				<Composer down={down} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), void session.send(x))} onSteer={(x) => void session.steer(x)} onStop={() => void session.abort()} />
+				<Composer down={down} held={held} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={(x) => session.steer(x)} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

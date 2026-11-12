@@ -63,6 +63,7 @@ export function VerdictPanel({ state, onVerdict }: { readonly state: State; read
 			{items.map((u) => (
 				<div key={u.executionId} className="verdict" data-execution={u.executionId}>
 					<pre>{what(state, u.callId, u.name)}</pre>
+					<div className="vnote">{t.verdictNote}</div>
 					<button className="btn pri" disabled={sent.has(u.executionId)} data-act="rerun" onClick={() => give(u.executionId, "rerun")}>
 						{t.rerun}
 					</button>
