@@ -10,7 +10,7 @@ const script = [
 const app = await launchApp({ data: scratch("br-data"), workspace: scratch("br-ws"), fauxScript: script, env: { KISO_WEB_MODE: "full-access", KISO_WEB_AUTORUN: "what is in the workspace?" } });
 check(await waitUntil(async () => (await app.text("[data-kind=footer]")) !== null), "the page drew a whole run, up to its footer");
 check((await app.count(".step[data-tool=shell] .bgtag")) === 1 && !(await app.text(".step[data-tool=shell]")).includes("did not record"), "a background: true command started its task runner");
-check(await waitUntil(async () => /t1 · exited 0/.test((await app.text(".step[data-tool=shell] .s-req")) ?? ""), 10_000), "the task ended exited 0");
+check(await waitUntil(async () => / · finished · /.test((await app.text(".step[data-tool=shell] .s-req")) ?? ""), 10_000), "the task ended, and its card says finished");
 check((await app.text("[data-kind=me]")) === "what is in the workspace?" && (await app.text("[data-kind=answer]")) === "The workspace is empty.", "the person's line and the answer");
 check((await app.text("[data-kind=answer] b")) === "empty", "bold is an element, not asterisks");
 check((await app.evaluate("document.querySelector('[data-kind=process]').dataset.folded")) === "true", "the process is folded after the run");
