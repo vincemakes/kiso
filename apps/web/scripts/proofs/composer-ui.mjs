@@ -46,6 +46,16 @@ const text = (sel) => app.text(sel).then((v) => v ?? "");
 await waitUntil(async () => (await text("[data-field=model-pill]")) === "mock-text", 20_000);
 check((await text("[data-field=tier-pill]")) === "Asks each time" && (await text("[data-field=model-pill]")) === "mock-text", "the bar under the box: this Work's tier and its model");
 
+const geo = (sel) => q(`(() => { const r = document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, b: r.bottom, c: (r.y + r.bottom) / 2 } : null; })()`);
+const setLine = (v) => q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, ${JSON.stringify(v)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+const order = () => q("[...document.querySelectorAll('[data-kind=settings] > *')].map((e) => e.querySelector('[data-act]')?.dataset.act ?? e.className).join()");
+// home: one tall box (the words on top, + and send at the bottom corners); under it the settings line: folder, model, mode, the hint
+{
+	const [t, p, sd, bx, sl] = await Promise.all([geo("[data-kind=composer] textarea"), geo("[data-act=add]"), geo("[data-act=send]"), geo(".box"), geo(".sline > *")]);
+	const same = (a, b) => Math.abs(a - b) < 4;
+	check((await order()) === "folder,model,tier,hint" && (await app.count(".box.grown")) === 1 && t.y < p.y && same(p.c, sd.c) && sl.y > bx.b && sl.x - bx.x < 24, `home: a tall box (text above, + and send below) with the settings line under it: ${await order()}`);
+	check((await app.count("[data-act=tier] svg")) === 0 && (await q("getComputedStyle(document.querySelector('[data-act=tier]')).color === getComputedStyle(document.querySelector('[data-act=model]')).color")), "the mode is a word in the same plain colour as the model, no icon");
+}
 // the tier: this Work's, and the rail agrees
 await app.click("[data-act=tier]");
 check(await waitUntil(async () => (await app.count("[data-tier]")) === 4), "the tier menu offers the four tiers");
@@ -102,6 +112,20 @@ await app.click('[data-file="errors.log"]');
 check(await waitUntil(async () => (await text("[data-kind=file-viewer] .fv-text")) === "line one\nline two\n"), "a click on the card shows its text in the viewer");
 await q("dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true");
 check(await waitUntil(async () => (await app.count("[data-kind=file-viewer]")) === 0), "Esc closes it");
+// a Work: one row (+ · text · send), no folder in the settings line; a second line grows it, text on top and + / send at the bottom corners, and an empty box folds back
+{
+	const row = async () => { const [t, p, sd] = await Promise.all([geo("[data-kind=composer] textarea"), geo("[data-act=add]"), geo("[data-act=send]")]); return Math.abs(p.c - t.c) < 12 && Math.abs(sd.c - t.c) < 12; };
+	check((await order()) === "model,tier" && (await app.count(".box.grown")) === 0 && (await row()), `a Work: one row and the settings line without a folder: ${await order()}`);
+	const send = () => q("(() => { const b = document.querySelector('[data-act=send]'); return b.classList.contains('ready') + ':' + getComputedStyle(b).backgroundColor; })()");
+	check(await waitUntil(async () => (await send()).startsWith("false:rgba(0, 0, 0, 0)"), 3000, 50), `empty, Send is an outline (${await send()})`);
+	await setLine("one line");
+	check((await app.count(".box.grown")) === 0 && (await waitUntil(async () => (await send()) === "true:rgb(28, 28, 30)", 3000, 50)), "a line typed: still one row, and Send is solid ink");
+	await setLine("one\ntwo\nthree");
+	const [t, p] = await Promise.all([geo("[data-kind=composer] textarea"), geo("[data-act=add]")]);
+	check(await waitUntil(async () => (await app.count(".box.grown")) === 1) && p.y >= t.b - 4, "a second line grows the box: the text on top, + below it");
+	await setLine("");
+	check(await waitUntil(async () => (await app.count(".box.grown")) === 0), "emptied, the box is one row again");
+}
 await app.click("[data-act=tier]");
 await app.click("[data-tier=accept-edits]");
 check(await waitUntil(async () => (await text("[data-field=tier-pill]")) === "Edits allowed" && (await envMode()) === "accept-edits"), "with the Work started, the pill's tier is the Work's");
@@ -117,6 +141,10 @@ await app.shot("composer-2-sent");
 await q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(el, 'take your time'); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
 await app.click("[data-act=send]");
 await waitUntil(async () => slow !== null, 20_000);
+check((await app.count("[data-act=stop] i")) === 1 && (await app.count("[data-act=send]")) === 0 && (await app.count(".sline.busy")) === 1, "while a run is live: a square to stop, and the settings line dims");
+await setLine("one more");
+check((await app.count("[data-act=send].ready")) === 1, "typing during a run turns the square back into Send (a steer)");
+await setLine("");
 const refused = await fetch(`${app.host().origin}/desk/settings`, { method: "POST", headers: { authorization: `Bearer ${app.host().token}` }, body: JSON.stringify({ session: "comp", profile: "text" }) });
 const after = await fetch(`${app.host().origin}/desk/settings?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
 check(refused.status === 409 && after.profile === "vision" && (await q("document.querySelector('[data-act=model]').disabled")), "while a call is in flight a switch is refused (409) and put back, and the pill is off");
@@ -138,7 +166,7 @@ check(shut.folded && shut.h < shut.full / 1.5 && shut.label === "Show more" && o
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === footers + 1, 20_000);
 
 // a refused request (a spent key or plan) is said under the run, with what the provider answered (owner 2026-11-03: the reply was blank)
-await waitUntil(async () => (await app.count("[data-kind=footer]")) > 0 && (await q("document.querySelector('.cbar') !== null")), 20_000);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) > 0 && (await q("document.querySelector('.sline') !== null")), 20_000);
 const ends = await app.count("[data-kind=run-end]");
 await q(`window.__kiso.send("this hits a spent plan")`);
 check(await waitUntil(async () => (await app.count("[data-kind=run-end][data-outcome=error]")) === ends + 1, 20_000) && /The run failed: .*403.*An active subscription is required/.test(await text("[data-kind=run-end][data-outcome=error]")), `a refused request says so under the run, with the provider's words ("${await text("[data-kind=run-end]")}")`);

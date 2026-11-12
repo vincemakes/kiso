@@ -26,8 +26,8 @@ const h = clientFor(app.host());
 const q = (js) => app.evaluate(js);
 for (let i = 0; i < 12; i++) { await h.session("big").run(`question ${i}`); await waitUntil(async () => !(await h.session("big").state()).running); }
 await h.session("small").run("hi");
-await waitUntil(async () => (await app.count("[data-kind=footer]")) === 12 && (await q("window.__kiso.loaded()")), 30_000);
-await app.click("[data-act=sidebar]");
+check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 12 && (await q("window.__kiso.loaded()")), 30_000), `the big Work is drawn whole before the walk (${await app.count("[data-kind=footer]")} footers)`);
+if ((await q("document.querySelector('.win').dataset.side")) !== "1") await app.click("[data-act=sidebar]"); // it opens at first
 await waitUntil(async () => (await app.count(".item[data-work=small]")) === 1);
 await q("window.__big = window.__kiso");
 // the reading position and the unsent line are kept with the Work
@@ -46,7 +46,7 @@ await app.click(".item[data-work=big]");
 check(await waitUntil(async () => (await q("window.__kiso === window.__big && window.__kiso.state.turns.length === 13")), 200, 10), `back on the big Work its runs are drawn at once, from the kept state, not a new one (${Date.now() - t0} ms)`);
 await sleep(300);
 const back = await q("JSON.stringify({ top: document.querySelector('.scroll').scrollTop, draft: document.querySelector('textarea').value, latest: !!document.querySelector('[data-act=latest]') })").then(JSON.parse);
-check(Math.abs(back.top - 200) < 60 && back.draft === "a line not sent yet" && back.latest, `back on the big Work the reading position (${back.top} of 200) and the unsent line are back, and the way to the end is offered`);
+check(Math.abs(back.top - 200) < 60 && back.draft === "a line not sent yet" && back.latest, `back on the big Work the reading position (${back.top} of 200) and the unsent line are back, and the way to the end is offered (${JSON.stringify(back)})`);
 check(await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && (await q("document.querySelector('[data-act=allow]').disabled")) === false && !(await q("window.__kiso.stale()")), 10_000), "the approval that came while it was away shows, and is answerable once the host has been read");
 await app.click("[data-act=allow]");
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) === 13 && (await app.count("[data-kind=answer]")) === 13, 20_000), "answering it finishes the run: thirteen answers, none lost, none doubled");

@@ -25,37 +25,34 @@ export function Tray({ env, onPick, onOpen }: Props): ReactNode {
 		return () => removeEventListener("click", close);
 	}, [menu]);
 	return (
-		<div className="tray" data-kind="tray">
-			<div className="trayfold">
-				<button
-					className="chip"
-					title={t.folderTip}
-					data-act="folder"
-					onClick={(e) => {
-						e.stopPropagation();
-						setMenu(!menu);
-					}}
-				>
-					<svg className="ico" viewBox="0 0 24 24">
-						<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-					</svg>
-					<span data-field="folder">{env?.folder ?? ""}</span>
-				</button>
-				{menu ? (
-					<div className="menu fmenu" data-kind="folder-menu">
-						{recent.slice(0, 6).map((r) => (
-							<button key={r.path} onClick={() => onOpen(r.path)} data-recent={r.path} title={r.path}>
-								{r.folder}
-							</button>
-						))}
-						{recent.length > 0 ? <div className="sep" /> : null}
-						<button onClick={choose} data-act="pick">
-							{t.folderChoose}
+		<div className="trayfold" data-kind="tray">
+			<button
+				className="chip"
+				title={t.folderTip}
+				data-act="folder"
+				onClick={(e) => {
+					e.stopPropagation();
+					setMenu(!menu);
+				}}
+			>
+				<svg className="ico" viewBox="0 0 24 24">
+					<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+				</svg>
+				<span data-field="folder">{env?.folder ?? ""}</span>
+			</button>
+			{menu ? (
+				<div className="menu fmenu" data-kind="folder-menu">
+					{recent.slice(0, 6).map((r) => (
+						<button key={r.path} onClick={() => onOpen(r.path)} data-recent={r.path} title={r.path}>
+							{r.folder}
 						</button>
-					</div>
-				) : null}
-			</div>
-			<span className="hint">{"⌘K"}</span>
+					))}
+					{recent.length > 0 ? <div className="sep" /> : null}
+					<button onClick={choose} data-act="pick">
+						{t.folderChoose}
+					</button>
+				</div>
+			) : null}
 		</div>
 	);
 }

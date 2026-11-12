@@ -21,10 +21,16 @@ svg { display: block; }
 
 /* composer */
 .comp { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(680px, calc(100% - 40px)); }
-.box { position: relative; background: #fff; border-radius: 22px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.04); padding: 8px 8px 8px 14px; display: flex; flex-direction: column; gap: 4px; transition: box-shadow 0.15s; }
-.box textarea { width: 100%; border: 0; outline: 0; resize: none; background: none; font-size: 14.5px; line-height: 1.5; max-height: 160px; padding: 6px 4px 2px 2px; }
+.box { position: relative; background: #fff; border-radius: 22px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.04); padding: 6px 8px; display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "plus text send"; align-items: center; column-gap: 4px; transition: box-shadow 0.15s; }
+.box.grown { grid-template-columns: 1fr auto; grid-template-areas: "atts atts" "text text" "plus send"; padding: 10px 10px 8px 16px; row-gap: 2px; }
+.box > .atts { grid-area: atts; }
+.box > .cm { grid-area: plus; justify-self: start; }
+.box > .sendb { grid-area: send; justify-self: end; }
+.box textarea { grid-area: text; width: 100%; min-width: 0; border: 0; outline: 0; resize: none; background: none; font-size: 14.5px; line-height: 1.5; max-height: 160px; padding: 6px 4px 5px; }
+.box.grown textarea { padding: 4px 6px 6px 0; }
+.comp.inline .box textarea { min-height: 56px; }
 .box textarea::placeholder { color: #a5a5a8; }
-.sendb { flex: none; width: 32px; height: 32px; border-radius: 50%; background: #d7d7d5; display: grid; place-items: center; color: #fff; transition: 0.3s; }
-.sendb.ready { background: var(--ink); }
-.sendb.run { background: var(--ink); }
+/* send: an outline while there is nothing to send or it must wait; solid ink when ready; a square to stop */
+.sendb { flex: none; width: 32px; height: 32px; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1.5px #cfcfd2; display: grid; place-items: center; color: #b5b5b9; transition: 0.2s; }
+.sendb.ready, .sendb.run { background: var(--ink); box-shadow: none; color: #fff; }
 .sendb i { display: block; width: 10px; height: 10px; background: #fff; border-radius: 2px; }

@@ -43,30 +43,19 @@ export function Menu({ label, className, act, disabled, title, down, children }:
 	);
 }
 
-export const TIER_CLASS: Readonly<Record<string, string>> = { plan: "plan", "full-access": "full" };
-
 /** The Work's permission tier: read-only, ask, edits allowed, full access; a change reaches this Work only. */
 export function TierMenu({ c }: { readonly c: Controls }): ReactNode {
 	const mode = c.settings?.mode ?? "default";
 	return (
 		<Menu
 			act="tier"
-			className={TIER_CLASS[mode] ?? ""}
-			label={
-				<>
-					<svg className="i16" viewBox="0 0 24 24" aria-hidden="true">
-						<path d="M12 21s7-3.5 7-9V6l-7-3-7 3v6c0 5.5 7 9 7 9z" />
-					</svg>
-					<span data-field="tier-pill">{t.tier[mode] ?? mode}</span>
-				</>
-			}
+			label={<span data-field="tier-pill">{t.tier[mode] ?? mode}</span>}
 		>
 			{(close) => (
 				<>
 					<div className="cm-h">{t.tierHead}</div>
 					{(c.settings?.modes ?? []).map((m) => (
 						<button type="button" key={m.value} className="cm-i" role="menuitemradio" aria-checked={m.value === mode} data-tier={m.value} onClick={() => void c.setTier(m.value).then(close)}>
-							<span className={`cm-dot ${TIER_CLASS[m.value] ?? ""}`} />
 							<span className="cm-t">
 								<b>{t.tier[m.value] ?? m.label}</b>
 								<small>{t.tierNote[m.value] ?? ""}</small>
@@ -99,7 +88,7 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 			{...(running ? { title: t.modelWhileRunning } : {})}
 			label={
 				<>
-					<span data-field="model-pill">{current?.model ?? t.noModel}</span>
+					<span data-field="model-pill" title={current?.model}>{current === null ? t.noModel : (current.model.split("/").pop() ?? current.model)}</span>
 					{effort !== null ? <span className="sub">· {t.effort[effort] ?? effort}</span> : null}
 					<I.chevron />
 				</>
