@@ -15,6 +15,7 @@ writeFileSync(join(workspace, "pics", "dot.png"), Buffer.from("iVBORw0KGgoAAAANS
 const ANSWER = "See notes/plan.md and missing/gone.md, the picture `pics/dot.png`, [the repo](https://github.com/vincemakes/kiso) and [the dev server](http://localhost:5173/).\n\n```\nnotes/plan.md missing/gone.md\n```";
 const app = await launchApp({ data: scratch("chips-data"), workspace, env: { KISO_WEB_SESSION: "chips" }, fauxScript: [{ events: [{ type: "text_delta", text: ANSWER }, { type: "stop", reason: "end_turn" }] }] });
 const q = (js) => app.evaluate(js);
+await app.click("[data-act=sidebar]"); // it opens at first: these lines were measured with it closed
 // for each chip and link: how far its text's bottom is from the text just before it
 const BASELINE = `[...document.querySelectorAll('[data-chip], [data-link]')].map((el) => { const at = (n, a, b) => { const r = document.createRange(); r.setStart(n, a); r.setEnd(n, b); return r.getClientRects()[0].bottom; }; const own = [...el.childNodes].filter((n) => n.nodeType === 3).at(-1), prev = el.previousSibling; return Math.abs(at(own, 0, 1) - at(prev, prev.length - 1, prev.length)); })`;
 await q(`window.__asked = []; const f = window.fetch; window.fetch = (u, o) => (String(u).startsWith("/desk/exists") && window.__asked.push(JSON.parse(o.body).paths), f(u, o)); true`);

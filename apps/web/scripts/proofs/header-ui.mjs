@@ -40,6 +40,8 @@ const same = [railOpen.keys, railClosed, panel.keys].every((k) => k.order && k.a
 check(same && railClosed.h.r > railOpen.keys.h.r, `the overview key and ⋯ sit at the conversation's top right, in that order, at the same place with the rail open, closed, or given way to a panel (${JSON.stringify([railOpen.keys.at, railClosed.at, panel.keys.at])})`);
 await app.click("[data-act=panel-close]");
 await sleep(500);
+if ((await q("document.querySelector('.win').dataset.side")) !== "0") await app.click("[data-act=sidebar]"); // it opens at first: close it for this measure
+await sleep(500);
 const before = await box(".col");
 await app.click("[data-act=rail]");
 await app.click("[data-act=sidebar]");

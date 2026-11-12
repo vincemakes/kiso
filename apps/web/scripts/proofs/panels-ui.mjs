@@ -28,6 +28,7 @@ const app = await launchApp({ data: scratch("pn-data"), workspace, env: { KISO_W
 	{ events: [{ type: "text_delta", text: "Done." }, { type: "stop", reason: "end_turn" }] },
 ] });
 const q = (js) => app.evaluate(js);
+await app.click("[data-act=sidebar]"); // it opens at first: these widths were measured with it closed
 await q(`window.__kiso.send("edit the readme and start the dev server")`);
 check(await waitUntil(async () => (await app.count("[data-kind=footer]")) > 0 && (await app.count("[data-field=task]")) === 1, 40_000), "a run edits a file and starts a background command");
 const geo = () => q(`(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const m = r('.main'), c = r('.chat'), p = r('.panel'); return JSON.stringify({ mainRight: Math.round(m.right), chatRight: Math.round(c.right), panelLeft: p ? Math.round(p.left) : null, mainLeft: Math.round(m.left), width: innerWidth }); })()`).then(JSON.parse);

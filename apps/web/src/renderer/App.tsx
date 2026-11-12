@@ -37,7 +37,7 @@ const NO_SUBSCRIPTION = (): (() => void) => () => undefined;
 const NO_VERSION = (): number => 0;
 
 /**
- * The window: the sidebar (closed at first; opening pushes the Work to the
+ * The window: the sidebar (open at first, closed in a narrow window; opening pushes the Work to the
  * right), the Work in view or Settings. A Work is opened as a session on its
  * folder's routes; opening another closes the stream of the one before.
  */
@@ -54,7 +54,7 @@ export function App(): ReactNode {
 	// null while the page trades its connect code; false: no session (the page shows one line, "run kiso web")
 	const [signedIn, setSignedIn] = useState<boolean | null>(null);
 	useEffect(() => void signIn(launch.code).then(setSignedIn), []);
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState(() => !isNarrow()); // open at first; a window under 864 px starts with it floating closed
 	const narrow = useSyncExternalStore(onNarrow, isNarrow);
 	const [browsing, setBrowsing] = useState(false);
 	const [view, setView] = useState<"work" | "settings">("work");
