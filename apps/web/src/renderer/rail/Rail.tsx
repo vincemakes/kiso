@@ -9,6 +9,7 @@ import { artifactIcon, I } from "../stream/Icons.js";
 import { nameOf } from "../stream/Artifacts.js";
 import { useOpenArtifact } from "../stream/Lightbox.js";
 import { outputsOf, railOf, workChangesOf } from "./derive.js";
+import { taskNameOf } from "../state/taskname.js";
 import { Environment } from "./Environment.js";
 import { Tip, type TipData } from "./Tip.js";
 
@@ -61,7 +62,7 @@ const pctOf = (n: number, of: number | null): string => (of === null || of === 0
 
 /**
  * The rail: one column of hairline sections, glanceable, no cards. Where it runs first (the computer, the folder and its parent,
- * the branch), then Context (folded to one row and a bar), the background tasks (only when there are any; the finished ones folded
+ * the branch), then Context (folded to one row and a bar), the background tasks (only when there are any; named by what they do, running first
  * into one row), the files this Work changed (with the branch when a commit or pull request is offered), and everything it made
  * (opened the one way the stream opens them). It carries no state of the run itself: the stream shows the live
  * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
@@ -72,7 +73,6 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const openArtifact = useOpenArtifact();
 	const [hover, setHover] = useState<{ readonly tip: TipData; readonly top?: number; readonly bottom?: number } | null>(null);
 	const [folded, setFolded] = useState<Readonly<Record<string, boolean>>>({ context: true });
-	const [finished, setFinished] = useState(false);
 	const [allOutputs, setAllOutputs] = useState(false);
 	const [allChanges, setAllChanges] = useState(false);
 	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
@@ -90,6 +90,8 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const share = used === null ? 0 : Math.min(100, (used / window) * 100);
 	const live = state.tasks.filter((x) => x.endedAt === null);
 	const done = state.tasks.filter((x) => x.endedAt !== null);
+	// running first, newest start first, then the ended, newest end first: output never moves a row
+	const ordered = [...live].sort((a, b) => b.startedAt - a.startedAt).concat([...done].sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)));
 	const changes = workChangesOf(state, env?.root ?? null);
 	const g = git?.repo === true ? git : null;
 	const rows = g !== null ? g.files.map((f) => ({ path: f.path, added: f.added ?? 0, removed: f.removed ?? 0, created: f.state === "new", exact: f.added !== null, deleted: f.state === "deleted" })) : changes.map((c) => ({ ...c, deleted: false }));
@@ -113,29 +115,17 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const segments = fixed === null || used === null ? null : [{ key: "conversation", name: t.ctxConversation, tokens: Math.max(0, used - fixed.reduce((n, f) => n + f.tokens, 0)) }, ...fixed];
 	const outputs = outputsOf(state);
 	const now = Date.now();
-	const task = (x: TaskRow): ReactNode => (
-		<div className={`r-row${x.endedAt === null ? "" : " dim"}`} key={x.id} data-field="task" onClick={() => openPanel("term", x.id)} {...over({ head: x.command, log: x.tail, rows: [[t.railState, x.label]] })}>
-			<span className="r-ic">
-				<I.term />
-			</span>
-			<span className="r-nm mono">{x.command}</span>
-			<span className="r-mt">{clock(x.elapsedMs)}</span>
-			{x.endedAt === null ? (
-				<button
-					className="r-stop"
-					aria-label={t.stopTask}
-					title={t.stopTask}
-					data-act="task-stop"
-					onClick={(e) => {
-						e.stopPropagation();
-						onStopTask(x.id);
-					}}
-				>
-					<i />
-				</button>
-			) : null}
-		</div>
-	);
+	const task = (x: TaskRow): ReactNode => {
+		const n = taskNameOf(state, x);
+		return (
+			<div className={`r-row${x.endedAt === null ? "" : " dim"}`} key={x.id} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over({ head: n.command, log: x.tail, rows: [[t.railState, n.status]] })}>
+				<span className="r-ic"><I.term /></span>
+				<span className="r-nm">{n.title}</span>
+				<span className="r-mt">{n.status} · {clock(x.elapsedMs)}</span>
+				{x.endedAt === null ? <button className="r-stop" aria-label={t.stopTask} title={t.stopTask} data-act="task-stop" onClick={(e) => (e.stopPropagation(), onStopTask(x.id))}><i /></button> : null}
+			</div>
+		);
+	};
 	return (
 		<aside className="rail" data-kind="rail">
 			<div className="rail-in">
@@ -210,19 +200,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 					</section>
 					{state.tasks.length === 0 ? null : (
 						<Section id="tasks" name={t.railTasks} {...(live.length > 0 ? { count: live.length } : {})} open={!folded["tasks"]} onToggle={toggle("tasks")}>
-							{live.map(task)}
-							{done.length === 0 ? null : (
-								<button className="r-row dim" onClick={() => setFinished(!finished)} aria-expanded={finished} data-act="finished">
-									<span className="r-ic">
-										<I.check />
-									</span>
-									<span className="r-nm">{fmt(t.railFinished, { n: done.length })}</span>
-									<span className={`r-ic r-chev${finished ? "" : " turned"}`}>
-										<I.chevron />
-									</span>
-								</button>
-							)}
-							{finished ? done.map(task) : null}
+							{ordered.map(task)}
 						</Section>
 					)}
 					{rows.length === 0 && action === null && g?.pr == null ? null : (

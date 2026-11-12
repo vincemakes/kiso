@@ -87,7 +87,7 @@ const edit = await text(".step[data-tool=edit_file] .s-lines > div");
 check((await text(".step .s-verb")).map((v) => v.split(":")[1]).join() === "Read,Edit,Run", "three steps: Read, Edit, Run");
 check(edit.filter((l) => l.startsWith("d:")).length === 5 && edit.filter((l) => l.startsWith("a:")).length === 3, "the edit step shows its diff: 5 removed, 3 added");
 check((await text(".step[data-tool=read_file] .s-lines > div"))[0] === ":# kiso", "the read step shows the first lines of the file");
-check(await waitUntil(async () => /t1 · exited 0/.test((await app.text(".step[data-tool=shell] .s-req")) ?? ""), 8000) && (await app.count(".step[data-tool=shell] .bgtag")) === 1, "the command that moved to the background shows its tag, its task and its end");
+check(await waitUntil(async () => / · finished · /.test((await app.text(".step[data-tool=shell] .s-req")) ?? ""), 8000) && (await app.count(".step[data-tool=shell] .bgtag")) === 1, "the command that moved to the background shows its tag, its task and its end");
 check(/^Thought for \d+ s$/.test(await app.text(".think .lab")), "the thinking row ends as Thought for N s");
 await app.click(".th-h");
 await sleep(700);

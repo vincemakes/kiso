@@ -1,4 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useState, type ReactNode } from "react";
+import { taskNameOf } from "../state/taskname.js";
+import { RootContext } from "../stream/root.js";
 import { clock, t } from "../i18n/index.js";
 import { fetchTaskLog } from "../state/api.js";
 import type { State, Step } from "../state/model.js";
@@ -18,6 +20,8 @@ export const COMMANDS = "commands";
 export function Term({ state, wkey, sessionId, tab }: Props): ReactNode {
 	const [log, setLog] = useState<{ readonly lines: readonly string[]; readonly truncated: boolean } | null>(null);
 	const task = state.tasks.find((x) => x.id === tab);
+	const root = useContext(RootContext);
+	const name = task === undefined ? null : taskNameOf(state, task);
 	const running = task !== undefined && task.endedAt === null;
 	useEffect(() => {
 		if (task === undefined) return;
@@ -33,11 +37,19 @@ export function Term({ state, wkey, sessionId, tab }: Props): ReactNode {
 	const commands = (state.turns.at(-1)?.items ?? []).filter((i): i is Step => i.kind === "step" && i.name === "shell");
 	return (
 		<div data-panel-body="term">
-			{task !== undefined ? (
+			{task !== undefined && name !== null ? (
 				<>
-					<div className="tmeta mono">
-						{task.command} · {task.label} · {clock(task.elapsedMs)}
+					<div className="tmeta">
+						<b>{name.title}</b> · {name.status} · {clock(task.elapsedMs)}
 					</div>
+					<dl className="tdet mono" data-field="task-detail">
+						<dt>{t.taskCommand}</dt>
+						<dd>{name.command}</dd>
+						<dt>{t.taskFolder}</dt>
+						<dd>{name.folder ?? root}</dd>
+						<dt>{t.taskId}</dt>
+						<dd>{task.id}</dd>
+					</dl>
 					<div className="log" data-log="task">
 						{log === null || log.lines.length === 0 ? t.noLog : log.lines.join("\n")}
 					</div>

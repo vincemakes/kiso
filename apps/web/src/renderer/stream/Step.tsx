@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { clock, fmt, t } from "../i18n/index.js";
 import { editDiff } from "../state/diff.js";
 import { delta } from "../state/groups.js";
+import { statusOf, titleOf } from "../state/taskname.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
 import { Chevron, toolIcon } from "./Icons.js";
@@ -86,7 +87,7 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 			{step.taskId !== null && task !== undefined ? (
 				<div className="s-req">
 					{!frozen && task.endedAt === null ? <span className="sp" /> : null}
-					{task.id} · {task.label} · {clock(task.elapsedMs)}
+					{titleOf(typeof step.input?.["command"] === "string" ? step.input["command"] : task.command, step.input?.["description"])} · {statusOf(task.label)} · {clock(task.elapsedMs)}
 				</div>
 			) : null}
 			{/* a failed step says what went wrong once, in red: its output (the same message) is not repeated above it */}
