@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { EnvReply } from "../../shared/settings.js";
 import { t } from "../i18n/index.js";
 import { fetchRecent, pickFolder, Refusal } from "../state/desk.js";
+import { I } from "../stream/Icons.js";
 
 interface Props {
 	readonly env: EnvReply | null;
@@ -39,6 +40,7 @@ export function Tray({ env, onPick, onOpen }: Props): ReactNode {
 					<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
 				</svg>
 				<span data-field="folder">{env?.folder ?? ""}</span>
+				<I.chevron />
 			</button>
 			{menu ? (
 				<div className="menu fmenu" data-kind="folder-menu">

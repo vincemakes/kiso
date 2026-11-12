@@ -74,6 +74,8 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 	const s = c.settings;
 	const current = s?.profiles.find((p) => p.name === s.profile) ?? null;
 	const effort = s?.effort?.current ?? null;
+	// the line names the effort that will be used: the one chosen, else the route's preset
+	const shown = effort ?? s?.effort?.default ?? null;
 	const [err, setErr] = useState<string | null>(null);
 	// a refusal (a run in flight) is said in the menu, never swallowed
 	const change = (patch: { readonly profile?: string; readonly effort?: string }, close?: () => void): void =>
@@ -89,8 +91,7 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 			label={
 				<>
 					<span data-field="model-pill" title={current?.model}>{current === null ? t.noModel : (current.model.split("/").pop() ?? current.model)}</span>
-					{effort !== null ? <span className="sub">· {t.effort[effort] ?? effort}</span> : null}
-					<I.chevron />
+					{shown !== null ? <span className="sub" data-field="effort-pill">{t.effort[shown] ?? shown}</span> : null}
 				</>
 			}
 		>

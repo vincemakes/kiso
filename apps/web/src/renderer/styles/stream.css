@@ -151,10 +151,10 @@
 .ask.resume .btn { margin-top: 8px; }
 .verdict { margin-top: 8px; }
 .verdict pre { margin: 0 0 8px; }
-.toast { position: absolute; left: 50%; bottom: 92px; transform: translateX(-50%); background: rgba(28, 28, 30, 0.9); color: #fff; font-size: 12.5px; padding: 6px 14px; border-radius: 14px; animation: in 0.3s var(--ease) both; }
+.toast { position: absolute; left: 50%; bottom: calc(var(--comp-h, 88px) + 28px); transform: translateX(-50%); background: rgba(28, 28, 30, 0.9); color: #fff; font-size: 12.5px; padding: 6px 14px; border-radius: 14px; animation: in 0.3s var(--ease) both; }
 
 /* the "Latest" pill: the person scrolled up while the stream goes on */
-.latest { position: absolute; left: 50%; bottom: 124px; transform: translateX(-50%); background: #fff; color: var(--ink); font-size: 12.5px; padding: 5px 13px; border-radius: 15px; box-shadow: 0 0 0 1px var(--line), 0 6px 18px rgba(0, 0, 0, 0.1); animation: in 0.25s var(--ease) both; }
+.latest { position: absolute; left: 50%; bottom: calc(var(--comp-h, 88px) + 32px); transform: translateX(-50%); background: #fff; color: var(--ink); font-size: 12.5px; padding: 5px 13px; border-radius: 15px; box-shadow: 0 0 0 1px var(--line), 0 6px 18px rgba(0, 0, 0, 0.1); animation: in 0.25s var(--ease) both; }
 /* a Work being opened: shown after a moment, so a quick one never flashes it */
 .loading { display: flex; flex-direction: column; gap: 12px; padding-top: 8px; animation: in 0.3s var(--ease) 0.3s both; }
 .loading i { display: block; height: 12px; border-radius: 6px; background: linear-gradient(90deg, #f1f1f3 30%, #e7e7ea 50%, #f1f1f3 70%) 0 0 / 200% 100%; animation: sheen 1.4s linear infinite; }
@@ -202,9 +202,10 @@
 .cpill { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 10px; border-radius: 999px; color: var(--mute); font-size: 13px; white-space: nowrap; }
 .sline { display: flex; align-items: center; gap: 2px; padding: 6px 0 0 6px; }
 .sline .hint { margin-left: auto; padding-right: 6px; color: var(--faint); font-size: 12px; }
-.sline .chip { background: none; color: var(--mute); }
+.sline .chip { height: 30px; padding: 0 10px; gap: 5px; border-radius: 999px; background: none; color: var(--mute); }
 .sline .chip:hover { background: var(--sunk); }
-.sline .chip .ico { display: none; }
+.sline .chip .ico { width: 14px; height: 14px; }
+.sline > :is(.cm, .trayfold) + .cm::before { content: "·"; align-self: center; color: var(--faint); padding: 0 1px; }
 .sline.busy .cpill { opacity: 0.55; }
 .box .cpill.round { color: #3a3a3e; }
 .cpill:hover:not(:disabled) { background: var(--sunk); }

@@ -55,6 +55,7 @@ const order = () => q("[...document.querySelectorAll('[data-kind=settings] > *')
 	const same = (a, b) => Math.abs(a - b) < 4;
 	check((await order()) === "folder,model,tier,hint" && (await app.count(".box.grown")) === 1 && t.y < p.y && same(p.c, sd.c) && sl.y > bx.b && sl.x - bx.x < 24, `home: a tall box (text above, + and send below) with the settings line under it: ${await order()}`);
 	check((await app.count("[data-act=tier] svg")) === 0 && (await q("getComputedStyle(document.querySelector('[data-act=tier]')).color === getComputedStyle(document.querySelector('[data-act=model]')).color")), "the mode is a word in the same plain colour as the model, no icon");
+	check((await app.count("[data-act=folder] svg.i16")) === 1 && (await app.count("[data-act=model] svg")) === 0, "the folder opens a menu and shows its chevron; the model shows its name (and effort), no chevron");
 }
 // the tier: this Work's, and the rail agrees
 await app.click("[data-act=tier]");
@@ -123,6 +124,9 @@ check(await waitUntil(async () => (await app.count("[data-kind=file-viewer]")) =
 	await setLine("one\ntwo\nthree");
 	const [t, p] = await Promise.all([geo("[data-kind=composer] textarea"), geo("[data-act=add]")]);
 	check(await waitUntil(async () => (await app.count(".box.grown")) === 1) && p.y >= t.b - 4, "a second line grows the box: the text on top, + below it");
+	const clear = () => q("(() => { const s = document.querySelector('.scroll'), c = document.querySelector('.comp'); return s.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1 && s.scrollHeight - s.scrollTop - s.clientHeight < 2; })()");
+	await setLine(Array.from({ length: 8 }, (_, i) => `line ${i}`).join("\n"));
+	check(await waitUntil(clear, 3000, 50), "a grown box never covers the stream: the stream ends above it and stays at its end");
 	await setLine("");
 	check(await waitUntil(async () => (await app.count(".box.grown")) === 0), "emptied, the box is one row again");
 }

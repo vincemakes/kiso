@@ -70,7 +70,18 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	const [at, setAt] = useState<{ readonly query: string; readonly from: number; readonly active: number } | null>(null);
 	const [files, setFiles] = useState<readonly string[] | null>(null);
 	const box = useRef<HTMLTextAreaElement>(null);
+	const root = useRef<HTMLDivElement>(null);
 	useEffect(() => setFiles(null), [c?.envVersion]);
+	// the stream above keeps clear of the docked composer: its height, as --comp-h, sets where the stream ends
+	useLayoutEffect(() => {
+		const el = root.current;
+		if (inline || el === null) return;
+		const set = (): void => document.documentElement.style.setProperty("--comp-h", `${el.offsetHeight}px`);
+		set();
+		const ro = new ResizeObserver(set);
+		ro.observe(el);
+		return () => void (ro.disconnect(), document.documentElement.style.removeProperty("--comp-h"));
+	}, [inline]);
 	const pick = useRef<HTMLInputElement>(null);
 	const profile = c?.settings?.profiles.find((p) => p.name === c.settings?.profile) ?? null;
 	const pictures = attached.some((a) => a.kind === "image") && profile !== null;
@@ -147,7 +158,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 		void add(Array.from(e.dataTransfer.files));
 	};
 	return (
-		<div className={`comp${inline ? " inline" : ""}`} data-kind="composer">
+		<div ref={root} className={`comp${inline ? " inline" : ""}`} data-kind="composer">
 			{/* every note is one quiet line above the box */}
 			{down !== null ? <LinkLine down={down} /> : null}
 			{blocked ? (
