@@ -157,7 +157,10 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 			if (gap(el) > 40) setBehind(true);
 		});
 		follow.observe(col);
-		return () => follow.disconnect();
+		// the stream itself gets shorter when the composer grows: at the end it stays at the end; a person reading above keeps their place
+		const dock = new ResizeObserver(() => void (pinned.current && !glide.current && (el.scrollTo({ top: el.scrollHeight }), mark(el))));
+		dock.observe(el);
+		return () => (follow.disconnect(), dock.disconnect());
 	}, []);
 	useEffect(() => {
 		if (focusDecision === null || focusDecision === undefined) return;
