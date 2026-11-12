@@ -10,6 +10,8 @@ import { nameOf } from "../stream/Artifacts.js";
 import { FileIcon } from "../stream/links.js";
 import { Preview } from "./Preview.js";
 import { COMMANDS, Term } from "./Term.js";
+import { taskNameOf } from "../state/taskname.js";
+
 import { I } from "../stream/Icons.js";
 
 interface Props {
@@ -57,7 +59,7 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 		kind === "web"
 			? web.tabs.map((x) => ({ id: String(x.id), label: x.url === null ? t.newTab : x.url.replace(/^https?:\/\//, ""), icon: <I.globe />, on: x.id === web.on, pick: () => setWeb((w) => ({ ...w, on: x.id })), close: web.tabs.length > 1 ? () => closeWeb(x.id) : null }))
 			: kind === "term"
-				? [...state.tasks.map((x) => ({ id: x.id, label: x.command, icon: <I.term />, on: termTab === x.id, pick: () => setTermTab(x.id), close: null })), { id: COMMANDS, label: t.commandsTab, icon: <I.term />, on: termTab === COMMANDS, pick: () => setTermTab(COMMANDS), close: null }]
+				? [...state.tasks.map((x) => ({ id: x.id, label: taskNameOf(state, x).title, icon: <I.term />, on: termTab === x.id, pick: () => setTermTab(x.id), close: null })), { id: COMMANDS, label: t.commandsTab, icon: <I.term />, on: termTab === COMMANDS, pick: () => setTermTab(COMMANDS), close: null }]
 				: null;
 	return (
 		<aside className={`panel ${mode}${mode === "full" && !sidebarOpen ? " clear" : ""}`} data-kind="panel" data-panel={kind}>

@@ -1,6 +1,7 @@
 import type { SessionState, WireEvent } from "@vincemakes/kiso-protocol";
 import type { AtFrame, TaskRow, TasksFrame, ToolOutputFrame, UsageFrame } from "../../shared/frames.js";
 import { noticeOf } from "./notice.js";
+import { stepOfTask, titleOf } from "./taskname.js";
 
 /**
  * The stream's model: wire events and host frames in, the turns the stream
@@ -204,7 +205,7 @@ export function reduce(s: State, input: Input): State {
 			if ((e as { source?: string }).source === "system") {
 				// a runtime notice, not the person: a quiet line inside a live run, nothing otherwise
 				if (turn !== undefined && turn.phase === "running") {
-					const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text) };
+					const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text, (id) => { const st = stepOfTask(s, id); const c = typeof st?.input?.["command"] === "string" ? st.input["command"] : ""; return c === "" ? null : titleOf(c, st?.input?.["description"]); }) };
 					turn.items.push(item);
 					note(item);
 				}
