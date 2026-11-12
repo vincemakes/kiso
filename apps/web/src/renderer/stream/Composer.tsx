@@ -10,8 +10,11 @@ interface Props {
 	readonly running: boolean;
 	/** the line the person may send next: the empty box's placeholder, Tab takes it */
 	readonly suggestion?: string | null;
-	readonly onSend: (input: WireInput) => void;
-	readonly onSteer: (input: WireInput) => void;
+	/** a refusal rejects: the line goes back into the box with the host's words, never lost */
+	readonly onSend: (input: WireInput) => void | Promise<void>;
+	readonly onSteer: (input: WireInput) => void | Promise<void>;
+	/** a reason the line cannot go yet (a verdict is waiting): typing works, Send waits, the reason is shown */
+	readonly held?: string | null;
 	readonly onStop: () => void;
 	/** the connection is down: the line says so, and Send waits (typing does not) */
 	readonly down?: Down | null;
@@ -57,7 +60,7 @@ function lineOf(text: string, attached: readonly Attachment[]): WireInput {
  * by `+`; `@` names a file of the folder. The bar under the box holds `+`, this Work's tier, and its model and effort. A picture
  * waits in the box, unsent, while the model in use is not known to read images.
  */
-export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, view, children }: Props): ReactNode {
+export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, held = null, view, children }: Props): ReactNode {
 	const c = useContext(ControlsContext);
 	const [text, setText] = useState(view?.draft?.text ?? "");
 	const [attached, setAttached] = useState<readonly Attachment[]>(view?.draft?.attached ?? []);
@@ -84,8 +87,10 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 		el.style.height = `${el.scrollHeight}px`;
 	};
 	const submit = (): void => {
-		if (!ready || down !== null) return;
-		(running ? onSteer : onSend)(lineOf(text.trim(), attached));
+		if (!ready || down !== null || held !== null) return;
+		const [was, kept] = [text, attached];
+		const sent = (running ? onSteer : onSend)(lineOf(text.trim(), attached));
+		void Promise.resolve(sent).catch((e: unknown) => (setText((now) => (now === "" ? was : now)), setAttached((now) => (now.length === 0 ? kept : now)), setNote(e instanceof Error ? e.message : String(e))));
 		setText("");
 		setAttached([]);
 		setNote(null);
@@ -143,6 +148,10 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 					<div className="cwarn" data-kind="images-held">
 						<I.image />
 						<span>{fmt(t.imagesHeld, { model: profile?.model ?? "" })}</span>
+					</div>
+				) : held !== null ? (
+					<div className="cquiet" data-kind="held">
+						{held}
 					</div>
 				) : pictures && profile!.images === null ? (
 					<div className="cquiet" data-kind="images-unknown">
@@ -223,7 +232,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 							<i />
 						</button>
 					) : (
-						<button className={`sendb${ready ? " ready" : ""}`} aria-label={t.send} onClick={submit} data-act="send" disabled={blocked || down !== null} title={down?.text}>
+						<button className={`sendb${ready ? " ready" : ""}`} aria-label={t.send} onClick={submit} data-act="send" disabled={blocked || down !== null || held !== null} title={down?.text ?? held ?? undefined}>
 							<ArrowUp />
 						</button>
 					)}
