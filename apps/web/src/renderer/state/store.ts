@@ -72,6 +72,15 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	let lastSeq = -1;
 	let target: number | null = null;
 	let loaded = false;
+	// catching up ends when the stream reaches the host's high water at open: a durable seq, compared by value (not every durable event is
+	// on the wire, so events are never counted). Until then a replayed user_input or terminal asks nothing; one read follows. An event
+	// past that seq is live, whenever it arrives: a run that starts, or ends, during the catch-up is read at once.
+	let caughtUp = false;
+	const catchUp = (): void => {
+		if (caughtUp || target === null || lastSeq < target) return;
+		caughtUp = true;
+		void refresh();
+	};
 	// refreshes overlap (the page's load, an action, an event): only the answer to the latest question counts, or an early answer
 	// arriving late (the run not started yet) would hide a live run (no Stop beside an approval)
 	let asked = 0;
@@ -83,6 +92,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 			target ??= snapshot.highWater;
 			loaded ||= lastSeq >= target;
 			push({ kind: "snapshot", state: snapshot });
+			catchUp();
 		} catch (error) {
 			// the host answered with a refusal (no model is set up yet): there is nothing to load, and the page shows why
 			if (error instanceof ClientError && !loaded) {
@@ -103,7 +113,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	 *  (a reconnect, a reload), so it counts only while its terminal is still the last event on the log. */
 	const startUnadmitted = async (data: { readonly runId: string; readonly items: readonly WireInput[] }, terminalSeq: number, stopped: boolean): Promise<void> => {
 		const input = unadmittedInput(data.items);
-		if (input === null || handedBack.has(data.runId)) return;
+		if (input === null || handedBack.has(data.runId) || (target !== null && terminalSeq < target)) return; // a replayed old one: its terminal is not the last event
 		handedBack.add(data.runId);
 		// a stop is not a send: the person's added line is not run behind their back, and not lost silently either
 		if (stopped) return say(fmt(t.notSent, { line: typeof input === "string" ? input : "" }));
@@ -127,10 +137,12 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		})) {
 			if (ev.kind === "event") {
 				lastSeq = ev.event.seq;
+				const live = caughtUp || (target !== null && lastSeq > target);
 				loaded ||= target !== null && lastSeq >= target;
 				if (ev.event.type === "terminal") stopped = ev.event.outcome.kind === "aborted";
 				push({ kind: "event", event: ev.event });
-				if (ev.event.type === "terminal" || ev.event.type === "user_input") void refresh();
+				if (live && (ev.event.type === "terminal" || ev.event.type === "user_input")) void refresh();
+				catchUp();
 			} else if (ev.kind === "frame") {
 				push({ kind: "frame", name: ev.event, data: ev.data });
 				if (ev.event === "unadmitted") void startUnadmitted(ev.data as Parameters<typeof startUnadmitted>[0], lastSeq, stopped);
