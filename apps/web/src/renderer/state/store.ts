@@ -6,8 +6,9 @@ import { unadmittedInput } from "./unadmitted.js";
 import { withNote } from "./envnote.js";
 
 /**
- * The page's one connection to the host: a long-lived event stream into the
- * model, and what a person can do (send, add a line, stop, answer an
+ * A Work's page state and its connection to the host, kept apart: the state (the reducer's turns, the unsent bits of a conversation)
+ * outlives the connection, so the page can keep a few Works' state and show one again at once. `attach` opens the one long-lived event
+ * stream into the model (the shown Work holds it; a Work in the cache holds none), `detach` closes it. And what a person can do (send, add a line, stop, answer an
  * approval, resume an interrupted run, give a verdict on an execution that
  * may or may not have happened). Inputs are queued and applied once per
  * animation frame, so a burst of thinking deltas is one render.
@@ -32,7 +33,12 @@ export interface Session {
 	readonly approve: (decisionId: string, allow: boolean) => Promise<void>;
 	readonly resume: () => Promise<void>;
 	readonly verdict: (executionId: string, resolution: "rerun" | "abandoned") => Promise<void>;
-	readonly stop: () => void;
+	/** what is drawn is from before a switch away: until the host has been asked again, an approval or a running state in it is not current */
+	readonly stale: () => boolean;
+	/** open the stream: a first time it replays the log; after a detach it resumes from the last event the reducer applied */
+	readonly attach: () => void;
+	/** close the stream and apply what it brought, keeping the state */
+	readonly detach: () => void;
 }
 
 export function openSession(options: { readonly baseUrl: string; readonly sessionId: string; /** the Work's folder key (null: the one in use) */ readonly key: string | null; readonly onRefused?: () => void }): Session {
@@ -41,6 +47,10 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	const state = initialState();
 	const listeners = new Set<() => void>();
 	let queue: Input[] = [];
+	// the last event the reducer APPLIED (not merely received: the queue drains once a frame): where a stream resumes after a detach
+	let applied = -1;
+	let stale = false;
+	let attached = false;
 	let scheduled = false;
 	let message: string | null = null;
 	let messageTimer: ReturnType<typeof setTimeout> | undefined;
@@ -48,7 +58,10 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		scheduled = false;
 		const batch = queue;
 		queue = [];
-		for (const input of batch) reduce(state, input);
+		for (const input of batch) {
+			reduce(state, input);
+			if (input.kind === "event") applied = input.event.seq;
+		}
 		for (const l of listeners) l();
 	};
 	const push = (input: Input): void => {
@@ -92,6 +105,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 			target ??= snapshot.highWater;
 			loaded ||= lastSeq >= target;
 			push({ kind: "snapshot", state: snapshot });
+			stale = false;
 			catchUp();
 		} catch (error) {
 			// the host answered with a refusal (no model is set up yet): there is nothing to load, and the page shows why
@@ -102,12 +116,10 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 			// the host is away; the stream reconnects and asks again
 		}
 	};
-	const ctl = new AbortController();
+	let ctl: AbortController | null = null;
 	let link = { state: { kind: "connecting" } as ConnectionState, since: Date.now() };
 	const wake = (): void => (document.hidden ? undefined : api.retryNow());
-	for (const e of ["online", "focus"]) addEventListener(e, wake);
-	document.addEventListener("visibilitychange", wake);
-	void refresh();
+	let stopped = false;
 	const handedBack = new Set<string>();
 	/** Input a steer handed to a run that never admitted it is the person's next message: a new run. A frame can be replayed
 	 *  (a reconnect, a reload), so it counts only while its terminal is still the last event on the log. */
@@ -123,32 +135,59 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 			handedBack.delete(data.runId);
 		}
 	};
-	void (async () => {
-		let stopped = false;
-		for await (const ev of api.events({
-			signal: ctl.signal,
-			paused: () => document.hidden,
-			onState: (state) => {
-				if (state.kind === "open" && link.state.kind !== "open") void refresh(); // back: ask again what the host knows
-				if (state.kind === "refused" && state.status === 401) options.onRefused?.(); // only a lost sign-in is the whole page's; another 4xx ends this Work's stream
-				link = { state, since: state.kind === "open" ? 0 : link.state.kind === "open" ? Date.now() : link.since };
-				for (const l of listeners) l();
-			},
-		})) {
-			if (ev.kind === "event") {
-				lastSeq = ev.event.seq;
-				const live = caughtUp || (target !== null && lastSeq > target);
-				loaded ||= target !== null && lastSeq >= target;
-				if (ev.event.type === "terminal") stopped = ev.event.outcome.kind === "aborted";
-				push({ kind: "event", event: ev.event });
-				if (live && (ev.event.type === "terminal" || ev.event.type === "user_input")) void refresh();
-				catchUp();
-			} else if (ev.kind === "frame") {
-				push({ kind: "frame", name: ev.event, data: ev.data });
-				if (ev.event === "unadmitted") void startUnadmitted(ev.data as Parameters<typeof startUnadmitted>[0], lastSeq, stopped);
+	/** Open the stream. After a detach it resumes one event early: the last event applied is replayed with the frames that follow it (the
+	 *  host replays an event with the frames beside it, and a cut can fall between the two), the event itself is skipped here and its
+	 *  frames apply again, idempotently (`at` only when it still names the last event, usage, run_usage and tool_output assign, tasks
+	 *  replace). Frames of earlier events are not replayed, so none applies twice. `tasks` comes afresh. */
+	const attach = (): void => {
+		if (ctl !== null) return;
+		const mine = (ctl = new AbortController());
+		stale = attached; // a first attach draws nothing yet; a later one starts from a past that the first read of the host replaces
+		attached = true;
+		target = null;
+		caughtUp = false;
+		link = { state: { kind: "connecting" } as ConnectionState, since: Date.now() };
+		for (const e of ["online", "focus"]) addEventListener(e, wake);
+		document.addEventListener("visibilitychange", wake);
+		void refresh();
+		void (async () => {
+			for await (const ev of api.events({
+				signal: mine.signal,
+				after: Math.max(-1, applied - 1),
+				paused: () => document.hidden,
+				onState: (state) => {
+					if (state.kind === "open" && link.state.kind !== "open") void refresh(); // back: ask again what the host knows
+					if (state.kind === "refused" && state.status === 401) options.onRefused?.(); // only a lost sign-in is the whole page's; another 4xx ends this Work's stream
+					link = { state, since: state.kind === "open" ? 0 : link.state.kind === "open" ? Date.now() : link.since };
+					for (const l of listeners) l();
+				},
+			})) {
+				if (ev.kind === "event") {
+					if (ev.event.seq <= applied) continue; // the overlapping event: already drawn
+					lastSeq = ev.event.seq;
+					const live = caughtUp || (target !== null && lastSeq > target);
+					loaded ||= target !== null && lastSeq >= target;
+					if (ev.event.type === "terminal") stopped = ev.event.outcome.kind === "aborted";
+					push({ kind: "event", event: ev.event });
+					if (live && (ev.event.type === "terminal" || ev.event.type === "user_input")) void refresh();
+					catchUp();
+				} else if (ev.kind === "frame") {
+					push({ kind: "frame", name: ev.event, data: ev.data });
+					if (ev.event === "unadmitted") void startUnadmitted(ev.data as Parameters<typeof startUnadmitted>[0], lastSeq, stopped);
+				}
 			}
-		}
-	})();
+		})();
+	};
+	/** Close the stream, keeping the state: what it brought is applied first, so `applied` is where it really stood. */
+	const detach = (): void => {
+		if (ctl === null) return;
+		flush();
+		ctl.abort();
+		ctl = null;
+		removeEventListener("online", wake);
+		removeEventListener("focus", wake);
+		document.removeEventListener("visibilitychange", wake);
+	};
 	const act = async (fn: () => Promise<unknown>): Promise<void> => {
 		try {
 			await fn();
@@ -196,7 +235,9 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 				const reply = await api.resolveUncertain(executionId, resolution);
 				if (reply.remaining === 0) await api.resume(); // the last verdict is in: the run can go on
 			}),
-		stop: () => (ctl.abort(), removeEventListener("online", wake), removeEventListener("focus", wake), document.removeEventListener("visibilitychange", wake)),
+		stale: () => stale,
+		attach,
+		detach,
 	};
 }
 

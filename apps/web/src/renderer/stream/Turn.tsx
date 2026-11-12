@@ -19,7 +19,8 @@ interface Props {
 	readonly tasks: readonly TaskRow[];
 	/** the run was cut off with the host */
 	readonly interrupted: boolean;
-	readonly onAnswer: (decisionId: string, allow: boolean) => void;
+	/** null while what is drawn is from before a switch away: the approval cards are shown, and cannot be answered yet */
+	readonly onAnswer: ((decisionId: string, allow: boolean) => void) | null;
 }
 
 function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {

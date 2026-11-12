@@ -19,7 +19,7 @@ interface Props {
 	/** the items of the process: everything but the answer and the approvals still open */
 	readonly items: readonly Item[];
 	readonly tasks: readonly TaskRow[];
-	readonly onAnswer: (decisionId: string, allow: boolean) => void;
+	readonly onAnswer: ((decisionId: string, allow: boolean) => void) | null;
 }
 
 /** What the person chose in a group (folded or not, image rows open, whether by hand, the image opened by itself), kept for this tab: a reload or a switch to another Work and back keeps it. */
