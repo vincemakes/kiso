@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import type { WireContentBlock, WireInput } from "@vincemakes/kiso-protocol";
 import { fmt, t } from "../i18n/index.js";
 import { ArrowUp, I, Plus } from "./Icons.js";
@@ -76,16 +76,23 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	const pictures = attached.some((a) => a.kind === "image") && profile !== null;
 	const blocked = pictures && profile!.images === false;
 	const ready = (text.trim() !== "" || attached.length > 0) && !blocked;
+	const waits = down !== null || held !== null;
 	const add = async (list: readonly File[]): Promise<void> => {
 		const got = await Promise.all(list.map(attach));
 		setAttached((was) => [...was, ...got.filter((g): g is Attachment => typeof g !== "string")]);
 		const refused = got.filter((g): g is string => typeof g === "string");
 		setNote(refused.length === 0 ? null : refused.join(" "));
 	};
-	const grow = (el: HTMLTextAreaElement): void => {
+	// one row until the line wraps (or something is attached); once grown it stays so until the box is empty, so the wrap cannot flicker
+	const [wrapped, setWrapped] = useState(false);
+	const grown = inline || wrapped || attached.length > 0;
+	useLayoutEffect(() => {
+		const el = box.current;
+		if (el === null) return;
 		el.style.height = "auto";
 		el.style.height = `${el.scrollHeight}px`;
-	};
+		setWrapped((was) => (text === "" ? false : was || el.scrollHeight > 36));
+	}, [text]);
 	const submit = (): void => {
 		if (!ready || down !== null || held !== null) return;
 		const [was, kept] = [text, attached];
@@ -94,7 +101,6 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 		setText("");
 		setAttached([]);
 		setNote(null);
-		if (box.current !== null) box.current.style.height = "auto";
 	};
 	// `@` right before the caret (at the start or after a space) opens the picker on what follows it
 	const watchAt = (el: HTMLTextAreaElement): void => {
@@ -142,22 +148,24 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	};
 	return (
 		<div className={`comp${inline ? " inline" : ""}`} data-kind="composer">
+			{/* every note is one quiet line above the box */}
 			{down !== null ? <LinkLine down={down} /> : null}
-			<div className={`box${drag ? " drag" : ""}`} onDragOver={over} onDragLeave={() => setDrag(false)} onDrop={drop} data-drag={drag ? "1" : "0"}>
-				{blocked ? (
-					<div className="cwarn" data-kind="images-held">
-						<I.image />
-						<span>{fmt(t.imagesHeld, { model: profile?.model ?? "" })}</span>
-					</div>
-				) : held !== null ? (
-					<div className="cquiet" data-kind="held">
-						{held}
-					</div>
-				) : pictures && profile!.images === null ? (
-					<div className="cquiet" data-kind="images-unknown">
-						{fmt(t.imagesMaybe, { model: profile!.model })}
-					</div>
-				) : null}
+			{blocked ? (
+				<div className="cwarn" data-kind="images-held">
+					<I.image />
+					<span>{fmt(t.imagesHeld, { model: profile?.model ?? "" })}</span>
+				</div>
+			) : held !== null ? (
+				<div className="cquiet" data-kind="held">
+					{held}
+				</div>
+			) : pictures && profile!.images === null ? (
+				<div className="cquiet" data-kind="images-unknown">
+					{fmt(t.imagesMaybe, { model: profile!.model })}
+				</div>
+			) : null}
+			{note !== null ? <div className="cnote" data-kind="attach-note">{note}</div> : null}
+			<div className={`box${grown ? " grown" : ""}${drag ? " drag" : ""}`} onDragOver={over} onDragLeave={() => setDrag(false)} onDrop={drop} data-drag={drag ? "1" : "0"} data-grown={grown ? "1" : "0"}>
 				{attached.length > 0 ? (
 					<div className="atts" data-kind="attachments">
 						{attached.map((a, i) => (
@@ -170,6 +178,42 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 						))}
 					</div>
 				) : null}
+				<input ref={pick} type="file" multiple hidden onChange={(e) => (void add(Array.from(e.target.files ?? [])), (e.target.value = ""))} />
+				<Menu act="add" className="round" label={<Plus />} title={t.addTitle}>
+					{(close) => (
+						<>
+							<button type="button" className="cm-i" data-add="image" onClick={() => (pick.current?.setAttribute("accept", "image/png,image/jpeg,image/webp,image/gif"), pick.current?.click(), close())}>
+								<I.image />
+								<span className="cm-t">
+									<b>{t.addImages}</b>
+									<small>{t.addImagesNote}</small>
+								</span>
+							</button>
+							<button type="button" className="cm-i" data-add="file" onClick={() => (pick.current?.removeAttribute("accept"), pick.current?.click(), close())}>
+								<I.file />
+								<span className="cm-t">
+									<b>{t.addFiles}</b>
+									<small>{t.addFilesNote}</small>
+								</span>
+							</button>
+							{c === null ? null : (
+								<button type="button" className="cm-i" data-add="folder" onClick={() => (close(), void c.addFolder().then(setNote))}>
+									<I.folder />
+									<span className="cm-t">
+										<b>{t.envAddFolder}</b>
+									</span>
+								</button>
+							)}
+							<button type="button" className="cm-i" data-add="at" onClick={() => (close(), setText(`${text}${text === "" || text.endsWith(" ") ? "" : " "}@`), requestAnimationFrame(() => box.current !== null && (box.current.focus(), watchAt(box.current))))}>
+								<span className="cm-at">@</span>
+								<span className="cm-t">
+									<b>{t.addAt}</b>
+									<small>{t.addAtNote}</small>
+								</span>
+							</button>
+						</>
+					)}
+				</Menu>
 				<textarea
 					ref={box}
 					rows={1}
@@ -178,7 +222,6 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 					data-suggestion={suggestion ?? undefined}
 					onChange={(e) => {
 						setText(e.target.value);
-						grow(e.target);
 						watchAt(e.target);
 					}}
 					onKeyDown={key}
@@ -186,59 +229,23 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 					onBlur={() => setAt(null)}
 				/>
 				{at !== null && files !== null ? <AtPicker query={at.query} files={files} active={at.active} onPick={choose} /> : null}
-				{note !== null ? <div className="cnote" data-kind="attach-note">{note}</div> : null}
-				<div className="cbar">
-					<input ref={pick} type="file" multiple hidden onChange={(e) => (void add(Array.from(e.target.files ?? [])), (e.target.value = ""))} />
-					<Menu act="add" className="round" label={<Plus />} title={t.addTitle}>
-						{(close) => (
-							<>
-								<button type="button" className="cm-i" data-add="image" onClick={() => (pick.current?.setAttribute("accept", "image/png,image/jpeg,image/webp,image/gif"), pick.current?.click(), close())}>
-									<I.image />
-									<span className="cm-t">
-										<b>{t.addImages}</b>
-										<small>{t.addImagesNote}</small>
-									</span>
-								</button>
-								<button type="button" className="cm-i" data-add="file" onClick={() => (pick.current?.removeAttribute("accept"), pick.current?.click(), close())}>
-									<I.file />
-									<span className="cm-t">
-										<b>{t.addFiles}</b>
-										<small>{t.addFilesNote}</small>
-									</span>
-								</button>
-								{c === null ? null : (
-									<button type="button" className="cm-i" data-add="folder" onClick={() => (close(), void c.addFolder().then(setNote))}>
-										<I.folder />
-										<span className="cm-t">
-											<b>{t.envAddFolder}</b>
-										</span>
-									</button>
-								)}
-								<button type="button" className="cm-i" data-add="at" onClick={() => (close(), setText(`${text}${text === "" || text.endsWith(" ") ? "" : " "}@`), requestAnimationFrame(() => box.current !== null && (box.current.focus(), watchAt(box.current))))}>
-									<span className="cm-at">@</span>
-									<span className="cm-t">
-										<b>{t.addAt}</b>
-										<small>{t.addAtNote}</small>
-									</span>
-								</button>
-							</>
-						)}
-					</Menu>
-					{c !== null ? <TierMenu c={c} /> : null}
-					<span className="grow" />
-					{c !== null && (c.settings?.profiles.length ?? 0) > 0 ? <ModelMenu c={c} running={running} /> : null}
-					{running && !ready ? (
-						<button className="sendb run" aria-label={t.stop} onClick={onStop} data-act="stop">
-							<i />
-						</button>
-					) : (
-						<button className={`sendb${ready ? " ready" : ""}`} aria-label={t.send} onClick={submit} data-act="send" disabled={blocked || down !== null || held !== null} title={down?.text ?? held ?? undefined}>
-							<ArrowUp />
-						</button>
-					)}
-				</div>
+				{running && !ready ? (
+					<button className="sendb run" aria-label={t.stop} onClick={onStop} data-act="stop">
+						<i />
+					</button>
+				) : (
+					<button className={`sendb${ready && !waits ? " ready" : ""}`} aria-label={t.send} onClick={submit} data-act="send" disabled={blocked || waits} title={down?.text ?? held ?? undefined}>
+						<ArrowUp />
+					</button>
+				)}
 			</div>
-			{children}
+			{/* settings: plain words under the box; the folder (home only) first, the hint last */}
+			<div className={`sline${running ? " busy" : ""}`} data-kind="settings">
+				{children}
+				{c !== null && (c.settings?.profiles.length ?? 0) > 0 ? <ModelMenu c={c} running={running} /> : null}
+				{c !== null ? <TierMenu c={c} /> : null}
+				{inline ? <span className="hint">{"⌘K"}</span> : null}
+			</div>
 		</div>
 	);
 }
