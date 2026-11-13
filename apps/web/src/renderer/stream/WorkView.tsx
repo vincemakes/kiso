@@ -87,8 +87,8 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const pinned = useRef(true);
 	const anchor = useRef<{ readonly el: Element; readonly top: number } | null>(null);
 	// where the view and the content were at the last look: the person's scroll is told from the page's own moves by its direction
-	const last = useRef({ top: 0, height: 0 });
-	const mark = (el: HTMLElement): void => void (last.current = { top: el.scrollTop, height: el.scrollHeight });
+	const last = useRef({ top: 0, height: 0, view: 0 });
+	const mark = (el: HTMLElement): void => void (last.current = { top: el.scrollTop, height: el.scrollHeight, view: el.clientHeight });
 	const [behind, setBehind] = useState(false);
 	// a fold can leave the view below the content's end (blank under the last line): going back to the end is then a glide, not a
 	// jump, and the room goes only once the view is there (removing it first would snap the last line to the bottom)
@@ -194,7 +194,8 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					// to the end of the content (not of the room): follow again, and the room goes without moving the view.
 					const el = e.currentTarget;
 					if (glide.current) return void (gap(el) >= -1 ? settle(el) : mark(el));
-					const up = el.scrollTop < last.current.top - 1 && el.scrollHeight >= last.current.height;
+					// a taller view (the composer shrank back after a send) makes the browser pull scrollTop in: that is the page, not the person
+					const up = el.scrollTop < last.current.top - 1 && el.scrollHeight >= last.current.height && el.clientHeight <= last.current.view;
 					const down = el.scrollTop > last.current.top + 1;
 					if (up) {
 						if (pinned.current && running) room(el.clientHeight);
