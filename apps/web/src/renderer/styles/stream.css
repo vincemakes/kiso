@@ -44,6 +44,15 @@
 .caret > :last-child:not(ul, ol, pre, hr, .tbl)::after, .caret > :is(ul, ol):last-child > li:last-child::after { content: ""; display: inline-block; width: 6px; height: 14px; background: var(--ink); margin-left: 2px; vertical-align: -2px; animation: bl 0.9s steps(1) infinite; }
 @keyframes bl { 50% { opacity: 0; } }
 .steer { align-self: flex-end; background: #f3f3f5; padding: 5px 12px; border-radius: 14px; font-size: 13px; }
+/* a steer the run has not taken yet: drawn at once, lighter, its actions on hover */
+.pend { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.pend > .steer { color: #8a8a8e; }
+.pend-acts { display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.pend:hover .pend-acts, .pend:focus-within .pend-acts { opacity: 1; }
+.pend-b { font-size: 12.5px; color: var(--mute); padding: 3px 8px; border-radius: 8px; }
+.pend-b:hover { background: var(--sunk); color: var(--ink); }
+.pend-now { font-size: 12.5px; padding: 3px 10px; border-radius: 8px; background: var(--sunk); color: var(--ink); }
+.pend-note { font-size: 11.5px; color: var(--faint); }
 
 /* a step: verb, object, time, the first lines of output */
 .s-row { display: flex; align-items: center; gap: 9px; min-height: 26px; }

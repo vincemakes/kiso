@@ -21,6 +21,7 @@ import { type ProjectionOptions, toWireEvent } from "./wire.js";
  *   POST {prefix}/:id/run        202 { runId } — or the run's own stream with ?stream=1
  *   POST {prefix}/:id/resume     202 { runId } — or the stream with ?stream=1
  *   POST {prefix}/:id/steer      202 { runId } — 409 idle | closed (ADR-0057)
+ *   POST {prefix}/:id/retract    200 { runId, count } — the person's steers not admitted yet, taken back (ADR-0057)
  *   POST {prefix}/:id/abort      200 idle | stopped — 409 parked (who is waited for)
  *   POST {prefix}/:id/approve    200 { needsResume }
  *   POST {prefix}/:id/uncertain  200 { remaining }
@@ -76,7 +77,7 @@ export interface HttpHandler {
  *  store never did — a nanoid can start with `_` or `-` (about 1 in 32 do)
  *  and every such session answered 404. */
 const SESSION_ID = /^[A-Za-z0-9._-]{1,128}$/;
-const ACTIONS = new Set(["", "state", "events", "replay", "run", "resume", "steer", "abort", "approve", "uncertain"]);
+const ACTIONS = new Set(["", "state", "events", "replay", "run", "resume", "steer", "retract", "abort", "approve", "uncertain"]);
 
 export function createHttpHandler(service: SessionService, options: HttpHandlerOptions): HttpHandler {
 	const prefix = (options.prefix ?? "/v1/sessions").replace(/\/+$/, "");
@@ -285,6 +286,10 @@ export function createHttpHandler(service: SessionService, options: HttpHandlerO
 				const input = await inputOf(body, req, sessionId, res);
 				if (isHandled(input)) return true; // the product answered; nothing steered
 				json(res, 202, service.steer(sessionId, input));
+				return true;
+			}
+			if (action === "retract") {
+				json(res, 200, service.retract(sessionId));
 				return true;
 			}
 			if (action === "abort") {

@@ -9,6 +9,7 @@ import { READING } from "../state/reading.js";
 import type { Session } from "../state/store.js";
 import { ResumeCard, VerdictPanel } from "./Interrupt.js";
 import { t } from "../i18n/index.js";
+import { Copy, I } from "./Icons.js";
 
 // the input handed to the page at launch is sent once, into the first Work that opens
 let autoSent = false;
@@ -228,6 +229,18 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					{turns.length > 0 ? lead : null}
 					{turns.map((turn, i) => (
 						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={session.stale() ? null : (id, allow) => void session.approve(id, allow)} />
+					))}
+					{session.pending().map((w) => (
+						<div key={w.id} className="pend" data-kind="pending-steer">
+							<div className="steer">{w.text}</div>
+							<div className="pend-acts">
+								<button className="ab" title={t.copy} aria-label={t.copy} onClick={() => void navigator.clipboard?.writeText(w.text)} data-act="pending-copy"><Copy /></button>
+								<button className="pend-b" title={t.pendingEdit} onClick={() => void session.unsteer(w.id).then((text) => dispatchEvent(new CustomEvent("kiso:restore", { detail: text })))} data-act="pending-edit">{t.pendingEdit}</button>
+								<button className="ab" title={t.pendingCancel} aria-label={t.pendingCancel} onClick={() => void session.unsteer(w.id)} data-act="pending-cancel"><I.close /></button>
+								<button className="pend-now" onClick={() => void session.sendNow()} data-act="send-now">{t.sendNow}</button>
+							</div>
+							<div className="pend-note">{t.pendingNote}</div>
+						</div>
 					))}
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}

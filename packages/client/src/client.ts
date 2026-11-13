@@ -151,6 +151,11 @@ export class SessionClient {
 	}
 
 	/** Stop the run in flight. A parked run is a REPLY (kind "parked"), not an error. */
+	/** ADR-0057 — take back the steers the live run has not admitted yet; `count` is how many. */
+	async retract(): Promise<{ readonly runId: string | null; readonly count: number }> {
+		return this.#json(await this.#request("POST", "retract", {}));
+	}
+
 	async abort(options: { force?: boolean } = {}): Promise<AbortReply> {
 		return this.#json<AbortReply>(await this.#request("POST", "abort", options), [200, 409]);
 	}
