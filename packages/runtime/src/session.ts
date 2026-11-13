@@ -189,7 +189,7 @@ type WireSetting = { readonly thinking?: "adaptive" | "enabled" | "disabled"; re
 /** The follow-up's built-in ask (Session.followUp with no `ask`): the line the person may send next. No language is
  *  named: without the clause, Chinese conversations still gave Chinese lines (measured, owner 2026-11-03). */
 export const FOLLOW_UP_ASK =
-	"Write the one message the person is most likely to send you next, as they would type it, and nothing else. If the work is done and nothing naturally follows, answer with nothing.";
+	"Write the one message the person is most likely to send you next, as they would type it, and nothing else. Write it in their voice, as their reply to you: in it, \"I\" is the person and \"you\" is you. If the work is done and nothing naturally follows, answer with nothing.";
 
 /** The built-in follow-up's answer as a line: its first non-empty line, without quotes around it; "" for none, and ""
  *  for a line over 200 characters (a cut message is not one the person would send, so it is dropped, not shortened). */

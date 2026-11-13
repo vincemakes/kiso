@@ -147,3 +147,9 @@ describe("followUp's built-in line asks for no thinking where it can (every mode
 		expect(await session.followUp({})).toBe("");
 	});
 });
+
+describe("the built-in ask names the voice (owner 2026-11-13)", () => {
+	it("the line is the person's reply: in it, \"I\" is the person and \"you\" is the assistant", () => {
+		expect(FOLLOW_UP_ASK).toContain("Write it in their voice, as their reply to you: in it, \"I\" is the person and \"you\" is you.");
+	});
+});
