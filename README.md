@@ -1,27 +1,59 @@
-<h1 align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/lockup-dark.png"><img src="assets/readme/lockup-light.png" height="46" alt="kiso"></picture></h1>
+<div align="center">
 
-<p align="center"><b>kiso is a durable agent runtime with a kernel capped at 2,200 lines,<br>and a coding agent for your terminal built on it.</b></p>
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/lockup-dark.png"><img src="assets/readme/lockup-light.png" height="52" alt="kiso"></picture>
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/@vincemakes/kiso-code"><img alt="npm" src="https://img.shields.io/npm/v/@vincemakes/kiso-code?style=flat-square"></a>
-  <a href="https://github.com/vincemakes/kiso/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/vincemakes/kiso/actions/workflows/ci.yml/badge.svg"></a>
-  <img alt="MIT license" src="https://img.shields.io/badge/license-MIT-lightgrey?style=flat-square">
-</p>
+### A coding agent that picks up where it left off.
 
-<p align="center"><b>v0.54.0</b> · Node ≥ 22 · <a href="https://kiso.work">kiso.work</a> · <a href="README.zh.md">简体中文</a></p>
+**In your terminal or your browser. Any model you have. A `kill -9` costs you nothing.**<br>
+Built on a durable agent runtime whose kernel is capped at 2,200 lines.
 
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/features-dark.png"><img src="assets/readme/features-light.png" width="830" alt="Built in, not bolted on: it asks before it guesses; subagents in parallel; background tasks; approval modes; it resumes after a crash; yours to extend."></picture></p>
+<b>v0.54.0</b> · Node ≥ 22 · macOS and Linux
 
-<p align="center"><img src="assets/readme/screenshot.png" width="830" alt="kiso in a dark terminal window: a green diff of new tests, then the test suite started as a background task, with 1 task running in the status row"></p>
+[![npm](https://img.shields.io/npm/v/@vincemakes/kiso-code?label=npm&color=111111)](https://www.npmjs.com/package/@vincemakes/kiso-code) [![CI](https://img.shields.io/github/actions/workflow/status/vincemakes/kiso/ci.yml?branch=main&label=CI&color=111111)](https://github.com/vincemakes/kiso/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-MIT-111111)](LICENSE) ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-000000?logo=linux&logoColor=white)
 
-## Install
+**[Install](#quick-start)** &nbsp;·&nbsp; **[kiso web](#kiso-web)** &nbsp;·&nbsp; **[Docs](#documentation)** &nbsp;·&nbsp; **[kiso.work](https://kiso.work)** &nbsp;·&nbsp; **English** · [简体中文](README.zh.md)
+
+<br>
+
+<img src="assets/readme/web.png" width="900" alt="kiso web: a Work in the weather-cli folder. The person asked for a retry with backoff; kiso read the client, edited it, wrote tests, ran them and started the dev server, then answered with a table of the new behaviour. The rail shows the dev server as a running background task and the two changed files.">
+
+</div>
+
+<br>
+
+## Is kiso for you?
+
+- **You switch models.** DeepSeek, Claude, GPT, a ChatGPT subscription, or any OpenAI-compatible endpoint or gateway, with the effort level each one accepts.
+- **Your tasks are long, and things die.** A crash, a `kill -9`, a closed laptop: `kiso resume` continues from what was committed. A command whose outcome is unknown goes to you, never silently repeated.
+- **You want to see where it goes.** Every turn ends with its input, output, cache hits and speed; every session is a JSONL log you can read.
+- **You build agents yourself.** The runtime under it is a library: a durable session store, an agent factory and a typed event stream.
+
+If you want a cloud agent that works while your machine is off, or Windows today, kiso is not that yet.
+
+## Terminal or browser: one agent
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/screenshot.png" alt="kiso in a dark terminal window: a green diff of new tests, then the test suite started as a background task, with 1 task running in the status row"></td>
+<td width="50%"><img src="assets/readme/web-diff.png" alt="kiso web: a run opened at its work, an edit of src/client.mjs and a new test file, each shown as its diff"></td>
+</tr>
+<tr>
+<td><b>kiso</b> in the terminal: diffs inline, background tasks in the status row, <code>?</code> for the keys.</td>
+<td><b>kiso web</b> on this machine: every Work by folder, each run's changes and files beside it.</td>
+</tr>
+</table>
+
+## Quick start
+
+**1 · Install.**
 
 ```bash
 npm install -g @vincemakes/kiso-code
-kiso
 ```
 
-Node ≥ 22 on macOS or Linux. Or run it without installing: `npx @vincemakes/kiso-code`. The first run needs no key: kiso plays a scripted demo turn, so you see the shape before anything is spent, then asks you to connect a model.
+<sub>Or run it without installing: `npx @vincemakes/kiso-code`. The first run needs no key: kiso plays a scripted demo turn, so you see the shape before anything is spent.</sub>
+
+**2 · Connect a model.**
 
 ```bash
 kiso login deepseek      # or anthropic / openai / zai
@@ -29,7 +61,9 @@ kiso login chatgpt       # a ChatGPT subscription: a browser sign-in, no key
 kiso login --endpoint https://gateway.example/v1   # a gateway: its key, sent to it alone
 ```
 
-Keys never go in the config file. Profiles, effort levels, context windows and every other option: [docs/configuration.md](docs/configuration.md).
+<sub>Keys never go in the config file. Profiles, effort levels, context windows and every other option: [docs/configuration.md](docs/configuration.md).</sub>
+
+**3 · Start.** `kiso` in a project folder, or `kiso web` for the browser (below).
 
 ## kiso web
 
@@ -46,17 +80,21 @@ To keep it on the desktop, open the page once and add it as an app: Safari (macO
 
 Sign-in is local: the command opens the page on a one-time code, which the page trades for a session cookie. **A signed-in session is a key to this machine's shell**: whoever holds it can run commands as you. The host listens on 127.0.0.1 only. `kiso web --revoke-sessions` signs every page out; each signs in again from the command.
 
-## Under the hood
+## What it does
 
-- **It picks up where it left off.** After a crash, a `kill -9` or a closed terminal, `kiso resume` continues from the durable committed prefix: generation still streaming when it died is regenerated, and a side effect whose outcome is unknown goes to a human rather than being repeated.
-- **Long tasks don't overflow.** Past half the window, kiso compacts at the end of a phase, and each new summary replaces the last instead of piling up.
-- **Any model you have.** DeepSeek, Claude, GPT, a ChatGPT subscription, and any OpenAI-compatible endpoint or gateway.
-- **You can see where it goes.** Each turn ends with its fresh input, output and cache hits; `/context` shows what fills the context.
-- **Small and inspectable.** The kernel is capped at 2,200 lines (2,194 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 46 ADRs, with why, and when to overturn it.
+### It picks up where it left off
 
-Keys, commands and the status row: [docs/cli.md](docs/cli.md). `?` shows the keys in a session and `/help` lists the commands. `ctrl+v` attaches the clipboard image on macOS; elsewhere, put the image's path in your message.
+After a crash, a `kill -9` or a closed terminal, `kiso resume` continues from the durable committed prefix: generation still streaming when it died is regenerated, and a side effect whose outcome is unknown goes to a human rather than being repeated. In kiso web, the page offers the same choice the moment the host is back.
 
-## Approval modes
+### Long tasks don't overflow
+
+Past half the window, kiso compacts at the end of a phase, and each new summary replaces the last instead of piling up. `/context` shows what fills the window.
+
+### Background tasks
+
+A command still running after its wait is never killed: it becomes a background task, the model is told when it ends, and you can watch or stop it from the status row or the rail.
+
+### Approval modes
 
 `/mode` or `shift+tab` switches; the status row always names the mode.
 
@@ -69,11 +107,18 @@ Keys, commands and the status row: [docs/cli.md](docs/cli.md). `?` shows the key
 
 A mode is one voice in a `deny > allow > ask` chain, so a saved "don't ask again" rule still allows under any mode: switching modes is not a revocation. The rules live in `~/.kiso/extensions/dont-ask-again.mjs`; delete one to be asked again. In every mode, full access included, a destructive command aimed at what cannot be recovered — `/`, your home directory, the workspace root, its `.git`, `~/.ssh` and the like — is refused. The full rules: [docs/cli.md](docs/cli.md).
 
-## Extensions
+### Extensions
 
 An extension is a plain `.mjs` file — no build step. Five ship built in: MCP, skills, subagents, ask and task. Writing your own: [docs/extensions.md](docs/extensions.md).
 
 **Which children are stripped.** The two a model can cause to run — the shell tool and an MCP server started over stdio — lose provider credentials: the known key variables, anything ending `_API_KEY` or `_AUTH_TOKEN`, and every variable a profile names in `apiKeyEnv`. NOT stripped: a subagent's child (it is kiso itself and must reach the model) and the programs you start yourself (`$EDITOR`, the sign-in browser, `kiso update`), which inherit your environment.
+
+## Under the hood
+
+- **Small and inspectable.** The kernel is capped at 2,200 lines (2,194 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 46 ADRs, with why, and when to overturn it.
+- **Measured.** Every release is benched against the one before it, paired, on the same route; the numbers are in [bench/README.md](bench/README.md).
+
+Keys, commands and the status row: [docs/cli.md](docs/cli.md). `?` shows the keys in a session and `/help` lists the commands. `ctrl+v` attaches the clipboard image on macOS; elsewhere, put the image's path in your message.
 
 ## Using it
 
