@@ -99,6 +99,13 @@ fi
 assert_bare kiso "$BARE_HOME" || exit 1
 SID="bench-$TASK-$RUN"
 
+# CAPTURE (REL-0540-F1): this arm dumps its own request bodies, as run-t5.sh's does, so the rent check can read them
+CAPTURE_PAIR=""
+if [ "${BENCH_CAPTURE:-0}" = 1 ]; then
+	mkdir -p "$WORK/capture"
+	CAPTURE_PAIR="KISO_DUMP_REQUESTS=$WORK/capture"
+fi
+
 cd "$WORK/repo"
 S=$(date +%s)
 set +e
@@ -107,7 +114,7 @@ node "$B/feed-until-idle.mjs" "$WORK/kiso-home/sessions" "$SID" "$LEG_DEADLINE_S
 	bare_bounded "$BARE_HOME" "$LEG_DEADLINE_S" "$WORK/stdout.log" \
 		"OPENAI_BASE_URL=$ROUTE_BASE_URL" "BENCH_CRED_FILE=$ROUTE_CRED_FILE" "BENCH_CRED_AS=OPENAI_API_KEY" "BENCH_CRED_KEY=$ROUTE_CRED_KEY" \
 		"OPENAI_MODEL=$ROUTE_MODEL" "KISO_EXTENSIONS_DIR=$EXTDIR" "KISO_HOME=$WORK/kiso-home" \
-		"KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1" \
+		"KISO_SESSIONS_DIR=$WORK/kiso-home/sessions" "KISO_SKILLS_DIR=$SKILLDIR" "KISO_NO_UPDATE_CHECK=1" ${CAPTURE_PAIR:+"$CAPTURE_PAIR"} \
 		-- sh "$B/cred-exec.sh" $KISO_BIN --mode bypass "$SID"
 RC=$?
 set -e
