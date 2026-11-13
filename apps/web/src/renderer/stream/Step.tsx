@@ -68,12 +68,14 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 	const images = artifactsOf(step).some((a) => a.kind === "image");
 	const object = rel(objectOf(step));
 	const chip = step.status === "done" && (step.name === "write_file" || step.name === "edit_file") && !object.startsWith("/") && !object.startsWith("..");
+	// a shell call the model named (its `description`): the name, the command on hover and in the output below
+	const named = step.name === "shell" && typeof step.input?.["description"] === "string" && step.input["description"].trim() !== "" ? titleOf("", step.input["description"]) : null;
 	return (
 		<div className={`step ${step.status}${shown ? " shown" : ""}`} data-kind="step" data-tool={step.name} data-shown={images ? shown : undefined}>
 			<div className={`s-row${images ? " click" : ""}`} onClick={images ? onShow : undefined}>
 				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
 				<span className="s-verb">{t.verb[step.name] ?? step.name}</span>
-				{chip ? <Chip path={object} /> : <code className="s-obj">{object}</code>}
+				{named !== null ? <span className="s-name" title={object}>{named}</span> : chip ? <Chip path={object} /> : <code className="s-obj">{object}</code>}
 				<Delta d={delta(step)} />
 				{images ? <Chevron /> : null}
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}

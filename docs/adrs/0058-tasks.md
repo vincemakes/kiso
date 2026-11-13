@@ -126,6 +126,8 @@ foregroundMs  number    how long to wait for the result (default 60000);
 background    boolean   start as a task and return at once
 readyWhen     string    a literal substring of the output that means
                         "ready" (a server's ready line)
+description   string    a short name for people (Amendment 20); never read
+                        by the executor
 timeoutMs     number    deprecated alias of foregroundMs (0.45 only)
 ```
 
@@ -1380,3 +1382,14 @@ once, with no output lost.
 
 Measured by a byte gate: with no added folders, requests are those of the release before.
 
+
+## Amendment 20 — the shell's `description`: a name for people (2026-11-13, owner-approved)
+
+The shell's task-aware schema gains one optional parameter, `description` (string): "Short user-facing description of the intended action, not its status or result." It is a model-facing schema change. §3's table gains it, and it is otherwise unchanged.
+
+1. **For people only.** The executor never reads it: the command, the wait and the task rules are as before. It lives in the call's input in the log, so no event, journal or record changes, and a task promoted from the call keeps it through the call it points at.
+2. **Optional on every call.** It is not limited to background calls, because a foreground command can be promoted later. A call without one is named from its command, as before.
+3. **Hosts.** The web app names a task, its notice and the call's row by it. The command stays one hover away, and an approval always shows the full command, never the description in its place.
+4. **The prompt is untouched.** The pinned `promptSnippet` and `promptGuidelines` stay byte for byte. The static rent grows by `tool:shell` +128 chars, recorded in `scripts/rent-snapshot.json` with the ruling (kiso-doc `background-task-names-plan-2026-11-12.md`, rev 3).
+
+Gated by the request-byte gate and the paired T3/T5/T6 bench of the release that carries it (0.54.1).

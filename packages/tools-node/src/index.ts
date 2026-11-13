@@ -1692,7 +1692,7 @@ function outputTail(path: string, bytes = 2_048): string {
 	}
 }
 
-type ShellInput = { command: string; timeoutMs?: number; foregroundMs?: number; background?: boolean; readyWhen?: string };
+type ShellInput = { command: string; description?: string; timeoutMs?: number; foregroundMs?: number; background?: boolean; readyWhen?: string };
 
 /** This process as a promoted task's owner — read once. */
 let selfIdentity: { readonly pid: number; readonly startedAt: string } | undefined;
@@ -1720,6 +1720,8 @@ export function shellTool(opts: WorkspaceToolsOptions): Tool<ShellInput> {
 					type: "object",
 					properties: {
 						command: { type: "string", description: "The command to run" },
+						// background-task names step 2 (kiso-doc plan rev 3, owner-approved): a name for people, never read by the executor
+						description: { type: "string", description: "Short user-facing description of the intended action, not its status or result." },
 						foregroundMs: { type: "number", description: "How long to wait for the result, in ms (default 60000); if you need the result to go on, allow enough time" },
 						background: {
 							type: "boolean",

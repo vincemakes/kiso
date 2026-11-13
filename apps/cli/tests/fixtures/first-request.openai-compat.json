@@ -179,6 +179,10 @@
 							"type": "string",
 							"description": "The command to run"
 						},
+						"description": {
+							"type": "string",
+							"description": "Short user-facing description of the intended action, not its status or result."
+						},
 						"foregroundMs": {
 							"type": "number",
 							"description": "How long to wait for the result, in ms (default 60000); if you need the result to go on, allow enough time"

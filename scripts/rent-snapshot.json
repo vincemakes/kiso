@@ -32,7 +32,7 @@
 		},
 		{
 			"surface": "tool:shell",
-			"chars": 1218
+			"chars": 1346
 		},
 		{
 			"surface": "tool:task_stop",
@@ -48,8 +48,8 @@
 		}
 	],
 	"total": {
-		"chars": 8985,
-		"estTokens": 2252
+		"chars": 9113,
+		"estTokens": 2284
 	},
 	"history": [
 		{
@@ -99,6 +99,12 @@
 			"chars": 8985,
 			"estTokens": 2252,
 			"why": "a ratchet step (shrink only)"
+		},
+		{
+			"date": "2026-11-13",
+			"chars": 9113,
+			"estTokens": 2284,
+			"why": "kiso-doc background-task-names-plan-2026-11-12.md rev 3 (owner-approved 2026-11-12; built 2026-11-13 for 0.54.1): step 2, the shell's optional description — tool:shell +128 chars; gated by the paired T3/T5/T6 bench"
 		}
 	]
 }

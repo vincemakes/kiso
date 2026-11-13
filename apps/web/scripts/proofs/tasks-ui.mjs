@@ -9,7 +9,7 @@ const call = (callId, input) => ({ type: "tool_call_end", callId, name: "shell",
 const stop = { type: "stop", reason: "tool_use" };
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const app = await launchApp({ data: scratch("tn-data"), workspace: ws, env: { KISO_WEB_SESSION: "a", KISO_WEB_MODE: "full-access", KISO_WEB_MIN_FG_MS: "0" }, fauxScript: [
-	{ events: [call("c1", { command: `cd ${ws} && ls`, background: true }), call("c2", { command: "echo first && sleep 60", background: true }), call("c3", { command: "sleep 5; echo done", foregroundMs: 500 }), call("c4", { command: "while true; do echo tick; sleep 0.2; done", background: true }), stop] },
+	{ events: [call("c1", { command: `cd ${ws} && ls`, background: true }), call("c2", { command: "echo first && sleep 60", background: true }), call("c3", { command: "sleep 5; echo done", foregroundMs: 500 }), call("c5", { command: "echo served && sleep 60", description: "Start the preview server", background: true }), call("c4", { command: "while true; do echo tick; sleep 0.2; done", background: true }), stop] },
 	say("A started."),
 	{ events: [call("d1", { command: "echo b && sleep 1", background: true }), stop] },
 	say("B started."), say("A next."), say("B next."),
@@ -17,10 +17,11 @@ const app = await launchApp({ data: scratch("tn-data"), workspace: ws, env: { KI
 const q = (js) => app.evaluate(js);
 const titles = () => q("[...document.querySelectorAll('[data-field=task] .r-nm')].map((e) => e.textContent).join('|')");
 await q(`window.__kiso.send("start")`);
-check(await waitUntil(async () => (await app.count("[data-field=task]")) === 4, 30_000), "the Work's four tasks are listed");
-const want = ["ls", "echo first && sleep 60", "sleep 5; echo done", "while true; do echo tick; sleep 0.2; done"];
+check(await waitUntil(async () => (await app.count("[data-field=task]")) === 5, 30_000), "the Work's five tasks are listed");
+const want = ["ls", "echo first && sleep 60", "sleep 5; echo done", "Start the preview server", "while true; do echo tick; sleep 0.2; done"];
 const seen = (await titles()).split("|");
 check(want.every((w) => seen.includes(w)) && !seen.some((s) => /^cd |^echo first$|\bt\d\b/.test(s)), `named by what they do: a leading cd dropped for one simple command, a chain or a waiting command shown whole, the id nowhere (${seen.join(" | ")})`);
+check(await q("(() => { const r = [...document.querySelectorAll('[data-tool=shell] .s-name')].find((e) => e.textContent === 'Start the preview server'); return !!r && r.title === 'echo served && sleep 60'; })()"), "a call the model named shows its description on its row, the command on hover");
 const order = new Set();
 for (let i = 0; i < 8; i++) (order.add(await titles()), await sleep(250));
 check(order.size === 1 && (await titles()).startsWith("while true"), "newest start first, and the order does not move while a task writes output");
@@ -40,7 +41,7 @@ check(/echo b && sleep 1 finished/.test(await tab.text("[data-kind=notice]")) &&
 await tab.close();
 const again = await app.chrome.open(`${app.host().origin}/#session=a`);
 await again.front();
-await waitUntil(async () => (await again.count("[data-field=task]")) === 4 && (await again.count("[data-kind=notice]")) >= 1, 20_000);
+await waitUntil(async () => (await again.count("[data-field=task]")) === 5 && (await again.count("[data-kind=notice]")) >= 1, 20_000);
 const [rows, notes] = [await again.evaluate("[...document.querySelectorAll('[data-field=task] .r-nm')].map((e) => e.textContent).sort().join('|')"), await again.count("[data-kind=notice]")];
 check(rows === [...want].sort().join("|") && notes === 1, `after a reload the titles are the same (the promoted command too) and the notice is not repeated (${notes})`);
 await again.close();
