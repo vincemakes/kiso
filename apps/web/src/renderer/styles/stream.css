@@ -49,8 +49,6 @@
 .pend > .steer { color: #8a8a8e; }
 .pend-acts { display: flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.15s; }
 .pend:hover .pend-acts, .pend:focus-within .pend-acts { opacity: 1; }
-.pend-b { font-size: 12.5px; color: var(--mute); padding: 3px 8px; border-radius: 8px; }
-.pend-b:hover { background: var(--sunk); color: var(--ink); }
 .pend-now { font-size: 12.5px; padding: 3px 10px; border-radius: 8px; background: var(--sunk); color: var(--ink); }
 .pend-note { font-size: 11.5px; color: var(--faint); }
 

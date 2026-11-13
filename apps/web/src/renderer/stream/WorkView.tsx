@@ -235,8 +235,8 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 							<div className="steer">{w.text}</div>
 							<div className="pend-acts">
 								<button className="ab" title={t.copy} aria-label={t.copy} onClick={() => void navigator.clipboard?.writeText(w.text)} data-act="pending-copy"><Copy /></button>
-								<button className="pend-b" title={t.pendingEdit} onClick={() => void session.unsteer(w.id).then((text) => dispatchEvent(new CustomEvent("kiso:restore", { detail: text })))} data-act="pending-edit">{t.pendingEdit}</button>
-								<button className="ab" title={t.pendingCancel} aria-label={t.pendingCancel} onClick={() => void session.unsteer(w.id)} data-act="pending-cancel"><I.close /></button>
+								{/* taken back, the line returns to the box */}
+								<button className="ab" title={t.pendingCancel} aria-label={t.pendingCancel} onClick={() => void session.unsteer(w.id).then((text) => dispatchEvent(new CustomEvent("kiso:restore", { detail: text })))} data-act="pending-cancel"><I.close /></button>
 								<button className="pend-now" onClick={() => void session.sendNow()} data-act="send-now">{t.sendNow}</button>
 							</div>
 							<div className="pend-note">{t.pendingNote}</div>
