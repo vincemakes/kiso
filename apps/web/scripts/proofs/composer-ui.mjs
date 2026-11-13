@@ -127,7 +127,16 @@ check(await waitUntil(async () => (await app.count("[data-kind=file-viewer]")) =
 	const clear = () => q("(() => { const s = document.querySelector('.scroll'), c = document.querySelector('.comp'); return s.getBoundingClientRect().bottom <= c.getBoundingClientRect().top + 1 && s.scrollHeight - s.scrollTop - s.clientHeight < 2; })()");
 	await setLine(Array.from({ length: 8 }, (_, i) => `line ${i}`).join("\n"));
 	check(await waitUntil(clear, 3000, 50), "a grown box never covers the stream: the stream ends above it and stays at its end");
-	await setLine("");
+	// a long Work at its end: the box shrinking back (a sent line) must not read as the person scrolling up
+	await q("(() => { const d = document.createElement('div'); d.style.height = '2400px'; d.id = 'tall'; document.querySelector('.col').prepend(d); const s = document.querySelector('.scroll'); s.scrollTop = s.scrollHeight; return true; })()");
+	await sleep(400);
+	await setLine(Array.from({ length: 6 }, (_, i) => `a long line ${i}`).join("\n"));
+	await sleep(300);
+	const mine = await app.count("[data-kind=me]");
+	await app.click("[data-act=send]");
+	const seen = () => q("(() => { const s = document.querySelector('.scroll').getBoundingClientRect(), m = [...document.querySelectorAll('[data-kind=me]')].at(-1)?.getBoundingClientRect(); return !!m && m.bottom <= s.bottom + 1 && m.top >= s.top; })()");
+	check(await waitUntil(async () => (await app.count("[data-kind=me]")) > mine && (await seen()) && (await app.count("[data-act=latest]")) === 0, 5000, 50), `a long line sent at the end of a long Work shows above the box, with no Latest pill (latest ${await app.count("[data-act=latest]")}, seen ${await seen()})`);
+	await q("document.getElementById('tall')?.remove()");
 	check(await waitUntil(async () => (await app.count(".box.grown")) === 0), "emptied, the box is one row again");
 }
 await app.click("[data-act=tier]");
