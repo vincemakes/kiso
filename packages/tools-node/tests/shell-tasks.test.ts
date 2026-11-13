@@ -61,7 +61,7 @@ describe("a host that wires no tasks keeps today's shell", () => {
 describe("ADR-0058 §3 — the wait, with tasks", () => {
 	it("the schema offers foregroundMs, background and readyWhen — Plan B: the deprecated timeoutMs left it; task_stop joins the tools", () => {
 		const { opts, shell } = setup();
-		expect(Object.keys((shell.parameters as { properties: object }).properties)).toEqual(["command", "foregroundMs", "background", "readyWhen"]);
+		expect(Object.keys((shell.parameters as { properties: object }).properties)).toEqual(["command", "description", "foregroundMs", "background", "readyWhen"]);
 		expect(createCodingTools(opts).map((t) => t.name)).toContain("task_stop");
 	});
 
