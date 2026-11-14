@@ -86,3 +86,7 @@ export { estimateTokens } from "./estimate-tokens.js";
 // Promoted from ./internal on the three products' request (2026-11-14): hosts import from the root only.
 export { lookupContextWindow } from "./provider/metadata.js";
 export type { ContextWindowSource, ResolvedContextWindow } from "./provider/metadata.js";
+// The continuation scope of a binding (provider, API, model, endpoint): what a host that builds its own adapter hands it,
+// so provider-specific continuation (reasoning signatures, encrypted reasoning) is replayed only to the identity that made
+// it. The type is @vincemakes/kiso-core's ContinuationScope. Promoted from ./internal on the products' request (2026-11-14).
+export { resolveContinuationScope } from "./provider/manifest.js";
