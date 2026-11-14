@@ -90,3 +90,10 @@ describe("every alias is a dated vendor statement about a registered model", () 
 		}
 	});
 });
+
+describe("a dated snapshot of the same weights (2026-11-14)", () => {
+	it("deepseek-v4.1-flash-1017 at OpenRouter reads DeepSeek's own window, not the gateway's 1,048,576", () => {
+		expect(lookupContextWindow("deepseek/deepseek-v4.1-flash-1017", "https://openrouter.ai/api/v1")).toEqual({ tokens: 1_000_000, source: "model", from: "deepseek-flash" });
+		expect(lookupContextWindow("deepseek-v4.1-flash-1017")?.tokens).toBe(1_000_000);
+	});
+});

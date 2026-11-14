@@ -716,6 +716,10 @@ const MODEL_ALIASES: Readonly<Record<string, { readonly is: string; readonly asO
 	// The pricing table: `deepseek-flash` IS DeepSeek-V4.1-Flash. Gateways
 	// serve it by the version name (`deepseek-v4.1-flash`).
 	"deepseek-v4.1-flash": { is: "deepseek-flash", asOf: "2026-09-17", source: "https://api-docs.deepseek.com/quick_start/pricing/" },
+	// OpenRouter's dated snapshot: "the October 17, 2026 snapshot of DeepSeek V4.1 Flash, served by DeepSeek under the
+	// `deepseek-flash` API model name" (its model entry, read 2026-11-14). The window is then DeepSeek's own 1,000,000, not
+	// the gateway's 1,048,576 the release snapshot carried; without the alias the three products' writer on it read that.
+	"deepseek-v4.1-flash-1017": { is: "deepseek-flash", asOf: "2026-11-14", source: "https://openrouter.ai/deepseek/deepseek-v4.1-flash-1017" },
 	// OpenRouter spells the 5.5 line with a dot; the vendor's ids carry dashes
 	// (the models overview, read 2026-10-17). Same weights.
 	"claude-opus-5.5": { is: "claude-opus-5-5", asOf: "2026-10-17", source: "https://platform.claude.com/docs/en/models/overview" },
