@@ -196,7 +196,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 		<RunContext.Provider value={turn.id}>
 			<div className={fresh.current ? "turn fresh" : "turn"} data-turn={turn.id}>
 			<MeAttachments pictures={turn.pictures} files={turn.files} />
-			{turn.user !== "" || (turn.pictures.length === 0 && turn.files.length === 0) ? <MeText text={turn.user} /> : null}
+			{turn.woke !== true && (turn.user !== "" || (turn.pictures.length === 0 && turn.files.length === 0)) ? <MeText text={turn.user} /> : null}
 			{turn.user !== "" ? (
 				<div className="racts me-acts" data-kind="me-acts">
 					<CopyButton text={turn.user} />

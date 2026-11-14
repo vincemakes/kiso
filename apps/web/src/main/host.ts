@@ -53,6 +53,8 @@ export interface HostOptions {
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
 	/** After a run, ask the Work's model for the line the person may send next (default true; the proofs turn it off). */
 	readonly followUps?: boolean;
+	/** a task's end wakes an idle Work (ADR-0058 §8); off: the notice waits for the person's next line */
+	readonly taskWake?: boolean;
 	/** Title a Work from its first message with its own model (default true; the proofs turn it off). */
 	readonly titles?: boolean;
 }
@@ -91,6 +93,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
+		taskWake: options.taskWake ?? true,
 		titles: options.titles ?? true,
 		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread; the PR its own
 		// `gh pr create` printed becomes the Work's (an earlier run's never replaces a later link)

@@ -72,6 +72,12 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	const box = useRef<HTMLTextAreaElement>(null);
 	const root = useRef<HTMLDivElement>(null);
 	useEffect(() => setFiles(null), [c?.envVersion]);
+	// a waiting steer taken back to edit comes back into the box, after whatever is already being typed
+	useEffect(() => {
+		const back = (e: Event): void => setText((now) => [now, (e as CustomEvent<string>).detail].filter((x) => x !== "").join("\n"));
+		addEventListener("kiso:restore", back);
+		return () => removeEventListener("kiso:restore", back);
+	}, []);
 	// the stream above keeps clear of the docked composer: its height, as --comp-h, sets where the stream ends
 	useLayoutEffect(() => {
 		const el = root.current;
