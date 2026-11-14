@@ -365,13 +365,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 					confirm={t.deleteConfirm}
 					danger
 					onCancel={() => setDeleting(null)}
-					onConfirm={() => {
-						setBusy(true);
-						void onAct(deleting, "delete").then(
-							() => (setBusy(false), setDeleting(null), setError(null)),
-							(e: Error) => (setBusy(false), setError(e.message)),
-						);
-					}}
+					onConfirm={() => (setDeleting(null), setError(null), void onAct(deleting, "delete").catch((e: Error) => setError(e.message)))}
 				>
 					<p className="dlg-p" data-kind="delete-what">{fmt(t.deleteWhat, { runs: deleting.runs === 1 ? t.oneRun : fmt(t.nRuns, { n: deleting.runs }) })}</p>
 				</Dialog>

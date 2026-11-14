@@ -226,7 +226,9 @@ export function App(): ReactNode {
 	useEffect(() => {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
-	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
+	const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+	const markGone = (row: WorkRow, on: boolean): void => setGone((s) => new Set(on ? [...s, `${row.key}\n${row.id}`] : [...s].filter((g) => g !== `${row.key}\n${row.id}`)));
+	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
 	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
@@ -307,13 +309,11 @@ export function App(): ReactNode {
 				active={{ key: activeKey, id: target.sessionId }}
 				settingsOn={view === "settings"}
 				onOpen={openWork}
-				onAct={(row, act) =>
-					actOnWork(keyOf(row), row.id, act).then(() => {
-						if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
-						if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
-						return reread(row.key);
-					})
-				}
+				onAct={(row, act) => (act === "delete" && markGone(row, true), actOnWork(keyOf(row), row.id, act).then(() => {
+					if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
+					if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
+					return reread(row.key);
+				}, (e: Error) => (act === "delete" && markGone(row, false), Promise.reject(e))))}
 				onRename={(row, name) => renameRow(keyOf(row), row.id, name)}
 				onLinkPr={(row, pr) => linkPr(keyOf(row), row.id, pr).then(() => reread(row.key))}
 				onFork={(row) =>
