@@ -24,11 +24,21 @@ import type { Notice } from "./approvals.js";
  *   KISO_WEB_THINKING    0: leave reasoning text off the wire (default: on)
  *   KISO_WEB_KEEPALIVE   keepalive period in ms
  *   KISO_WEB_MIN_FG_MS   the shell's least foreground wait (0 keeps the model's value)
+ *   KISO_WEB_TASK_WAKE   off: a task's end does not wake an idle Work (the proofs; the config's taskWake: false too)
  *   KISO_WEB_PORT        the port (default 4317; 0: the system picks), and KISO_WEB_TOKEN the scripts' bearer
  *                            token (default: a fresh one per launch, never printed) — the crash script restarts
  *                            the host where a live client expects it
  *
  */
+
+/** The shared configuration's `taskWake` (the terminal's switch): false only when it says so; unreadable means the default, on. */
+const configWake = (): boolean => {
+	try {
+		return (JSON.parse(readFileSync(join(kisoHome(), "config.json"), "utf8")) as { taskWake?: unknown }).taskWake !== false;
+	} catch {
+		return true;
+	}
+};
 
 /** A scripted model, for the proofs; otherwise null: the model comes from the shared configuration (settings.ts). */
 async function fauxFromEnv(sessionsDir: string): Promise<ModelChoice | null> {
@@ -101,6 +111,8 @@ export async function startFromEnv(options: { readonly port?: number } = {}): Pr
 		...(process.env["KISO_WEB_TOKEN"] !== undefined ? { token: process.env["KISO_WEB_TOKEN"] } : {}),
 		sanitizer: process.env["KISO_WEB_SANITIZER"] === "default" ? "default" : "web",
 		followUps: process.env["KISO_WEB_FOLLOWUP"] !== "off",
+		// as the terminal: `taskWake: false` in the shared configuration turns wakes off; KISO_WEB_TASK_WAKE=off too (the proofs)
+		taskWake: process.env["KISO_WEB_TASK_WAKE"] !== "off" && configWake(),
 		titles: process.env["KISO_AUTO_TITLE"] !== "off",
 		...(Number.isFinite(keepalive) && keepalive > 0 ? { keepaliveMs: keepalive } : {}),
 		...(process.env["KISO_WEB_MIN_FG_MS"] !== undefined && Number.isFinite(minFg) ? { toolLimits: { minForegroundMs: minFg } } : {}),

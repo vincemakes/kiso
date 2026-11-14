@@ -1,4 +1,4 @@
-import type { ContentBlock, Event, MessageSource } from "@vincemakes/kiso-core";
+import type { ContentBlock, Event, MessageSource, UserInputVia } from "@vincemakes/kiso-core";
 import type { Agent, ApprovalRequest, Run, Session, SessionStore } from "@vincemakes/kiso-runtime";
 import { openRunId } from "@vincemakes/kiso-runtime/internal";
 import { DrainingError, InFlightError, NotRunningError, OpenRunError, StoreMismatchError } from "./errors.js";
@@ -89,6 +89,8 @@ export interface RunHandle {
 
 export interface RunOptions {
 	readonly source?: MessageSource;
+	/** ADR-0058 §8: the receipt a task wake carries (the host's onWake hands it over), recorded on the run's user_input. */
+	readonly via?: UserInputVia;
 	/** The log holds an open run from a previous process: resume it to its
 	 *  terminal first, then start this turn. Without this the call refuses
 	 *  with `OpenRunError` — the service never resumes silently. */
@@ -291,7 +293,7 @@ export class SessionService {
 			if (options.resumeFirst !== true) throw new OpenRunError(sessionId, open);
 			await this.#pump(held, held.session.resume()).done;
 		}
-		const run = held.session.run(input, options.source !== undefined ? { source: options.source } : {});
+		const run = held.session.run(input, { ...(options.source !== undefined ? { source: options.source } : {}), ...(options.via !== undefined ? { via: options.via } : {}) });
 		return this.#pump(held, run);
 	}
 

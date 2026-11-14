@@ -100,6 +100,8 @@ export interface Turn {
 	readonly pictures: readonly string[];
 	/** the files they attached to it (the composer sends each as its own text block, `<name>:` and a fence) */
 	readonly files: readonly Attached[];
+	/** a run a task's end started (a wake): it opens on the notice, not on a line of the person's */
+	readonly woke?: boolean;
 	readonly items: Item[];
 	phase: "running" | "ended";
 	startedAt: number | null;
@@ -204,11 +206,11 @@ export function reduce(s: State, input: Input): State {
 			const text = contentText(e.content);
 			if ((e as { source?: string }).source === "system") {
 				// a runtime notice, not the person: a quiet line inside a live run, nothing otherwise
-				if (turn !== undefined && turn.phase === "running") {
-					const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text, (id) => { const st = stepOfTask(s, id); const c = typeof st?.input?.["command"] === "string" ? st.input["command"] : ""; return c === "" ? null : titleOf(c, st?.input?.["description"]); }) };
-					turn.items.push(item);
-					note(item);
-				}
+				const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text, (id) => { const st = stepOfTask(s, id); const c = typeof st?.input?.["command"] === "string" ? st.input["command"] : ""; return c === "" ? null : titleOf(c, st?.input?.["description"]); }) };
+				if (turn !== undefined && turn.phase === "running") turn.items.push(item);
+				// no run live: a task's end woke the Work, and this input starts its run, which opens on the notice
+				else s.turns.push({ id: `t${e.seq}`, user: "", woke: true, pictures: [], files: [], items: [item], phase: "running", startedAt: null, endedAt: null, outcome: null, detail: null, live: null, footer: null, endSeq: null });
+				note(item);
 				return s;
 			}
 			if (turn !== undefined && turn.phase === "running") {
