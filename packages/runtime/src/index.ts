@@ -81,3 +81,8 @@ export { canonicalizeUsage } from "./usage/canonical.js";
 // policy, not a kernel primitive — it moved here unchanged from the core
 // package, which never called it.
 export { estimateTokens } from "./estimate-tokens.js";
+// The context window a host needs for a model and route (a child session's window, a display): the same
+// resolution the runtime uses — the route's row, the upstream's, every row of the model, then the release snapshot.
+// Promoted from ./internal on the three products' request (2026-11-14): hosts import from the root only.
+export { lookupContextWindow } from "./provider/metadata.js";
+export type { ContextWindowSource, ResolvedContextWindow } from "./provider/metadata.js";
