@@ -44,6 +44,22 @@ const NO_VERSION = (): number => 0;
 // under 864 px the Work is the whole window: the sidebar and the overview float over it (one at a time), closed until asked for
 const NARROW = "(max-width: 863px)";
 const isNarrow = (): boolean => matchMedia(NARROW).matches;
+// the person's own choice for the sidebar in a wide window, kept across loads (a blocked storage: open, as before)
+const SIDE_KEY = "kiso.sidebar";
+const sideSaved = (): boolean => {
+	try {
+		return localStorage.getItem(SIDE_KEY) !== "0";
+	} catch {
+		return true;
+	}
+};
+const sideSave = (on: boolean): void => {
+	try {
+		localStorage.setItem(SIDE_KEY, on ? "1" : "0");
+	} catch {
+		// nothing kept: the next load opens it, as before
+	}
+};
 const onNarrow = (cb: () => void): (() => void) => {
 	const m = matchMedia(NARROW);
 	m.addEventListener("change", cb);
@@ -54,7 +70,7 @@ export function App(): ReactNode {
 	// null while the page trades its connect code; false: no session (the page shows one line, "run kiso web")
 	const [signedIn, setSignedIn] = useState<boolean | null>(null);
 	useEffect(() => void signIn(launch.code).then(setSignedIn), []);
-	const [open, setOpen] = useState(() => !isNarrow()); // open at first; a window under 864 px starts with it floating closed
+	const [open, setOpen] = useState(() => !isNarrow() && sideSaved()); // open at first unless the person closed it; a narrow window starts closed
 	const narrow = useSyncExternalStore(onNarrow, isNarrow);
 	const [browsing, setBrowsing] = useState(false);
 	const [view, setView] = useState<"work" | "settings">("work");
@@ -283,7 +299,7 @@ export function App(): ReactNode {
 					<span className="word">kiso</span>
 				</div>
 			) : null}
-			<button className="sidetoggle" onClick={() => (narrow && !open && setRailChoice(false), setOpen(!open))} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
+			<button className="sidetoggle" onClick={() => (narrow && !open && setRailChoice(false), narrow || sideSave(!open), setOpen(!open))} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
 			</button>
 			<Sidebar

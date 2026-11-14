@@ -1,6 +1,6 @@
 // The sidebar in a browser tab: closed at first, opens by pushing the Work right, lists the Works of two folders, opens one
 // (its log replays), starts a new task, and shows a new Work in the list after its first request. Screenshots go outside the repository.
-import { launch, scratch, checker, launchApp, waitUntil, clientFor } from "./lib.mjs";
+import { launch, scratch, checker, launchApp, waitUntil, clientFor, sleep } from "./lib.mjs";
 
 const { check, verdict } = checker("sidebar-ui");
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
@@ -61,5 +61,7 @@ check(await waitUntil(async () => (await app.text("[data-kind=settings] [data-fi
 await app.shot("settings");
 await app.click("[data-act=sidebar]");
 check(await waitUntil(async () => (await left()) === 0) && (await app.count("[data-kind=brand]")) === 0, "closing it gives the width back, with the toggle alone at the top left: no logo");
+const reload = async () => (await app.evaluate("location.reload()").catch(() => 0), await sleep(1500), await waitUntil(() => app.evaluate("!!document.querySelector('.win')").catch(() => false), 10_000), app.evaluate("document.querySelector('.win').dataset.side"));
+check((await reload()) === "0" && (await app.click("[data-act=sidebar]"), await reload()) === "1", "the person's choice is kept: closed stays closed after a reload, and opened stays open");
 await app.close();
 verdict();
