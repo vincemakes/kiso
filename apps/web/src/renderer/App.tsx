@@ -44,6 +44,22 @@ const NO_VERSION = (): number => 0;
 // under 864 px the Work is the whole window: the sidebar and the overview float over it (one at a time), closed until asked for
 const NARROW = "(max-width: 863px)";
 const isNarrow = (): boolean => matchMedia(NARROW).matches;
+// the person's own choice for the sidebar in a wide window, kept across loads (a blocked storage: open, as before)
+const SIDE_KEY = "kiso.sidebar";
+const sideSaved = (): boolean => {
+	try {
+		return localStorage.getItem(SIDE_KEY) !== "0";
+	} catch {
+		return true;
+	}
+};
+const sideSave = (on: boolean): void => {
+	try {
+		localStorage.setItem(SIDE_KEY, on ? "1" : "0");
+	} catch {
+		// nothing kept: the next load opens it, as before
+	}
+};
 const onNarrow = (cb: () => void): (() => void) => {
 	const m = matchMedia(NARROW);
 	m.addEventListener("change", cb);
@@ -54,7 +70,7 @@ export function App(): ReactNode {
 	// null while the page trades its connect code; false: no session (the page shows one line, "run kiso web")
 	const [signedIn, setSignedIn] = useState<boolean | null>(null);
 	useEffect(() => void signIn(launch.code).then(setSignedIn), []);
-	const [open, setOpen] = useState(() => !isNarrow()); // open at first; a window under 864 px starts with it floating closed
+	const [open, setOpen] = useState(() => !isNarrow() && sideSaved()); // open at first unless the person closed it; a narrow window starts closed
 	const narrow = useSyncExternalStore(onNarrow, isNarrow);
 	const [browsing, setBrowsing] = useState(false);
 	const [view, setView] = useState<"work" | "settings">("work");
@@ -210,7 +226,9 @@ export function App(): ReactNode {
 	useEffect(() => {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
-	const rows: readonly WorkRow[] = (history?.works ?? []).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
+	const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+	const markGone = (row: WorkRow, on: boolean): void => setGone((s) => new Set(on ? [...s, `${row.key}\n${row.id}`] : [...s].filter((g) => g !== `${row.key}\n${row.id}`)));
+	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
 	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
@@ -283,7 +301,7 @@ export function App(): ReactNode {
 					<span className="word">kiso</span>
 				</div>
 			) : null}
-			<button className="sidetoggle" onClick={() => (narrow && !open && setRailChoice(false), setOpen(!open))} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
+			<button className="sidetoggle" onClick={() => (narrow && !open && setRailChoice(false), narrow || sideSave(!open), setOpen(!open))} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">
 				<SidebarIcon />
 			</button>
 			<Sidebar
@@ -291,13 +309,11 @@ export function App(): ReactNode {
 				active={{ key: activeKey, id: target.sessionId }}
 				settingsOn={view === "settings"}
 				onOpen={openWork}
-				onAct={(row, act) =>
-					actOnWork(keyOf(row), row.id, act).then(() => {
-						if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
-						if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
-						return reread(row.key);
-					})
-				}
+				onAct={(row, act) => (act === "delete" && markGone(row, true), actOnWork(keyOf(row), row.id, act).then(() => {
+					if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
+					if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
+					return reread(row.key);
+				}, (e: Error) => (act === "delete" && markGone(row, false), Promise.reject(e))))}
 				onRename={(row, name) => renameRow(keyOf(row), row.id, name)}
 				onLinkPr={(row, pr) => linkPr(keyOf(row), row.id, pr).then(() => reread(row.key))}
 				onFork={(row) =>
