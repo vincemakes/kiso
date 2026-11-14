@@ -105,6 +105,21 @@ describe("the registry and the one-run rule", () => {
 	});
 });
 
+describe("retract (ADR-0057): the person's steers not admitted yet are taken back", () => {
+	it("nothing to take back with no run live; while a tool runs, a steer is taken back and never admitted", async () => {
+		const { tool, release } = gatedTool("slow");
+		const { service } = harness({ script: callThen("slow"), tools: [tool] });
+		expect(service.retract("r")).toEqual({ runId: null, count: 0 });
+		const run = await service.run("r", "go");
+		await awaitEvent(service, "r", "tool_execution_started");
+		service.steer("r", "never mind");
+		expect(service.retract("r")).toEqual({ runId: run.runId, count: 1 });
+		release();
+		await run.done;
+		expect(service.events("r").some((e) => e.type === "user_input" && JSON.stringify(e).includes("never mind"))).toBe(false);
+	});
+});
+
 describe("replay from a sequence number", () => {
 	it("a reconnecting subscriber receives every event after its last seq exactly once, including across the seam of a live run", async () => {
 		const { tool, release } = gatedTool("slow");

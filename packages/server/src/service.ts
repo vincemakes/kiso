@@ -1,4 +1,4 @@
-import type { ContentBlock, Event, MessageSource } from "@vincemakes/kiso-core";
+import type { ContentBlock, Event, MessageSource, UserInputVia } from "@vincemakes/kiso-core";
 import type { Agent, ApprovalRequest, Run, Session, SessionStore } from "@vincemakes/kiso-runtime";
 import { openRunId } from "@vincemakes/kiso-runtime/internal";
 import { DrainingError, InFlightError, NotRunningError, OpenRunError, StoreMismatchError } from "./errors.js";
@@ -89,6 +89,8 @@ export interface RunHandle {
 
 export interface RunOptions {
 	readonly source?: MessageSource;
+	/** ADR-0058 §8: the receipt a task wake carries (the host's onWake hands it over), recorded on the run's user_input. */
+	readonly via?: UserInputVia;
 	/** The log holds an open run from a previous process: resume it to its
 	 *  terminal first, then start this turn. Without this the call refuses
 	 *  with `OpenRunError` — the service never resumes silently. */
@@ -262,6 +264,15 @@ export class SessionService {
 		return { runId: live.runId };
 	}
 
+	/** ADR-0057 — take back the person's input the live run has not admitted yet (a task notice stays). The host
+	 *  steers again what it still wants, in order: a page cancelling one waiting line takes them all back and
+	 *  re-steers the rest. Nothing to take back when no run is live. */
+	retract(sessionId: string): { readonly runId: string | null; readonly count: number } {
+		const live = this.#held.get(sessionId)?.live ?? null;
+		if (live === null) return { runId: null, count: 0 };
+		return { runId: live.runId, count: live.retract().length };
+	}
+
 	/** ADR-0057 — what the run that ended at `terminalSeq` accepted and never
 	 *  admitted; null when nothing, or when that is not the latest terminal. */
 	unadmittedAt(sessionId: string, terminalSeq: number): { readonly runId: string; readonly items: readonly (string | readonly ContentBlock[])[] } | null {
@@ -282,7 +293,7 @@ export class SessionService {
 			if (options.resumeFirst !== true) throw new OpenRunError(sessionId, open);
 			await this.#pump(held, held.session.resume()).done;
 		}
-		const run = held.session.run(input, options.source !== undefined ? { source: options.source } : {});
+		const run = held.session.run(input, { ...(options.source !== undefined ? { source: options.source } : {}), ...(options.via !== undefined ? { via: options.via } : {}) });
 		return this.#pump(held, run);
 	}
 

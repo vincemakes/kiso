@@ -4,9 +4,10 @@ import { launch, clientFor, scratch, checker, sleep } from "./lib.mjs";
 
 const { check, verdict } = checker("tasks");
 const call = (callId, input) => ({ type: "tool_call_end", callId, name: "shell", input });
-const host = await launch({ data: scratch("tasks-data"), workspace: scratch("tasks-ws"), env: { KISO_WEB_MODE: "full-access", KISO_WEB_MIN_FG_MS: "0" }, fauxScript: [
+const host = await launch({ data: scratch("tasks-data"), workspace: scratch("tasks-ws"), env: { KISO_WEB_MODE: "full-access", KISO_WEB_MIN_FG_MS: "0", KISO_WEB_TASK_WAKE: "on" }, fauxScript: [
 	{ events: [call("t1", { command: "sleep 8; echo finished", foregroundMs: 1500 }), call("t2", { command: "sleep 60", background: true }), { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "Two tasks." }, { type: "stop", reason: "end_turn" }] },
+	{ events: [{ type: "text_delta", text: "t1 is done." }, { type: "stop", reason: "end_turn" }] },
 	{ events: [{ type: "tool_call_end", callId: "t3", name: "task_stop", input: { id: "t2" } }, { type: "stop", reason: "tool_use" }] },
 	{ events: [{ type: "text_delta", text: "Stopped." }, { type: "stop", reason: "end_turn" }] },
 ] });
@@ -14,18 +15,22 @@ const s = clientFor(host).session("tasks");
 const rows = [];
 const outputs = [];
 const notices = [];
+const answers = [];
 const ctl = new AbortController();
 const reader = (async () => {
 	for await (const ev of s.events({ signal: ctl.signal })) {
 		if (ev.kind === "frame" && ev.event === "tasks") rows.push(...ev.data.tasks);
 		else if (ev.kind === "frame" && ev.event === "tool_output") outputs.push(ev.data);
 		else if (ev.kind === "event" && ev.event.type === "user_input" && ev.event.source === "system") notices.push(ev.event);
+		else if (ev.kind === "event" && ev.event.type === "text_delta") answers.push(ev.event.text);
 	}
 })();
 const idle = async () => { while ((await s.state()).running) await sleep(100); };
 await s.run("start two tasks");
 await idle();
 await sleep(8500);
+await idle(); // t1's end woke the Work: its run answers before the person's next line
+const beforeNext = answers.join("");
 await s.run("stop the long task");
 await idle();
 await sleep(1500);
@@ -39,4 +44,5 @@ check(running.length >= 5 && running.every((v, i) => i === 0 || v >= running[i -
 check(t1.some((t) => t.label === "exited 0" && t.elapsedMs >= 7500 && t.elapsedMs <= 9500), "t1 exited 0 after about 8 s, counted from the spawn");
 check(rows.some((t) => t.id === "t2" && t.label === "stopped") && outputs.some((o) => /stopped task t2/.test(o.head.join(" "))), "t2 was stopped by task_stop");
 check(notices.length === 1 && /<kiso-task id="t1"/.test(notices[0].content), 'the model is told t1 ended through one user_input with source "system"');
+check(beforeNext.includes("t1 is done."), "t1's end woke the idle Work: a run of its own, with no line from the person, answered it");
 verdict();

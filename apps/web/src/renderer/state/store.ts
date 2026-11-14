@@ -30,6 +30,12 @@ export interface Session {
 	/** a line: text, or text with pictures and files (content blocks) */
 	readonly send: (input: WireInput) => Promise<void>;
 	readonly steer: (input: WireInput) => Promise<void>;
+	/** the person's steers the run has not admitted yet, oldest first: drawn at once, gone when the run takes them */
+	readonly pending: () => readonly { readonly id: number; readonly text: string }[];
+	/** take one waiting steer back (the others are steered again, in order); its text, for the box when editing */
+	readonly unsteer: (id: number) => Promise<string>;
+	/** stop the step and send the waiting steers now, as the next turn */
+	readonly sendNow: () => Promise<void>;
 	readonly abort: () => Promise<void>;
 	readonly approve: (decisionId: string, allow: boolean) => Promise<void>;
 	readonly resume: () => Promise<void>;
@@ -57,6 +63,11 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	let attached = false;
 	let scheduled = false;
 	let message: string | null = null;
+	// ADR-0057: a steer is admitted at the next safe boundary; until then the page draws it as waiting
+	let waiting: { readonly id: number; readonly input: WireInput; readonly text: string }[] = [];
+	let waitingId = 0;
+	const textOf = (input: WireInput): string => (typeof input === "string" ? input : input.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n"));
+	const setWaiting = (next: typeof waiting): void => ((waiting = next), listeners.forEach((l) => l()));
 	let messageTimer: ReturnType<typeof setTimeout> | undefined;
 	const flush = (): void => {
 		scheduled = false;
@@ -175,6 +186,9 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 					loaded ||= target !== null && lastSeq >= target;
 					if (ev.event.type === "terminal") stopped = ev.event.outcome.kind === "aborted";
 					push({ kind: "event", event: ev.event });
+					// the run took the oldest waiting line (admission keeps their order); at its end none is waiting any more
+					if (live && waiting.length > 0 && ev.event.type === "user_input" && (ev.event as { source?: string }).source !== "system") setWaiting(waiting.slice(1));
+					if (live && waiting.length > 0 && ev.event.type === "terminal") setWaiting([]);
 					if (live && (ev.event.type === "terminal" || ev.event.type === "user_input")) void refresh();
 					catchUp();
 				} else if (ev.kind === "frame") {
@@ -218,12 +232,43 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		send: (text) => act(() => api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
 		steer: (text) =>
 			act(async () => {
+				const id = ++waitingId;
+				setWaiting([...waiting, { id, input: text, text: textOf(text) }]);
 				try {
 					await api.steer(withNote(options.key, options.sessionId, text));
 				} catch (e) {
+					setWaiting(waiting.filter((w) => w.id !== id));
 					// no run to join, or it was already closing: the line starts a run of its own
 					if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await api.run(text);
 					else throw e;
+				}
+			}),
+		pending: () => waiting,
+		unsteer: async (id) => {
+			const gone = waiting.find((w) => w.id === id);
+			const keep = waiting.filter((w) => w.id !== id);
+			await api.retract();
+			setWaiting(keep);
+			for (const w of keep) await api.steer(withNote(options.key, options.sessionId, w.input));
+			return gone?.text ?? "";
+		},
+		sendNow: () =>
+			act(async () => {
+				const all = waiting;
+				if (all.length === 0) return;
+				await api.retract();
+				setWaiting([]);
+				await api.abort();
+				// one next message, as the terminal's redirect makes it: the lines in their order. The stopped run may still be
+				// closing for a moment (409 in_flight): the line waits for it, up to 10 s, rather than being lost
+				const line = withNote(options.key, options.sessionId, all.length === 1 ? all[0]!.input : all.map((w) => w.text).join("\n\n"));
+				for (let tries = 0; ; tries++) {
+					try {
+						return void (await api.run(line));
+					} catch (e) {
+						if (!(e instanceof ClientError && e.code === "in_flight") || tries >= 50) throw e;
+						await new Promise((r) => setTimeout(r, 200));
+					}
 				}
 			}),
 		abort: () =>

@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { isEnvironmentNote, SessionStore, type Agent } from "@vincemakes/kiso-runtime";
 import { named, titleIfUnnamed } from "./names.js";
-import { createSessionService, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
+import { createSessionService, InFlightError, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
@@ -40,6 +40,8 @@ export interface SpaceOptions {
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
 	/** ask for a follow-up after a run (off: `followUp` answers "" and sends nothing) */
 	readonly followUps?: boolean;
+	/** a task's end wakes an idle Work (ADR-0058 §8); off: the notice waits for the person's next line */
+	readonly taskWake?: boolean;
 	/** title a Work from its first message (Session.title), beside its first run */
 	readonly titles?: boolean;
 	/** after each run has settled (however short): the host's what-next, read from the store */
@@ -155,8 +157,19 @@ export function createSpace(options: SpaceOptions): Space {
 				onSession: (sessionId, session) => {
 					sessions.set(sessionId, session);
 					setTimeout(() => ensureTitle(sessionId), 0); // a Work opened again after a restart, still unnamed
-					// the model hears how a task ended; nothing wakes an idle session
-					session.useTasks(tasks.managerFor(sessionId), { wake: false });
+					// a task's end wakes an idle Work, as it does the terminal: one run whose input is the notice (ADR-0058 §8). The
+					// delivery hands the notice over once; a person's run that started in the same moment refuses it (in flight), so the
+					// wake waits for that run to end and goes then, rather than being dropped
+					session.useTasks(tasks.managerFor(sessionId), {
+						wake: options.taskWake !== false,
+						onWake: (w) => {
+							const go = (tries: number): void =>
+								void service.run(sessionId, w.content, { source: "system", via: w.via }).catch((e: unknown) => {
+									if (e instanceof InFlightError && tries < 600) setTimeout(() => go(tries + 1), 1000);
+								});
+							go(0);
+						},
+					});
 				},
 			});
 		},

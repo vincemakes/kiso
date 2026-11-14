@@ -53,6 +53,7 @@ const order = () => q("[...document.querySelectorAll('[data-kind=settings] > *')
 {
 	const [t, p, sd, bx, sl] = await Promise.all([geo("[data-kind=composer] textarea"), geo("[data-act=add]"), geo("[data-act=send]"), geo(".box"), geo(".sline > *")]);
 	const same = (a, b) => Math.abs(a - b) < 4;
+	await waitUntil(async () => (await order()) === "folder,model,tier,hint", 5000, 50); // the folder chip comes with the Work's environment, a moment later
 	check((await order()) === "folder,model,tier,hint" && (await app.count(".box.grown")) === 1 && t.y < p.y && same(p.c, sd.c) && sl.y > bx.b && sl.x - bx.x < 24, `home: a tall box (text above, + and send below) with the settings line under it: ${await order()}`);
 	check((await app.count("[data-act=tier] svg")) === 0 && (await q("getComputedStyle(document.querySelector('[data-act=tier]')).color === getComputedStyle(document.querySelector('[data-act=model]')).color")), "the mode is a word in the same plain colour as the model, no icon");
 	check((await app.count("[data-act=folder] svg.i16")) === 1 && (await app.count("[data-act=model] svg")) === 0, "the folder opens a menu and shows its chevron; the model shows its name (and effort), no chevron");
