@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-web",
-	"version": "0.54.0",
+	"version": "0.54.1",
 	"private": false,
 	"description": "kiso web: a local web app on the hosted-session service, served on 127.0.0.1.",
 	"type": "module",
@@ -26,20 +26,20 @@
 		"start": "node dist/main/headless.js"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-client": "0.54.0",
-		"@vincemakes/kiso-code": "0.54.0",
-		"@vincemakes/kiso-core": "0.54.0",
-		"@vincemakes/kiso-protocol": "0.54.0",
-		"@vincemakes/kiso-provider-openai": "0.54.0",
-		"@vincemakes/kiso-runtime": "0.54.0",
-		"@vincemakes/kiso-server": "0.54.0",
-		"@vincemakes/kiso-tools-node": "0.54.0"
+		"@vincemakes/kiso-client": "0.54.1",
+		"@vincemakes/kiso-code": "0.54.1",
+		"@vincemakes/kiso-core": "0.54.1",
+		"@vincemakes/kiso-protocol": "0.54.1",
+		"@vincemakes/kiso-provider-openai": "0.54.1",
+		"@vincemakes/kiso-runtime": "0.54.1",
+		"@vincemakes/kiso-server": "0.54.1",
+		"@vincemakes/kiso-tools-node": "0.54.1"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",
 		"@types/react": "19.3.0",
 		"@types/react-dom": "19.3.0",
-		"@vincemakes/kiso-evals": "0.54.0",
+		"@vincemakes/kiso-evals": "0.54.1",
 		"@vitejs/plugin-react": "6.1.2",
 		"react": "19.3.1",
 		"react-dom": "19.3.1",

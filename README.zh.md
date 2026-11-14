@@ -7,7 +7,7 @@
 **终端里用，浏览器里也能用。哪家的模型都能接。`kill -9` 也不丢东西。**<br>
 底层是一个持久的 agent 运行时，内核上限 2,200 行。
 
-<b>v0.54.0</b> · Node ≥ 22 · macOS 和 Linux
+<b>v0.54.1</b> · Node ≥ 22 · macOS 和 Linux
 
 [![npm](https://img.shields.io/npm/v/@vincemakes/kiso-code?label=npm&color=111111)](https://www.npmjs.com/package/@vincemakes/kiso-code) [![CI](https://img.shields.io/github/actions/workflow/status/vincemakes/kiso/ci.yml?branch=main&label=CI&color=111111)](https://github.com/vincemakes/kiso/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-MIT-111111)](LICENSE) ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-000000?logo=linux&logoColor=white)
 
