@@ -107,4 +107,11 @@ describe("DC-49 — an EXPLICIT path is served, at the root and inside it", () =
 		const res = await tool.execute({ pattern: NEEDLE, path: "kisostate" }, CTX);
 		expect(res.content, "an explicitly named root was refused").toContain("s1.jsonl");
 	});
+
+	it("list_dir's glob in the workspace skips it too (the absolute entry was passed to the walk as is and never matched)", async () => {
+		const open = await listDirTool({ workspaceRoot: ROOT }).execute({ glob: "**/*.jsonl" }, CTX);
+		expect(open.content, "non-vacuity: without the exclusion the glob finds it").toContain("s1.jsonl");
+		expect((await listDirTool(opts()).execute({ glob: "**/*.jsonl" }, CTX)).content).not.toContain("s1.jsonl");
+		expect((await listDirTool(opts()).execute({ glob: "**/*.ts" }, CTX)).content, "the ordinary work is still found").toContain("main.ts");
+	});
 });

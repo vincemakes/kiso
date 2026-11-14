@@ -785,7 +785,12 @@ export function listDirTool(opts: WorkspaceToolsOptions): Tool<{ path?: string; 
 							source: re.source,
 							flags: re.flags,
 							// beyond the workspace the walk is relative to `base`, and its stops are named that way
-							excluded: reach.base === null ? (opts.excludeRoots ?? []) : [...(opts.excludeRoots ?? []), ...(opts.stopRoots ?? [])].map((ex) => relative(diskPath(reach.base!), diskPath(ex)).split(sep).join("/")),
+							// the worker compares workspace-relative paths, so the stops are named that way: in the workspace too, where an
+							// absolute excludeRoots entry used to be passed as is and never matched (a primary at ~ walked ~/.kiso)
+							excluded:
+								reach.base === null
+									? (opts.excludeRoots ?? []).map((ex) => relative(realOrSelf(opts.workspaceRoot), realOrSelf(ex)).split(sep).join("/"))
+									: [...(opts.excludeRoots ?? []), ...(opts.stopRoots ?? [])].map((ex) => relative(diskPath(reach.base!), diskPath(ex)).split(sep).join("/")),
 							maxEntries: MAX_DIR_ENTRIES,
 							maxVisited: opts.limits?.searchMaxFiles ?? SEARCH_MAX_FILES,
 							deadline,
