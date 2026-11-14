@@ -7,7 +7,7 @@
 **In your terminal or your browser. Any model you have. A `kill -9` costs you nothing.**<br>
 Built on a durable agent runtime whose kernel is capped at 2,200 lines.
 
-<b>v0.54.1</b> · Node ≥ 22 · macOS and Linux
+<b>v0.54.2</b> · Node ≥ 22 · macOS and Linux
 
 [![npm](https://img.shields.io/npm/v/@vincemakes/kiso-code?label=npm&color=111111)](https://www.npmjs.com/package/@vincemakes/kiso-code) [![CI](https://img.shields.io/github/actions/workflow/status/vincemakes/kiso/ci.yml?branch=main&label=CI&color=111111)](https://github.com/vincemakes/kiso/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-MIT-111111)](LICENSE) ![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white) ![Linux](https://img.shields.io/badge/Linux-000000?logo=linux&logoColor=white)
 
