@@ -8,13 +8,13 @@ const clean = (text: string): string => {
 };
 
 const LEAD_CD = /^\s*cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*&&\s*/;
-const SIMPLE = /^(?!sleep\b|for\b|while\b|until\b|if\b|case\b|(?:sh|bash|zsh)\s+-c\b)[^;&|<>`(){}\n]+$/;
+const REDIRECT = /\s+(?:\d?>>?|&>)\s*(?:&\d|"[^"]*"|'[^']*'|[^\s;&|]+)/g;
 
-/** A task's name: the model's description, else the command without a leading `cd <path> &&` when one simple command is left, else the command. */
+/** A task's name: the model's description, else the command without a leading `cd <path> &&` (the folder is shown on its own) and
+ *  without its output redirections; a chain stays whole, never named by its first part (owner 2026-11-15). */
 export function titleOf(command: string, description?: unknown): string {
 	if (typeof description === "string" && clean(description) !== "") return clean(description);
-	const rest = command.replace(LEAD_CD, "");
-	return clean(SIMPLE.test(rest.trim()) ? rest : command);
+	return clean(command.replace(LEAD_CD, "").replace(REDIRECT, "")) || clean(command);
 }
 
 /** The shell call a task came from, by its id on the Work's own steps (a background start or a promoted foreground command; any replay finds it). */

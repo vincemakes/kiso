@@ -1,5 +1,5 @@
 // A background task is named by what it does, not by its first words or its id: a chain is never named by its first part, a leading
-// `cd <path> &&` is dropped only when one simple command is left, a promoted foreground command keeps its name. A notice names the
+// `cd <path> &&` and output redirections are dropped, a promoted foreground command keeps its name. A notice names the
 // task in its own Work (two Works that both have a t1 never mix), is not repeated by a reload, and a row does not move while a task writes.
 import { checker, launchApp, scratch, sleep, waitUntil } from "./lib.mjs";
 
@@ -9,7 +9,7 @@ const call = (callId, input) => ({ type: "tool_call_end", callId, name: "shell",
 const stop = { type: "stop", reason: "tool_use" };
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const app = await launchApp({ data: scratch("tn-data"), workspace: ws, env: { KISO_WEB_SESSION: "a", KISO_WEB_MODE: "full-access", KISO_WEB_MIN_FG_MS: "0" }, fauxScript: [
-	{ events: [call("c1", { command: `cd ${ws} && ls`, background: true }), call("c2", { command: "echo first && sleep 60", background: true }), call("c3", { command: "sleep 5; echo done", foregroundMs: 500 }), call("c5", { command: "echo served && sleep 60", description: "Start the preview server", background: true }), call("c4", { command: "while true; do echo tick; sleep 0.2; done", background: true }), stop] },
+	{ events: [call("c1", { command: `cd ${ws} && ls > /tmp/tn.log 2>&1; echo EXIT=$? >> /tmp/tn.log`, background: true }), call("c2", { command: "echo first && sleep 60", background: true }), call("c3", { command: "sleep 5; echo done", foregroundMs: 500 }), call("c5", { command: "echo served && sleep 60", description: "Start the preview server", background: true }), call("c4", { command: "while true; do echo tick; sleep 0.2; done", background: true }), stop] },
 	say("A started."),
 	{ events: [call("d1", { command: "echo b && sleep 1", background: true }), stop] },
 	say("B started."), say("A next."), say("B next."),
@@ -18,9 +18,9 @@ const q = (js) => app.evaluate(js);
 const titles = () => q("[...document.querySelectorAll('[data-field=task] .r-nm')].map((e) => e.textContent).join('|')");
 await q(`window.__kiso.send("start")`);
 check(await waitUntil(async () => (await app.count("[data-field=task]")) === 5, 30_000), "the Work's five tasks are listed");
-const want = ["ls", "echo first && sleep 60", "sleep 5; echo done", "Start the preview server", "while true; do echo tick; sleep 0.2; done"];
+const want = ["ls; echo EXIT=$?", "echo first && sleep 60", "sleep 5; echo done", "Start the preview server", "while true; do echo tick; sleep 0.2; done"];
 const seen = (await titles()).split("|");
-check(want.every((w) => seen.includes(w)) && !seen.some((s) => /^cd |^echo first$|\bt\d\b/.test(s)), `named by what they do: a leading cd dropped for one simple command, a chain or a waiting command shown whole, the id nowhere (${seen.join(" | ")})`);
+check(want.every((w) => seen.includes(w)) && !seen.some((s) => /^cd |^echo first$|\bt\d\b/.test(s)), `named by what they do: a leading cd and the redirections dropped, a chain or a waiting command shown whole, the id nowhere (${seen.join(" | ")})`);
 check(await q("(() => { const r = [...document.querySelectorAll('[data-tool=shell] .s-name')].find((e) => e.textContent === 'Start the preview server'); return !!r && r.title === 'echo served && sleep 60'; })()"), "a call the model named shows its description on its row, the command on hover");
 const order = new Set();
 for (let i = 0; i < 8; i++) (order.add(await titles()), await sleep(250));
@@ -32,7 +32,7 @@ await waitUntil(async () => (await tab.count("[data-kind=footer]")) === 1, 30_00
 await app.front();
 await q(`window.__kiso.send("again")`);
 const notices = () => q("[...document.querySelectorAll('[data-kind=notice]')].map((e) => e.textContent).join('|')");
-check(await waitUntil(async () => /^ls finished/.test(await notices()), 20_000), "A's notice names its task: 'ls finished'");
+check(await waitUntil(async () => /^ls; echo EXIT=\$\? finished/.test(await notices()), 20_000), "A's notice names its task: 'ls; echo EXIT=$? finished'");
 await sleep(2500); // its task ends between B's runs: the notice comes with the next one
 await tab.front();
 await tab.evaluate(`window.__kiso.send("again b")`);
