@@ -62,6 +62,8 @@ export interface EnvReply {
 	readonly fork?: { readonly parent: string; readonly title: string; readonly at: number };
 	/** ADR-0062: the Work that started this one, in this folder */
 	readonly started?: { readonly parent: string; readonly folder: string };
+	/** ADR-0062: messages held for the person (a narrower sender to this wider Work), oldest first */
+	readonly held?: readonly { readonly id: string; readonly from: string; readonly title: string; readonly text: string }[];
 	/** ADR-0062: the cards this Work's start_session calls drew, by call id */
 	readonly cards?: Readonly<Record<string, { readonly state: "pending" | "started" | "dismissed" | "here"; readonly title: string; readonly at: number; readonly work?: string }>>;
 	/** with a session: the Environment rows (primary, added, recent), its repositories, the doors the host can open, and whether the added list is damaged */

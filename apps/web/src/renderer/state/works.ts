@@ -88,6 +88,12 @@ export async function answerCard(key: string | null, session: string, callId: st
 	return body.id;
 }
 
+/** ADR-0062: the person admits or drops a held message. */
+export async function answerHeld(key: string | null, session: string, messageId: string, action: "admit" | "drop"): Promise<void> {
+	const response = await fetch(`/desk/held${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session, messageId, action }) });
+	if (!response.ok) throw new Error(`held ${response.status}`);
+}
+
 export async function fetchHistory(fresh?: string): Promise<HistoryReply> {
 	const response = await fetch(`/desk/history${fresh === undefined ? "" : `?fresh=${encodeURIComponent(fresh)}`}`);
 	if (!response.ok) throw new Error(`history ${response.status}`);

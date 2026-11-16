@@ -21,6 +21,9 @@ export interface CardsHost {
 	readonly answer: (callId: string, action: "start" | "here" | "dismiss") => Promise<void>;
 	/** read the cards again (a start_session call just finished) */
 	readonly refresh: () => void;
+	/** ADR-0062 § 8: messages held for the person, and their answer */
+	readonly held: NonNullable<EnvReply["held"]>;
+	readonly release: (messageId: string, action: "admit" | "drop") => Promise<void>;
 }
 
 export const CardsContext = createContext<CardsHost | null>(null);

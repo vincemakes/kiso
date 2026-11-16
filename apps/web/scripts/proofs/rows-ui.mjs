@@ -14,7 +14,7 @@ const app = await launchApp({
 	data,
 	workspace: scratch("rows-ws"),
 	env: { KISO_WEB_SESSION: "w-main", KISO_WEB_SESSIONS: "on" },
-	fauxScript: [ok, ok, send("m1", "Research", "Which schema version does the importer target? The API doc is at docs/api.md and it lists two."), ok, ok, send("m2", "Importer", "Version 3. The importer should target it."), ok, ok, send("m3", "Importer", "The docs are updated."), ok, ok, ok, ok],
+	fauxScript: [ok, ok, send("m1", "Research", "Which schema version does the importer target? The API doc is at docs/api.md and it lists two."), ok, ok, send("m2", "Importer", "Version 3. The importer should target it."), ok, ok, send("m3", "Importer", "The docs are updated."), ok, ok, ok, ok, send("m4", "Importer", "Version 3 of the schema is final. Please regenerate the client."), ok, ok, ok],
 });
 const host = () => app.host();
 const q0 = (js) => app.evaluate(js);
@@ -57,5 +57,16 @@ await sleep(300);
 check((await app.evaluate(`[...document.querySelectorAll(".prow-body")].map((b) => b.textContent)`)).some((t) => t === "Version 3. The importer should target it."), "opened, a message shows its text only");
 await app.shot("pr5a-2b-row-opened");
 check(readFileSync(join(dir, "w-main.jsonl"), "utf8").includes('"kind":"peer"'), "the rows are drawn from the events' own via");
+// the hold (mock 2c): the Importer is given a folder the Docs Work lacks, so its message waits for the person
+writeFileSync(join(dir, "w-main.environment.json"), `${JSON.stringify({ version: 1, added: [scratch("rows-extra")] })}\n`);
+await run("w-doc", "send the schema news");
+await waitUntil(async () => (await app.count("[data-kind=held-row]")) === 1, 15_000);
+check((await app.text("[data-kind=held-row] .prow-head"))?.replace(/\s+/g, " ").startsWith("Message from Docs · held") === true && (await app.count("[data-act=held-admit]")) === 1 && (await app.count("[data-act=held-drop]")) === 1, "a held message: Message from Docs · held, with Drop and Admit");
+await q0(`document.querySelector("[data-kind=held-row]").scrollIntoView({ block: "center" })`);
+await app.shot("pr5a-2c-held-message");
+await app.click("[data-act=held-admit]");
+await waitUntil(async () => (await app.count("[data-kind=held-row]")) === 0, 15_000);
+await idle("w-main");
+check(readFileSync(join(dir, "w-main.jsonl"), "utf8").includes("regenerate the client"), "Admit delivers it: the Importer reads it");
 await app.close();
 verdict();

@@ -1,15 +1,11 @@
-import { useContext, useState, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { t, fmt } from "../i18n/index.js";
 import type { Step } from "../state/model.js";
 import type { Peer } from "../state/peers.js";
 import { CardsContext } from "./SessionCard.js";
 
-/**
- * ADR-0062 § 11 (mocks 2 and 2b): messages between Works as default-collapsed rows. "Messaged @X <text…>" for a message this
- * Work sent; "Received message from X" for one it received, and "Received N messages" for several admitted together; "X
- * finished / failed / is waiting on you / ended with tasks running" for a child's completion. Opened, a row shows its text
- * only. A sender's name opens it.
- */
+/** ADR-0062 § 11 (mocks 2, 2b): messages between Works as collapsed rows ("Messaged @X …", "Received message from X", "Received
+ *  N messages", "X finished"); opened, a row shows its text only; a sender's name opens it. */
 
 function Row({ head, body }: { readonly head: ReactNode; readonly body: string }): ReactNode {
 	const [open, setOpen] = useState(false);
@@ -69,4 +65,21 @@ export function MessagedRow({ step }: { readonly step: Step }): ReactNode {
 			body={input?.text ?? ""}
 		/>
 	);
+}
+
+/** ADR-0062 § 8 (mock 2c): messages held for the person, at the stream's end, read again every few seconds: Drop or Admit. */
+export function HeldRows(): ReactNode {
+	const host = useContext(CardsContext);
+	const [busy, setBusy] = useState(false);
+	const latest = useRef(host);
+	latest.current = host; // the page re-renders often: the timer reads the newest, and is set once
+	useEffect(() => ((timer) => () => clearInterval(timer))(setInterval(() => latest.current?.refresh(), 4000)), []);
+	const act = (id: string, action: "admit" | "drop"): void => (setBusy(true), void host?.release(id, action).finally(() => setBusy(false)));
+	return (host?.held ?? []).map((m) => (
+		<div key={m.id} className="prow-line" data-kind="held-row">
+			<Row head={<>{t.messageFrom} <span className="plink">{m.title}</span> · {t.heldTag}</>} body={m.text} />
+			<button className="held-drop" disabled={busy} onClick={() => act(m.id, "drop")} data-act="held-drop">{t.dropHeld}</button>
+			<button className="held-admit" disabled={busy} onClick={() => act(m.id, "admit")} data-act="held-admit">{t.admitHeld}</button>
+		</div>
+	));
 }

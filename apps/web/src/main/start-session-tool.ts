@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { defineTool, isRuntimeInput, type Event, type Tool, type ToolResult } from "@vincemakes/kiso-core";
-import { readCards, readStartedBy, START_SESSION, writeCard, writeSessionName, writeStartedBy, type WorkCard } from "@vincemakes/kiso-runtime/internal";
+import { readCards, readInbox, readStartedBy, releaseMessage, removeMessage, START_SESSION, writeCard, writeSessionName, writeStartedBy, type WorkCard } from "@vincemakes/kiso-runtime/internal";
 import { forkWork } from "./fork.js";
 import type { SessionsHost } from "./sessions-tool.js";
 import type { Settings } from "./settings.js";
@@ -80,8 +80,17 @@ export async function answerCard(space: Space, settings: Settings, key: string, 
 	return { status: 200, body: { id: await beginWork(space, settings, key, parent, { title: card.title, brief: input.brief, fork: input.context === "fork", callId }) } };
 }
 
-/** What the page shows of a Work's links: who started it, and the cards its calls drew. */
-export function workLinks(space: Space, session: string): { started?: { readonly parent: string; readonly folder: string }; cards: Readonly<Record<string, WorkCard>> } {
+/** What the page shows of a Work's links: who started it, the cards its calls drew, and the messages held for the person. */
+export function workLinks(space: Space, session: string): { started?: { readonly parent: string; readonly folder: string }; cards: Readonly<Record<string, WorkCard>>; held: readonly { readonly id: string; readonly from: string; readonly title: string; readonly text: string }[] } {
 	const by = readStartedBy(space.dir, session);
-	return { ...(by === null ? {} : { started: { parent: by.slice(by.lastIndexOf("/") + 1), folder: basename(space.workspace) } }), cards: readCards(space.dir, session) };
+	const held = readInbox(space.dir, session).filter((m) => m.held === true).map((m) => ({ id: m.messageId, from: m.from, title: m.fromTitle, text: m.text }));
+	return { ...(by === null ? {} : { started: { parent: by.slice(by.lastIndexOf("/") + 1), folder: basename(space.workspace) } }), cards: readCards(space.dir, session), held };
+}
+
+/** ADR-0062 § 8: the person admits a held message (it is delivered: the Work looks now) or drops it. */
+export async function answerHeld(space: Space, session: string, messageId: string, action: string): Promise<{ readonly status: number; readonly body: unknown }> {
+	if (action === "drop") return (removeMessage(space.dir, session, messageId), { status: 200, body: {} });
+	if (action !== "admit" || !(await releaseMessage(space.dir, session, messageId))) return { status: 409, body: { error: "no such held message" } };
+	await space.poke(session).catch(() => undefined);
+	return { status: 200, body: {} };
 }
