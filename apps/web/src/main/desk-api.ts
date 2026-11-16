@@ -225,13 +225,13 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 				session ??= patch.session;
 				const before = patch.session === undefined ? undefined : ctx.settings.workOf(patch.session);
 				const work = ctx.settings.apply(patch);
-				// a Work's model changed: rebuild it from its log so its next run uses it; a run in flight refuses, and the choice is put back
+				// a Work's model changed: rebuild it from its log so its next run uses it (a run in flight keeps its model; the rebuild waits for it to settle)
 				if (work !== null && space !== null && space.opened().has(work)) {
 					try {
-						await space.service.reopen(work);
-					} catch {
+						await space.reopen(work);
+					} catch (e) {
 						ctx.settings.restoreWork(work, before);
-						return json(409, { message: "a run is going: switch the model when it ends" });
+						return json(409, { message: e instanceof Error ? e.message : String(e) });
 					}
 				}
 			} else if (req.method !== "GET") return json(405, {});

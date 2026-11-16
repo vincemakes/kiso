@@ -63,6 +63,7 @@ export interface Space {
 	/** The line the person may send next after the run that ended at `seq`: asked of the Work's own model once, with the
 	 *  run's own request as the prefix (Session.followUp); "" when off, not the latest run, not completed, or it failed. */
 	readonly followUp: (sessionId: string, seq: number) => Promise<string>;
+	readonly reopen: (sessionId: string) => Promise<"now" | "next">; // rebuilt so its next run reads its settings: now when idle, else once its run settles
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -134,11 +135,15 @@ export function createSpace(options: SpaceOptions): Space {
 		}
 		return followUps.get(at)!;
 	};
+	const stale = new Set<string>(); // Works whose model changed mid-run: rebuilt when the run settles, before the next can start
+	const reopen = (id: string): Promise<"now" | "next"> =>
+		service.reopen(id).then(() => (stale.delete(id), "now" as const), (e: unknown) => (e instanceof InFlightError ? (stale.add(id), "next" as const) : Promise.reject(e)));
 	const service = createSessionService({
 		store,
 		hooks: {
-			onSettled: (s: { readonly sessionId: string; readonly runId: string }) => {
+			onSettled: async (s: { readonly sessionId: string; readonly runId: string }) => {
 				options.onSettled?.(s.sessionId, s.runId, store);
+				if (stale.has(s.sessionId)) await reopen(s.sessionId).catch(() => {}); // a run that won the race keeps it stale; another error is the next run's to say
 				setTimeout(() => ensureTitle(s.sessionId), 0); // after the run has let go of the Work
 			},
 		},
@@ -299,7 +304,7 @@ export function createSpace(options: SpaceOptions): Space {
 		images: new LogImages(options.dir),
 		handler,
 		opened: () => opened,
-		followUp,
+		followUp, reopen,
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {
 			await tasks.close();

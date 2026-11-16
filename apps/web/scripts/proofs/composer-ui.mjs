@@ -3,7 +3,7 @@
 // so once the Work has started; a pasted picture waits, unsent and named, while the model is not known to read it; a dropped text file becomes its text and a
 // binary one is refused in words; switching this Work to the model that reads pictures lets the line go, and the endpoint receives
 // the picture and the file's text under that model's id; the person's picture shows in their line and opens in the lightbox; `@`
-// names a file of the folder; and a switch while a call is in flight is refused and put back. Screenshots go outside the repository.
+// names a file of the folder; and a switch while a call is in flight is kept, the run finishes on its model, and the next run uses the new one. Screenshots go outside the repository.
 import { createServer } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -90,8 +90,7 @@ await app.click("[data-act=model]");
 // one line a model, the menu whole in the window, the model in use checked (owner 2026-11-03: the menu ran off the top)
 const shape = await q("(() => { const m = document.querySelector('[data-menu=model]').getBoundingClientRect(); const rows = [...document.querySelectorAll('[data-menu=model] [data-profile]')]; return { inside: m.top >= 0 && m.bottom <= innerHeight, one: rows.every((r) => r.getBoundingClientRect().height < 40), checked: rows.find((r) => r.getAttribute('aria-checked') === 'true')?.dataset.profile }; })()");
 check(shape.inside && shape.one && shape.checked === "text", `the model menu holds one line a model, sits whole in the window and checks the model in use (${JSON.stringify(shape)})`);
-await app.click("[data-profile=vision]");
-check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5" && (await app.count("[data-kind=images-unknown]")) === 0), "switching this Work to a model that reads pictures drops the line");
+await app.click("[data-profile=vision]"), check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5" && (await app.count("[data-kind=images-unknown]")) === 0), "switching this Work to a model that reads pictures drops the line");
 const own = await fetch(`${app.host().origin}/desk/settings?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
 const others = await fetch(`${app.host().origin}/desk/settings`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
 check(own.profile === "vision" && others.profile === "text", "the switch is this Work's only: new Works still start on the default");
@@ -159,11 +158,12 @@ check((await app.count("[data-act=stop] i")) === 1 && (await app.count("[data-ac
 await setLine("one more");
 check((await app.count("[data-act=send].ready")) === 1, "typing during a run turns the square back into Send (a steer)");
 await setLine("");
-const refused = await fetch(`${app.host().origin}/desk/settings`, { method: "POST", headers: { authorization: `Bearer ${app.host().token}` }, body: JSON.stringify({ session: "comp", profile: "text" }) });
-const after = await fetch(`${app.host().origin}/desk/settings?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
-check(refused.status === 409 && after.profile === "vision" && (await q("document.querySelector('[data-act=model]').disabled")), "while a call is in flight a switch is refused (409) and put back, and the pill is off");
-slow();
-await sleep(300);
+check(!(await q("document.querySelector('[data-act=model]').disabled")) && /next run/.test(await q("document.querySelector('[data-act=model]').title")), "while a run is live the model pill is on and says the choice is used from the next run"); // owner 2026-11-15
+await app.click("[data-act=model]"), await app.click("[data-profile=text]"); const kept = await fetch(`${app.host().origin}/desk/settings?session=comp`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json());
+check((await waitUntil(async () => (await text("[data-field=model-pill]")) === "mock-text", 5000, 50)) && kept.profile === "text", `the switch is kept mid-run: pill ${await text("[data-field=model-pill]")}, profile ${kept.profile}`), await app.shot("composer-switch-mid-run"); const ofRun = (w) => seen.filter((b) => JSON.stringify(b.messages.filter((m) => m.role === "user").at(-1) ?? "").includes(w)).map((b) => b.model); // a run's requests end in its person's line
+slow(), await waitUntil(async () => (await app.count("[data-act=send]")) === 1, 20_000), check(ofRun("take your time").length > 0 && ofRun("take your time").every((m) => m === "claude-sonnet-5-5"), `the run in flight finished on the model it started with (${ofRun("take your time")})`);
+await q(`window.__kiso.send("which model now")`), await waitUntil(async () => ofRun("which model now").length > 0, 20_000), check(ofRun("which model now")[0] === "mock-text", `the next run's first request is the new model's (${ofRun("which model now")[0]})`);
+await waitUntil(async () => (await app.count("[data-act=send]")) === 1, 20_000), await app.click("[data-act=model]"), await app.click("[data-profile=vision]"), check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5", 5000, 50), "idle, a switch back takes effect at once"), await sleep(300);
 // a long line folds past six lines, fading; Show more opens it and Show less folds it again (owner 2026-11-03)
 const footers = await app.count("[data-kind=footer]");
 await q(`window.__kiso.send(${JSON.stringify(Array.from({ length: 12 }, (_, i) => `line ${i + 1} of a long message`).join("\n"))})`);

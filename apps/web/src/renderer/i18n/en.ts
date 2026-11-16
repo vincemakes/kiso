@@ -54,7 +54,7 @@ export const en = {
 	readsImages: "reads pictures",
 	notSignedIn: "not signed in: sign in in Settings",
 	noModel: "No model",
-	modelWhileRunning: "Switch the model when the run ends",
+	modelNextRun: "A model chosen now is used from the next run",
 	stop: "Stop",
 	footer: "{time} · {fresh} in · {output} out · {cache}% cache",
 	footerNoCache: "{time} · {fresh} in · {output} out",
