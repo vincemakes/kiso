@@ -3,7 +3,7 @@
 // so once the Work has started; a pasted picture waits, unsent and named, while the model is not known to read it; a dropped text file becomes its text and a
 // binary one is refused in words; switching this Work to the model that reads pictures lets the line go, and the endpoint receives
 // the picture and the file's text under that model's id; the person's picture shows in their line and opens in the lightbox; `@`
-// names a file of the folder; and a switch while a call is in flight is kept, the run finishes on its model, and the next run uses the new one. Screenshots go outside the repository.
+// names a file of the folder; and a switch while a call is in flight is kept, the run finishes on its model, and the next run uses the new one; a key stored while the host runs reaches an open Work's next run. Screenshots go outside the repository.
 import { createServer } from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ const endpoint = createServer((req, res) => {
 	let body = "";
 	req.on("data", (d) => (body += d));
 	req.on("end", async () => {
-		seen.push(JSON.parse(body));
+		seen.push({ ...JSON.parse(body), key: req.headers.authorization });
 		if (body.includes("spent plan")) return void (res.writeHead(403, { "content-type": "application/json" }), res.end(JSON.stringify({ error: { message: "An active subscription is required to use this model." } })));
 		// only a request whose LAST line asks it waits: every later request carries this one in its history
 		const last = JSON.stringify(JSON.parse(body).messages.filter((m) => m.role === "user").at(-1) ?? "");
@@ -164,6 +164,7 @@ check((await waitUntil(async () => (await text("[data-field=model-pill]")) === "
 slow(), await waitUntil(async () => (await app.count("[data-act=send]")) === 1, 20_000), check(ofRun("take your time").length > 0 && ofRun("take your time").every((m) => m === "claude-sonnet-5-5"), `the run in flight finished on the model it started with (${ofRun("take your time")})`);
 await q(`window.__kiso.send("which model now")`), await waitUntil(async () => ofRun("which model now").length > 0, 20_000), check(ofRun("which model now")[0] === "mock-text", `the next run's first request is the new model's (${ofRun("which model now")[0]})`);
 await waitUntil(async () => (await app.count("[data-act=send]")) === 1, 20_000), await app.click("[data-act=model]"), await app.click("[data-profile=vision]"), check(await waitUntil(async () => (await text("[data-field=model-pill]")) === "claude-sonnet-5-5", 5000, 50), "idle, a switch back takes effect at once"), await sleep(300);
+const newKey = () => seen.filter((b) => JSON.stringify(b.messages.at(-1)).includes("with the new key")).map((b) => b.key); writeFileSync(join(home, "auth.json"), JSON.stringify({ version: 1, credentials: { [`endpoint:${origin}`]: { type: "api-key", key: "sk-test-1111", savedAt: 2 } } })), await sleep(2500), await q(`window.__kiso.send("with the new key")`); check((await waitUntil(async () => newKey().length > 0, 20_000)) && newKey().every((k) => k === "Bearer sk-test-1111"), `an open Work's next run sends the key stored since (${[...new Set(newKey())]})`);
 // a long line folds past six lines, fading; Show more opens it and Show less folds it again (owner 2026-11-03)
 const footers = await app.count("[data-kind=footer]");
 await q(`window.__kiso.send(${JSON.stringify(Array.from({ length: 12 }, (_, i) => `line ${i + 1} of a long message`).join("\n"))})`);

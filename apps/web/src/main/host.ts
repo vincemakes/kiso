@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
-import { basename, extname, resolve } from "node:path";
+import { appendFileSync, readFileSync, unwatchFile, watchFile } from "node:fs";
+import { basename, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@vincemakes/kiso-code/config";
@@ -259,16 +259,16 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 	auth = new Auth(home, port);
 
+	watchFile(join(kisoHome(), "auth.json"), { interval: 1000 }, () => [...spaces.values()].forEach((space) => [...space.opened()].forEach((id) => void space.reopen(id).catch(() => {})))); // a key stored meanwhile reaches open Works (a running one once it settles)
 	let closed = false;
 	const close = async (graceMs = 5_000): Promise<void> => {
 		if (closed) return;
 		closed = true;
-		// the order that keeps every run resumable (packages/server README):
-		// drain, stop the listener, close the stores
+		// the order that keeps every run resumable (packages/server README): drain, stop the listener, close the stores
 		await Promise.all([...spaces.values()].map((space) => space.drain(graceMs)));
 		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
-		watch.stop();
+		watch.stop(), unwatchFile(join(kisoHome(), "auth.json"));
 		previews.closeAll();
 		history.close();
 		for (const space of spaces.values()) await space.close();
