@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { TaskRow } from "../../shared/frames.js";
 import { clock, t, tokens } from "../i18n/index.js";
 import { groupDelta, groupLabel, segmentsOf } from "../state/groups.js";
@@ -125,9 +125,10 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 				if (seg.kind === "say") return <Blocks key={seg.item.id} className="say" kind="say" text={seg.item.text} live={live && last} />;
 				if (seg.kind === "line")
 					return seg.item.kind === "steer" ? (
-						<div key={seg.item.id} className="steer">
-							{seg.item.text}
-						</div>
+						<Fragment key={seg.item.id}>
+							<div className="steer">{seg.item.text}</div>
+							<div className="read">{t.read}</div>
+						</Fragment>
 					) : seg.item.kind === "notice" ? (
 						<div key={seg.item.id} className={`note ${seg.item.tone}`} data-kind="notice">
 							{seg.item.text}

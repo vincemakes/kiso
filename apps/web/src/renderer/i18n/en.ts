@@ -115,6 +115,7 @@ export const en = {
 	pendingCancel: "Take it back to the box",
 	sendNow: "Send now",
 	pendingNote: "Read at the next step",
+	read: "Read",
 	showMore: "Show more",
 	showLess: "Show less",
 	fileLines: "{n} lines",

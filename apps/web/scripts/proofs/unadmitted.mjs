@@ -24,8 +24,8 @@ const waiting = () => p.evaluate("[...document.querySelectorAll('[data-kind=pend
 await p.evaluate(`window.__kiso.send("go")`);
 await sleep(600);
 await p.evaluate(`window.__kiso.steer("first steer")`);
-check(await waitUntil(async () => (await waiting()) === "first steer", 1000, 50), "a steer shows at once, as waiting, before the run takes it");
-check(await waitUntil(async () => (await waiting()) === "" && (await p.evaluate("[...document.querySelectorAll('.steer')].some((e) => e.textContent === 'first steer')")), 15_000), "once the run takes it, it is an ordinary steer and nothing waits");
+check(await waitUntil(async () => (await waiting()) === "first steer" && (await p.evaluate("getComputedStyle(document.querySelector('[data-act=send-now]')).opacity")) === "1", 1000, 50), "a steer shows at once, as waiting, with Send now showing without a hover, before the run takes it");
+check(await waitUntil(async () => (await waiting()) === "" && (await p.evaluate("[...document.querySelectorAll('.steer')].some((e) => e.textContent === 'first steer' && e.nextElementSibling?.textContent === 'Read')")), 15_000), "once the run takes it, it is an ordinary steer marked Read and nothing waits");
 await waitUntil(async () => (await p.count("[data-kind=footer]")) === 1, 15_000);
 await p.evaluate(`window.__kiso.send("again")`);
 await sleep(600);
