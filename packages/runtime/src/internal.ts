@@ -43,7 +43,7 @@ export { isForkNote } from "./fork.js";
 export * from "./sessions-tools.js";
 export { INBOX_LIMITS, InboxRefusedError, readInbox, writeMessage, type PeerFile, type PeerMessage } from "./inbox.js";
 export type { PeerOutcome } from "./peer-delivery.js";
-export { ChainBudget, MAX_CHAIN_WAKES, completionNotice, currentChain, type CompletionState } from "./chains.js";
+export { ChainBudget, MAX_CHAIN_WAKES, completionNotice, currentChain, reachesFurther, type CompletionState } from "./chains.js";
 export { hasSessionsTools, markSessionsTools, readStartedBy, writeStartedBy, readForkOrigin, readProfile, readSessionName, readSummary, writeSessionName, writeSummary, type ExecutionProfile, type ProfileReadResult } from "./profile.js";
 export { SUMMARY_MIGRATION_MARKER, listSessionSidecars, migrateSummaries, sessionSummary, summarizeEvents, summaryMigrationPending, type SessionListing, type SessionSummary } from "./session-summary.js";
 // ADR-0058 §6: the task journal and the TaskManager (internal until the

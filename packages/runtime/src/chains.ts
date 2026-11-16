@@ -57,6 +57,16 @@ export class ChainBudget {
 	}
 }
 
+const RANK: Readonly<Record<string, number>> = { plan: 0, default: 1, "accept-edits": 2, "full-access": 3 };
+
+/** ADR-0062 § 8: whether the receiver may reach further than the sender, so a message between them is held for the person: a
+ *  wider permission mode, or a folder the sender was not given; a mode that cannot be ranked counts as further. Two sessions in
+ *  full access are never held (owner, 2026-11-16): nothing is wider than full access, and folders do not bound it. */
+export function reachesFurther(sender: { readonly tier: string; readonly added: readonly string[] }, receiver: { readonly tier: string; readonly added: readonly string[] }): boolean {
+	if (sender.tier === "full-access" && receiver.tier === "full-access") return false;
+	return (RANK[receiver.tier] ?? 9) > (RANK[sender.tier] ?? -1) || receiver.added.some((f) => !sender.added.includes(f));
+}
+
 export type CompletionState = "finished" | "failed" | "waiting on you" | "ended with tasks still running";
 
 /** The notice a child owes its parent for the run that just ended, or null: owed for its first run, and for a run that

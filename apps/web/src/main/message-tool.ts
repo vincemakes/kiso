@@ -3,7 +3,7 @@ import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 import { readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
-import { completionNotice, currentChain, InboxRefusedError, MESSAGE, readStartedBy, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
+import { completionNotice, currentChain, InboxRefusedError, reachesFurther, MESSAGE, readStartedBy, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
 import type { WorkRow } from "../shared/history.js";
 import { shortRefs, type SessionsHost } from "./sessions-tool.js";
 
@@ -38,13 +38,6 @@ export const readable = (path: string, roots: readonly string[], protectedPaths:
 	const p = real(path);
 	return !protectedPaths.some((x) => real(x) === p) && roots.some((r) => p === real(r) || p.startsWith(real(r) + sep));
 };
-
-const RANK: Readonly<Record<string, number>> = { plan: 0, default: 1, "accept-edits": 2, "full-access": 3 };
-
-/** ADR-0062 § 8: whether the receiver may reach further than the sender (a wider mode, or a folder the sender was not given);
- *  what cannot be compared counts as further, so the message is held for the person. */
-export const reachesFurther = (sender: { readonly tier: string; readonly added: readonly string[] }, receiver: { readonly tier: string; readonly added: readonly string[] }): boolean =>
-	(RANK[receiver.tier] ?? 9) > (RANK[sender.tier] ?? -1) || receiver.added.some((f) => !sender.added.includes(f));
 
 /** ADR-0062 § 7: after a child's run settles, the notice it owes its parent goes to the parent's inbox, and the parent looks. */
 export async function notifyParent(store: SessionStore, key: string, sessionId: string, runId: string, tasksRunning: boolean, host: SessionsHost): Promise<void> {

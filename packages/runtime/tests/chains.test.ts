@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import type { Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
-import { ChainBudget, completionNotice, currentChain } from "../src/chains.js";
+import { ChainBudget, completionNotice, currentChain, reachesFurther } from "../src/chains.js";
 import { writeMessage, type PeerMessage } from "../src/inbox.js";
 
 const u = (seq: number, extra: Record<string, unknown> = {}) => ({ seq, type: "user_input", content: "x", ...extra }) as unknown as Event;
@@ -21,6 +21,25 @@ describe("currentChain", () => {
 		expect(currentChain([u(0), peer(4, "k/b#2")], "k/a")).toBe("k/b#2");
 		expect(currentChain([u(0), peer(4, "k/b#2"), tasks(9)], "k/a")).toBe("k/b#2");
 		expect(currentChain([peer(4, "k/b#2"), u(7)], "k/a"), "the person speaks: a new chain").toBe("k/a#7");
+	});
+});
+
+describe("reachesFurther (the hold)", () => {
+	const at = (tier: string, added: string[] = []) => ({ tier, added });
+	it("two sessions in full access are never held, whatever folders either was given (owner, 2026-11-16)", () => {
+		expect(reachesFurther(at("full-access"), at("full-access"))).toBe(false);
+		expect(reachesFurther(at("full-access"), at("full-access", ["/elsewhere"]))).toBe(false);
+		expect(reachesFurther(at("full-access", ["/a"]), at("full-access", ["/b", "/c"]))).toBe(false);
+	});
+	it("held when the receiver's mode is wider, or it has a folder the sender lacks, or its mode is unknown", () => {
+		expect(reachesFurther(at("default"), at("full-access"))).toBe(true);
+		expect(reachesFurther(at("plan"), at("accept-edits"))).toBe(true);
+		expect(reachesFurther(at("default"), at("default", ["/x"]))).toBe(true);
+		expect(reachesFurther(at("default"), at("mystery"))).toBe(true);
+	});
+	it("not held when the receiver reaches no further", () => {
+		expect(reachesFurther(at("full-access"), at("default"))).toBe(false);
+		expect(reachesFurther(at("default", ["/x"]), at("default", ["/x"]))).toBe(false);
 	});
 });
 
