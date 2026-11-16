@@ -21,6 +21,7 @@ import { PrStates, prOfEvents } from "./prs.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
+import { AskBridge } from "./ask-bridge.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -61,6 +62,8 @@ export interface HostOptions {
 	readonly taskWake?: boolean;
 	/** Title a Work from its first message with its own model (default true; the proofs turn it off). */
 	readonly titles?: boolean;
+	/** ADR-0062 § 10c: Works carry ask_user (default on) */
+	readonly ask?: boolean;
 	/** ADR-0062: Works created from now on carry the sessions extension (KISO_WEB_SESSIONS=on) */
 	readonly sessions?: boolean;
 }
@@ -85,6 +88,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const token = options.token ?? randomBytes(32).toString("hex");
 	const home = options.home ?? kisoHome();
 	const spaces = new Map<string, Space>();
+	// ADR-0062 § 10c: ask_user's questions, waiting for the page (KISO_WEB_ASK=off leaves the tool out)
+	const asks = new AskBridge();
 	const spaceOptions = (key: string, workspace: string, dir: string, prefix: string): Parameters<typeof createSpace>[0] => ({
 		key,
 		workspace,
@@ -99,6 +104,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
+		...(options.ask !== false ? { ask: asks } : {}),
 		taskWake: options.taskWake ?? true,
 		titles: options.titles ?? true,
 		...(options.sessions === true ? { sessions: sessionsHost } : {}),
@@ -153,7 +159,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const history = new History(home, async (key, sessionId): Promise<WorkState> => {
 		const space = spaces.get(key);
 		if (space === undefined || !space.service.isRunning(sessionId)) return "idle";
-		return (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
+		return asks.waiting(sessionId) || (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
 	}, (id) => {
 		const marks = options.settings.marksOf(id);
 		const state = marks.pr === undefined ? undefined : prStates.stateOf(marks.pr.url);
@@ -171,7 +177,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const unread = (sessionId: string, on: boolean): void => void ((options.settings.marksOf(sessionId).unread === true) !== on && options.settings.mark(sessionId, "unread", on));
 	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence, unread);
 	watch.start();
-	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews };
+	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews, asks };
 
 	let origins: ReadonlySet<string> = new Set();
 	let hosts: ReadonlySet<string> = new Set();
