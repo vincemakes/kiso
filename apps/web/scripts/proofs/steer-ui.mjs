@@ -38,6 +38,11 @@ const hint = () => q(`(() => { const el = document.querySelector('[data-kind=com
 const narrow = await hint();
 check(narrow.text === (narrow.longFits ? LONG : "Typing declines this") && narrow.fits, "narrow: the whole hint if it fits, else the short one, never cut");
 await app.shot("pr5b-5-decline-narrow");
+// and a width where no machine fits the whole hint, so the short branch runs everywhere (the CI's fonts included)
+await app.cdp("Emulation.setDeviceMetricsOverride", { width: 900, height: 760, deviceScaleFactor: 1, mobile: false });
+await sleep(400);
+const tight = await hint();
+check(!tight.longFits && tight.text === "Typing declines this" && tight.fits, "900 px with the overview open: the whole hint cannot fit, the short one shows, whole");
 await app.cdp("Emulation.setDeviceMetricsOverride", { width: 1500, height: 760, deviceScaleFactor: 1, mobile: false });
 await sleep(400);
 const wide = await hint();
