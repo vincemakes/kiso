@@ -31,14 +31,17 @@ await clientFor(host()).session("w-res").run("tell the importer");
 await waitUntil(async () => (await app.count("[data-kind=waiting-row]")) === 1, 15_000);
 check((await app.text("[data-kind=waiting-row] .prow-head"))?.replace(/\s+/g, " ").startsWith("Message from Research · read after your answer") === true, "a message waiting behind an approval: Message from Research · read after your answer");
 // the hint is whole when it fits the box, else its short form; never cut (the overview open makes the box narrow)
-const hint = () => q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(el).font; return { text: el.placeholder, fits: c.measureText(el.placeholder).width <= el.clientWidth }; })()`);
+const LONG = "Typing declines this, and your words become the next instruction";
+// fonts differ between machines (the CI's Chrome is Linux's), so the rule is checked, not one outcome: the whole hint when it
+// fits the box, else the short one; whichever shows is never cut
+const hint = () => q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(el).font; const w = (x) => c.measureText(x).width; return { text: el.placeholder, fits: w(el.placeholder) <= el.clientWidth, longFits: w(${JSON.stringify("Typing declines this, and your words become the next instruction")}) <= el.clientWidth - 4 }; })()`);
 const narrow = await hint();
-check(narrow.text === "Typing declines this" && narrow.fits, "narrow: the short hint, whole");
+check(narrow.text === (narrow.longFits ? LONG : "Typing declines this") && narrow.fits, "narrow: the whole hint if it fits, else the short one, never cut");
 await app.shot("pr5b-5-decline-narrow");
 await app.cdp("Emulation.setDeviceMetricsOverride", { width: 1500, height: 760, deviceScaleFactor: 1, mobile: false });
 await sleep(400);
 const wide = await hint();
-check(wide.text === "Typing declines this, and your words become the next instruction" && wide.fits, "wide: the whole hint, as mock 5 has it");
+check(wide.text === LONG && wide.fits, "wide: the whole hint, as mock 5 has it");
 await app.shot("pr5b-5-decline-wide");
 await app.cdp("Emulation.clearDeviceMetricsOverride", {});
 await q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); el.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, 'Skip the notes, use the schema doc instead.'); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
