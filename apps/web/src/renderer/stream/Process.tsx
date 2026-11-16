@@ -119,7 +119,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 	const isStart = (i: Item): boolean => i.kind === "step" && i.name === "start_session";
 	const segments = segmentsOf(items).map((s) => (s.kind === "group" ? { ...s, items: s.items.filter((i) => !isStart(i)), cards: s.items.filter(isStart) as StepItem[] } : s));
 	// while it works, the run's live line is its last group: one that is still empty when the run has nothing in a group yet
-	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [] });
+	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [], cards: [] });
 	const lines = segments.filter((s) => s.kind === "group" && (s.items.some((i) => i.kind !== "thinking") || (live && s === segments.at(-1))));
 		return (
 		<div className={`proc${live ? "" : " ended"}`} data-kind="process" data-folded={lines.length > 0 && !live && !interrupted}>
