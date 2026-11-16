@@ -20,6 +20,8 @@ const INTERNAL_ALLOWED = {
 	"src/main/context.ts": ["@vincemakes/kiso-runtime/internal"],
 	// a Work's name: the runtime's session-name store, the terminal's rename (no root export carries it)
 	"src/main/names.ts": ["@vincemakes/kiso-runtime/internal"],
+	// ADR-0062: the sessions tools' shared specs, the session's mark, and whether another process holds a Work (no root export carries them)
+	"src/main/sessions-tool.ts": ["@vincemakes/kiso-runtime/internal"],
 };
 
 /** workspace package name → its `exports` keys (null: no exports map). */
