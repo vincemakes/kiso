@@ -180,8 +180,12 @@ export class SessionService {
 		const held = await this.#hold(sessionId);
 		if (held.live !== null) throw new InFlightError(sessionId, held.live.runId);
 		const agent = await this.#open(sessionId);
+		const session = await agent.session({ id: sessionId });
+		// a run that started while the factory worked keeps the session it started on: the rebuild is refused, not swapped under it
+		const racing = held.live as Held["live"]; // (the await above may have changed it; the compiler's narrowing does not know)
+		if (racing !== null) throw new InFlightError(sessionId, racing.runId);
 		held.agent = agent;
-		held.session = await agent.session({ id: sessionId });
+		held.session = session;
 	}
 
 	/** Fan out every event on the open log after `published`, in seq order.

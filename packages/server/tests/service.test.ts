@@ -337,6 +337,30 @@ describe("reopen", () => {
 		await again.done;
 		expect(seen.length).toBeGreaterThan(before); // the carried listener saw the second run
 	});
+
+	it("a run that starts while the factory is rebuilding keeps its session: the rebuild is refused, not swapped under it", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-server-")));
+		const { tool, release } = gatedTool("slow");
+		let opens = 0;
+		let unblock: () => void = () => {};
+		const service = createSessionService({
+			store,
+			open: async () => {
+				opens += 1;
+				if (opens === 2) await new Promise<void>((r) => (unblock = r)); // the rebuild's factory is slow
+				return createAgent({ model: "faux", store, tools: [tool], adapter: createFauxProvider(callThen("slow")) });
+			},
+		});
+		await service.subscribe("s", -1, () => {});
+		const rebuilding = service.reopen("s");
+		await new Promise((r) => setTimeout(r, 10));
+		const handle = await service.run("s", "go");
+		unblock();
+		await expect(rebuilding).rejects.toBeInstanceOf(InFlightError);
+		release();
+		await handle.done;
+		expect(service.events("s").at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
+	});
 });
 
 describe("one truth: the factory's store is the service's store", () => {

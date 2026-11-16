@@ -86,8 +86,8 @@ export function ModelMenu({ c, running }: { readonly c: Controls; readonly runni
 	return (
 		<Menu
 			act="model"
-			disabled={running || s === null || s.profiles.length === 0}
-			{...(running ? { title: t.modelWhileRunning } : {})}
+			disabled={s === null || s.profiles.length === 0}
+			{...(running ? { title: t.modelNextRun } : {})}
 			label={
 				<>
 					<span data-field="model-pill" title={current?.model}>{current === null ? t.noModel : (current.model.split("/").pop() ?? current.model)}</span>
