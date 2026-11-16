@@ -67,19 +67,26 @@ export function MessagedRow({ step }: { readonly step: Step }): ReactNode {
 	);
 }
 
-/** ADR-0062 § 8 (mock 2c): messages held for the person, at the stream's end, read again every few seconds: Drop or Admit. */
-export function HeldRows(): ReactNode {
+/** ADR-0062 § 8 and S4 (mocks 2, 2c): the inbox at the stream's end, read again every few seconds: a message not read yet is
+ *  "Message from X · read at the next step" (or "after your answer" while an approval waits); a held one has Drop and Admit. */
+export function InboxRows({ seen, after }: { readonly seen: ReadonlySet<string>; readonly after: boolean }): ReactNode {
 	const host = useContext(CardsContext);
 	const [busy, setBusy] = useState(false);
 	const latest = useRef(host);
 	latest.current = host; // the page re-renders often: the timer reads the newest, and is set once
 	useEffect(() => ((timer) => () => clearInterval(timer))(setInterval(() => latest.current?.refresh(), 4000)), []);
 	const act = (id: string, action: "admit" | "drop"): void => (setBusy(true), void host?.release(id, action).finally(() => setBusy(false)));
-	return (host?.held ?? []).map((m) => (
-		<div key={m.id} className="prow-line" data-kind="held-row">
-			<Row head={<>{t.messageFrom} <span className="plink">{m.title}</span> · {t.heldTag}</>} body={m.text} />
-			<button className="held-drop" disabled={busy} onClick={() => act(m.id, "drop")} data-act="held-drop">{t.dropHeld}</button>
-			<button className="held-admit" disabled={busy} onClick={() => act(m.id, "admit")} data-act="held-admit">{t.admitHeld}</button>
-		</div>
-	));
+	return (host?.inbox ?? []).filter((m) => !seen.has(m.id)).map((m) =>
+		m.held ? (
+			<div key={m.id} className="prow-line" data-kind="held-row">
+				<Row head={<>{t.messageFrom} <span className="plink">{m.title}</span> · {t.heldTag}</>} body={m.text} />
+				<button className="held-drop" disabled={busy} onClick={() => act(m.id, "drop")} data-act="held-drop">{t.dropHeld}</button>
+				<button className="held-admit" disabled={busy} onClick={() => act(m.id, "admit")} data-act="held-admit">{t.admitHeld}</button>
+			</div>
+		) : (
+			<div key={m.id} className="pwait" data-kind="waiting-row">
+				<Row head={<>{t.messageFrom} {m.title} · {after ? t.readAfter : t.readNext}</>} body={m.text} />
+			</div>
+		),
+	);
 }

@@ -276,7 +276,7 @@ export function App(): ReactNode {
 		// a Work of this folder, or of the folder `key` names (null: the folder in use)
 		open: (id, key) => setTarget({ key: key === undefined ? target.key : key === history?.current.key ? null : key, sessionId: id }),
 		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
-		held: env?.held ?? [], release: async (messageId, action) => (await answerHeld(target.key, target.sessionId, messageId, action), void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined)),
+		inbox: env?.inbox ?? [], release: async (messageId, action) => (await answerHeld(target.key, target.sessionId, messageId, action), void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined)),
 		answer: async (callId, action) => {
 			const id = await answerCard(target.key, target.sessionId, callId, action);
 			void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined);

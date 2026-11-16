@@ -10,7 +10,7 @@ import type { Session } from "../state/store.js";
 import { ResumeCard, VerdictPanel } from "./Interrupt.js";
 import { t } from "../i18n/index.js";
 import { Copy, I } from "./Icons.js";
-import { HeldRows } from "./PeerRows.js";
+import { InboxRows } from "./PeerRows.js";
 
 // the input handed to the page at launch is sent once, into the first Work that opens
 let autoSent = false;
@@ -67,6 +67,10 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const down = useLink(session);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
+	// ADR-0062 S3: with exactly one approval open, a typed line declines it and becomes the next instruction (queued first, so
+	// it is admitted once at the boundary after the decline); with several open, none is declined and the line waits as a steer
+	const open = (turns.at(-1)?.items ?? []).filter((i) => i.kind === "ask" && i.decision === "open");
+	const steer = (x: Parameters<typeof session.steer>[0]): Promise<void> => (open.length === 1 && open[0]!.kind === "ask" ? session.steer(x).then(() => session.approve((open[0] as { decisionId: string }).decisionId, false)) : session.steer(x));
 	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);
@@ -243,7 +247,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 							<div className="pend-note">{t.pendingNote}</div>
 						</div>
 					))}
-					<HeldRows />
+					<InboxRows seen={new Set(turns.flatMap((u) => u.items.flatMap((i) => (i.kind === "peer" ? [i.messageId] : []))))} after={open.length > 0} />
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}
 				</div>
@@ -268,7 +272,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					)}
 				</div>
 			) : (
-				<Composer down={down} held={held} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={(x) => session.steer(x)} onStop={() => void session.abort()} />
+				<Composer down={down} held={held} hint={open.length === 1 ? t.declineHint : null} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={steer} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

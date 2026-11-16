@@ -13,13 +13,14 @@ export interface Peer {
 	/** the sender's folder key and session id */
 	readonly key: string;
 	readonly session: string;
+	readonly messageId: string;
 	readonly title: string;
 	/** a completion's end state ("finished", "failed", "waiting on you", "ended with tasks still running"); "" for a message */
 	readonly state: string;
 	readonly body: string;
 }
 
-type Via = { readonly kind?: unknown; readonly event?: unknown; readonly from?: unknown };
+type Via = { readonly kind?: unknown; readonly event?: unknown; readonly from?: unknown; readonly messageId?: unknown };
 
 /** The peer item for an input, or null when it is not one. */
 export function peerOf(seq: number, via: Via | undefined, text: string): Peer | null {
@@ -32,5 +33,5 @@ export function peerOf(seq: number, via: Via | undefined, text: string): Peer | 
 		state = /^([^.\n]*)\./.exec(body)?.[1] ?? "";
 		body = body.slice(state.length + 1).trim();
 	}
-	return { kind: "peer", id: `p${seq}`, seq, event: via.event === "completion" ? "completion" : "message", key: via.from.slice(0, at), session: via.from.slice(at + 1), title, state, body };
+	return { kind: "peer", id: `p${seq}`, seq, event: via.event === "completion" ? "completion" : "message", key: via.from.slice(0, at), session: via.from.slice(at + 1), messageId: String(via.messageId ?? ""), title, state, body };
 }
