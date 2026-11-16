@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { defineTool, type KisoExtension } from "@vincemakes/kiso-core";
 import { LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools } from "@vincemakes/kiso-runtime/internal";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
+import { messageTool } from "./message-tool.js";
 
 /**
  * ADR-0062 PR 1: the sessions extension, the web host's half. A Work gets it only when the host runs with it on
@@ -15,6 +16,10 @@ export interface SessionsHost {
 	readonly list: () => Promise<HistoryReply>;
 	/** a folder key's session directory */
 	readonly dirOf: (key: string) => string;
+	/** a message was written to this Work's inbox: open it here if it is not held elsewhere, and have it look */
+	readonly deliver: (key: string, sessionId: string) => Promise<void>;
+	/** whether this Work may read the file (its folder or the folders it was given; never a protected file) */
+	readonly mayRead: (self: { readonly key: string; readonly sessionId: string }, path: string) => boolean;
 }
 
 const MAX_LINES = 100;
@@ -29,7 +34,7 @@ export function sessionsFor(dir: string, self: { readonly key: string; readonly 
 		idempotent: true,
 		execute: async (input) => ({ content: listing(await host.list(), self, (input as { readonly query?: string }).query, host.dirOf), isError: false }),
 	});
-	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [listTool] };
+	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [listTool, messageTool(self, host)] };
 }
 
 /** Each id's shortest suffix (four characters at least) that no other listed id ends with; a full id listed twice (two
