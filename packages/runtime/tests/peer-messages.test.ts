@@ -14,6 +14,7 @@ const drain = async (run: AsyncIterable<unknown>): Promise<void> => {
 	for await (const _ of run) void _;
 };
 
+// filling an inbox is 200 durable writes (each fsynced, with its directory): on a loaded machine that passes 5 s
 describe("the inbox", () => {
 	it("writes one file per message, oldest first; a replayed id is a duplicate, not a second file", async () => {
 		const root = mkdtempSync(join(tmpdir(), "kiso-ib-"));
@@ -29,7 +30,7 @@ describe("the inbox", () => {
 		await expect(writeMessage(root, "r", { ...msg("x"), files: Array.from({ length: INBOX_LIMITS.files + 1 }, (_, i) => ({ path: `/f${i}`, rev: "rev:0" })) })).rejects.toThrow(/limit/);
 		for (let i = 0; i < INBOX_LIMITS.messages; i++) await writeMessage(root, "r", msg(`m${i}`));
 		await expect(writeMessage(root, "r", msg("over"))).rejects.toThrow(/full/);
-	});
+	}, 30_000);
 
 	it("counts whole records against the byte limit, so long path lists cannot slip past it", async () => {
 		const root = mkdtempSync(join(tmpdir(), "kiso-ib-"));
@@ -38,7 +39,7 @@ describe("the inbox", () => {
 			for (let i = 0; i < 40; i++) await writeMessage(root, "r", { ...msg(`f${i}`), files });
 		})()).rejects.toThrow(/full/);
 		expect(readInbox(root, "r").length).toBeLessThan(40);
-	});
+	}, 30_000);
 
 	it("three senders racing for the last slot: exactly one is accepted", async () => {
 		const root = mkdtempSync(join(tmpdir(), "kiso-ib-"));
@@ -46,7 +47,7 @@ describe("the inbox", () => {
 		const results = await Promise.allSettled(["x", "y", "z"].map((id) => writeMessage(root, "r", msg(id))));
 		expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
 		expect(readInbox(root, "r")).toHaveLength(INBOX_LIMITS.messages);
-	});
+	}, 30_000);
 });
 
 async function receiver(script: unknown[]) {
