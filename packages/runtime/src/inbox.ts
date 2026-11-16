@@ -26,6 +26,10 @@ export interface PeerMessage {
 	/** the causal chain this message belongs to (ADR-0062 § 6) */
 	readonly rootId: string;
 	readonly at: number;
+	/** what it is: a message (the default), or the completion notice a child owes its parent (ADR-0062 § 7) */
+	readonly event?: "message" | "completion";
+	/** held for the person: a narrower sender to a wider receiver (ADR-0062 § 8); never delivered until released */
+	readonly held?: true;
 }
 
 export const INBOX_LIMITS = { textBytes: 16 * 1024, files: 20, messages: 200, bytes: 1024 * 1024 } as const;

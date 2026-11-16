@@ -466,7 +466,7 @@ export class AgentSession {
 
 	/** Deliver the messages in this session's inbox (`root` is its store's directory): into a live run at its next safe
 	 *  point, or — idle — one wake run through `onWake`. Reads the inbox at once. */
-	usePeers(options: Pick<PeerDeliveryOptions, "root" | "onWake">): () => void {
+	usePeers(options: Pick<PeerDeliveryOptions, "root" | "onWake" | "mayWake">): () => void {
 		this.#peers?.close();
 		const peers = new PeerDelivery({ ...options, sessionId: this.id, events: () => this.log.all, liveRun: () => [...this.#activeRuns][0] });
 		this.#peers = peers;

@@ -181,7 +181,11 @@ export function createSpace(options: SpaceOptions): Space {
 					};
 					session.useTasks(tasks.managerFor(sessionId), { wake: options.taskWake !== false, onWake: wake });
 					// ADR-0062: messages from other Works, read from its inbox now and whenever one is written
-					if (options.sessions !== undefined) session.usePeers({ root: options.dir, onWake: wake });
+					if (options.sessions !== undefined) {
+						session.usePeers({ root: options.dir, onWake: wake, mayWake: options.sessions.mayWake });
+						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
+						for (const u of session.uncertainExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
+					}
 				},
 			});
 		},

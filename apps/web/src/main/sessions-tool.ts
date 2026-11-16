@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineTool, type KisoExtension } from "@vincemakes/kiso-core";
-import { LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools } from "@vincemakes/kiso-runtime/internal";
+import { ChainBudget, LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools } from "@vincemakes/kiso-runtime/internal";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import { messageTool } from "./message-tool.js";
 
@@ -20,7 +20,16 @@ export interface SessionsHost {
 	readonly deliver: (key: string, sessionId: string) => Promise<void>;
 	/** whether this Work may read the file (its folder or the folders it was given; never a protected file) */
 	readonly mayRead: (self: { readonly key: string; readonly sessionId: string }, path: string) => boolean;
+	/** ADR-0062 § 6: the causal chain the Work is on, read from its log */
+	readonly chainOf: (key: string, sessionId: string) => string;
+	/** the Work's permission mode */
+	readonly tierOf: (sessionId: string) => string;
+	/** spend one of a chain's wakes; false once they are spent */
+	readonly mayWake: (rootId: string) => boolean;
 }
+
+/** The chain budgets, one small file per chain under the kiso home (a restart never refills a spent one). */
+export const chainBudget = (home: string): ChainBudget => new ChainBudget(join(home, "chains"));
 
 const MAX_LINES = 100;
 const STATE = { running: "running", waiting: "waiting on the person", idle: "idle" } as const;

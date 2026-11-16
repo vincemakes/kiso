@@ -9,7 +9,8 @@ import type { PeerInput, Run } from "./run.js";
  *   an idle session → one wake run whose first input is the oldest message; the rest ride its first admission.
  * Exactly once, from the log: a message counts as admitted when a user_input whose `via.messageId` names it is in the log;
  * only then is its inbox file deleted. Handed to a run but not yet in the log is remembered, so nothing is handed twice.
- * The wake budget across sessions is ADR-0062 § 6's (PR 3); until then a message to an idle session always wakes it.
+ * A wake spends one of its chain's wakes (`mayWake`); once they are spent the message waits for the next run. A held
+ * message is never delivered until the person releases it.
  */
 
 export interface PeerDeliveryOptions {
@@ -19,13 +20,15 @@ export interface PeerDeliveryOptions {
 	readonly liveRun: () => Run | undefined;
 	/** Start ONE run whose first input is this message. Absent: messages wait for the next run. */
 	readonly onWake?: (input: { readonly content: string; readonly via: UserInputVia }) => void;
+	/** ADR-0062 § 6: spend one of the chain's wakes; false: the chain's budget is spent, the message waits for a run */
+	readonly mayWake?: (rootId: string) => boolean;
 }
 
 /** What the model reads: who sent it, the text, and the files as paths (the receiver reads them with its own tools). */
 export function peerInput(m: PeerMessage): PeerInput {
 	const files = m.files.length === 0 ? "" : `\n\nFiles (local paths; read them if you need them):\n${m.files.map((f) => `- ${f.path}`).join("\n")}`;
-	const content = `Message from the session "${m.fromTitle}" (${m.from}):\n\n${m.text}${files}`;
-	return { kind: "runtime", content, source: "system", via: { kind: "peer", event: "message", from: m.from, messageId: m.messageId, rootId: m.rootId } };
+	const head = m.event === "completion" ? `The session "${m.fromTitle}" (${m.from}), which this session started, ended a turn:` : `Message from the session "${m.fromTitle}" (${m.from}):`;
+	return { kind: "runtime", content: `${head}\n\n${m.text}${files}`, source: "system", via: { kind: "peer", event: m.event ?? "message", from: m.from, messageId: m.messageId, rootId: m.rootId } };
 }
 
 const admittedIds = (events: readonly Event[]): Set<string> => {
@@ -50,7 +53,7 @@ export class PeerDelivery {
 		const run = this.#o.liveRun();
 		const pending = this.#pending();
 		if (run !== undefined) for (const m of pending) this.#hand(run, m);
-		else if (!this.#waking && this.#o.onWake !== undefined && pending.length > 0) {
+		else if (!this.#waking && this.#o.onWake !== undefined && pending.length > 0 && (this.#o.mayWake?.(pending[0]!.rootId) ?? true)) {
 			const first = peerInput(pending[0]!);
 			this.#waking = true;
 			this.#inFlight.add(first.via.messageId);
@@ -83,7 +86,7 @@ export class PeerDelivery {
 			if (admitted.has(m.messageId)) {
 				this.#inFlight.delete(m.messageId);
 				removeMessage(this.#o.root, this.#o.sessionId, m.messageId);
-			} else if (!this.#inFlight.has(m.messageId)) pending.push(m);
+			} else if (!this.#inFlight.has(m.messageId) && m.held !== true) pending.push(m);
 		}
 		return pending;
 	}
