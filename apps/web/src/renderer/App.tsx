@@ -297,8 +297,8 @@ export function App(): ReactNode {
 			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
 			{open ? (
 				<div className="brand" data-kind="brand">
-					<Mark />
-					<span className="word">kiso</span>
+					<Mark size={24} />
+					<span className="word">Kiso</span>
 				</div>
 			) : null}
 			<button className="sidetoggle" onClick={() => (narrow && !open && setRailChoice(false), narrow || sideSave(!open), setOpen(!open))} aria-label={open ? t.closeSidebar : t.openSidebar} data-act="sidebar">

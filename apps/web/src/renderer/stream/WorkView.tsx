@@ -223,7 +223,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					{!session.loaded() && turns.length === 0 ? <Loading /> : null}
 					{turns.length === 0 && home === undefined ? (
 						<div className="empty">
-							<b>kiso</b>
+							<b>Kiso</b>
 						</div>
 					) : null}
 					{turns.length > 0 ? lead : null}

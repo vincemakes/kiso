@@ -78,7 +78,7 @@ check(snaps.filter((s) => s.asks > 0).every((s) => s.folded === "false"), "while
 // the wide table: it scrolls inside its own box, and nothing between it and the page scrolls sideways
 const wide = await app.evaluate(`(() => { const t = document.querySelector('[data-kind=answer] [data-kind=table]'); const up = []; for (let e = t?.parentElement; e; e = e.parentElement) up.push(e.scrollWidth - e.clientWidth); return JSON.stringify({ rows: t?.querySelectorAll('tbody tr').length, inner: t ? t.scrollWidth - t.clientWidth : -1, up: Math.max(...up), code: t?.querySelectorAll('td code').length, right: t ? getComputedStyle(t.querySelector('th:last-child')).textAlign : null }); })()`).then(JSON.parse);
 check(wide.rows === 3 && wide.code === 1 && wide.right === "right" && wide.inner > 0 && wide.up <= 0 && !snaps.some((s) => s.delim), `a wide table is drawn (3 rows, code in a cell, right-aligned column), scrolls inside its own box (${wide.inner} px) and the page never scrolls sideways (${wide.up} px); its delimiter row never showed as text`);
-check(snaps.some((s) => s.place === "Add a line, or press Esc to stop…") && snaps.at(-1).place === "Ask kiso to do something…", "the input box changes its placeholder while a run is live, and back");
+check(snaps.some((s) => s.place === "Add a line, or press Esc to stop…") && snaps.at(-1).place === "Ask Kiso to do something…", "the input box changes its placeholder while a run is live, and back");
 await app.click(".ph");
 await sleep(900);
 await app.shot("5-process-open");
