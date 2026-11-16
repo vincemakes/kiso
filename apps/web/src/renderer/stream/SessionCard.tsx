@@ -16,7 +16,8 @@ type Cards = NonNullable<EnvReply["cards"]>;
 export interface CardsHost {
 	readonly cards: Cards;
 	readonly titleOf: (sessionId: string) => string | undefined;
-	readonly open: (sessionId: string) => void;
+	/** open a Work: this folder's, or the folder `key` names */
+	readonly open: (sessionId: string, key?: string) => void;
 	readonly answer: (callId: string, action: "start" | "here" | "dismiss") => Promise<void>;
 	/** read the cards again (a start_session call just finished) */
 	readonly refresh: () => void;

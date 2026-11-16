@@ -80,6 +80,11 @@ describe("R4: the projection", () => {
 		expect(toWireEvent(SAMPLES[15]!)!).not.toHaveProperty("speaker");
 	});
 
+	it("ADR-0062: a user_input carries its via, so a page knows a message from another session", () => {
+		const via = { kind: "peer", event: "message", from: "k/2026-11-16T10-00-00-a1b2", messageId: "m1", rootId: "r1" };
+		expect(toWireEvent({ seq: 3, type: "user_input", content: "hello", source: "system", via } as never)).toEqual({ seq: 3, type: "user_input", content: "hello", source: "system", via });
+	});
+
 	it("thinking is off the wire unless asked", () => {
 		expect(toWireEvent(SAMPLES[6]!)).toBeNull();
 		expect(toWireEvent(SAMPLES[6]!, { exposeThinking: true })).toMatchObject({ type: "thinking", text: "hmm" });

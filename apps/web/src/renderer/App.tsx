@@ -273,7 +273,8 @@ export function App(): ReactNode {
 	const cardsHost: CardsHost = {
 		cards: env?.cards ?? {},
 		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title,
-		open: (id) => setTarget({ key: target.key, sessionId: id }),
+		// a Work of this folder, or of the folder `key` names (null: the folder in use)
+		open: (id, key) => setTarget({ key: key === undefined ? target.key : key === history?.current.key ? null : key, sessionId: id }),
 		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
 		answer: async (callId, action) => {
 			const id = await answerCard(target.key, target.sessionId, callId, action);
