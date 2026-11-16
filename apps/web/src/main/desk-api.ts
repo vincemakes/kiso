@@ -6,6 +6,7 @@ import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
 import { contextParts } from "./context.js";
 import { rename } from "./names.js";
 import { forkWork } from "./fork.js";
+import { answerCard, workLinks } from "./start-session-tool.js";
 import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
 import { commit, gitOf, openPr, prDraft, tryRun } from "./git.js";
 import { prOfUrl } from "./prs.js";
@@ -144,6 +145,14 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const atSeq = typeof body["atSeq"] === "number" ? body["atSeq"] : undefined;
 			return json(200, { id: forkWork(space, ctx.settings, session, atSeq).id });
 		}
+		if (path === "/desk/session-card") {
+			if (!post || space === null) return json(post ? 404 : 405, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			const answer = await answerCard(space, ctx.settings, space.key, session, str(body["callId"]) ?? "", str(body["action"]) ?? "");
+			return json(answer.status, answer.body);
+		}
 		if (path === "/desk/work") {
 			if (!post) return json(405, {});
 			if (space === null) return json(404, {});
@@ -206,7 +215,8 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const session = url.searchParams.get("session") ?? undefined;
 			const fork = session === undefined ? undefined : ctx.settings.forkOf(session);
 			const rows = session !== undefined && SAFE_ID.test(session) && space.store.ids().includes(session) ? { rows: environmentRows(space, session, ctx.settings.marksOf(session).pr) } : {};
-			return json(200, { ...folderInfo(space.workspace, ctx.settings.tierOf(session)), ...rows, ...(fork === undefined ? {} : { fork: { parent: fork.parent, title: fork.title, at: fork.at } }) });
+			const links = session !== undefined && SAFE_ID.test(session) ? workLinks(space, session) : {};
+			return json(200, { ...folderInfo(space.workspace, ctx.settings.tierOf(session)), ...rows, ...links, ...(fork === undefined ? {} : { fork: { parent: fork.parent, title: fork.title, at: fork.at } }) });
 		}
 		if (path === "/desk/env-open" && post) {
 			if (space === null) return json(404, {});

@@ -187,6 +187,25 @@ export function writeStartedBy(root: string, sessionId: string, parent: string):
 	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), startedBy: parent });
 }
 
+/** ADR-0062 § 9: the Work cards this session's start_session calls drew, by call id: pending until the person answers. */
+export interface WorkCard {
+	readonly state: "pending" | "started" | "dismissed" | "here";
+	readonly title: string;
+	readonly at: number;
+	/** the Work it started */
+	readonly work?: string;
+}
+
+export function readCards(root: string, sessionId: string): Readonly<Record<string, WorkCard>> {
+	const c = currentTenants(root, sessionId).cards;
+	return c !== null && typeof c === "object" && !Array.isArray(c) ? (c as Record<string, WorkCard>) : {};
+}
+
+export function writeCard(root: string, sessionId: string, callId: string, card: WorkCard): void {
+	const tenants = currentTenants(root, sessionId);
+	writeTenants(root, sessionId, { ...tenants, cards: { ...readCards(root, sessionId), [callId]: card } });
+}
+
 /** Where a fork came from (SessionStore.fork): the parent session, the seq of the parent's `terminal` it was cut after,
  *  when, and the parent's title then. The sidecar's fourth tenant; lineage, not authority. */
 export interface ForkOrigin {

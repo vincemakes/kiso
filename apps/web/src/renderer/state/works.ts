@@ -80,6 +80,14 @@ export async function fetchEnv(key: string | null, session?: string): Promise<En
 	return (await response.json()) as EnvReply;
 }
 
+/** ADR-0062: the person answers a Work card: start it, do it here, or dismiss it. Started: the new Work's id. */
+export async function answerCard(key: string | null, session: string, callId: string, action: "start" | "here" | "dismiss"): Promise<string | undefined> {
+	const response = await fetch(`/desk/session-card${key === null ? "" : `?key=${encodeURIComponent(key)}`}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session, callId, action }) });
+	const body = (await response.json().catch(() => ({}))) as { id?: string; error?: string };
+	if (!response.ok) throw new Error(body.error ?? `card ${response.status}`);
+	return body.id;
+}
+
 export async function fetchHistory(fresh?: string): Promise<HistoryReply> {
 	const response = await fetch(`/desk/history${fresh === undefined ? "" : `?fresh=${encodeURIComponent(fresh)}`}`);
 	if (!response.ok) throw new Error(`history ${response.status}`);

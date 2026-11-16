@@ -88,7 +88,7 @@ export class History {
 			for (const meta of read.metas) {
 				rows.push({
 					// a fork's parent: the store's own record (any app made it), else the host's (forks it made before)
-					...(meta.forkedFrom !== undefined ? { parent: meta.forkedFrom } : {}),
+					...(meta.forkedFrom !== undefined ? { parent: meta.forkedFrom } : meta.startedBy !== undefined ? { parent: meta.startedBy } : {}),
 					...this.#marksOf(meta.id),
 					id: meta.id,
 					key,

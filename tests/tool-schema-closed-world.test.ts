@@ -81,6 +81,7 @@ const VALID_INPUTS: Readonly<Record<string, Record<string, unknown>>> = {
 	list_dir: {},
 	list_sessions: {},
 	message: { to: "a1b2", text: "hi" },
+	start_session: { title: "t", brief: "b", initiation: "named" },
 	search_text: { pattern: "x" },
 	write_file: { path: "a.txt", content: "hi", expectedRevision: "absent" },
 	edit_file: { path: "a.txt", edits: [{ oldText: "a", newText: "b" }], expectedRevision: "rev:x" },

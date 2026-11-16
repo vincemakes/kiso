@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { defineTool, type KisoExtension } from "@vincemakes/kiso-core";
+import { defineTool, type Event, type KisoExtension } from "@vincemakes/kiso-core";
 import { ChainBudget, LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools } from "@vincemakes/kiso-runtime/internal";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import { messageTool } from "./message-tool.js";
+import { startSessionTool, type WorkStart } from "./start-session-tool.js";
 
 /**
  * ADR-0062 PR 1: the sessions extension, the web host's half. A Work gets it only when the host runs with it on
@@ -26,6 +27,10 @@ export interface SessionsHost {
 	readonly tierOf: (sessionId: string) => string;
 	/** spend one of a chain's wakes; false once they are spent */
 	readonly mayWake: (rootId: string) => boolean;
+	/** a Work's events, from its log */
+	readonly eventsOf: (key: string, sessionId: string) => readonly Event[];
+	/** ADR-0062 § 9: start a Work from this one (a fork waits for the parent's run to end) */
+	readonly startWork: (key: string, parent: string, start: WorkStart) => Promise<void>;
 }
 
 /** The chain budgets, one small file per chain under the kiso home (a restart never refills a spent one). */
@@ -43,7 +48,7 @@ export function sessionsFor(dir: string, self: { readonly key: string; readonly 
 		idempotent: true,
 		execute: async (input) => ({ content: listing(await host.list(), self, (input as { readonly query?: string }).query, host.dirOf), isError: false }),
 	});
-	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [listTool, messageTool(self, host)] };
+	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [listTool, messageTool(self, host), startSessionTool(self, host)] };
 }
 
 /** Each id's shortest suffix (four characters at least) that no other listed id ends with; a full id listed twice (two

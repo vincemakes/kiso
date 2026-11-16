@@ -60,6 +60,10 @@ export interface EnvReply {
 	readonly mode: string;
 	/** when the Work asked about is a fork: what it was forked from, and when */
 	readonly fork?: { readonly parent: string; readonly title: string; readonly at: number };
+	/** ADR-0062: the Work that started this one, in this folder */
+	readonly started?: { readonly parent: string; readonly folder: string };
+	/** ADR-0062: the cards this Work's start_session calls drew, by call id */
+	readonly cards?: Readonly<Record<string, { readonly state: "pending" | "started" | "dismissed" | "here"; readonly title: string; readonly at: number; readonly work?: string }>>;
 	/** with a session: the Environment rows (primary, added, recent), its repositories, the doors the host can open, and whether the added list is damaged */
 	readonly rows?: { readonly folders: readonly EnvFolder[]; readonly repos: readonly EnvRepo[]; readonly doors: readonly ("reveal" | "terminal")[]; readonly damaged: boolean };
 }
