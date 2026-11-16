@@ -194,16 +194,18 @@ export interface UserInputEvent {
 
 export type UserInputVia =
 	| { readonly kind: "skill"; readonly name: string; readonly line: string }
-	| { readonly kind: "tasks"; readonly items: readonly TaskDeliveryItem[] };
+	| { readonly kind: "tasks"; readonly items: readonly TaskDeliveryItem[] }
+	| { readonly kind: "peer"; readonly event: "message" | "completion"; readonly from: string; readonly messageId: string; readonly rootId: string };
 
 export interface TaskDeliveryItem {
 	readonly taskId: string;
 	readonly transition: "ready" | "exited" | "failed" | "stopped" | "unknown";
 }
 
-/** An input the runtime owes the model (a task notice) — never a person's,
- *  so it never passes onUserMessage (ADR-0057 §4, a wake run included). */
-export const isRuntimeInput = (e: { readonly via?: UserInputVia } | undefined): boolean => e?.via?.kind === "tasks";
+/** An input the runtime owes the model (a task notice; ADR-0062: a message
+ *  or a completion notice from another session) — never a person's, so it
+ *  never passes onUserMessage (ADR-0057 §4, a wake run included). */
+export const isRuntimeInput = (e: { readonly via?: UserInputVia } | undefined): boolean => e?.via?.kind === "tasks" || e?.via?.kind === "peer";
 
 /**
  * Compaction happened at this point in the trajectory. The EXACT
@@ -739,6 +741,7 @@ function isVia(v: Record<string, unknown>): boolean {
 	const via = v.via as Record<string, unknown>;
 	if (!isPlainObject(via)) return false;
 	if (via.kind === "skill") return typeof via.name === "string" && via.name !== "" && typeof via.line === "string" && via.line !== "";
+	if (via.kind === "peer") return (via.event === "message" || via.event === "completion") && [via.from, via.messageId, via.rootId].every((x) => typeof x === "string" && x !== "");
 	const items = via.items;
 	return via.kind === "tasks" && Array.isArray(items) && items.length > 0 && items.every((i) => isPlainObject(i) && typeof i.taskId === "string" && i.taskId !== "" && TASK_TRANSITIONS.has(i.transition as string));
 }
