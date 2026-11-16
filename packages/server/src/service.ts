@@ -349,6 +349,15 @@ export class SessionService {
 		return { needsResume: !wasLive };
 	}
 
+	/** ADR-0062 § 10b: take back the session's last line (the session's rule says when): its content, or null. The veto is
+	 *  appended with no run live, so it is published here, as an idle verdict is. */
+	async rewind(sessionId: string): Promise<string | readonly ContentBlock[] | null> {
+		const held = await this.#hold(sessionId);
+		const content = await held.session.rewind();
+		if (content !== null) this.#publish(held);
+		return content;
+	}
+
 	async pendingApprovals(sessionId: string): Promise<readonly ApprovalRequest[]> {
 		return (await this.#hold(sessionId)).session.pendingApprovals();
 	}

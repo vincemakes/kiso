@@ -221,6 +221,9 @@ export function reduce(s: State, input: Input): State {
 			}
 			return s;
 		}
+		// ADR-0062 § 10b: a line taken back (a veto, no content) goes with the run it started
+		case "user_input_replaced":
+			return (e.content === null && ((at) => at >= 0 && s.turns.splice(at, 1))(s.turns.findIndex((u) => u.id === `t${e.replaces}`)), s);
 		case "thinking": {
 			if (turn === undefined) return s;
 			let item = turn.items.at(-1);

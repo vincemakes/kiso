@@ -72,6 +72,8 @@ export interface Space {
 	readonly reopen: (sessionId: string) => Promise<"now" | "next">; // rebuilt so its next run reads its settings: now when idle, else once its run settles
 	/** ADR-0062: a message waits in this Work's inbox: open it (refused when another process holds it) and have it look */
 	readonly poke: (sessionId: string) => Promise<"handed" | "woke" | "waiting">;
+	/** ADR-0062 § 10b: take back the person's last line (its content, for the box), or null when it cannot be */
+	readonly rewind: (sessionId: string) => Promise<unknown>;
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -322,6 +324,7 @@ export function createSpace(options: SpaceOptions): Space {
 		handler,
 		opened: () => opened,
 		followUp, reopen,
+		rewind: (sessionId) => service.rewind(sessionId),
 		poke: async (sessionId) => {
 			await service.pendingApprovals(sessionId); // opens the Work if it is not open yet
 			return sessions.get(sessionId)?.pokePeers() ?? "waiting";

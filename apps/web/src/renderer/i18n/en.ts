@@ -140,6 +140,8 @@ export const en = {
 	declineHint: "Typing declines this, and your words become the next instruction",
 	declineHintShort: "Typing declines this",
 	answerHint: "Answer, or pick above",
+	rewind: "Take this line back into the box",
+	rewindBusy: "Rewind is unavailable while the Work is running; stop it first (Esc)",
 	needsInput: "Needs your input",
 	qOf: "{n} of {of}",
 	qPrev: "Previous question",

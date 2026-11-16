@@ -148,6 +148,13 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const atSeq = typeof body["atSeq"] === "number" ? body["atSeq"] : undefined;
 			return json(200, { id: forkWork(space, ctx.settings, session, atSeq).id });
 		}
+		if (path === "/desk/rewind") {
+			if (!post || space === null) return json(post ? 404 : 405, {});
+			const session = str((await readJson(req))["session"]) ?? "";
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			const content = await space.rewind(session);
+			return content === null ? json(409, { error: "only the last line, when its run was stopped before it did anything" }) : json(200, { content });
+		}
 		if (path === "/desk/ask") {
 			if (!post || space === null) return json(post ? 404 : 405, {});
 			const body = await readJson(req);

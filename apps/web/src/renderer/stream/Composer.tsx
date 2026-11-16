@@ -85,7 +85,12 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	useEffect(() => setFiles(null), [c?.envVersion]);
 	// a waiting steer taken back to edit comes back into the box, after whatever is already being typed
 	useEffect(() => {
-		const back = (e: Event): void => setText((now) => [now, (e as CustomEvent<string>).detail].filter((x) => x !== "").join("\n"));
+		const back = (e: Event): void => {
+			// a waiting steer taken back (its text), or a rewound line (its text and its attachments, ADR-0062 § 10b)
+			const d = (e as CustomEvent<string | { text: string; attached: readonly Attachment[] }>).detail;
+			setText((now) => [now, typeof d === "string" ? d : d.text].filter((x) => x !== "").join("\n"));
+			if (typeof d !== "string") setAttached((now) => [...now, ...d.attached]);
+		};
 		addEventListener("kiso:restore", back);
 		return () => removeEventListener("kiso:restore", back);
 	}, []);
