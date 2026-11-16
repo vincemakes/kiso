@@ -140,7 +140,7 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 					options.signal !== undefined ? { signal: options.signal as AbortSignal } : undefined,
 				);
 			} catch (err) {
-				throw toOpenAIError(err, options.model);
+				throw toOpenAIError(err, options.model, ownScope);
 			}
 
 			const pending = new Map<number, PendingToolCall>();
@@ -327,7 +327,7 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 					}
 				}
 			} catch (err) {
-				throw toOpenAIError(err, options.model);
+				throw toOpenAIError(err, options.model, ownScope);
 			}
 
 			// 0.39.1 — the verdict is read BEFORE anything is emitted. A
@@ -632,8 +632,31 @@ function retryAfterOf(headers: unknown): number | undefined {
 	return parseRetryAfter(typeof raw === "string" ? raw : undefined);
 }
 
-function toOpenAIError(err: unknown, model: string): unknown {
-	const label = `[${vendorOf(model)}] request failed: `;
+/** A gateway (a custom endpoint) is named by its host, the model's vendor beside it: "[deepseek]" on a gateway's refusal sent
+ *  the person to the wrong key. A vendor's own endpoint keeps the vendor's label. */
+function hostOf(scope: OpenAICompatScope | undefined): string | undefined {
+	if (scope?.providerId !== "custom" || scope.endpoint === undefined) return undefined;
+	try {
+		return new URL(scope.endpoint).host;
+	} catch {
+		return scope.endpoint;
+	}
+}
+
+const SPENT = /insufficient (credits?|balance|quota|funds)|out of credits?|credit balance is too low|exceeded your current quota/i;
+
+/** A refusal for spent credit says which key it is and where a new one is stored (the provider's words alone named neither). */
+function creditNote(status: number | undefined, message: string, scope: OpenAICompatScope | undefined): string {
+	if (status === undefined || status < 400 || status >= 500 || !SPENT.test(message)) return "";
+	const host = hostOf(scope);
+	if (host !== undefined) return ` — the key for ${host} has no credit left: store a new one (kiso web: Settings; the terminal: \`kiso login --endpoint ${scope!.endpoint}\`)`;
+	const id = scope?.providerId;
+	return id === undefined ? " — the key has no credit left: store a new one" : ` — the ${id} key has no credit left: store a new one (kiso web: Settings; the terminal: \`kiso login ${id}\`)`;
+}
+
+function toOpenAIError(err: unknown, model: string, scope?: OpenAICompatScope): unknown {
+	const host = hostOf(scope);
+	const label = `[${host !== undefined ? `${host} · ` : ""}${vendorOf(model)}] request failed: `;
 	// D4: connection-level failures are recognized, not lumped into unknown.
 	if (err instanceof OpenAI.APIConnectionTimeoutError) {
 		return { code: "timeout", retryable: true, message: label + err.message };
@@ -654,7 +677,7 @@ function toOpenAIError(err: unknown, model: string): unknown {
 			return mapped.code === "unknown" ? streamFailure(label + err.message) : mapped;
 		}
 		// CX-1 F8: the kernel owns retries — Retry-After travels with the error
-		return mapApiError(err.status, label + err.message, retryAfterOf(err.headers));
+		return mapApiError(err.status, label + err.message + creditNote(err.status, err.message, scope), retryAfterOf(err.headers));
 	}
 	// COMPAT-F2 (2026-09-09, the GLM leg): a response BODY cut by the
 	// transport after the headers — the upstream dropped a long answer 14 s
