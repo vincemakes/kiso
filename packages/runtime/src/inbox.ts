@@ -1,5 +1,6 @@
 import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import { fsyncDir } from "./tasks/journal.js";
 
 /**
  * ADR-0062 § 3–§ 4: the durable inbox. A session's log has one writer, so a message to it waits here, one file per message
@@ -96,12 +97,7 @@ export async function writeMessage(root: string, sessionId: string, message: Pee
 			closeSync(fd);
 		}
 		renameSync(tmp, path);
-		const dirFd = openSync(dir, "r");
-		try {
-			fsyncSync(dirFd);
-		} finally {
-			closeSync(dirFd);
-		}
+		fsyncDir(dir); // the entry too, on POSIX; Windows opens no directory as a file (the task journal's rule)
 		return "written";
 	});
 }

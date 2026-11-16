@@ -1,5 +1,5 @@
 // ADR-0062 PR 2: the durable inbox (capacity, races, duplicates) and messages admitted one by one, exactly once, from the log.
-import { chmodSync, mkdtempSync, readdirSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -61,6 +61,15 @@ async function receiver(script: unknown[]) {
 const peerInputs = (session: { log: { all: readonly { type: string; via?: { kind: string; messageId?: string } }[] } }) =>
 	session.log.all.filter((e) => e.type === "user_input" && e.via?.kind === "peer").map((e) => e.via!.messageId);
 
+describe("the inbox on Windows", () => {
+	it("syncs the directory through fsyncDir, which skips it on win32 (opening a directory there fails with EPERM); the file's own fsync stays", () => {
+		const src = readFileSync(new URL("../src/inbox.ts", import.meta.url), "utf8");
+		expect(src).toContain("fsyncDir(dir)");
+		expect(src, "no directory opened by hand").not.toMatch(/openSync\(dir\b/);
+		expect(src, "the file is still synced").toMatch(/fsyncSync\(fd\)/);
+	});
+});
+
 describe("peer delivery", () => {
 	it("idle: one wake run carries every waiting message, each its own user_input, before one model request", async () => {
 		const { store, session, seen } = await receiver([say("Read them.")]);
@@ -89,7 +98,8 @@ describe("peer delivery", () => {
 		expect(readInbox(store.root, "r")).toEqual([]);
 	});
 
-	it("a delete that fails leaves litter, not a second admission", async () => {
+	// a read-only directory does not stop a delete on Windows, so the failure cannot be staged there
+	it.skipIf(process.platform === "win32")("a delete that fails leaves litter, not a second admission", async () => {
 		const { store, session } = await receiver([say("One.")]);
 		await writeMessage(store.root, "r", msg("a"));
 		let woke: Promise<void> | undefined;
