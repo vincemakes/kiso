@@ -32,6 +32,7 @@
 /* a fork under its parent: a small elbow, one line down through its siblings, clear of the title and of the parent row's edge */
 .item.child { padding-left: 30px; position: relative; color: #3a3a3e; font-size: 14px; }
 .item.child::before { content: ""; position: absolute; left: 16px; top: 3px; height: 12px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
+.item.child.more::before { display: none; }
 .item.child.more::after { content: ""; position: absolute; left: 16px; top: 3px; bottom: -4px; border-left: 1.5px solid #d6d6d2; }
 .item:hover { background: rgba(0, 0, 0, 0.045); }
 /* the open Work: one grey fill (no white card, no shadow) */
