@@ -23,7 +23,7 @@ check(await waitUntil(async () => (await line())?.startsWith("Reconnecting"), 3_
 const send = await q(`JSON.stringify({ off: document.querySelector('[data-act=send]').disabled, title: document.querySelector('[data-act=send]').title, box: !document.querySelector('textarea').disabled })`).then(JSON.parse);
 check(send.off && send.title.startsWith("Reconnecting") && send.box, `Send is disabled with the reason as its title, the box still takes typing`);
 await q(`Date.now = ((now) => () => now() + 31_000)(Date.now)`); // 31 s pass
-check(await waitUntil(async () => (await line())?.startsWith("Can't reach kiso. Trying again in"), 3_000) && (await app.count("[data-act=retry-now]")) === 1, "after 30 s: Can't reach kiso, the time of the next try, Retry now");
+check(await waitUntil(async () => (await line())?.startsWith("Can't reach Kiso. Trying again in"), 3_000) && (await app.count("[data-act=retry-now]")) === 1, "after 30 s: Can't reach kiso, the time of the next try, Retry now");
 await back();
 await app.click("[data-act=retry-now]");
 check(await waitUntil(async () => (await line()) === null, 5_000), "the host is back: Retry now connects at once and the line goes");

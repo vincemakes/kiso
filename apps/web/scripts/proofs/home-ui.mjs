@@ -73,7 +73,7 @@ await q("document.querySelector('[data-act=new]').click()");
 const notice = async () => readFileSync(notices, "utf8").split("\n").filter((l) => l !== "").map((l) => JSON.parse(l));
 check(await waitUntil(async () => (await notice()).length === 1, 15_000) && asked === 1, "the person went to another Work: the approval is announced");
 const [n] = await notice();
-check(await waitUntil(() => q("window.__notes.length === 1"), 10_000) && (await q("JSON.stringify([window.__notes[0].title, window.__notes[0].body])")) === JSON.stringify(["kiso is waiting for you", `write_file in ${name(wsA)}`]), "the page shows it as a browser notification: the tool and the folder, never the content");
+check(await waitUntil(() => q("window.__notes.length === 1"), 10_000) && (await q("JSON.stringify([window.__notes[0].title, window.__notes[0].body])")) === JSON.stringify(["Kiso is waiting for you", `write_file in ${name(wsA)}`]), "the page shows it as a browser notification: the tool and the folder, never the content");
 await q("window.__notes[0].onclick()");
 check(await waitUntil(() => q(`document.activeElement?.dataset?.act === 'allow' && document.activeElement.closest('[data-decision]')?.dataset.decision === ${JSON.stringify(n.decisionId)}`), 10_000), "a click on the notification opens that Work and focuses that approval's Allow key");
 await app.click("[data-act=allow]");

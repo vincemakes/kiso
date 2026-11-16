@@ -18,7 +18,7 @@ const app = await launchApp({ data, workspace: wsB, fauxScript: [say("Fresh answ
 const q = (js) => app.evaluate(js);
 const left = () => q(`Math.round(document.querySelector('.main').getBoundingClientRect().left)`);
 check((await q(`document.querySelector('.win').dataset.side`)) === "1" && (await waitUntil(async () => (await left()) === 264)), "the sidebar is open at first, pushing the Work to the right (no overlay)");
-check(await waitUntil(async () => (await q(`(() => { const b = document.querySelector('[data-kind=brand]'); return !!b && b.textContent === "kiso" && !!b.querySelector('.mark') && getComputedStyle(b).opacity === "1" && b.getBoundingClientRect().right <= 264; })()`))), "open, the sidebar's top shows the mark and the word kiso, inside the sidebar");
+check(await waitUntil(async () => (await q(`(() => { const b = document.querySelector('[data-kind=brand]'); return !!b && b.textContent === "Kiso" && !!b.querySelector('.mark') && getComputedStyle(b).opacity === "1" && b.getBoundingClientRect().right <= 264; })()`))), "open, the sidebar's top shows the mark and the word Kiso, inside the sidebar");
 await app.shot("sidebar-open-top");
 check(await waitUntil(async () => (await app.count(".item")) === 2), "the history lists the Works of both folders");
 const folders = () => q(`[...document.querySelectorAll('.fgrp')].map((f) => f.querySelector('.frow .tt').textContent + ':' + [...f.querySelectorAll('.item .tt')].map((i) => i.textContent).join('|')).join()`);
