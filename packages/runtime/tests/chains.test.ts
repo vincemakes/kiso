@@ -65,6 +65,7 @@ describe("delivery with a budget and a hold", () => {
 		let woke = false;
 		session.usePeers({ root: store.root, onWake: () => (woke = true), mayWake: () => false });
 		expect(woke, "the chain's budget is spent").toBe(false);
+		expect(session.pokePeers(), "and the sender is told it waits").toBe("waiting");
 		for await (const _ of session.run("the person speaks")) void _;
 		const ids = session.log.all.flatMap((e) => (e.type === "user_input" && e.via?.kind === "peer" ? [e.via.messageId] : []));
 		expect(ids, "the waiting one rode the person's run; the held one did not").toEqual(["waits"]);

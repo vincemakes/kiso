@@ -117,7 +117,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		// this folder read afresh (a Work made a moment ago is listed), and a scan still reading folders waited for, 3 s at most
 		list: async () => { for (let i = 0; ; i++) { const r = await history.snapshot({ key: current.key, dir: currentDir }, current.key); if (!r.scanning || i >= 30) return r; await new Promise((ok) => setTimeout(ok, 100)); } },
 		dirOf: (k) => join(dirname(currentDir), k),
-		deliver: async (k, id) => void (await spaceFor(k)?.poke(id)),
+		deliver: async (k, id) => (await spaceFor(k)?.poke(id)) ?? "waiting",
 		mayRead: (self, path) => ((space) => space !== null && readable(path, [space.workspace, ...readEnvironment(space.dir, self.sessionId).added], protectedFiles()))(spaceFor(self.key)),
 		chainOf: (k, id) => ((space) => (space === null ? `${k}/${id}#0` : chainIn(space.store, k, id)))(spaceFor(k)),
 		tierOf: (id) => options.settings.tierOf(id),

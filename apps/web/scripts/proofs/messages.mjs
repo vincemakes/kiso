@@ -27,7 +27,7 @@ await done(clientFor(host).session("w-recv"), "receiver task");
 await done(clientFor(host).session("w-send"), "sender task");
 check(/No session is called "no such session"/.test(result(key, "w-send", "m0").content) && result(key, "w-send", "m0").isError, "an unknown name is refused, naming list_sessions");
 check(/may not read it/.test(result(key, "w-send", "m1").content), "a file outside the sender's folders is refused");
-check(/^Sent to "receiver task"/.test(result(key, "w-send", "m2").content), "a title in any case reaches the receiver");
+check(/^Sent to "receiver task": it was idle and woke to read it\./.test(result(key, "w-send", "m2").content), "a title in any case reaches the receiver, and the sender is told it woke it");
 await waitUntil(() => events(key, "w-recv").some((e) => e.type === "terminal" && e.seq > 3), 8000);
 const admitted = events(key, "w-recv").filter((e) => e.type === "user_input" && e.via?.kind === "peer");
 check(admitted.length === 1 && admitted[0].source === "system" && admitted[0].via.from === `${key}/w-send`, "the idle receiver woke and admitted it once, as a message from the sender");

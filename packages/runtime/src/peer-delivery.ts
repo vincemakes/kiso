@@ -13,6 +13,9 @@ import type { PeerInput, Run } from "./run.js";
  * message is never delivered until the person releases it.
  */
 
+/** ADR-0062: what became of a message when its receiver looked. */
+export type PeerOutcome = "handed" | "woke" | "waiting";
+
 export interface PeerDeliveryOptions {
 	readonly root: string;
 	readonly sessionId: string;
@@ -47,18 +50,23 @@ export class PeerDelivery {
 		this.#o = options;
 	}
 
-	/** Read the inbox now: delete what the log holds, hand on what is new. */
-	poke(): void {
-		if (this.#closed) return;
+	/** Read the inbox now: delete what the log holds, hand on what is new. Says what became of it: handed to the live run,
+	 *  a wake started (or already starting), or waiting for the next run (the chain's budget is spent, or no wake here). */
+	poke(): PeerOutcome {
+		if (this.#closed) return "waiting";
 		const run = this.#o.liveRun();
 		const pending = this.#pending();
-		if (run !== undefined) for (const m of pending) this.#hand(run, m);
-		else if (!this.#waking && this.#o.onWake !== undefined && pending.length > 0 && (this.#o.mayWake?.(pending[0]!.rootId) ?? true)) {
-			const first = peerInput(pending[0]!);
-			this.#waking = true;
-			this.#inFlight.add(first.via.messageId);
-			this.#o.onWake({ content: first.content as string, via: first.via });
+		if (run !== undefined) {
+			for (const m of pending) this.#hand(run, m);
+			return "handed";
 		}
+		if (this.#waking) return "woke";
+		if (this.#o.onWake === undefined || pending.length === 0 || !(this.#o.mayWake?.(pending[0]!.rootId) ?? true)) return "waiting";
+		const first = peerInput(pending[0]!);
+		this.#waking = true;
+		this.#inFlight.add(first.via.messageId);
+		this.#o.onWake({ content: first.content as string, via: first.via });
+		return "woke";
 	}
 
 	/** A run began: what is waiting rides its first admission. */

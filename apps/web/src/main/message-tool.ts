@@ -17,6 +17,12 @@ import { shortRefs, type SessionsHost } from "./sessions-tool.js";
 type Self = { readonly key: string; readonly sessionId: string };
 
 const refused = (content: string): ToolResult => ({ content, isError: true, errorKind: "precondition" });
+const WENT = {
+	handed: "it is running and reads it at its next step.",
+	woke: "it was idle and woke to read it.",
+	waiting: "it is idle and was not woken (this chain's wake budget is spent); it reads it when it next runs.",
+	elsewhere: "it is open elsewhere (the terminal), so it is not running here; the message waits in its inbox until kiso web opens it.",
+} as const;
 
 /** The file tools' revision (`rev:` + the first 16 hex of sha256), read as a stream so a large file never sits in memory. */
 const revisionOf = async (path: string): Promise<string> => {
@@ -99,8 +105,9 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 				throw err;
 			}
 			if (held) return { content: `Sent to "${target.title}", held for the person: that session may do more than this one, so they admit it first.`, isError: false };
-			await host.deliver(target.key, target.id).catch(() => undefined); // not open here, or held elsewhere: it waits in the inbox
-			return { content: `Sent to "${target.title}" (${target.state === "idle" ? "it will wake to read it" : "it reads it at its next step"}).`, isError: false };
+			// what became of it, so the model knows whether to wait for a reply: a Work another process holds cannot be opened here
+			const went = await host.deliver(target.key, target.id).catch(() => "elsewhere" as const);
+			return { content: `Sent to "${target.title}": ${WENT[went]}`, isError: false };
 		},
 	});
 }

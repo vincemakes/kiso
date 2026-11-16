@@ -84,7 +84,7 @@ import { ABORTED_BEFORE_EXECUTION, unansweredAbortedCalls } from "./aborted-call
 import { breakEvenFactor, guardedPruneSeq, KEEP_COMPACTABLE_RESULTS, microcompactBoundarySeq, outputReserve, phaseEnd, runsACheck, tierReason, tiersFor } from "./compaction-policy.js";
 import { Run } from "./run.js";
 import { TaskDelivery, type TaskDeliveryOptions } from "./tasks/delivery.js";
-import { PeerDelivery, type PeerDeliveryOptions } from "./peer-delivery.js";
+import { PeerDelivery, type PeerDeliveryOptions, type PeerOutcome } from "./peer-delivery.js";
 import type { TaskManager } from "./tasks/manager.js";
 // TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
 // sameness is the whole point (one ledger, one shape, no second path).
@@ -478,8 +478,8 @@ export class AgentSession {
 	}
 
 	/** A message was written to this session's inbox: look now. */
-	pokePeers(): void {
-		this.#peers?.poke();
+	pokePeers(): PeerOutcome {
+		return this.#peers?.poke() ?? "waiting";
 	}
 
 	/** ADR-0057 §5 (3e D1) — a person's steer arrived: the foreground

@@ -121,7 +121,7 @@ describe("peer delivery", () => {
 		const run = session.run("work");
 		const going = drain(run);
 		await writeMessage(store.root, "r", msg("a", "mid-run"));
-		session.pokePeers();
+		expect(session.pokePeers(), "handed to the live run").toBe("handed");
 		await going;
 		const admitted = session.log.all.find((e) => e.type === "user_input" && e.via?.kind === "peer");
 		expect(admitted).toMatchObject({ source: "system", via: { kind: "peer", messageId: "a" } });

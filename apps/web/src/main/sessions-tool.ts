@@ -17,7 +17,7 @@ export interface SessionsHost {
 	/** a folder key's session directory */
 	readonly dirOf: (key: string) => string;
 	/** a message was written to this Work's inbox: open it here if it is not held elsewhere, and have it look */
-	readonly deliver: (key: string, sessionId: string) => Promise<void>;
+	readonly deliver: (key: string, sessionId: string) => Promise<"handed" | "woke" | "waiting">;
 	/** whether this Work may read the file (its folder or the folders it was given; never a protected file) */
 	readonly mayRead: (self: { readonly key: string; readonly sessionId: string }, path: string) => boolean;
 	/** ADR-0062 § 6: the causal chain the Work is on, read from its log */
