@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import type { Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
-import { ChainBudget, completionNotice, currentChain, reachesFurther, runStarter, startInitiation } from "../src/chains.js";
+import { ChainBudget, completionMessage, completionNotice, currentChain, reachesFurther, runStarter, startInitiation } from "../src/chains.js";
 import { writeMessage, type PeerMessage } from "../src/inbox.js";
 
 const u = (seq: number, extra: Record<string, unknown> = {}) => ({ seq, type: "user_input", content: "x", ...extra }) as unknown as Event;
@@ -114,5 +114,25 @@ describe("startInitiation", () => {
 			expect(startInitiation(events, "asked")).toBe("proposed");
 			expect(startInitiation(events, "named")).toBe("proposed");
 		}
+	});
+});
+
+// The leader's real-browser round (B2): a Work started with `context: "fork"` never woke its parent. A fork's log begins with
+// the parent's runs, copied up to the cut, so "the child's first run" is the first run after the cut, not the log's first.
+describe("completionMessage for a forked child", () => {
+	it("owes its parent a notice for its own first run, the first after the fork's cut", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-forkwake-")));
+		const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
+		const agent = createAgent({ model: "m", store, systemPrompt: "t", tools: [], adapter: createFauxProvider([say("Parent here."), say("Fork done.")] as never) });
+		const parent = await agent.session({ id: "p" });
+		for await (const _ of parent.run("Plan the export fix.")) void _;
+		const { id, origin } = store.fork("p");
+		const child = await agent.session({ id });
+		for await (const _ of child.run("Fix the export.")) void _;
+		const records = store.load(id);
+		expect(records[0]!.runId, "the fork's log opens on the parent's copied run").not.toBe(records.at(-1)!.runId);
+		const notice = completionMessage({ records, runId: records.at(-1)!.runId, from: `k/${id}`, fromTitle: "Fork", parent: "k/p", tasksRunning: false, forkAfterSeq: origin.afterSeq });
+		expect(notice?.event, "the notice is owed").toBe("completion");
+		expect(notice?.text).toContain("Fork done.");
 	});
 });

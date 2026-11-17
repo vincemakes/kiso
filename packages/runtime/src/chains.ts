@@ -98,9 +98,12 @@ export function completionMessage(input: {
 	readonly fromTitle: string;
 	readonly parent: string;
 	readonly tasksRunning: boolean;
+	/** a fork's cut (`forkedFrom.afterSeq`): its log opens on the parent's runs up to here, so its own first run is the first after */
+	readonly forkAfterSeq?: number;
 }): PeerMessage | null {
 	const run = input.records.filter((r) => r.runId === input.runId).map((r) => r.event);
-	const notice = completionNotice({ run, firstRun: input.records[0]?.runId === input.runId, parent: input.parent, tasksRunning: input.tasksRunning, waiting: false });
+	const own = input.records.find((r) => r.event.seq > (input.forkAfterSeq ?? -1));
+	const notice = completionNotice({ run, firstRun: own?.runId === input.runId, parent: input.parent, tasksRunning: input.tasksRunning, waiting: false });
 	if (notice === null) return null;
 	const messageId = createHash("sha256").update(`${input.from}\n${input.runId}\ncompletion`).digest("hex").slice(0, 24);
 	return { messageId, from: input.from, fromTitle: input.fromTitle, text: `${notice.state}.${notice.excerpt === "" ? "" : `\n\n${notice.excerpt}`}`, files: [], rootId: currentChain(run, input.from), at: Date.now(), event: "completion" };

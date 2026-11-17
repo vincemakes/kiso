@@ -2,7 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 import { readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
-import { completionMessage, currentChain, fileRevision, InboxRefusedError, readInbox, peerMessageId, reachesFurther, MESSAGE, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
+import { completionMessage, currentChain, fileRevision, InboxRefusedError, readInbox, peerMessageId, reachesFurther, MESSAGE, readForkOrigin, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
 import type { WorkRow } from "../shared/history.js";
 import type { SessionsHost } from "./sessions-tool.js";
 
@@ -36,7 +36,8 @@ export async function notifyParent(store: SessionStore, key: string, sessionId: 
 	const parent = readStartedBy(store.root, sessionId);
 	if (parent === null) return;
 	const fromTitle = (await host.list()).works.find((w) => w.key === key && w.id === sessionId)?.title ?? sessionId;
-	const notice = completionMessage({ records: store.load(sessionId), runId, from: `${key}/${sessionId}`, fromTitle, parent, tasksRunning });
+	const forkAfterSeq = readForkOrigin(store.root, sessionId)?.afterSeq; // a fork opens on the parent's runs
+	const notice = completionMessage({ records: store.load(sessionId), runId, from: `${key}/${sessionId}`, fromTitle, parent, tasksRunning, ...(forkAfterSeq !== undefined ? { forkAfterSeq } : {}) });
 	if (notice === null) return;
 	const [pKey, pId] = [parent.slice(0, parent.lastIndexOf("/")), parent.slice(parent.lastIndexOf("/") + 1)];
 	await writeMessage(host.dirOf(pKey), pId, notice);
