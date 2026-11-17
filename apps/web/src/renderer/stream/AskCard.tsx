@@ -36,11 +36,13 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 	const at = <T,>(arr: readonly (T | undefined)[], i: number, v: T, d: T): T[] => qs.map((_, j) => (j === i ? v : (arr[j] ?? d)));
 	const [error, setError] = useState<string | null>(null);
 	const submit = (o: readonly (string | null | undefined)[], s: readonly (boolean | undefined)[]): void => {
-		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [(o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: (picks[i] ?? []).map((n) => q.options[n]!.label) } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? 0]?.label ?? "" }]));
+		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [(o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: (picks[i] ?? []).map((n) => q.options[n]!.label) } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? -1]?.label ?? "" }]));
 		const declined = qs.filter((_, i) => s[i] === true).map((q) => q.question);
 		void answerAsk(key, work, step.callId, answers.length === 0 ? { declined } : declined.length === 0 ? { answers } : { answers, declined }).catch((e: Error) => setError(e.message));
 	};
-	const next = (o = other, s = skipped): void => (page < qs.length - 1 ? setPage(page + 1) : submit(o, s));
+	// a question is answered (a pick, or Other with words) or skipped; nothing is ever chosen for the person: Next and Submit wait for it
+	const done = (i: number, o = other, s = skipped): boolean => s[i] === true || (o[i] ?? "") !== "" || (picks[i] ?? []).length > 0;
+	const next = (o = other, s = skipped): void => void (!done(page, o, s) ? undefined : page < qs.length - 1 ? setPage(page + 1) : ((u) => (u < 0 ? submit(o, s) : setPage(u)))(qs.findIndex((_, i) => !done(i, o, s))));
 	useEffect(() => {
 		askInput.current = (text) => next(at(other, page, text, null));
 		const onKey = (e: KeyboardEvent): void => void (e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), next()));
@@ -78,7 +80,7 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 			{error === null ? null : <p className="wcard-err">{error}</p>}
 			<div className="wcard-acts">
 				<button className="wcard-here" data-act="q-skip" onClick={() => ((s) => (setSkipped(s), next(other, s)))(at(skipped, page, true, false))}>{t.qSkip}</button>
-				<button className="wcard-start" data-act="q-next" onClick={() => next()}>{page < qs.length - 1 ? t.qNextKey : t.qSubmitKey}</button>
+				<button className="wcard-start" data-act="q-next" disabled={!done(page)} onClick={() => next()}>{page < qs.length - 1 ? t.qNextKey : t.qSubmitKey}</button>
 			</div>
 		</div>
 	);
