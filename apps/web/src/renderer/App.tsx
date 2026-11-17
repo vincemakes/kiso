@@ -25,7 +25,7 @@ import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
 import { slotOf, workCache } from "./state/workcache.js";
 import { addFolderTo } from "./state/folders.js";
-import { answerCard, answerHeld, fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
+import { answerCard, answerHeld, fetchEnv, fetchHistory, newWorkId, refTitle, sessionsUrl, type Target } from "./state/works.js";
 import { Lead } from "./stream/Lead.js";
 import { CardsContext, type CardsHost } from "./stream/SessionCard.js";
 import { isAsking } from "./stream/AskCard.js";
@@ -273,7 +273,7 @@ export function App(): ReactNode {
 	// ADR-0062: the cards this Work's start_session calls drew, and their answers
 	const cardsHost: CardsHost = {
 		cards: env?.cards ?? {},
-		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title,
+		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title, nameOf: (to) => refTitle(rows, to),
 		open: (id, key) => setTarget({ key: key === undefined ? target.key : key === history?.current.key ? null : key, sessionId: id }),
 		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
 		inbox: env?.inbox ?? [], release: async (messageId, action) => (await answerHeld(target.key, target.sessionId, messageId, action), void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined)),

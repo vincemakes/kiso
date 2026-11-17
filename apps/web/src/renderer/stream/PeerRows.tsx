@@ -54,12 +54,13 @@ export function PeerGroup({ peers }: { readonly peers: readonly Peer[] }): React
 /** A message this Work sent: to whom, and the opening of its text. */
 export function MessagedRow({ step }: { readonly step: Step }): ReactNode {
 	const input = step.input as { readonly to?: string; readonly text?: string } | null;
+	const host = useContext(CardsContext);
 	if (step.status !== "done" || step.error !== null) return null;
 	return (
 		<Row
 			head={
 				<>
-					{t.messaged} <span className="pto">@{input?.to ?? ""}</span> <span className="ptext">{input?.text ?? ""}</span>
+					{t.messaged} <span className="pto" title={input?.to ?? ""}>@{host?.nameOf(input?.to ?? "") ?? input?.to ?? ""}</span> <span className="ptext">{input?.text ?? ""}</span>
 				</>
 			}
 			body={input?.text ?? ""}
