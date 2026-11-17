@@ -14,7 +14,7 @@ const app = await launchApp({
 	data,
 	workspace: scratch("rows-ws"),
 	env: { KISO_WEB_SESSION: "w-main", KISO_WEB_SESSIONS: "on" },
-	fauxScript: [ok, ok, send("m1", "Research", "Which schema version does the importer target? The API doc is at docs/api.md and it lists two."), ok, ok, send("m2", "Importer", "Version 3. The importer should target it."), ok, ok, send("m3", "Importer", "The docs are updated."), ok, ok, ok, ok, send("m4", "Importer", "Version 3 of the schema is final. Please regenerate the client."), ok, ok, ok],
+	fauxScript: [ok, ok, send("m1", "Research", "Which schema version does the importer target? The API doc is at docs/api.md and it lists two."), ok, ok, send("m2", "Importer", "Version 3. The importer should target it."), ok, ok, send("m3", "Importer", "The docs are updated."), ok, ok, ok, ok, send("m4", "Importer", "Version 3 of the schema is final. Please regenerate the client."), ok, ok, ok, ok],
 });
 const host = () => app.host();
 const q0 = (js) => app.evaluate(js);
@@ -68,5 +68,18 @@ await app.click("[data-act=held-admit]");
 await waitUntil(async () => (await app.count("[data-kind=held-row]")) === 0, 15_000);
 await idle("w-main");
 check(readFileSync(join(dir, "w-main.jsonl"), "utf8").includes("regenerate the client"), "Admit delivers it: the Importer reads it");
+// § 14 test 23: the rows drawn live, on a cold open (a new tab replays the whole log) and after a reconnect (the host killed and
+// started again; the tab picks up) are the same rows, from the same senders
+// (each row as it reads closed: a row opened above shows ⌄ and a group lists its rows, neither of which a fresh tab has)
+const rows = (tab) => tab.evaluate(`[...document.querySelectorAll(".prow-head")].filter((h) => !h.closest(".pgroup")).map((h) => h.closest("[data-kind]").dataset.kind + " " + h.textContent.replace(/[›⌄]/g, "").replace(/\\s+/g, " ").trim()).join("\\n")`);
+const live = await rows(app);
+const cold = await app.chrome.open(`${host().origin}/#session=w-main`);
+await waitUntil(async () => (await rows(cold)) === live, 15_000);
+check((await rows(cold)) === live && live.split("\n").length >= 5, "a cold open draws the same rows as the live stream did");
+await cold.close();
+await app.restart();
+await run("w-main", "One more."); // made after the restart: the tab draws it only once it has reconnected
+await waitUntil(async () => (await app.evaluate(`[...document.querySelectorAll(".me")].some((m) => m.textContent.includes("One more."))`)) === true, 20_000);
+check((await app.evaluate(`[...document.querySelectorAll(".me")].some((m) => m.textContent.includes("One more."))`)) === true && (await rows(app)) === live, "reconnected after the host restarts (it draws a run made since), the same rows");
 await app.close();
 verdict();
