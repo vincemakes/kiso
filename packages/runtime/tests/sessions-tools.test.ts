@@ -53,7 +53,7 @@ describe("the terminal's twin", () => {
 	it("has the web's name, schema and description, and refuses with a reason", async () => {
 		const tool = refusingSessionsExtension().tools![0]!;
 		expect({ name: tool.name, description: tool.description, parameters: tool.parameters }).toEqual(LIST_SESSIONS);
-		expect(await tool.execute({}, {} as never)).toEqual({ content: SESSIONS_REFUSAL, isError: true });
+		expect(await tool.execute({}, {} as never), "a precondition: nothing ran").toEqual({ content: SESSIONS_REFUSAL, isError: true, errorKind: "precondition" });
 	});
 });
 
