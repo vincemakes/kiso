@@ -122,7 +122,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 	const isMessage = (s: (typeof segments)[number] | undefined): boolean => s?.kind === "line" && s.item.kind === "peer" && s.item.event === "message";
 	// ADR-0062 § 10c: an ask_user call waiting for its answer is its question card, out of the group, once its questions are in (a
 	// streamed call starts before its input: a card mounted then would hold no questions in its state)
-	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message" || (i.name === "ask_user" && i.input !== null && !interrupted && i.status !== "done" && i.status !== "failed" && i.status !== "denied"));
+	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message" || (i.name === "ask_user" && i.input !== null && !interrupted && i.status !== "done" && i.status !== "failed" && i.status !== "denied" && i.status !== "interrupted"));
 	const segments = segmentsOf(items).map((s) => (s.kind === "group" ? { ...s, items: s.items.filter((i) => !isStart(i)), cards: s.items.filter(isStart) as StepItem[] } : s));
 	// while it works, the run's live line is its last group: one that is still empty when the run has nothing in a group yet
 	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [], cards: [] });

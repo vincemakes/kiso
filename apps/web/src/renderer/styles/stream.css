@@ -65,6 +65,7 @@
 .s-sp { flex: 1; }
 .s-time { font: 11px var(--mono); color: var(--mute); flex: none; font-variant-numeric: tabular-nums; }
 .step.failed .s-verb, .step.denied .s-verb { color: var(--red); }
+.step.interrupted .s-verb, .step.interrupted .s-time { color: var(--mute); }
 .bgtag { font-size: 11px; color: var(--blue); background: #eef3ff; border-radius: 8px; padding: 1px 8px; flex: none; }
 .s-out { margin: 4px 0 0; background: var(--sunk); border-radius: 8px; padding: 7px 11px; font: 11.5px/1.6 var(--mono); color: #4a4a52; }
 /* lines are never wrapped (a diff, a table or a log keeps its columns); where one goes on past the edge, the edge fades */

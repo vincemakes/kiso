@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { clock, fmt, t } from "../i18n/index.js";
 import { editDiff } from "../state/diff.js";
-import { delta } from "../state/groups.js";
+import { delta, pretty } from "../state/groups.js";
 import { statusOf, titleOf } from "../state/taskname.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
@@ -20,7 +20,12 @@ export function objectOf(step: StepItem): string {
 	if (step.name === "shell") return pick("command").split("\n")[0]!;
 	if (step.name === "search_text") return pick("pattern");
 	if (step.name === "task_stop") return pick("id");
-	return pick("path") || ".";
+	if (step.name === "list_sessions") return pick("query");
+	if (step.name === "read_skill") return pick("name");
+	const first = (key: string, field: string): string => { const a = i[key]; const o = Array.isArray(a) ? (a[0] as Record<string, unknown> | undefined) : undefined; return typeof o?.[field] === "string" ? (o[field] as string) : ""; };
+	if (step.name === "ask_user") return first("questions", "question");
+	if (step.name === "delegate") return first("tasks", "task");
+	return pick("path") || (step.name === "list_dir" ? "." : "");
 }
 
 /** The lines to show under a step, each marked: unchanged, added or removed. */
@@ -74,15 +79,15 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 		<div className={`step ${step.status}${shown ? " shown" : ""}`} data-kind="step" data-tool={step.name} data-shown={images ? shown : undefined}>
 			<div className={`s-row${images ? " click" : ""}`} onClick={images ? onShow : undefined}>
 				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
-				<span className="s-verb">{t.verb[step.name] ?? step.name}</span>
-				{named !== null ? <span className="s-name" title={object}>{named}</span> : chip ? <Chip path={object} /> : <code className="s-obj">{object}</code>}
+				<span className="s-verb">{t.verb[step.name] ?? pretty(step.name)}</span>
+				{named !== null ? <span className="s-name" title={object}>{named}</span> : chip ? <Chip path={object} /> : object === "" ? null : <code className="s-obj">{object}</code>}
 				<Delta d={delta(step)} />
 				{images ? <Chevron /> : null}
 				{step.taskId !== null ? <span className="bgtag">{t.moved}</span> : null}
 				<span className="s-sp" />
 				{/* while its images are open in place, the row does not repeat them */}
 				{images && shown ? null : <Thumbs items={artifactsOf(step)} />}
-				<span className="s-time">{(ms / 1000).toFixed(1)}s</span>
+				<span className="s-time">{step.status === "interrupted" ? t.stepInterrupted : `${(ms / 1000).toFixed(1)}s`}</span>
 			</div>
 			{images && shown ? <InPlace step={step} /> : null}
 			{/* a background task: one line, a spinner at its start while it runs (the sliding bar under it is gone) */}
@@ -93,7 +98,7 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 				</div>
 			) : null}
 			{/* a failed step says what went wrong once, in red: its output (the same message) is not repeated above it */}
-			{lines.length > 0 && step.taskId === null && step.status !== "failed" ? (
+			{lines.length > 0 && step.taskId === null && step.status !== "failed" && step.status !== "interrupted" ? (
 				<div className="s-out">
 					{/* long lines are not wrapped (a diff or a table keeps its columns): the right edge fades where a line goes on */}
 					<div className="s-lines" ref={box} data-wide={wide}>
