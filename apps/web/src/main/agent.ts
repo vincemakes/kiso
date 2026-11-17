@@ -72,6 +72,8 @@ export interface WebAgentOptions {
 	readonly onSession?: (sessionId: string, session: Awaited<ReturnType<Agent["session"]>>) => void;
 	/** ADR-0062: the sessions extension, for a Work created with it */
 	readonly sessions?: KisoExtension;
+	/** ADR-0062 § 10c: ask_user, given the web's ui.ask */
+	readonly ask?: KisoExtension;
 }
 
 /** The credential store is never served to a model: file tools and shell checks share this list. */
@@ -131,6 +133,7 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 			...modeExtensions(root, options.tier),
 			readOnlyShellExtension(() => ({ workspaceRoot: workspace, excludeRoots: toolOptions.excludeRoots })),
 			...(options.sessions !== undefined ? [options.sessions] : []),
+			...(options.ask !== undefined ? [options.ask] : []),
 		],
 		// in-run compaction, as the terminal turns it on (ADR-0055): only a window someone stated arms the overflow belt
 		contextPolicy: {

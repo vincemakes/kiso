@@ -10,6 +10,7 @@ import { Delta, Step } from "./Step.js";
 import { artifactsOf, PinnedContext, Thumbs } from "./Artifacts.js";
 import { RunContext, WorkContext } from "./links.js";
 import { SessionCard } from "./SessionCard.js";
+import { AskCard } from "./AskCard.js";
 import { MessagedRow, PeerGroup, PeerRow } from "./PeerRows.js";
 import type { Peer } from "../state/peers.js";
 import { Thinking } from "./Thinking.js";
@@ -119,7 +120,8 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 	const live = turn.phase === "running" && !interrupted;
 	// ADR-0062: a start_session call is drawn as its card or its line, after its group and never folded into it
 	const isMessage = (s: (typeof segments)[number] | undefined): boolean => s?.kind === "line" && s.item.kind === "peer" && s.item.event === "message";
-	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message");
+	// ADR-0062 § 10c: an ask_user call waiting for its answer is its question card, out of the group
+	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message" || (i.name === "ask_user" && i.status !== "done" && i.status !== "failed" && i.status !== "denied"));
 	const segments = segmentsOf(items).map((s) => (s.kind === "group" ? { ...s, items: s.items.filter((i) => !isStart(i)), cards: s.items.filter(isStart) as StepItem[] } : s));
 	// while it works, the run's live line is its last group: one that is still empty when the run has nothing in a group yet
 	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [], cards: [] });
@@ -149,7 +151,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 							{seg.item.code === "" ? null : <small>{seg.item.code}</small>}
 						</div>
 					) : null;
-				const cards = "cards" in seg ? seg.cards.map((c) => (c.name === "message" ? <MessagedRow key={c.id} step={c} /> : <SessionCard key={c.id} step={c} />)) : null;
+				const cards = "cards" in seg ? seg.cards.map((c) => (c.name === "message" ? <MessagedRow key={c.id} step={c} /> : c.name === "ask_user" ? <AskCard key={c.id} step={c} /> : <SessionCard key={c.id} step={c} />)) : null;
 				if (!lines.includes(seg)) return [...seg.items.map((item) => (item.kind === "thinking" ? <Thinking key={item.id} item={item} /> : null)), cards];
 				return (
 					<Fragment key={seg.id}>

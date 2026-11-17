@@ -23,6 +23,7 @@ import type { Notice, Presence } from "./approvals.js";
 import type { Settings } from "./settings.js";
 import type { Space } from "./space.js";
 import type { SettingsPatch } from "../shared/settings.js";
+import type { AskBridge } from "./ask-bridge.js";
 
 /**
  * The page's own doors (everything under `/desk/`), behind the host's guard: settings, a Work's environment, the folder's tree
@@ -39,6 +40,8 @@ export interface DeskContext {
 	readonly setPresence: (p: Presence) => void;
 	readonly notices: (seq: number) => { readonly seq: number; readonly notices: readonly Notice[] };
 	readonly previews: Previews;
+	/** ADR-0062 § 10c: ask_user's waiting questions */
+	readonly asks: AskBridge;
 }
 
 /** An answer: JSON, or bytes (an image) with their headers. */
@@ -144,6 +147,11 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (!SAFE_ID.test(session)) return json(404, {});
 			const atSeq = typeof body["atSeq"] === "number" ? body["atSeq"] : undefined;
 			return json(200, { id: forkWork(space, ctx.settings, session, atSeq).id });
+		}
+		if (path === "/desk/ask") {
+			if (!post || space === null) return json(post ? 404 : 405, {});
+			const body = await readJson(req);
+			return ctx.asks.answer(str(body["session"]) ?? "", str(body["callId"]) ?? "", body["result"]) ? json(200, {}) : json(409, { error: "no such question is waiting" });
 		}
 		if (path === "/desk/held") {
 			if (!post || space === null) return json(post ? 404 : 405, {});

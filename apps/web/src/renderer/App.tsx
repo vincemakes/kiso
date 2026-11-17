@@ -28,6 +28,7 @@ import { addFolderTo } from "./state/folders.js";
 import { answerCard, answerHeld, fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
 import { Lead } from "./stream/Lead.js";
 import { CardsContext, type CardsHost } from "./stream/SessionCard.js";
+import { isAsking } from "./stream/AskCard.js";
 import { ago, t } from "./i18n/index.js";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import type { ContextParts, EnvReply, SettingsReply } from "../shared/settings.js";
@@ -224,7 +225,7 @@ export function App(): ReactNode {
 	const activeKey = target.key ?? history?.current.key ?? "";
 	// the Work on the page knows its own state first (once it has read it): its row follows the run's end at once, the host's list catches up on the next read
 	const liveNow = session !== null && isLive(session.state);
-	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 ? "waiting" : "running";
+	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 || isAsking(session.state.turns) ? "waiting" : "running";
 	useEffect(() => {
 		if (!liveNow && signedIn === true) refresh();
 	}, [liveNow, signedIn, refresh]);
@@ -273,7 +274,6 @@ export function App(): ReactNode {
 	const cardsHost: CardsHost = {
 		cards: env?.cards ?? {},
 		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title,
-		// a Work of this folder, or of the folder `key` names (null: the folder in use)
 		open: (id, key) => setTarget({ key: key === undefined ? target.key : key === history?.current.key ? null : key, sessionId: id }),
 		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
 		inbox: env?.inbox ?? [], release: async (messageId, action) => (await answerHeld(target.key, target.sessionId, messageId, action), void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined)),

@@ -26,6 +26,7 @@
 		"start": "node dist/main/headless.js"
 	},
 	"dependencies": {
+		"@vincemakes/kiso-ask-ext": "0.54.2",
 		"@vincemakes/kiso-client": "0.54.2",
 		"@vincemakes/kiso-code": "0.54.2",
 		"@vincemakes/kiso-core": "0.54.2",

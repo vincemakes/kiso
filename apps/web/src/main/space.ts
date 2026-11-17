@@ -13,6 +13,7 @@ import { webSanitize } from "./sanitize.js";
 import { StampCache, TimeIndex } from "./times.js";
 import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
+import type { AskBridge } from "./ask-bridge.js";
 
 /**
  * One project folder's sessions as a service: the store in the folder's
@@ -45,6 +46,8 @@ export interface SpaceOptions {
 	readonly taskWake?: boolean;
 	/** title a Work from its first message (Session.title), beside its first run */
 	readonly titles?: boolean;
+	/** ADR-0062 § 10c: the ask_user bridge; absent, Works carry no ask_user */
+	readonly ask?: AskBridge;
 	/** ADR-0062: the sessions extension is on; a new Work is created with it */
 	readonly sessions?: SessionsHost;
 	/** after each run has settled (however short): the host's what-next, read from the store */
@@ -166,6 +169,7 @@ export function createSpace(options: SpaceOptions): Space {
 				...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
 				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 				...(sessionsExt !== undefined ? { sessions: sessionsExt } : {}),
+				...(options.ask !== undefined ? { ask: await options.ask.extension() } : {}),
 				onSession: (sessionId, session) => {
 					sessions.set(sessionId, session);
 					setTimeout(() => ensureTitle(sessionId), 0); // a Work opened again after a restart, still unnamed
@@ -186,6 +190,8 @@ export function createSpace(options: SpaceOptions): Space {
 						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
 						for (const u of session.uncertainExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
 					}
+					// ADR-0062 § 10c: a question cut off by a restart is asked again when the run resumes (ask_user is idempotent)
+					for (const u of session.uncertainExecutions()) if (u.name === "ask_user") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
 				},
 			});
 		},
