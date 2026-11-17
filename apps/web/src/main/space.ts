@@ -3,7 +3,7 @@ import { isEnvironmentNote, SessionStore, type Agent } from "@vincemakes/kiso-ru
 import { named, titleIfUnnamed } from "./names.js";
 import { createSessionService, InFlightError, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
-import type { Event } from "@vincemakes/kiso-core";
+import type { Event, UserInputVia } from "@vincemakes/kiso-core";
 import { sessionsFor, type SessionsHost } from "./sessions-tool.js";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
 import { createWebAgent, routeOf, type ModelChoice, type PermissionMode } from "./agent.js";
@@ -67,6 +67,8 @@ export interface Space {
 	 *  run's own request as the prefix (Session.followUp); "" when off, not the latest run, not completed, or it failed. */
 	readonly followUp: (sessionId: string, seq: number) => Promise<string>;
 	readonly reopen: (sessionId: string) => Promise<"now" | "next">; // rebuilt so its next run reads its settings: now when idle, else once its run settles
+	/** ADR-0062: a message waits in this Work's inbox: open it (refused when another process holds it) and have it look */
+	readonly poke: (sessionId: string) => Promise<void>;
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -170,16 +172,16 @@ export function createSpace(options: SpaceOptions): Space {
 					// a task's end wakes an idle Work, as it does the terminal: one run whose input is the notice (ADR-0058 §8). The
 					// delivery hands the notice over once; a person's run that started in the same moment refuses it (in flight), so the
 					// wake waits for that run to end and goes then, rather than being dropped
-					session.useTasks(tasks.managerFor(sessionId), {
-						wake: options.taskWake !== false,
-						onWake: (w) => {
-							const go = (tries: number): void =>
-								void service.run(sessionId, w.content, { source: "system", via: w.via }).catch((e: unknown) => {
-									if (e instanceof InFlightError && tries < 600) setTimeout(() => go(tries + 1), 1000);
-								});
-							go(0);
-						},
-					});
+					const wake = (w: { readonly content: string; readonly via: UserInputVia }): void => {
+						const go = (tries: number): void =>
+							void service.run(sessionId, w.content, { source: "system", via: w.via }).catch((e: unknown) => {
+								if (e instanceof InFlightError && tries < 600) setTimeout(() => go(tries + 1), 1000);
+							});
+						go(0);
+					};
+					session.useTasks(tasks.managerFor(sessionId), { wake: options.taskWake !== false, onWake: wake });
+					// ADR-0062: messages from other Works, read from its inbox now and whenever one is written
+					if (options.sessions !== undefined) session.usePeers({ root: options.dir, onWake: wake });
 				},
 			});
 		},
@@ -310,6 +312,10 @@ export function createSpace(options: SpaceOptions): Space {
 		handler,
 		opened: () => opened,
 		followUp, reopen,
+		poke: async (sessionId) => {
+			await service.pendingApprovals(sessionId); // opens the Work if it is not open yet
+			sessions.get(sessionId)?.pokePeers();
+		},
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {
 			await tasks.close();

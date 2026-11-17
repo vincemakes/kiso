@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isKisoEvent } from "../src/index.js";
+import { isKisoEvent, isRuntimeInput } from "../src/index.js";
 
 describe("isKisoEvent per-variant schema (A group)", () => {
 	it("accepts well-formed events of every persisted variant", () => {
@@ -189,6 +189,18 @@ describe("isKisoEvent per-variant schema (A group)", () => {
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "n", source: "system", via: { kind: "tasks", items: [{ transition: "exited" }] } })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: "skill" })).toBe(false);
 		expect(isKisoEvent({ seq: 0, type: "user_input", content: "b", via: null })).toBe(false);
+	});
+
+	it("ADR-0062: a peer `via` names its event, sender, message id and root; a runtime input; a malformed one is corruption", () => {
+		const via = { kind: "peer", event: "message", from: "key/2026-11-16T10-00-00-a1b2", messageId: "m1", rootId: "r1" };
+		const e = { seq: 0, type: "user_input", content: "hello", source: "system", via };
+		expect(isKisoEvent(e)).toBe(true);
+		expect(isKisoEvent(JSON.parse(JSON.stringify(e))), "survives a write and a read").toBe(true);
+		expect(isRuntimeInput(e as never), "never the person's").toBe(true);
+		expect(isKisoEvent({ ...e, via: { ...via, event: "completion" } })).toBe(true);
+		for (const bad of [{ event: "chat" }, { from: "" }, { messageId: "" }, { rootId: undefined }, { from: 7 }]) {
+			expect(isKisoEvent({ ...e, via: { ...via, ...bad } }), JSON.stringify(bad)).toBe(false);
+		}
 	});
 
 	it("round 5: validates ContentBlock shapes (text/image) wherever content blocks appear", () => {

@@ -84,6 +84,7 @@ import { ABORTED_BEFORE_EXECUTION, unansweredAbortedCalls } from "./aborted-call
 import { breakEvenFactor, guardedPruneSeq, KEEP_COMPACTABLE_RESULTS, microcompactBoundarySeq, outputReserve, phaseEnd, runsACheck, tierReason, tiersFor } from "./compaction-policy.js";
 import { Run } from "./run.js";
 import { TaskDelivery, type TaskDeliveryOptions } from "./tasks/delivery.js";
+import { PeerDelivery, type PeerDeliveryOptions } from "./peer-delivery.js";
 import type { TaskManager } from "./tasks/manager.js";
 // TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
 // sameness is the whole point (one ledger, one shape, no second path).
@@ -422,11 +423,13 @@ export class AgentSession {
 		}
 		this.#activeRuns.add(run);
 		this.#delivery?.takeForRun(run); // ADR-0058: pending task notices ride its first admission
+		this.#peers?.takeForRun(run); // ADR-0062: and waiting messages
 	}
 
 	endRun(run: Run): void {
 		this.#activeRuns.delete(run);
 		this.#delivery?.onRunSettled(run); // the slot is free: a wake may follow
+		this.#peers?.onRunSettled(run);
 	}
 
 	// ── ADR-0058 (3c): the session's tasks reach the model ────────────────
@@ -455,6 +458,28 @@ export class AgentSession {
 			if (this.#delivery === delivery) this.#delivery = undefined;
 			if (this.#tasks === manager) this.#tasks = undefined;
 		};
+	}
+
+	// ── ADR-0062: messages from other sessions reach the model ─────────────
+
+	#peers: PeerDelivery | undefined;
+
+	/** Deliver the messages in this session's inbox (`root` is its store's directory): into a live run at its next safe
+	 *  point, or — idle — one wake run through `onWake`. Reads the inbox at once. */
+	usePeers(options: Pick<PeerDeliveryOptions, "root" | "onWake">): () => void {
+		this.#peers?.close();
+		const peers = new PeerDelivery({ ...options, sessionId: this.id, events: () => this.log.all, liveRun: () => [...this.#activeRuns][0] });
+		this.#peers = peers;
+		peers.poke();
+		return () => {
+			peers.close();
+			if (this.#peers === peers) this.#peers = undefined;
+		};
+	}
+
+	/** A message was written to this session's inbox: look now. */
+	pokePeers(): void {
+		this.#peers?.poke();
 	}
 
 	/** ADR-0057 §5 (3e D1) — a person's steer arrived: the foreground
