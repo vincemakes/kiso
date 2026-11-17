@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { Agent, createAgent, kisoHome, readEnvironment, runsACheck, type AgentDefinition, type SessionStore } from "@vincemakes/kiso-runtime";
 import { adapterOptionsFor, type AdapterAuth, type ModelProfile } from "@vincemakes/kiso-code/config";
-import type { Adapter } from "@vincemakes/kiso-core";
+import type { Adapter, KisoExtension } from "@vincemakes/kiso-core";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
 import {
 	CODING_TOOL_RULES,
@@ -70,6 +70,8 @@ export interface WebAgentOptions {
 	readonly toolLimits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
 	/** Called on each new session (the task delivery is wired here). */
 	readonly onSession?: (sessionId: string, session: Awaited<ReturnType<Agent["session"]>>) => void;
+	/** ADR-0062: the sessions extension, for a Work created with it */
+	readonly sessions?: KisoExtension;
 }
 
 /** The credential store is never served to a model: file tools and shell checks share this list. */
@@ -128,6 +130,7 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 			breakerExtension(),
 			...modeExtensions(root, options.tier),
 			readOnlyShellExtension(() => ({ workspaceRoot: workspace, excludeRoots: toolOptions.excludeRoots })),
+			...(options.sessions !== undefined ? [options.sessions] : []),
 		],
 		// in-run compaction, as the terminal turns it on (ADR-0055): only a window someone stated arms the overflow belt
 		contextPolicy: {

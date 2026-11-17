@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { appendFileSync, readFileSync, unwatchFile, watchFile } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@vincemakes/kiso-code/config";
@@ -16,7 +16,7 @@ import { Previews } from "./preview.js";
 import { PrStates, prOfEvents } from "./prs.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
-import type { WorkState } from "../shared/history.js";
+import type { HistoryReply, WorkState } from "../shared/history.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -57,6 +57,8 @@ export interface HostOptions {
 	readonly taskWake?: boolean;
 	/** Title a Work from its first message with its own model (default true; the proofs turn it off). */
 	readonly titles?: boolean;
+	/** ADR-0062: Works created from now on carry the sessions extension (KISO_WEB_SESSIONS=on) */
+	readonly sessions?: boolean;
 }
 
 export interface Host {
@@ -95,6 +97,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		followUps: options.followUps ?? true,
 		taskWake: options.taskWake ?? true,
 		titles: options.titles ?? true,
+		// a getter's closure: the history below exists by the time a Work opens
+		...(options.sessions === true ? { sessions: { list: settledList, dirOf: (k: string) => join(dirname(currentDir), k) } } : {}),
 		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread; the PR its own
 		// `gh pr create` printed becomes the Work's (an earlier run's never replaces a later link)
 		onSettled: (sessionId, runId, store) => {
@@ -104,6 +108,14 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		},
 	});
 
+	// ADR-0062: the listing the sessions tools read; a scan still reading folders (a host just started) is waited for, 3 s at most
+	const settledList = async (): Promise<HistoryReply> => {
+		for (let i = 0; ; i++) {
+			const reply = await history.snapshot({ key: current.key, dir: currentDir });
+			if (!reply.scanning || i >= 30) return reply;
+			await new Promise((r) => setTimeout(r, 100));
+		}
+	};
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
 	const workspace = canonicalPath(options.workspace);
 	const currentDir = projectDirFor(home, workspace);

@@ -67,7 +67,8 @@ export function forkSession(root: string, parent: string, afterSeq?: number): { 
 	const title = readSessionName(root, parent) ?? said.replace(/\s+/g, " ").trim().slice(0, 60);
 	const id = newId();
 	const origin: ForkOrigin = { session: parent, afterSeq: cut.seq, at: Date.now(), title };
-	writeForkSidecar(root, id, { profile: tenantsOf(root, parent)["profile"], name: `${(title || "Session").slice(0, 110)} (fork)`, forkedFrom: origin });
+	const parentTenants = tenantsOf(root, parent);
+	writeForkSidecar(root, id, { profile: parentTenants["profile"], name: `${(title || "Session").slice(0, 110)} (fork)`, forkedFrom: origin, sessionsTools: parentTenants["sessionsTools"] });
 	copyEnvironment(root, parent, id); // before the log: a fork that is listed has its folders
 	durable(join(root, `${id}.jsonl`), log.subarray(0, cut.end));
 	return { id, origin };

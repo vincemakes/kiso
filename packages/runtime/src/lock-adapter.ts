@@ -157,6 +157,13 @@ function processState(pid: number): string | null {
 	}
 }
 
+/** ADR-0062: whether a live process other than this one holds the lock at `lockPath`: the session is open elsewhere (the
+ *  terminal, or another host). An absent, empty or unreadable lock, or a dead holder, is not held. */
+export function heldElsewhere(lockPath: string): boolean {
+	const pid = readLockIdentity(lockPath)?.pid;
+	return pid !== undefined && pid !== process.pid && isAlive(pid);
+}
+
 /**
  * Read a lock file's holder identity (round 4 formats, unchanged — the
  * cross-version channel). Empty, unreadable, or half-written locks have no

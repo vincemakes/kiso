@@ -4,6 +4,7 @@ import { named, titleIfUnnamed } from "./names.js";
 import { createSessionService, InFlightError, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event } from "@vincemakes/kiso-core";
+import { sessionsFor, type SessionsHost } from "./sessions-tool.js";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
 import { createWebAgent, routeOf, type ModelChoice, type PermissionMode } from "./agent.js";
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
@@ -44,6 +45,8 @@ export interface SpaceOptions {
 	readonly taskWake?: boolean;
 	/** title a Work from its first message (Session.title), beside its first run */
 	readonly titles?: boolean;
+	/** ADR-0062: the sessions extension is on; a new Work is created with it */
+	readonly sessions?: SessionsHost;
 	/** after each run has settled (however short): the host's what-next, read from the store */
 	readonly onSettled?: (sessionId: string, runId: string, store: SessionStore) => void;
 }
@@ -149,6 +152,7 @@ export function createSpace(options: SpaceOptions): Space {
 		},
 		open: async (sessionId) => {
 			opened.add(sessionId);
+			const sessionsExt = options.sessions === undefined ? undefined : sessionsFor(options.dir, { key: options.key, sessionId }, options.sessions);
 			return createWebAgent({
 				store,
 				workspace: options.workspace,
@@ -159,6 +163,7 @@ export function createSpace(options: SpaceOptions): Space {
 				tasks,
 				...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
 				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
+				...(sessionsExt !== undefined ? { sessions: sessionsExt } : {}),
 				onSession: (sessionId, session) => {
 					sessions.set(sessionId, session);
 					setTimeout(() => ensureTitle(sessionId), 0); // a Work opened again after a restart, still unnamed

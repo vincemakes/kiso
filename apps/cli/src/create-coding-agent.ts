@@ -29,7 +29,7 @@ import { modeExtensions, modeSystemPrompt } from "./mode.js";
 import { readOnlyShellExtension } from "./readonly-shell.js";
 import { maxRetriesFromEnv } from "./retries.js";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
-import { runsACheck } from "@vincemakes/kiso-runtime/internal";
+import { hasSessionsTools, refusingSessionsExtension, runsACheck } from "@vincemakes/kiso-runtime/internal";
 import { providerHost } from "./provider-label.js";
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
@@ -283,6 +283,8 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		...modeExtensions(workspaceRoot),
 		readOnlyShellExtension(codingToolOptions),
 		...loadedExtensions.map((e) => guardSavedAllow(e, neverInherited)),
+		// ADR-0062: a Work the web created with the sessions tools keeps them here, each refusing (this host cannot keep their promise)
+		...(sessionId !== undefined && hasSessionsTools(activeStoreDir, sessionId) ? [refusingSessionsExtension()] : []),
 	];
 	setCurrentAgentExtensions(extensions);
 
