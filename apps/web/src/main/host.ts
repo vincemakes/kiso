@@ -7,8 +7,8 @@ import type { AddressInfo } from "node:net";
 import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@vincemakes/kiso-code/config";
 import { kisoHome, readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
 import { protectedFiles } from "./agent.js";
-import { readable } from "./message-tool.js";
-import type { SessionsHost } from "./sessions-tool.js";
+import { chainIn, notifyParent, readable } from "./message-tool.js";
+import { chainBudget, type SessionsHost } from "./sessions-tool.js";
 import type { SessionService } from "@vincemakes/kiso-server";
 import type { Settings } from "./settings.js";
 import { Auth } from "./auth.js";
@@ -104,6 +104,8 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread; the PR its own
 		// `gh pr create` printed becomes the Work's (an earlier run's never replaces a later link)
 		onSettled: (sessionId, runId, store) => {
+			// ADR-0062 § 7: a Work another started reports back to it
+			if (options.sessions === true) void notifyParent(store, key, sessionId, runId, spaces.get(key)?.tasks.managerFor(sessionId).list().some((t) => t.state.kind === "running") ?? false, sessionsHost).catch(() => undefined);
 			if (watch.away(key, sessionId)) unread(sessionId, true);
 			const pr = prOfEvents(store.load(sessionId).filter((r) => r.runId === runId).map((r) => r.event as Parameters<typeof prOfEvents>[0][number]));
 			if (pr !== null && options.settings.marksOf(sessionId).pr?.url !== pr.url) options.settings.setPr(sessionId, pr);
@@ -112,12 +114,16 @@ export async function startHost(options: HostOptions): Promise<Host> {
 
 	// ADR-0062: what the sessions tools ask of the host (closures: `history` and `spaceFor` below exist by the time a Work opens)
 	const sessionsHost: SessionsHost = {
-		// a scan still reading folders (a host just started) is waited for, 3 s at most
-		list: async () => { for (let i = 0; ; i++) { const r = await history.snapshot({ key: current.key, dir: currentDir }); if (!r.scanning || i >= 30) return r; await new Promise((ok) => setTimeout(ok, 100)); } },
+		// this folder read afresh (a Work made a moment ago is listed), and a scan still reading folders waited for, 3 s at most
+		list: async () => { for (let i = 0; ; i++) { const r = await history.snapshot({ key: current.key, dir: currentDir }, current.key); if (!r.scanning || i >= 30) return r; await new Promise((ok) => setTimeout(ok, 100)); } },
 		dirOf: (k) => join(dirname(currentDir), k),
-		deliver: async (k, id) => void (await spaceFor(k)?.poke(id)),
+		deliver: async (k, id) => (await spaceFor(k)?.poke(id)) ?? "waiting",
 		mayRead: (self, path) => ((space) => space !== null && readable(path, [space.workspace, ...readEnvironment(space.dir, self.sessionId).added], protectedFiles()))(spaceFor(self.key)),
+		chainOf: (k, id) => ((space) => (space === null ? `${k}/${id}#0` : chainIn(space.store, k, id)))(spaceFor(k)),
+		tierOf: (id) => options.settings.tierOf(id),
+		mayWake: (rootId) => budget.take(rootId),
 	};
+	const budget = chainBudget(home);
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
 	const workspace = canonicalPath(options.workspace);
 	const currentDir = projectDirFor(home, workspace);

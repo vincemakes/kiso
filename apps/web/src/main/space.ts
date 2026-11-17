@@ -68,7 +68,7 @@ export interface Space {
 	readonly followUp: (sessionId: string, seq: number) => Promise<string>;
 	readonly reopen: (sessionId: string) => Promise<"now" | "next">; // rebuilt so its next run reads its settings: now when idle, else once its run settles
 	/** ADR-0062: a message waits in this Work's inbox: open it (refused when another process holds it) and have it look */
-	readonly poke: (sessionId: string) => Promise<void>;
+	readonly poke: (sessionId: string) => Promise<"handed" | "woke" | "waiting">;
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -181,7 +181,11 @@ export function createSpace(options: SpaceOptions): Space {
 					};
 					session.useTasks(tasks.managerFor(sessionId), { wake: options.taskWake !== false, onWake: wake });
 					// ADR-0062: messages from other Works, read from its inbox now and whenever one is written
-					if (options.sessions !== undefined) session.usePeers({ root: options.dir, onWake: wake });
+					if (options.sessions !== undefined) {
+						session.usePeers({ root: options.dir, onWake: wake, mayWake: options.sessions.mayWake });
+						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
+						for (const u of session.uncertainExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
+					}
 				},
 			});
 		},
@@ -314,7 +318,7 @@ export function createSpace(options: SpaceOptions): Space {
 		followUp, reopen,
 		poke: async (sessionId) => {
 			await service.pendingApprovals(sessionId); // opens the Work if it is not open yet
-			sessions.get(sessionId)?.pokePeers();
+			return sessions.get(sessionId)?.pokePeers() ?? "waiting";
 		},
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {

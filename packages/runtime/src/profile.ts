@@ -176,6 +176,17 @@ export function markSessionsTools(root: string, sessionId: string): void {
 	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), sessionsTools: true });
 }
 
+/** ADR-0062 § 7: the session that started this one with start_session (its address, `<folder key>/<session id>`), or null.
+ *  The completion wake follows this link; nothing else does (any session may message any session). */
+export function readStartedBy(root: string, sessionId: string): string | null {
+	const by = currentTenants(root, sessionId).startedBy;
+	return typeof by === "string" && by !== "" ? by : null;
+}
+
+export function writeStartedBy(root: string, sessionId: string, parent: string): void {
+	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), startedBy: parent });
+}
+
 /** Where a fork came from (SessionStore.fork): the parent session, the seq of the parent's `terminal` it was cut after,
  *  when, and the parent's title then. The sidecar's fourth tenant; lineage, not authority. */
 export interface ForkOrigin {
