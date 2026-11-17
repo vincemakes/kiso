@@ -6,9 +6,8 @@ import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@vincemakes/kiso-code/config";
 import { kisoHome, readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
-import { readInbox } from "@vincemakes/kiso-runtime/internal";
 import { protectedFiles } from "./agent.js";
-import { chainIn, notifyParent, readable } from "./message-tool.js";
+import { chainIn, holdsHeld, notifyParent, readable } from "./message-tool.js";
 import { chainBudget, type SessionsHost } from "./sessions-tool.js";
 import { beginWork, type WorkStart } from "./start-session-tool.js";
 import type { SessionService } from "@vincemakes/kiso-server";
@@ -159,7 +158,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const prStates = new PrStates();
 	const history = new History(home, async (key, sessionId): Promise<WorkState> => {
 		const space = spaces.get(key);
-		const held = space !== undefined && readInbox(space.dir, sessionId).some((m) => m.held === true); // ADR-0062 § 8: a held message waits on the person
+		const held = space !== undefined && holdsHeld(space.dir, sessionId); // ADR-0062 § 8: a held message waits on the person
 		if (space === undefined || !space.service.isRunning(sessionId)) return held ? "waiting" : "idle";
 		return held || asks.waiting(sessionId) || (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
 	}, (id) => {

@@ -2,7 +2,7 @@ import { existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 import { readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
-import { completionMessage, currentChain, fileRevision, InboxRefusedError, peerMessageId, reachesFurther, MESSAGE, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
+import { completionMessage, currentChain, fileRevision, InboxRefusedError, readInbox, peerMessageId, reachesFurther, MESSAGE, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
 import type { WorkRow } from "../shared/history.js";
 import type { SessionsHost } from "./sessions-tool.js";
 
@@ -42,6 +42,9 @@ export async function notifyParent(store: SessionStore, key: string, sessionId: 
 	await writeMessage(host.dirOf(pKey), pId, notice);
 	await host.deliver(pKey, pId).catch(() => undefined);
 }
+
+/** ADR-0062 § 8: whether a message waits in the Work's inbox for the person to admit it. */
+export const holdsHeld = (dir: string, sessionId: string): boolean => readInbox(dir, sessionId).some((m) => m.held === true);
 
 /** The chain a Work is on, from its log. */
 export const chainIn = (store: SessionStore, key: string, sessionId: string): string => currentChain(store.load(sessionId).map((r) => r.event), `${key}/${sessionId}`);
