@@ -331,5 +331,5 @@
 .q-text { margin-top: 6px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 .qcard .wcard-acts { padding: 0 14px 12px; }
 .needs { display: flex; width: fit-content; align-items: center; gap: 7px; margin: 8px 0; padding: 4px 10px; border-radius: 999px; background: #fffbeb; color: #92400e; font-size: 12.5px; }
-.needs .dot { width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+.needs .dot { width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; }
 [data-act=rewind] svg { transform: scaleX(-1); } /* ↺, not reload */

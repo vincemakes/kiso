@@ -38,7 +38,7 @@
 /* the open Work: one grey fill (no white card, no shadow) */
 .item.on { background: rgba(0, 0, 0, 0.065); }
 .item .tt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .dot.amber { background: var(--amber); }
 .dot.blue { background: var(--blue); }
 /* the Work's own pull request, coloured by its state (grey until gh has said); a click opens it */
