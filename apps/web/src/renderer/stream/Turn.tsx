@@ -207,7 +207,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted, onR
 			) : null}
 			{inProcess.length > 0 || live ? <Process turn={turn} items={inProcess} tasks={tasks} onAnswer={onAnswer} interrupted={interrupted} /> : null}
 			{openAsks.map((ask: Ask) => (
-				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />
+				<Approval key={ask.id} ask={ask} onAnswer={interrupted ? null : onAnswer} />
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <RunEnd turn={turn} /> : null}

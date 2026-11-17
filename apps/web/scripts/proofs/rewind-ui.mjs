@@ -9,7 +9,7 @@ const { check, verdict } = checker("rewind-ui");
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const slow = { events: [{ type: "delay", ms: 4000 }, { type: "text_delta", text: "never" }, { type: "stop", reason: "end_turn" }] };
 const data = scratch("rewind-data");
-const app = await launchApp({ data, workspace: scratch("rewind-ws"), env: { KISO_WEB_SESSION: "w-rw" }, fauxScript: [say("One."), slow, say("Fixed.")] });
+const app = await launchApp({ data, workspace: scratch("rewind-ws"), env: { KISO_WEB_SESSION: "w-rw" }, fauxScript: [say("One."), slow, say("Fixed."), { events: [{ type: "delay", ms: 1500 }, { type: "tool_call_end", callId: "x1", name: "shell", input: { command: "echo gone" } }, { type: "stop", reason: "tool_use" }] }] });
 const q = (js) => app.evaluate(js);
 const key = (await fetch(`${app.host().origin}/desk/history`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json())).current.key;
 const log = () => readFileSync(join(data, "projects", key, "w-rw.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).event);
@@ -41,5 +41,10 @@ await waitUntil(() => log().some((e) => e.type === "text_delta" && e.text === "F
 await ended();
 check(log().some((e) => e.type === "text_delta" && e.text === "Fixed."), "sending again goes on");
 check((await app.count("[data-act=rewind]")) === 0, "a run that finished cannot be taken back");
+// Enter, then Esc at once, before the page has seen the run start (the owner's "send, Esc, ↺"): the run stops, ↺ takes it back
+await q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); el.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, 'Delete the old invoices'); el.dispatchEvent(new Event('input', { bubbles: true })); for (const key of ['Enter', 'Escape']) el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); return true; })()`);
+await waitUntil(() => log().filter((e) => e.type === "terminal").length === 4, 15_000);
+check(log().filter((e) => e.type === "terminal").at(-1)?.outcome.kind === "aborted" && !log().some((e) => e.type === "tool_call_end" && e.callId === "x1"), "Enter then Esc at 0 ms: the run stops before it does anything");
+check(await waitUntil(async () => (await app.count("[data-act=rewind]")) === 1, 10_000), "and ↺ can take that line back");
 await app.close();
 verdict();

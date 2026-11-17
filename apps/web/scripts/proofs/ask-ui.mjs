@@ -8,7 +8,7 @@ import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
 
 const { check, verdict } = checker("ask-ui");
 const ok = { events: [{ type: "text_delta", text: "Ok." }, { type: "stop", reason: "end_turn" }] };
-const ask = (callId, questions) => ({ events: [{ type: "tool_call_end", callId, name: "ask_user", input: { questions } }, { type: "stop", reason: "tool_use" }] });
+const ask = (callId, questions) => ({ events: [{ type: "tool_call_start", callId, name: "ask_user" }, { type: "delay", ms: 600 }, { type: "tool_call_end", callId, name: "ask_user", input: { questions } }, { type: "stop", reason: "tool_use" }] }); // streamed as a real model streams it: the call first, its input later
 const range = { question: "Which year range should the import cover?", options: [{ label: "2024 only (recommended)", description: "The invoices the request names" }, { label: "2023 to 2024", description: "Two years, for the comparisons" }, { label: "Everything", description: "All invoices on record" }] };
 const parts = { question: "Which parts should it touch?", multiSelect: true, options: [{ label: "Importer" }, { label: "Schema" }, { label: "Docs" }] };
 const data = scratch("ask-data");

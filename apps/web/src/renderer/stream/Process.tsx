@@ -101,7 +101,7 @@ function Group({ id, items, turn, tasks, onAnswer, interrupted, live }: Omit<Pro
 							) : item.kind === "step" ? (
 								<Step key={item.id} step={item} task={tasks.find((r) => r.id === item.taskId)} frozen={interrupted} shown={shown.has(item.id)} onShow={() => toggle(item.id)} />
 							) : item.kind === "ask" ? (
-								<Approval key={item.id} ask={item} onAnswer={onAnswer} />
+								<Approval key={item.id} ask={item} onAnswer={interrupted ? null : onAnswer} />
 							) : null,
 						)}
 					</div>
@@ -120,8 +120,9 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 	const live = turn.phase === "running" && !interrupted;
 	// ADR-0062: a start_session call is drawn as its card or its line, after its group and never folded into it
 	const isMessage = (s: (typeof segments)[number] | undefined): boolean => s?.kind === "line" && s.item.kind === "peer" && s.item.event === "message";
-	// ADR-0062 § 10c: an ask_user call waiting for its answer is its question card, out of the group
-	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message" || (i.name === "ask_user" && i.status !== "done" && i.status !== "failed" && i.status !== "denied"));
+	// ADR-0062 § 10c: an ask_user call waiting for its answer is its question card, out of the group, once its questions are in (a
+	// streamed call starts before its input: a card mounted then would hold no questions in its state)
+	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message" || (i.name === "ask_user" && i.input !== null && i.status !== "done" && i.status !== "failed" && i.status !== "denied"));
 	const segments = segmentsOf(items).map((s) => (s.kind === "group" ? { ...s, items: s.items.filter((i) => !isStart(i)), cards: s.items.filter(isStart) as StepItem[] } : s));
 	// while it works, the run's live line is its last group: one that is still empty when the run has nothing in a group yet
 	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [], cards: [] });

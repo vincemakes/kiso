@@ -209,6 +209,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		document.removeEventListener("visibilitychange", wake);
 		document.removeEventListener("visibilitychange", seen);
 	};
+	let sending: Promise<unknown> | null = null;
 	const act = async (fn: () => Promise<unknown>): Promise<void> => {
 		try {
 			await fn();
@@ -229,7 +230,8 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		link: () => link,
 		retryNow: () => api.retryNow(),
 		// an open run is resumed to its end first: the new line is not lost and the old run is not abandoned
-		send: (text) => act(() => api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})),
+		// a Stop pressed while the line is still on its way (sent, the run not started yet) waits for the run, then stops it
+		send: (text) => act(() => (sending = api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})).finally(() => void (sending = null))),
 		steer: (text) =>
 			act(async () => {
 				const id = ++waitingId;
@@ -273,6 +275,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 			}),
 		abort: () =>
 			act(async () => {
+				await sending?.catch(() => undefined);
 				const reply = await api.abort();
 				if (reply.kind === "parked") say(t.parked);
 			}),

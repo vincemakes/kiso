@@ -30,6 +30,7 @@ await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1, 15_000);
 await clientFor(host()).session("w-res").run("tell the importer");
 await waitUntil(async () => (await app.count("[data-kind=waiting-row]")) === 1, 15_000);
 check((await app.text("[data-kind=waiting-row] .prow-head"))?.replace(/\s+/g, " ").startsWith("Message from Research · read after your answer") === true, "a message waiting behind an approval: Message from Research · read after your answer");
+check((await app.count(".item.on .dot.amber")) === 1 && (await app.count(".item.on .sp")) === 0, "the open Work waits on its approval: its sidebar row shows the amber dot, not the spinner");
 // the hint is whole when it fits the box, else its short form; never cut (the overview open makes the box narrow)
 const LONG = "Typing declines this, and your words become the next instruction";
 // fonts differ between machines (the CI's Chrome is Linux's), so the rule is checked, not one outcome: the whole hint when it

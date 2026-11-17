@@ -225,13 +225,13 @@ export function App(): ReactNode {
 	const activeKey = target.key ?? history?.current.key ?? "";
 	// the Work on the page knows its own state first (once it has read it): its row follows the run's end at once, the host's list catches up on the next read
 	const liveNow = session !== null && isLive(session.state);
-	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 || isAsking(session.state.turns) ? "waiting" : "running";
+	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 || isAsking(session.state.turns) || (session.state.turns.at(-1)?.items ?? []).some((i) => i.kind === "ask" && i.decision === "open") ? "waiting" : "running"; // an approval drawn in the stream waits on the person even before the snapshot is read again
 	useEffect(() => {
-		if (!liveNow && signedIn === true) refresh();
+		if (signedIn === true && (!liveNow || !(history?.works ?? []).some((w) => w.id === target.sessionId))) refresh(liveNow ? activeKey : undefined); // a new Work's first run: its row now, not at the next poll
 	}, [liveNow, signedIn, refresh]);
 	const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
 	const markGone = (row: WorkRow, on: boolean): void => setGone((s) => new Set(on ? [...s, `${row.key}\n${row.id}`] : [...s].filter((g) => g !== `${row.key}\n${row.id}`)));
-	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
+	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState === "idle" && w.state === "waiting" ? "waiting" : ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
 	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);

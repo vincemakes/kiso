@@ -71,7 +71,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const running = isLive(session.state);
 	// ADR-0062 S3: with exactly one approval open, a typed line declines it and becomes the next instruction (queued first, so
 	// it is admitted once at the boundary after the decline); with several open, none is declined and the line waits as a steer
-	const open = (turns.at(-1)?.items ?? []).filter((i) => i.kind === "ask" && i.decision === "open");
+	const open = isInterrupted(session.state) ? [] : (turns.at(-1)?.items ?? []).filter((i) => i.kind === "ask" && i.decision === "open"); // a run cut off (Resume): its old approval is dead, typing declines nothing
 	// ADR-0062 § 10c: a question waiting: the stream ends on "Needs your input", and a typed line is its Other (S2)
 	const asking = isAsking(turns);
 	const [workKey, workId] = [useContext(KeyContext), useContext(WorkContext)];

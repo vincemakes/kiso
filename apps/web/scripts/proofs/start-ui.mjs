@@ -31,6 +31,7 @@ await app.shot("pr4-1-start-session-top");
 await app.click("[data-act=card-start]");
 await waitUntil(async () => (await app.count("[data-kind=started-from]")) === 1, 30_000);
 check((await app.text("[data-kind=started-from]"))?.startsWith("Started from") === true && (await app.count("[data-act=started-parent]")) === 1, "Start opens the new Work on 'Started from <parent> · <folder>', the parent a link");
+check((await q(`(() => { const n = document.querySelector("[data-kind=started-from]"); return n.getBoundingClientRect().height < 24 && getComputedStyle(n.querySelector(".flink")).textOverflow === "ellipsis"; })()`)) === true, "a long parent title keeps the line to one: the title is cut with an ellipsis, the folder stays whole");
 await waitUntil(async () => (await q(`[...document.querySelectorAll(".me")].some((m) => m.textContent.includes("credit note"))`)) === true, 15_000);
 check(true, "its first message is the brief");
 await sleep(500);

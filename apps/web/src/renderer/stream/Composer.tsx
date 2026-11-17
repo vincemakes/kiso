@@ -161,7 +161,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 		if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
 			e.preventDefault();
 			submit();
-		} else if (e.key === "Escape" && running) onStop();
+		} else if (e.key === "Escape") onStop(); // also just after a send, before the page has seen the run start (the store waits for it)
 	};
 	const paste = (e: ClipboardEvent<HTMLTextAreaElement>): void => {
 		const list = Array.from(e.clipboardData.files);
