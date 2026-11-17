@@ -69,7 +69,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const down = useLink(session);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
-	// ADR-0062 S3: with exactly one approval open, a typed line declines it and becomes the next instruction (queued first, so
+	// ADR-0062 S3: with exactly one approval open, a typed line declines it (if it is still open once the line is in) and becomes the next instruction (queued first, so
 	// it is admitted once at the boundary after the decline); with several open, none is declined and the line waits as a steer
 	const open = isInterrupted(session.state) ? [] : (turns.at(-1)?.items ?? []).filter((i) => i.kind === "ask" && i.decision === "open"); // a run cut off (Resume): its old approval is dead, typing declines nothing
 	// ADR-0062 § 10c: a question waiting: the stream ends on "Needs your input", and a typed line is its Other (S2)
@@ -78,7 +78,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	// ADR-0062 § 10b: the last line, stopped before it did anything, comes back to the box with its attachments
 	const rewindOf = (turn: (typeof turns)[number]): { onRewind?: (() => void) | null } =>
 		turn.phase === "running" && !turn.items.some((i) => i.kind === "step") ? { onRewind: null } : turn.outcome === "aborted" && !turn.items.some((i) => i.kind === "step" || i.kind === "ask") ? { onRewind: () => void rewindLine(workKey, workId).then((back) => dispatchEvent(new CustomEvent("kiso:restore", { detail: back }))) } : {};
-	const steer = (x: Parameters<typeof session.steer>[0]): Promise<void> => asking && typeof x === "string" && askInput.current !== null ? Promise.resolve(askInput.current(x)) : (open.length === 1 && open[0]!.kind === "ask" ? session.steer(x).then(() => session.approve((open[0] as { decisionId: string }).decisionId, false)) : session.steer(x));
+	const steer = (x: Parameters<typeof session.steer>[0]): Promise<void> => asking && typeof x === "string" && askInput.current !== null ? Promise.resolve(askInput.current(x)) : (open.length === 1 && open[0]!.kind === "ask" ? session.steer(x).then(() => ((id) => void ((session.state.turns.at(-1)?.items ?? []).some((i) => i.kind === "ask" && i.decisionId === id && i.decision === "open") && session.approve(id, false)))((open[0] as { decisionId: string }).decisionId)) : session.steer(x));
 	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);

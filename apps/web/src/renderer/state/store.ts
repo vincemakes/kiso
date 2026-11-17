@@ -218,6 +218,17 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		}
 	};
 	const resume = (): Promise<void> => act(() => api.resume());
+	/** A new run for a line, waiting (up to 10 s) while the run before it is still closing (409 in_flight), rather than losing the line. */
+	const runWhenFree = async (input: WireInput): Promise<void> => {
+		for (let tries = 0; ; tries++) {
+			try {
+				return void (await api.run(input));
+			} catch (e) {
+				if (!(e instanceof ClientError && e.code === "in_flight") || tries >= 50) throw e;
+				await new Promise((r) => setTimeout(r, 200));
+			}
+		}
+	};
 	return {
 		state,
 		subscribe: (l) => {
@@ -240,8 +251,8 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 					await api.steer(withNote(options.key, options.sessionId, text));
 				} catch (e) {
 					setWaiting(waiting.filter((w) => w.id !== id));
-					// no run to join, or it was already closing: the line starts a run of its own
-					if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await api.run(text);
+					// no run to join, or it was already closing: the line starts a run of its own, once the closing one has ended
+					if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await runWhenFree(text);
 					else throw e;
 				}
 			}),
@@ -263,15 +274,7 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 				await api.abort();
 				// one next message, as the terminal's redirect makes it: the lines in their order. The stopped run may still be
 				// closing for a moment (409 in_flight): the line waits for it, up to 10 s, rather than being lost
-				const line = withNote(options.key, options.sessionId, all.length === 1 ? all[0]!.input : all.map((w) => w.text).join("\n\n"));
-				for (let tries = 0; ; tries++) {
-					try {
-						return void (await api.run(line));
-					} catch (e) {
-						if (!(e instanceof ClientError && e.code === "in_flight") || tries >= 50) throw e;
-						await new Promise((r) => setTimeout(r, 200));
-					}
-				}
+				await runWhenFree(withNote(options.key, options.sessionId, all.length === 1 ? all[0]!.input : all.map((w) => w.text).join("\n\n")));
 			}),
 		abort: () =>
 			act(async () => {
