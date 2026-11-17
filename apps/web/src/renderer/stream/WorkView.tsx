@@ -12,6 +12,7 @@ import { t } from "../i18n/index.js";
 import { Copy, I } from "./Icons.js";
 import { InboxRows } from "./PeerRows.js";
 import { askInput, isAsking } from "./AskCard.js";
+import { rewindLine } from "../state/works.js";
 
 // the input handed to the page at launch is sent once, into the first Work that opens
 let autoSent = false;
@@ -73,6 +74,10 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const open = (turns.at(-1)?.items ?? []).filter((i) => i.kind === "ask" && i.decision === "open");
 	// ADR-0062 § 10c: a question waiting: the stream ends on "Needs your input", and a typed line is its Other (S2)
 	const asking = isAsking(turns);
+	const [workKey, workId] = [useContext(KeyContext), useContext(WorkContext)];
+	// ADR-0062 § 10b: the last line, stopped before it did anything, comes back to the box with its attachments
+	const rewindOf = (turn: (typeof turns)[number]): { onRewind?: (() => void) | null } =>
+		turn.phase === "running" && !turn.items.some((i) => i.kind === "step") ? { onRewind: null } : turn.outcome === "aborted" && !turn.items.some((i) => i.kind === "step" || i.kind === "ask") ? { onRewind: () => void rewindLine(workKey, workId).then((back) => dispatchEvent(new CustomEvent("kiso:restore", { detail: back }))) } : {};
 	const steer = (x: Parameters<typeof session.steer>[0]): Promise<void> => asking && typeof x === "string" && askInput.current !== null ? Promise.resolve(askInput.current(x)) : (open.length === 1 && open[0]!.kind === "ask" ? session.steer(x).then(() => session.approve((open[0] as { decisionId: string }).decisionId, false)) : session.steer(x));
 	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
@@ -236,7 +241,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					) : null}
 					{turns.length > 0 ? lead : null}
 					{turns.map((turn, i) => (
-						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={session.stale() ? null : (id, allow) => void session.approve(id, allow)} />
+						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={session.stale() ? null : (id, allow) => void session.approve(id, allow)} {...(i === turns.length - 1 && turn.user !== "" ? rewindOf(turn) : {})} />
 					))}
 					{session.pending().map((w) => (
 						<div key={w.id} className="pend" data-kind="pending-steer">

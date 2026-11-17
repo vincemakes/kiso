@@ -49,7 +49,7 @@ import {
 import { executionLedger } from "./ledger.js";
 import { overflowBelt, type OverflowMeasure } from "./overflow-belt.js";
 import { windowLearner } from "./window-learner.js";
-import { denialResult, type ContinuationScope } from "@vincemakes/kiso-core";
+import { denialResult, isRuntimeInput, type ContinuationScope } from "@vincemakes/kiso-core";
 import { buildProfile, readForkOrigin, readProfile, writeProfile, writeSummary } from "./profile.js";
 import { forkNote } from "./fork.js";
 import { summarizeEvents } from "./session-summary.js";
@@ -1569,6 +1569,37 @@ export class AgentSession {
 	}
 
 	/** The runId that owns an execution — from its durable started record. */
+	// ── ADR-0062 § 10b: rewind the line just sent ───────────────────────────
+
+	/** The person's last line, when it can be taken back: the session is idle, and its last run holds that one input (the
+	 *  person's own), ended `aborted`, with no committed model turn (`stop`) and no started execution. Null otherwise. */
+	rewindable(): { readonly seq: number; readonly content: string | readonly ContentBlock[] } | null {
+		if (this.#activeRuns.size > 0) return null;
+		const events = this.log.all;
+		const end = events.length - 1;
+		const last = events[end];
+		if (last?.type !== "terminal" || last.outcome.kind !== "aborted") return null;
+		let start = end - 1;
+		while (start >= 0 && events[start]!.type !== "terminal") start--;
+		const run = events.slice(start + 1, end);
+		const inputs = run.filter((e) => e.type === "user_input");
+		const line = inputs[0];
+		if (inputs.length !== 1 || line?.type !== "user_input" || isRuntimeInput(line) || line.source === "system") return null;
+		if (run.some((e) => e.type === "stop" || e.type === "tool_execution_started")) return null;
+		return { seq: line.seq, content: line.content };
+	}
+
+	/** Take back the person's last line (rewindable() says when): one `user_input_replaced` with no content, appended outside
+	 *  any run, so the projection renders nothing at the line's place and the next request is byte for byte what it would have
+	 *  been had the line never been sent; same session, same cache. Returns the line's content, for the box. */
+	async rewind(): Promise<string | readonly ContentBlock[] | null> {
+		const line = this.rewindable();
+		if (line === null) return null;
+		const runId = this.#store.load(this.id).at(-1)?.runId ?? "rewind";
+		await this.persist(runId, this.log.append({ type: "user_input_replaced", replaces: line.seq, content: null }));
+		return line.content;
+	}
+
 	private runIdFor(executionId: string): string {
 		const rec = this.#store
 			.load(this.id)
