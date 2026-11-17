@@ -21,7 +21,7 @@ const idle = async () => (await waitUntil(async () => !(await s.state()).running
 await q(`window.__kiso.send("Install the dependencies.")`);
 await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && open().length === 1, 15_000);
 await Promise.all([s.approve(open()[0].decisionId, true).catch(() => undefined), type("Then run the tests.")]); // the race
-await idle();
+await waitUntil(() => lines("Then run the tests.") > 0, 15_000).then(idle); // the approval first: the line is handed back and sent as the next run
 check(lines("Then run the tests.") === 1, "the line typed while the approval resolves is admitted exactly once");
 check(log().filter((e) => e.type === "permission_decided").length === 1, "the approval is decided once, by whichever landed first");
 
