@@ -45,5 +45,6 @@ const forkId = (await childOf("w-c")).id;
 await waitUntil(() => events(forkId).filter((e) => e.type === "user_input").length >= 2, 8000);
 const forked = events(forkId).filter((e) => e.type === "user_input").map((e) => (typeof e.content === "string" ? e.content : e.content.map((b) => b.text ?? "").join("\n"))); // a fork's first line carries the fork note too
 check(forked[0] === "fork this into its own Work" && forked.at(-1).endsWith("Fork brief."), "a fork starts after the parent's turn ends, from its conversation, with the brief as its next line");
+check(await waitUntil(() => events("w-c").some((e) => e.type === "user_input" && e.via?.kind === "peer" && e.via.event === "completion" && e.via.from.endsWith(`/${forkId}`)), 8000), "the fork's first run ending wakes its parent with the completion notice (its log opens on the parent's runs)");
 host.child.kill("SIGKILL");
 verdict();
