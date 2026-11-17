@@ -15,6 +15,8 @@ interface Props {
 	readonly onSteer: (input: WireInput) => void | Promise<void>;
 	/** a reason the line cannot go yet (a verdict is waiting): typing works, Send waits, the reason is shown */
 	readonly held?: string | null;
+	/** ADR-0062 S3: the box's placeholder while an approval waits (typing declines it) */
+	readonly hint?: string | null;
 	readonly onStop: () => void;
 	/** the connection is down: the line says so, and Send waits (typing does not) */
 	readonly down?: Down | null;
@@ -60,7 +62,7 @@ function lineOf(text: string, attached: readonly Attachment[]): WireInput {
  * by `+`; `@` names a file of the folder. The bar under the box holds `+`, this Work's tier, and its model and effort. A picture
  * waits in the box, unsent, while the model in use is not known to read images.
  */
-export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, held = null, view, children }: Props): ReactNode {
+export function Composer({ running, suggestion = null, onSend, onSteer, onStop, inline = false, down = null, held = null, hint = null, view, children }: Props): ReactNode {
 	const c = useContext(ControlsContext);
 	const [text, setText] = useState(view?.draft?.text ?? "");
 	const [attached, setAttached] = useState<readonly Attachment[]>(view?.draft?.attached ?? []);
@@ -70,6 +72,15 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 	const [at, setAt] = useState<{ readonly query: string; readonly from: number; readonly active: number } | null>(null);
 	const [files, setFiles] = useState<readonly string[] | null>(null);
 	const box = useRef<HTMLTextAreaElement>(null);
+	// S3's hint whole when it fits the box, else its short form: measured again whenever the box's width changes
+	const [short, setShort] = useState(false);
+	useLayoutEffect(() => {
+		const el = box.current;
+		if (el === null || hint === null) return;
+		const fit = (): void => ((c) => (c.font = getComputedStyle(el).font, setShort(c.measureText(hint).width > el.clientWidth - 4)))(document.createElement("canvas").getContext("2d")!);
+		const watch = new ResizeObserver(fit);
+		return (watch.observe(el), () => watch.disconnect());
+	}, [hint]);
 	const root = useRef<HTMLDivElement>(null);
 	useEffect(() => setFiles(null), [c?.envVersion]);
 	// a waiting steer taken back to edit comes back into the box, after whatever is already being typed
@@ -235,7 +246,7 @@ export function Composer({ running, suggestion = null, onSend, onSteer, onStop, 
 					ref={box}
 					rows={1}
 					value={text}
-					placeholder={running ? t.inputRunning : (suggestion ?? t.inputPlaceholder)}
+					placeholder={hint !== null ? (short ? t.declineHintShort : hint) : running ? t.inputRunning : (suggestion ?? t.inputPlaceholder)}
 					data-suggestion={suggestion ?? undefined}
 					onChange={(e) => {
 						setText(e.target.value);
