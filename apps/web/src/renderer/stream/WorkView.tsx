@@ -10,6 +10,7 @@ import type { Session } from "../state/store.js";
 import { ResumeCard, VerdictPanel } from "./Interrupt.js";
 import { t } from "../i18n/index.js";
 import { Copy, I } from "./Icons.js";
+import { HeldRows } from "./PeerRows.js";
 
 // the input handed to the page at launch is sent once, into the first Work that opens
 let autoSent = false;
@@ -242,6 +243,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 							<div className="pend-note">{t.pendingNote}</div>
 						</div>
 					))}
+					<HeldRows />
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}
 				</div>

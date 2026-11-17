@@ -304,3 +304,17 @@
 .wcard-acts { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; }
 .wcard-here { padding: 5px 10px; color: var(--ink); }
 .wcard-start { padding: 5px 14px; border-radius: 8px; background: #1a1a1a; color: #fff; }
+/* ADR-0062: messages between Works, as default-collapsed rows */
+.prow { margin: 4px 0; font-size: 13.5px; color: var(--mute); }
+.prow-head { display: flex; align-items: baseline; gap: 6px; max-width: 100%; text-align: left; color: inherit; }
+.prow-head b { color: var(--ink); font-weight: 500; }
+.prow .plink, .prow .pto { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.prow .ptext { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prow .chev { color: var(--faint); }
+.prow-body { margin: 6px 0 2px; color: var(--ink); white-space: pre-wrap; }
+.pgroup { margin-top: 6px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.pgroup .prow + .prow { border-top: 1px solid var(--line); padding-top: 6px; }
+.prow-head b .plink { text-decoration: none; }
+.prow-line { display: flex; align-items: flex-start; gap: 8px; }
+.held-drop, .held-admit { padding: 3px 10px; border-radius: 8px; font-size: 12.5px; background: var(--sunk); color: var(--ink); }
+.held-admit { background: #1a1a1a; color: #fff; }

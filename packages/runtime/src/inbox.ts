@@ -1,4 +1,4 @@
-import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { fsyncDir } from "./tasks/journal.js";
 
@@ -125,6 +125,21 @@ export function readInbox(root: string, sessionId: string): PeerMessage[] {
 		}
 	}
 	return messages.sort((a, b) => a.at - b.at || (a.messageId < b.messageId ? -1 : 1));
+}
+
+/** ADR-0062 § 8: the person admits a held message: it is written again without the hold (whole, temp + rename), so the
+ *  receiver's next look delivers it. False when it is not there or not held. */
+export async function releaseMessage(root: string, sessionId: string, messageId: string): Promise<boolean> {
+	const dir = inboxDir(root, sessionId);
+	return locked(dir, () => {
+		const m = readInbox(root, sessionId).find((x) => x.messageId === messageId);
+		if (m === undefined || m.held !== true) return false;
+		const { held: _, ...free } = m;
+		const tmp = join(dir, `.${messageId}.${process.pid}.tmp`);
+		writeFileSync(tmp, JSON.stringify(free), { mode: 0o600 });
+		renameSync(tmp, join(dir, `${messageId}.json`));
+		return true;
+	});
 }
 
 /** Delete an admitted message. A failure leaves litter, never a second admission: the log's id is checked first. */

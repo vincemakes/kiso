@@ -41,7 +41,7 @@ export * from "./request-budget.js";
 export { isForkNote } from "./fork.js";
 // ADR-0062: the sessions extension's tool specs, shared by the web host and the terminal's refusing twins
 export * from "./sessions-tools.js";
-export { INBOX_LIMITS, InboxRefusedError, readInbox, writeMessage, type PeerFile, type PeerMessage } from "./inbox.js";
+export { INBOX_LIMITS, InboxRefusedError, readInbox, releaseMessage, removeMessage, writeMessage, type PeerFile, type PeerMessage } from "./inbox.js";
 export type { PeerOutcome } from "./peer-delivery.js";
 export { ChainBudget, MAX_CHAIN_WAKES, completionNotice, currentChain, reachesFurther, type CompletionState } from "./chains.js";
 export { hasSessionsTools, markSessionsTools, readCards, readStartedBy, writeCard, writeStartedBy, type WorkCard, readForkOrigin, readProfile, readSessionName, readSummary, writeSessionName, writeSummary, type ExecutionProfile, type ProfileReadResult } from "./profile.js";

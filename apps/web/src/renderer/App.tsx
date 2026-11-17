@@ -25,7 +25,7 @@ import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
 import { slotOf, workCache } from "./state/workcache.js";
 import { addFolderTo } from "./state/folders.js";
-import { answerCard, fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
+import { answerCard, answerHeld, fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
 import { Lead } from "./stream/Lead.js";
 import { CardsContext, type CardsHost } from "./stream/SessionCard.js";
 import { ago, t } from "./i18n/index.js";
@@ -273,8 +273,10 @@ export function App(): ReactNode {
 	const cardsHost: CardsHost = {
 		cards: env?.cards ?? {},
 		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title,
-		open: (id) => setTarget({ key: target.key, sessionId: id }),
+		// a Work of this folder, or of the folder `key` names (null: the folder in use)
+		open: (id, key) => setTarget({ key: key === undefined ? target.key : key === history?.current.key ? null : key, sessionId: id }),
 		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
+		held: env?.held ?? [], release: async (messageId, action) => (await answerHeld(target.key, target.sessionId, messageId, action), void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined)),
 		answer: async (callId, action) => {
 			const id = await answerCard(target.key, target.sessionId, callId, action);
 			void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined);

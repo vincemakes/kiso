@@ -6,7 +6,7 @@ import { atFiles, deskRead, SAFE_ID } from "./fs-routes.js";
 import { contextParts } from "./context.js";
 import { rename } from "./names.js";
 import { forkWork } from "./fork.js";
-import { answerCard, workLinks } from "./start-session-tool.js";
+import { answerCard, answerHeld, workLinks } from "./start-session-tool.js";
 import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
 import { commit, gitOf, openPr, prDraft, tryRun } from "./git.js";
 import { prOfUrl } from "./prs.js";
@@ -144,6 +144,14 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (!SAFE_ID.test(session)) return json(404, {});
 			const atSeq = typeof body["atSeq"] === "number" ? body["atSeq"] : undefined;
 			return json(200, { id: forkWork(space, ctx.settings, session, atSeq).id });
+		}
+		if (path === "/desk/held") {
+			if (!post || space === null) return json(post ? 404 : 405, {});
+			const body = await readJson(req);
+			const session = str(body["session"]) ?? "";
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			const answer = await answerHeld(space, session, str(body["messageId"]) ?? "", str(body["action"]) ?? "");
+			return json(answer.status, answer.body);
 		}
 		if (path === "/desk/session-card") {
 			if (!post || space === null) return json(post ? 404 : 405, {});

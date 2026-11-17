@@ -10,6 +10,8 @@ import { Delta, Step } from "./Step.js";
 import { artifactsOf, PinnedContext, Thumbs } from "./Artifacts.js";
 import { RunContext, WorkContext } from "./links.js";
 import { SessionCard } from "./SessionCard.js";
+import { MessagedRow, PeerGroup, PeerRow } from "./PeerRows.js";
+import type { Peer } from "../state/peers.js";
 import { Thinking } from "./Thinking.js";
 import { useNow } from "./useNow.js";
 
@@ -116,7 +118,8 @@ function Group({ id, items, turn, tasks, onAnswer, interrupted, live }: Omit<Pro
 export function Process({ turn, items, tasks, onAnswer, interrupted = false }: Props): ReactNode {
 	const live = turn.phase === "running" && !interrupted;
 	// ADR-0062: a start_session call is drawn as its card or its line, after its group and never folded into it
-	const isStart = (i: Item): boolean => i.kind === "step" && i.name === "start_session";
+	const isMessage = (s: (typeof segments)[number] | undefined): boolean => s?.kind === "line" && s.item.kind === "peer" && s.item.event === "message";
+	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message");
 	const segments = segmentsOf(items).map((s) => (s.kind === "group" ? { ...s, items: s.items.filter((i) => !isStart(i)), cards: s.items.filter(isStart) as StepItem[] } : s));
 	// while it works, the run's live line is its last group: one that is still empty when the run has nothing in a group yet
 	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [], cards: [] });
@@ -126,6 +129,14 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 			{segments.map((seg, i) => {
 				const last = i === segments.length - 1;
 				if (seg.kind === "say") return <Blocks key={seg.item.id} className="say" kind="say" text={seg.item.text} live={live && last} />;
+				// ADR-0062: messages admitted together (none held, one after another) are one row
+				if (seg.kind === "line" && seg.item.kind === "peer") {
+					if (seg.item.event !== "message") return <PeerRow key={seg.item.id} peer={seg.item} />;
+					if (isMessage(segments[i - 1])) return null; // drawn in the group it starts
+					const run: Peer[] = [];
+					for (let j = i; isMessage(segments[j]); j++) run.push((segments[j] as { item: Peer }).item);
+					return run.length > 1 ? <PeerGroup key={seg.item.id} peers={run} /> : <PeerRow key={seg.item.id} peer={seg.item} />;
+				}
 				if (seg.kind === "line")
 					return seg.item.kind === "steer" ? (
 						<Fragment key={seg.item.id}>
@@ -138,7 +149,7 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 							{seg.item.code === "" ? null : <small>{seg.item.code}</small>}
 						</div>
 					) : null;
-				const cards = "cards" in seg ? seg.cards.map((c) => <SessionCard key={c.id} step={c} />) : null;
+				const cards = "cards" in seg ? seg.cards.map((c) => (c.name === "message" ? <MessagedRow key={c.id} step={c} /> : <SessionCard key={c.id} step={c} />)) : null;
 				if (!lines.includes(seg)) return [...seg.items.map((item) => (item.kind === "thinking" ? <Thinking key={item.id} item={item} /> : null)), cards];
 				return (
 					<Fragment key={seg.id}>
