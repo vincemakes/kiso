@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 /** What a hover shows: a heading, rows of label and value, a log or lines, and an optional enlarged preview. */
 export interface TipData {
+	readonly title?: string;
 	readonly head?: string;
 	readonly rows?: readonly (readonly [string, string])[];
 	readonly log?: readonly string[];
@@ -13,6 +14,7 @@ export function Tip({ tip, top, bottom }: { readonly tip: TipData | null; readon
 	if (tip === null) return null;
 	return (
 		<div className="tip show" style={bottom === undefined ? { top } : { bottom }} data-kind="tip">
+			{tip.title !== undefined && tip.title !== "" ? <div className="ttl">{tip.title}</div> : null}
 			{tip.head !== undefined ? <h6>{tip.head}</h6> : null}
 			{tip.rows?.map(([k, v]) => (
 				<div className="kv" key={k}>

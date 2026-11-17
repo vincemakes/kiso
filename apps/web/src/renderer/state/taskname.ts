@@ -2,8 +2,9 @@ import type { TaskRow } from "../../shared/frames.js";
 import type { State, Step } from "./model.js";
 
 /** Control characters out, runs of spaces collapsed, at most 60 characters. */
+const tidy = (text: string): string => text.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
 const clean = (text: string): string => {
-	const s = text.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+	const s = tidy(text);
 	return s.length > 60 ? `${s.slice(0, 59)}…` : s;
 };
 
@@ -29,6 +30,8 @@ export function statusOf(label: string): string {
 
 export interface TaskName {
 	readonly title: string;
+	/** the model's description in full, for the hover card ("" when it gave none) */
+	readonly name: string;
 	readonly command: string;
 	readonly folder: string | null;
 	readonly status: string;
@@ -38,5 +41,5 @@ export interface TaskName {
 export function taskNameOf(state: State, task: Pick<TaskRow, "id" | "label" | "command">): TaskName {
 	const input = stepOfTask(state, task.id)?.input;
 	const command = typeof input?.["command"] === "string" ? input["command"] : task.command;
-	return { title: titleOf(command, input?.["description"]), command, folder: /^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*&&/.exec(command)?.[1]?.replace(/^["']|["']$/g, "") ?? null, status: statusOf(task.label) };
+	return { title: titleOf(command, input?.["description"]), name: typeof input?.["description"] === "string" ? tidy(input["description"]) : "", command, folder: /^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*&&/.exec(command)?.[1]?.replace(/^["']|["']$/g, "") ?? null, status: statusOf(task.label) };
 }
