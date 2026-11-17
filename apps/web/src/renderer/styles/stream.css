@@ -293,8 +293,8 @@
 .me-more { align-self: flex-end; margin: -2px 12px 0 0; font-size: 13px; color: #3a3a3e; }
 .me-more:hover { color: var(--ink); text-decoration: underline; }
 /* ADR-0062: a start_session call's card and lines, and a started Work's first line */
-.startnote { margin: 0 0 10px; color: var(--mute); font-size: 13px; }
-.startnote .flink { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.startnote { margin: 0 0 10px; color: var(--mute); font-size: 13px; display: flex; gap: 4px; align-items: baseline; white-space: nowrap; min-width: 0; }
+.startnote .flink { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .startrow { display: inline-flex; align-items: center; gap: 6px; margin: 6px 0; color: var(--mute); font-size: 13.5px; }
 .startrow b { color: var(--ink); font-weight: 500; }
 .startrow.expired, .startrow.expired span { color: var(--faint); }

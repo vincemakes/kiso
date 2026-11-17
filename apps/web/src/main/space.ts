@@ -15,6 +15,9 @@ import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
 import type { AskBridge } from "./ask-bridge.js";
 
+/** ADR-0062 § 10c: what the model reads for a question a restart cut off, so it asks again (the card cannot come back alone). */
+const ASKED_AGAIN = "Not answered: kiso web restarted while this question was waiting, and the person never answered it. Ask it again: call ask_user with the same questions.";
+
 /**
  * One project folder's sessions as a service: the store in the folder's
  * session directory, the hosted-session service over it, the task hub, the
@@ -193,7 +196,7 @@ export function createSpace(options: SpaceOptions): Space {
 						for (const u of session.uncertainExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
 					}
 					// ADR-0062 § 10c: a question cut off by a restart is asked again when the run resumes (ask_user is idempotent)
-					for (const u of session.uncertainExecutions()) if (u.name === "ask_user") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
+					for (const u of session.uncertainExecutions()) if (u.name === "ask_user") void session.resolveUncertain(u.executionId, "rerun", ASKED_AGAIN).catch(() => undefined);
 				},
 			});
 		},

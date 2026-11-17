@@ -62,6 +62,7 @@ writeFileSync(join(dir, "w-main.environment.json"), `${JSON.stringify({ version:
 await run("w-doc", "send the schema news");
 await waitUntil(async () => (await app.count("[data-kind=held-row]")) === 1, 15_000);
 check((await app.text("[data-kind=held-row] .prow-head"))?.replace(/\s+/g, " ").startsWith("Message from Docs · held") === true && (await app.count("[data-act=held-admit]")) === 1 && (await app.count("[data-act=held-drop]")) === 1, "a held message: Message from Docs · held, with Drop and Admit");
+check(await waitUntil(async () => (await app.count(".item.on .dot.amber")) === 1, 10_000), "a held message waits on the person: the receiver's sidebar row shows the amber dot");
 await q0(`document.querySelector("[data-kind=held-row]").scrollIntoView({ block: "center" })`);
 await app.shot("pr5a-2c-held-message");
 await app.click("[data-act=held-admit]");

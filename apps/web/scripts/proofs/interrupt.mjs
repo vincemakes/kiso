@@ -64,6 +64,14 @@ await app.click("[data-act=deny]");
 check(await waitUntil(async () => (await app.text("[data-kind=footer]")) !== null) && (await app.text("[data-kind=answer]")) === "Not run.", "denying it lets the run finish");
 await app.close();
 
+// 3b. killed while an approval waits: the old card's Allow and Deny are dead and typing declines nothing; Resume asks again
+app = await launch([{ events: [call("k1", "shell", { command: "touch k.txt" }), stop] }, end("Asked again.")], { KISO_WEB_MODE: "default", KISO_WEB_AUTORUN: "go" });
+check((await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1, 15_000)) && (await killHost(app)) && (await waitUntil(async () => (await app.count("[data-kind=resume]")) === 1, 20_000)), "an approval waits, the host is killed: the page offers Resume");
+check((await app.evaluate(`[...document.querySelectorAll("[data-act=allow], [data-act=deny]")].every((b) => b.disabled)`)) && !/declines/.test(await app.evaluate("document.querySelector('textarea').placeholder")), "the dead approval's Allow and Deny cannot be pressed, and the box no longer says typing declines it");
+await app.click("[data-act=resume]");
+check(await waitUntil(async () => (await app.evaluate(`[...document.querySelectorAll("[data-act=allow]")].some((b) => !b.disabled)`)) && /declines/.test(await app.evaluate("document.querySelector('textarea').placeholder")), 20_000), "Resume asks again: a live Allow, and the box says typing declines it");
+await app.close();
+
 // 4. a command that moved to the background and ended between runs: the model's notice is a quiet line in the next run, not a message of the person's.
 app = await launch([{ events: [call("b1", "shell", { command: "sleep 1.5; echo done", foregroundMs: 400 }), stop] }, end("Started."), end("Seen.")], { KISO_WEB_MODE: "full-access", KISO_WEB_MIN_FG_MS: "0", KISO_WEB_AUTORUN: "start it" });
 check(await waitUntil(async () => (await app.text("[data-kind=footer]")) !== null), "the first run ended");

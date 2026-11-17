@@ -28,18 +28,23 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 	const work = useContext(WorkContext);
 	const qs = ((step.input?.["questions"] ?? []) as readonly Q[]).filter((q) => Array.isArray(q.options));
 	const [page, setPage] = useState(0);
-	const [picks, setPicks] = useState<number[][]>(() => qs.map(() => []));
-	const [other, setOther] = useState<(string | null)[]>(() => qs.map(() => null));
-	const [skipped, setSkipped] = useState<boolean[]>(() => qs.map(() => false));
+	// per question, read with a default and written over every question: never sized from the questions at mount (a card can mount
+	// before a streamed call's input is in, or be drawn again on a cold open)
+	const [picks, setPicks] = useState<(number[] | undefined)[]>([]);
+	const [other, setOther] = useState<(string | null | undefined)[]>([]);
+	const [skipped, setSkipped] = useState<(boolean | undefined)[]>([]);
+	const at = <T,>(arr: readonly (T | undefined)[], i: number, v: T, d: T): T[] => qs.map((_, j) => (j === i ? v : (arr[j] ?? d)));
 	const [error, setError] = useState<string | null>(null);
-	const submit = (o: (string | null)[], s: boolean[]): void => {
-		const answers = qs.flatMap((q, i) => (s[i] ? [] : [o[i] !== null && o[i] !== "" ? { q: q.question, custom: o[i] } : q.multiSelect === true ? { q: q.question, choices: picks[i]!.map((n) => q.options[n]!.label) } : { q: q.question, choice: q.options[picks[i]![0] ?? 0]?.label ?? "" }]));
-		const declined = qs.filter((_, i) => s[i]).map((q) => q.question);
+	const submit = (o: readonly (string | null | undefined)[], s: readonly (boolean | undefined)[]): void => {
+		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [(o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: (picks[i] ?? []).map((n) => q.options[n]!.label) } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? -1]?.label ?? "" }]));
+		const declined = qs.filter((_, i) => s[i] === true).map((q) => q.question);
 		void answerAsk(key, work, step.callId, answers.length === 0 ? { declined } : declined.length === 0 ? { answers } : { answers, declined }).catch((e: Error) => setError(e.message));
 	};
-	const next = (o = other, s = skipped): void => (page < qs.length - 1 ? setPage(page + 1) : submit(o, s));
+	// a question is answered (a pick, or Other with words) or skipped; nothing is ever chosen for the person: Next and Submit wait for it
+	const done = (i: number, o = other, s = skipped): boolean => s[i] === true || (o[i] ?? "") !== "" || (picks[i] ?? []).length > 0;
+	const next = (o = other, s = skipped): void => void (!done(page, o, s) ? undefined : page < qs.length - 1 ? setPage(page + 1) : ((u) => (u < 0 ? submit(o, s) : setPage(u)))(qs.findIndex((_, i) => !done(i, o, s))));
 	useEffect(() => {
-		askInput.current = (text) => next(other.map((x, i) => (i === page ? text : x)));
+		askInput.current = (text) => next(at(other, page, text, null));
 		const onKey = (e: KeyboardEvent): void => void (e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), next()));
 		addEventListener("keydown", onKey);
 		return () => ((askInput.current = null), removeEventListener("keydown", onKey));
@@ -47,8 +52,9 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 	const q = qs[page];
 	if (q === undefined) return null;
 	const pick = (n: number): void => {
-		setOther(other.map((x, i) => (i === page ? null : x)));
-		setPicks(picks.map((p, i) => (i !== page ? p : q.multiSelect === true ? (p.includes(n) ? p.filter((m) => m !== n) : [...p, n]) : [n])));
+		const p = picks[page] ?? [];
+		setOther(at(other, page, null, null));
+		setPicks(at(picks, page, q.multiSelect === true ? (p.includes(n) ? p.filter((m) => m !== n) : [...p, n]) : [n], []));
 	};
 	const input = q.multiSelect === true ? "checkbox" : "radio";
 	return (
@@ -63,18 +69,18 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 			</div>
 			{q.options.map((o, n) => (
 				<label key={n} className="q-opt" data-act="q-option">
-					<input type={input} name={`q${step.callId}-${page}`} checked={other[page] === null && picks[page]!.includes(n)} onChange={() => pick(n)} />
+					<input type={input} name={`q${step.callId}-${page}`} checked={(other[page] ?? null) === null && (picks[page] ?? []).includes(n)} onChange={() => pick(n)} />
 					<span><span><b>{o.label.replace(RECOMMENDED, "")}</b>{RECOMMENDED.test(o.label) ? <i> {t.qRecommended}</i> : null}</span>{o.description ? <small>{o.description}</small> : null}</span>
 				</label>
 			))}
 			<label className="q-opt" data-act="q-other">
-				<input type={input} name={`q${step.callId}-${page}`} checked={other[page] !== null} onChange={() => setOther(other.map((x, i) => (i === page ? (x ?? "") : x)))} />
-				<span><b>{t.qOther}</b>{other[page] !== null ? <input className="q-text" autoFocus value={other[page] ?? ""} onChange={(e) => setOther(other.map((x, i) => (i === page ? e.target.value : x)))} /> : null}</span>
+				<input type={input} name={`q${step.callId}-${page}`} checked={(other[page] ?? null) !== null} onChange={() => setOther(at(other, page, other[page] ?? "", null))} />
+				<span><b>{t.qOther}</b>{(other[page] ?? null) !== null ? <input className="q-text" autoFocus value={other[page] ?? ""} onChange={(e) => setOther(at(other, page, e.target.value, null))} /> : null}</span>
 			</label>
 			{error === null ? null : <p className="wcard-err">{error}</p>}
 			<div className="wcard-acts">
-				<button className="wcard-here" data-act="q-skip" onClick={() => ((s) => (setSkipped(s), next(other, s)))(skipped.map((x, i) => (i === page ? true : x)))}>{t.qSkip}</button>
-				<button className="wcard-start" data-act="q-next" onClick={() => next()}>{page < qs.length - 1 ? t.qNextKey : t.qSubmitKey}</button>
+				<button className="wcard-here" data-act="q-skip" onClick={() => ((s) => (setSkipped(s), next(other, s)))(at(skipped, page, true, false))}>{t.qSkip}</button>
+				<button className="wcard-start" data-act="q-next" disabled={!done(page)} onClick={() => next()}>{page < qs.length - 1 ? t.qNextKey : t.qSubmitKey}</button>
 			</div>
 		</div>
 	);
