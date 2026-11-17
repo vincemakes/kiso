@@ -5,9 +5,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import { createAgent, SessionStore } from "../src/index.js";
-import { hasSessionsTools, markSessionsTools, readSessionName, writeSessionName } from "../src/profile.js";
+import { hasSessionsTools, markSessionsTools, readSessionName, readStartedBy, writeSessionName, writeStartedBy } from "../src/profile.js";
+import { ChainBudget } from "../src/chains.js";
+import { peerMessageId, readInbox, writeMessage } from "../src/inbox.js";
 import { heldElsewhere } from "../src/lock-adapter.js";
-import { LIST_SESSIONS, SESSIONS_REFUSAL, refusingSessionsExtension } from "../src/sessions-tools.js";
+import { LIST_SESSIONS, SESSIONS_REFUSAL, refusingSessionsExtension, shortRefs } from "../src/sessions-tools.js";
 
 const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 
@@ -52,5 +54,38 @@ describe("the terminal's twin", () => {
 		const tool = refusingSessionsExtension().tools![0]!;
 		expect({ name: tool.name, description: tool.description, parameters: tool.parameters }).toEqual(LIST_SESSIONS);
 		expect(await tool.execute({}, {} as never)).toEqual({ content: SESSIONS_REFUSAL, isError: true });
+	});
+});
+
+// § 14 test 2: two folders mint session ids alone, so one id can be two Works: refs, ids, inboxes, parent links and chains
+// stay apart (the address is `<folder key>/<session id>`)
+describe("one session id in two folders", () => {
+	it("each is listed as folder/id; an id listed once keeps its short suffix", () => {
+		const refs = shortRefs([{ id: "w-1a2b3c4d", folder: "api" }, { id: "w-1a2b3c4d", folder: "web" }, { id: "w-9f8e7d6c", folder: "api" }]);
+		expect(refs.get("api/w-1a2b3c4d")).toBe("api/w-1a2b3c4d");
+		expect(refs.get("web/w-1a2b3c4d")).toBe("web/w-1a2b3c4d");
+		expect(refs.get("api/w-9f8e7d6c")).toBe("7d6c");
+	});
+
+	it("the same send to each is two messages, each in its own folder's inbox; a replay is a duplicate in its own only", async () => {
+		const [api, web] = [mkdtempSync(join(tmpdir(), "kiso-2f-")), mkdtempSync(join(tmpdir(), "kiso-2f-"))];
+		const send = (to: string) => ({ messageId: peerMessageId("kA/s", "c1", to, "hi"), from: "kA/s", fromTitle: "S", text: "hi", files: [], rootId: "kA/s#0", at: 1 });
+		expect(send("kApi/w").messageId).not.toBe(send("kWeb/w").messageId);
+		expect(await writeMessage(api, "w", send("kApi/w"))).toBe("written");
+		expect(await writeMessage(web, "w", send("kWeb/w"))).toBe("written");
+		expect(await writeMessage(api, "w", send("kApi/w"))).toBe("duplicate");
+		expect(readInbox(api, "w").map((m) => m.messageId)).toEqual([send("kApi/w").messageId]);
+		expect(readInbox(web, "w").map((m) => m.messageId)).toEqual([send("kWeb/w").messageId]);
+	});
+
+	it("parent links name the folder, and chains through each are counted apart", () => {
+		const [api, web, home] = [mkdtempSync(join(tmpdir(), "kiso-2f-")), mkdtempSync(join(tmpdir(), "kiso-2f-")), mkdtempSync(join(tmpdir(), "kiso-2f-"))];
+		writeStartedBy(api, "child", "kApi/w");
+		writeStartedBy(web, "child", "kWeb/w");
+		expect([readStartedBy(api, "child"), readStartedBy(web, "child")]).toEqual(["kApi/w", "kWeb/w"]);
+		const budget = new ChainBudget(home, 1);
+		expect(budget.take("kApi/w#0")).toBe(true);
+		expect(budget.take("kWeb/w#0"), "the other folder's chain has its own budget").toBe(true);
+		expect(budget.take("kApi/w#0")).toBe(false);
 	});
 });

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineTool, type Event, type KisoExtension } from "@vincemakes/kiso-core";
-import { ChainBudget, LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools } from "@vincemakes/kiso-runtime/internal";
+import { ChainBudget, LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools, shortRefs } from "@vincemakes/kiso-runtime/internal";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import { messageTool } from "./message-tool.js";
 import { startSessionTool, type WorkStart } from "./start-session-tool.js";
@@ -49,20 +49,6 @@ export function sessionsFor(dir: string, self: { readonly key: string; readonly 
 		execute: async (input) => ({ content: listing(await host.list(), self, (input as { readonly query?: string }).query, host.dirOf), isError: false }),
 	});
 	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [listTool, messageTool(self, host), startSessionTool(self, host)] };
-}
-
-/** Each id's shortest suffix (four characters at least) that no other listed id ends with; a full id listed twice (two
- *  folders) is prefixed with its folder. Keyed `folder/id`. */
-export function shortRefs(rows: readonly Pick<WorkRow, "id" | "folder">[]): Map<string, string> {
-	const refs = new Map<string, string>();
-	const ids = rows.map((r) => r.id);
-	for (const row of rows) {
-		const twins = ids.filter((id) => id === row.id).length > 1;
-		let n = 4;
-		while (n < row.id.length && ids.some((id) => id !== row.id && id.endsWith(row.id.slice(-n)))) n += 1;
-		refs.set(`${row.folder}/${row.id}`, twins ? `${row.folder}/${row.id}` : row.id.slice(-n));
-	}
-	return refs;
 }
 
 const ago = (ms: number): string => {

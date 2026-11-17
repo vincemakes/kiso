@@ -86,3 +86,26 @@ export function completionNotice(input: {
 	const state: CompletionState = input.waiting ? "waiting on you" : terminal?.type === "terminal" && terminal.outcome.kind !== "completed" ? "failed" : input.tasksRunning ? "ended with tasks still running" : "finished";
 	return { state, excerpt: reply.length > 400 ? `${reply.slice(0, 400)}…` : reply };
 }
+
+/**
+ * ADR-0062 § 9: who started the run now going, read from the log: the first input after the last terminal. The person's own
+ * line, another session's message, or anything else (a task notice, a completion notice, a wake).
+ */
+export function runStarter(events: readonly Event[]): "person" | "message" | "other" {
+	let i = events.length - 1;
+	while (i >= 0 && events[i]!.type !== "terminal") i--;
+	const first = events.slice(i + 1).find((e) => e.type === "user_input");
+	if (first === undefined || first.type !== "user_input") return "other";
+	if (first.via?.kind === "peer") return first.via.event === "message" ? "message" : "other";
+	return isRuntimeInput(first) ? "other" : "person";
+}
+
+/**
+ * ADR-0062 § 9 (owner, 2026-11-16): the initiation a `start_session` call stands on. `asked` and `named` stand only on a run
+ * the person's own line started; any other run turns them into `proposed`; a run another session's message started is
+ * refused (null).
+ */
+export function startInitiation(events: readonly Event[], asked: "asked" | "named" | "proposed"): "asked" | "named" | "proposed" | null {
+	const starter = runStarter(events);
+	return starter === "message" ? null : starter === "person" ? asked : "proposed";
+}

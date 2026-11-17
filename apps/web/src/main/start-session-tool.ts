@@ -1,6 +1,6 @@
 import { basename } from "node:path";
-import { defineTool, isRuntimeInput, type Event, type Tool, type ToolResult } from "@vincemakes/kiso-core";
-import { readCards, readInbox, readStartedBy, releaseMessage, removeMessage, START_SESSION, writeCard, writeSessionName, writeStartedBy, type WorkCard } from "@vincemakes/kiso-runtime/internal";
+import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
+import { readCards, readInbox, readStartedBy, releaseMessage, removeMessage, START_SESSION, startInitiation, writeCard, writeSessionName, writeStartedBy, type WorkCard } from "@vincemakes/kiso-runtime/internal";
 import { forkWork } from "./fork.js";
 import type { SessionsHost } from "./sessions-tool.js";
 import type { Settings } from "./settings.js";
@@ -16,16 +16,6 @@ import type { Space } from "./space.js";
 type Self = { readonly key: string; readonly sessionId: string };
 type Initiation = "asked" | "named" | "proposed";
 
-/** Who started the run now going: the first input after the last terminal. */
-export function runStarter(events: readonly Event[]): "person" | "message" | "other" {
-	let i = events.length - 1;
-	while (i >= 0 && events[i]!.type !== "terminal") i--;
-	const first = events.slice(i + 1).find((e) => e.type === "user_input");
-	if (first === undefined || first.type !== "user_input") return "other";
-	if (first.via?.kind === "peer") return first.via.event === "message" ? "message" : "other";
-	return isRuntimeInput(first) ? "other" : "person";
-}
-
 const ok = (content: string): ToolResult => ({ content, isError: false });
 
 export function startSessionTool(self: Self, host: SessionsHost): Tool {
@@ -33,9 +23,8 @@ export function startSessionTool(self: Self, host: SessionsHost): Tool {
 		...START_SESSION,
 		execute: async (raw, ctx) => {
 			const input = raw as { readonly title: string; readonly brief: string; readonly initiation: Initiation; readonly context?: "fresh" | "fork" };
-			const starter = runStarter(host.eventsOf(self.key, self.sessionId));
-			if (starter === "message") return { content: "Refused: this turn was started by another session's message, and a message cannot start a Work. Tell the person, or message that session.", isError: true, errorKind: "precondition" };
-			const initiation: Initiation = starter === "person" ? input.initiation : "proposed";
+			const initiation = startInitiation(host.eventsOf(self.key, self.sessionId), input.initiation);
+			if (initiation === null) return { content: "Refused: this turn was started by another session's message, and a message cannot start a Work. Tell the person, or message that session.", isError: true, errorKind: "precondition" };
 			const fork = input.context === "fork";
 			if (initiation === "asked") {
 				await host.startWork(self.key, self.sessionId, { title: input.title, brief: input.brief, fork, callId: ctx.callId ?? "" });

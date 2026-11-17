@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import type { Event } from "@vincemakes/kiso-core";
 import { fsyncDir } from "./tasks/journal.js";
 
 /**
@@ -149,4 +151,32 @@ export function removeMessage(root: string, sessionId: string, messageId: string
 	} catch {
 		// litter: deleted next time
 	}
+}
+
+/** A message's id: the sender's address, the call, the receiver's address and the text (ADR-0062 § 5). */
+export const peerMessageId = (from: string, callId: string, to: string, text: string): string =>
+	createHash("sha256").update(`${from}\n${callId}\n${to}\n${text}`).digest("hex").slice(0, 24);
+
+/**
+ * ADR-0062 § 5: a send cut off by a crash is resolved "rerun", which tells the model it did not land, so the model sends it
+ * again in a new call, with a new call id. If the first attempt had already reached the inbox, a new id would be a second
+ * message. So a send whose `to`, `text` and `files` match a `message` call resolved "rerun" (and not since re-sent) takes that
+ * call's id: the inbox calls it a duplicate, or the receiver's log already holds it, and the receiver takes it once.
+ */
+export function retriedSendCallId(events: readonly Event[], input: { readonly to: string; readonly text: string; readonly files?: readonly string[] }): string | undefined {
+	const keyOf = (i: unknown): string => {
+		const x = (i ?? {}) as { to?: unknown; text?: unknown; files?: unknown };
+		return JSON.stringify([x.to, x.text, x.files ?? []]);
+	};
+	const sends = new Map<string, string>();
+	const open: string[] = [];
+	for (const e of events) {
+		if (e.type === "tool_call_end" && e.name === "message") sends.set(e.callId, keyOf(e.input));
+		else if (e.type === "tool_execution_resolved" && e.resolution === "rerun" && sends.has(e.callId)) open.push(e.callId);
+		else if (e.type === "tool_result" && !e.isError && sends.has(e.callId)) {
+			const at = open.findIndex((c) => sends.get(c) === sends.get(e.callId));
+			if (at >= 0) open.splice(at, 1);
+		}
+	}
+	return open.find((c) => sends.get(c) === keyOf(input));
 }
