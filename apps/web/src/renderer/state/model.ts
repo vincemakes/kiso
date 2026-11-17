@@ -32,7 +32,7 @@ export interface Text {
 	text: string;
 }
 
-export type StepStatus = "calling" | "waiting" | "running" | "done" | "failed" | "denied";
+export type StepStatus = "calling" | "waiting" | "running" | "done" | "failed" | "denied" | "interrupted";
 
 export interface Step {
 	readonly kind: "step";
@@ -288,10 +288,11 @@ export function reduce(s: State, input: Input): State {
 			return s;
 		}
 		case "tool_execution_succeeded":
+		case "tool_execution_resolved": // cut off by a restart, then settled by "run it again" or "skip it": interrupted, not an error
 		case "tool_execution_failed": {
 			const step = stepOf(turn, e.callId);
 			if (step === undefined) return s;
-			step.status = e.type === "tool_execution_failed" ? "failed" : "done";
+			step.status = e.type === "tool_execution_failed" ? "failed" : e.type === "tool_execution_resolved" ? "interrupted" : "done";
 			if (e.type === "tool_execution_failed") step.error = e.error;
 			note(step);
 			return s;
@@ -299,8 +300,7 @@ export function reduce(s: State, input: Input): State {
 		case "tool_result": {
 			const step = stepOf(turn, e.callId);
 			if (step === undefined) return s;
-			if (e.isError && step.status !== "denied") step.status = "failed";
-			else if (!e.isError && step.status !== "failed") step.status = "done";
+			step.status = e.isError ? (step.status === "denied" || step.status === "interrupted" ? step.status : "failed") : step.status === "failed" ? "failed" : "done";
 			note(step);
 			return s;
 		}

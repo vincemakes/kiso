@@ -51,6 +51,9 @@ export function groupDelta(steps: readonly Step[]): { readonly added: number; re
 	return { added: exact.reduce((n, d) => n + d.added, 0), removed: exact.reduce((n, d) => n + d.removed, 0) };
 }
 
+/** A tool's name as a person reads it: an MCP tool `mcp__server__tool` is "server · tool". */
+export const pretty = (name: string): string => name.replace(/^mcp__(.+?)__(.+)$/, "$1 · $2");
+
 type Phrases = Readonly<Record<string, readonly [string, string]>>;
 
 /** What a step did, as the group line counts it: a write that created its file is a creation. */
@@ -65,7 +68,7 @@ export function groupLabel(steps: readonly Step[], phrases: Phrases, words: { re
 	for (const step of steps) counts.set(verbOf(step), (counts.get(verbOf(step)) ?? 0) + 1);
 	const said = [...counts].slice(0, 3).map(([verb, n]) => {
 		const [one, many] = phrases[verb] ?? phrases["*"]!;
-		return (n === 1 ? one : many).replace("{n}", String(n)).replace("{tool}", verb);
+		return (n === 1 ? one : many).replace("{n}", String(n)).replace("{tool}", pretty(verb));
 	});
 	const rest = [...counts].slice(3).reduce((sum, [, n]) => sum + n, 0);
 	let text = said.join(", ");
