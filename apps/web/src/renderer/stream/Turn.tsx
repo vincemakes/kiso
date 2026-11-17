@@ -2,7 +2,7 @@ import { memo, useContext, useEffect, useLayoutEffect, useRef, useState, type Re
 import type { TaskRow } from "../../shared/frames.js";
 import { ago, fmt, span, t, tokens } from "../i18n/index.js";
 import { split, type Ask, type Attached, type Turn as TurnModel } from "../state/model.js";
-import { Answer } from "./Answer.js";
+import { Answer, CopyButton } from "./Answer.js";
 import { Approval } from "./Approval.js";
 import { ForkContext, RunContext, WorkContext } from "./links.js";
 import { useNow } from "./useNow.js";
@@ -35,16 +35,6 @@ function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
 			{fmt(f.cacheRate === null ? t.footerNoCache : t.footer, values)}
 			{f.tokPerSec != null ? fmt(t.footerRate, { rate: f.tokPerSec }) : null}
 		</div>
-	);
-}
-
-/** Copy a line to the clipboard; the icon says it was, for a moment. */
-function CopyButton({ text }: { readonly text: string }): ReactNode {
-	const [done, setDone] = useState(false);
-	return (
-		<button className="ab" title={done ? t.copied : t.copy} aria-label={t.copy} data-act="copy" onClick={() => void navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}>
-			{done ? <Check /> : <Copy />}
-		</button>
 	);
 }
 

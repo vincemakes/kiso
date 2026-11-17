@@ -1,5 +1,7 @@
 import { createElement, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { t } from "../i18n/index.js";
 import { render, type Block, type Inline } from "../state/markdown.js";
+import { Check, Copy } from "./Icons.js";
 import { Chip, Link, pathish, pathsIn, useFound } from "./links.js";
 import { RootContext } from "./root.js";
 
@@ -9,6 +11,15 @@ interface Ctx {
 	readonly root: string;
 }
 
+/** Copy a line to the clipboard; the icon says it was, for a moment. */
+export function CopyButton({ text }: { readonly text: string }): ReactNode {
+	const [done, setDone] = useState(false);
+	return (
+		<button className="ab" title={done ? t.copied : t.copy} aria-label={t.copy} data-act="copy" onClick={() => void navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}>
+			{done ? <Check /> : <Copy />}
+		</button>
+	);
+}
 const NONE: Ctx = { found: new Set(), root: "" };
 
 /** Prose with each confirmed path as a chip. */
@@ -86,9 +97,12 @@ function block(b: Block, i: number, ctx: Ctx = NONE): ReactNode {
 		}
 		case "code":
 			return (
-				<pre key={i}>
-					<code>{b.text}</code>
-				</pre>
+				<div key={i} className="cbox">
+					<pre>
+						<code>{b.text}</code>
+					</pre>
+					<CopyButton text={b.text} />
+				</div>
 			);
 		case "table":
 			// a wide table scrolls inside its own box; the page never scrolls sideways
