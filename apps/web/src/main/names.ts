@@ -15,3 +15,10 @@ export const named = (dir: string, sessionId: string): boolean => readSessionNam
 export function titleIfUnnamed(dir: string, sessionId: string, title: string): void {
 	if (title !== "" && !named(dir, sessionId)) writeSessionName(dir, sessionId, title);
 }
+
+/** ADR-0062 § 10b: a title made from a line the person took back goes with it, unless the name has changed since (the person's). */
+export function untitle(dir: string, sessionId: string, title: string | undefined): boolean {
+	if (title === undefined || readSessionName(dir, sessionId) !== title) return false;
+	writeSessionName(dir, sessionId, null);
+	return true;
+}

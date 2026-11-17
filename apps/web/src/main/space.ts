@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { isEnvironmentNote, SessionStore, type Agent } from "@vincemakes/kiso-runtime";
-import { named, titleIfUnnamed } from "./names.js";
+import { named, titleIfUnnamed, untitle } from "./names.js";
 import { createSessionService, InFlightError, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
 import type { Event, UserInputVia } from "@vincemakes/kiso-core";
@@ -109,8 +109,12 @@ export function createSpace(options: SpaceOptions): Space {
 	// asks at most twice for a Work: the first time, and once more after a failure (a provider timeout, a refusal), so a Work whose only
 	// ask failed is not left with its first request as its name for good.
 	const tries = new Map<string, number>();
+	// a line the person took back (rewind: user_input_replaced with no content) names nothing
+	const vetoed = (events: readonly Event[]): Set<number> => new Set(events.flatMap((e) => (e.type === "user_input_replaced" && e.content === null ? [e.replaces] : [])));
+	const autoTitles = new Map<string, string>(); // the titles this host made, so a rewind can tell them from the person's names
 	const firstText = (sessionId: string): string => {
-		const first = store.load(sessionId).map((r) => r.event).find((e) => e.type === "user_input");
+		const events = store.load(sessionId).map((r) => r.event);
+		const first = ((v) => events.find((e) => e.type === "user_input" && !v.has(e.seq)))(vetoed(events));
 		if (first === undefined || first.type !== "user_input") return "";
 		const parts = typeof first.content === "string" ? [first.content] : first.content.map((b) => (b.type === "text" ? b.text : ""));
 		return parts.filter((p) => !isEnvironmentNote(p) && !p.startsWith("This session was forked from the session ")).join(" ").trim(); // the one note filter is the runtime's
@@ -124,12 +128,12 @@ export function createSpace(options: SpaceOptions): Space {
 		if (session === undefined) return;
 		tries.set(sessionId, (tries.get(sessionId) ?? 0) + 1);
 		const failed = (): void => ensureTitle(sessionId);
-		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => (name === "" ? failed() : titleIfUnnamed(options.dir, sessionId, name)), failed);
+		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => (name === "" ? failed() : (titleIfUnnamed(options.dir, sessionId, name), autoTitles.set(sessionId, name))), failed);
 	};
 	const title = (sessionId: string, event: Extract<Event, { type: "user_input" }>): void => {
 		const session = sessions.get(sessionId);
 		if (options.titles !== true || session === undefined || titled.has(sessionId) || Date.now() - times.at(sessionId, event.seq) > 60_000) return;
-		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
+		if (((v) => service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq && !v.has(e.seq)))(vetoed(service.events(sessionId))) || named(options.dir, sessionId)) return;
 		titled.add(sessionId);
 		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" && !isEnvironmentNote(b.text) ? b.text : "")).join(" ").trim();
 		ask(sessionId, text);
@@ -327,7 +331,8 @@ export function createSpace(options: SpaceOptions): Space {
 		handler,
 		opened: () => opened,
 		followUp, reopen,
-		rewind: (sessionId) => service.rewind(sessionId),
+		// the first line taken back takes its title with it: the next line names the Work (owner's dogfood, F15)
+		rewind: async (sessionId) => ((back) => (back !== null && firstText(sessionId) === "" && untitle(options.dir, sessionId, autoTitles.get(sessionId)) && (titled.delete(sessionId), tries.delete(sessionId)), back))(await service.rewind(sessionId)),
 		poke: async (sessionId) => {
 			await service.pendingApprovals(sessionId); // opens the Work if it is not open yet
 			return sessions.get(sessionId)?.pokePeers() ?? "waiting";

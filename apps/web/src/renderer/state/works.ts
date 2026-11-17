@@ -118,3 +118,11 @@ export async function fetchHistory(fresh?: string): Promise<HistoryReply> {
 	if (!response.ok) throw new Error(`history ${response.status}`);
 	return (await response.json()) as HistoryReply;
 }
+
+/** ADR-0062: the title of the Work a message's `to` names by ref (an id's tail of four or more, or folder/id), when one Work fits. */
+export function refTitle(rows: readonly { readonly id: string; readonly folder: string; readonly title: string }[], to: string): string | undefined {
+	const t = to.trim().toLowerCase();
+	const at = t.lastIndexOf("/");
+	const hit = t.length < 4 ? [] : rows.filter((w) => (at < 0 || w.folder.toLowerCase() === t.slice(0, at)) && w.id.toLowerCase().endsWith(t.slice(at + 1)));
+	return hit.length === 1 ? hit[0]!.title : undefined;
+}

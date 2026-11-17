@@ -71,8 +71,10 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 			const target = resolveTo(others, input.to);
 			if (typeof target === "string") return refused(target);
 			const files: PeerFile[] = [];
-			for (const path of input.files ?? []) {
-				if (!isAbsolute(path) || !statSync(path, { throwIfNoEntry: false })?.isFile()) return refused(`${path}: not a file (give an absolute path that exists)`);
+			for (const given of input.files ?? []) {
+				const cwd = host.cwdOf(self.key) ?? "";
+				const path = isAbsolute(given) ? given : resolve(cwd, given); // a relative path is the sender's folder's
+				if (!statSync(path, { throwIfNoEntry: false })?.isFile()) return refused(`${given}: not a file (relative paths are read from ${cwd}; give a file that exists)`);
 				if (!host.mayRead(self, path)) return refused(`${path}: this session may not read it, so it cannot send it`);
 				files.push({ path, rev: await fileRevision(path) });
 			}

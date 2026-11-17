@@ -36,7 +36,8 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 	const at = <T,>(arr: readonly (T | undefined)[], i: number, v: T, d: T): T[] => qs.map((_, j) => (j === i ? v : (arr[j] ?? d)));
 	const [error, setError] = useState<string | null>(null);
 	const submit = (o: readonly (string | null | undefined)[], s: readonly (boolean | undefined)[]): void => {
-		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [(o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: (picks[i] ?? []).map((n) => q.options[n]!.label) } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? -1]?.label ?? "" }]));
+		// a multi-select keeps its picks beside Other: the words join the choices (the terminal's three shapes: choice, choices, custom)
+		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [q.multiSelect === true && (picks[i] ?? []).length > 0 ? { q: q.question, choices: [...(picks[i] ?? []).map((n) => q.options[n]!.label), ...((o[i] ?? "") !== "" ? [o[i]!] : [])] } : (o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: [] } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? -1]?.label ?? "" }]));
 		const declined = qs.filter((_, i) => s[i] === true).map((q) => q.question);
 		void answerAsk(key, work, step.callId, answers.length === 0 ? { declined } : declined.length === 0 ? { answers } : { answers, declined }).catch((e: Error) => setError(e.message));
 	};
@@ -53,7 +54,7 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 	if (q === undefined) return null;
 	const pick = (n: number): void => {
 		const p = picks[page] ?? [];
-		setOther(at(other, page, null, null));
+		if (q.multiSelect !== true) setOther(at(other, page, null, null)); // one answer: a pick takes Other's place; several: they stand together
 		setPicks(at(picks, page, q.multiSelect === true ? (p.includes(n) ? p.filter((m) => m !== n) : [...p, n]) : [n], []));
 	};
 	const input = q.multiSelect === true ? "checkbox" : "radio";
@@ -69,12 +70,12 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 			</div>
 			{q.options.map((o, n) => (
 				<label key={n} className="q-opt" data-act="q-option">
-					<input type={input} name={`q${step.callId}-${page}`} checked={(other[page] ?? null) === null && (picks[page] ?? []).includes(n)} onChange={() => pick(n)} />
+					<input type={input} name={`q${step.callId}-${page}`} checked={(q.multiSelect === true || (other[page] ?? null) === null) && (picks[page] ?? []).includes(n)} onChange={() => pick(n)} />
 					<span><span><b>{o.label.replace(RECOMMENDED, "")}</b>{RECOMMENDED.test(o.label) ? <i> {t.qRecommended}</i> : null}</span>{o.description ? <small>{o.description}</small> : null}</span>
 				</label>
 			))}
 			<label className="q-opt" data-act="q-other">
-				<input type={input} name={`q${step.callId}-${page}`} checked={(other[page] ?? null) !== null} onChange={() => setOther(at(other, page, other[page] ?? "", null))} />
+				<input type={input} name={`q${step.callId}-${page}`} checked={(other[page] ?? null) !== null} onChange={() => setOther(at(other, page, q.multiSelect === true && (other[page] ?? null) !== null ? null : (other[page] ?? ""), null))} />
 				<span><b>{t.qOther}</b>{(other[page] ?? null) !== null ? <input className="q-text" autoFocus value={other[page] ?? ""} onChange={(e) => setOther(at(other, page, e.target.value, null))} /> : null}</span>
 			</label>
 			{error === null ? null : <p className="wcard-err">{error}</p>}

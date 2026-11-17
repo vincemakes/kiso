@@ -20,7 +20,7 @@ const host = await launch({
 	data,
 	workspace: ws,
 	env: { KISO_WEB_SESSIONS: "on" },
-	fauxScript: [say("Ready."), call("m0", { to: "no such session", text: "x" }), call("m1", { to: "receiver", text: "x", files: [outside] }), call("m2", { to: "RECEIVER TASK", text: "the API changed; see the notes", files: [join(ws, "notes.md")] }), say("Done."), say("Done.")],
+	fauxScript: [say("Ready."), call("m0", { to: "no such session", text: "x" }), call("m1", { to: "receiver", text: "x", files: [outside] }), call("m2", { to: "RECEIVER TASK", text: "the API changed; see the notes", files: ["notes.md"] }) /* relative: read from the sender's folder */, say("Done."), say("Done.")],
 });
 const key = (await fetch(`${host.origin}/desk/history`, { headers: { authorization: `Bearer ${host.token}` } }).then((r) => r.json())).current.key;
 await done(clientFor(host).session("w-recv"), "receiver task");
@@ -31,7 +31,7 @@ check(/^Sent to "receiver task": it was idle and woke to read it\./.test(result(
 await waitUntil(() => events(key, "w-recv").some((e) => e.type === "terminal" && e.seq > 3), 8000);
 const admitted = events(key, "w-recv").filter((e) => e.type === "user_input" && e.via?.kind === "peer");
 check(admitted.length === 1 && admitted[0].source === "system" && admitted[0].via.from === `${key}/w-send`, "the idle receiver woke and admitted it once, as a message from the sender");
-check(admitted[0].content.includes("the API changed") && admitted[0].content.includes(join(ws, "notes.md")), "the model reads the text and the file's path");
+check(admitted[0].content.includes("the API changed") && admitted[0].content.includes(join(ws, "notes.md")), "the model reads the text and the file's path, a relative one resolved against the sender's folder");
 await waitUntil(() => readdirSync(join(data, "projects", key, "w-recv.inbox")).every((n) => !n.endsWith(".json")), 8000);
 check(true, "once admitted, the inbox file is gone");
 host.child.kill("SIGKILL");

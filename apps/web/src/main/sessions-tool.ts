@@ -21,6 +21,8 @@ export interface SessionsHost {
 	readonly deliver: (key: string, sessionId: string) => Promise<"handed" | "woke" | "waiting">;
 	/** whether this Work may read the file (its folder or the folders it was given; never a protected file) */
 	readonly mayRead: (self: { readonly key: string; readonly sessionId: string }, path: string) => boolean;
+	/** the folder a Work works in: a relative `files` path is read from it */
+	readonly cwdOf: (key: string) => string | undefined;
 	/** ADR-0062 § 6: the causal chain the Work is on, read from its log */
 	readonly chainOf: (key: string, sessionId: string) => string;
 	/** the Work's permission mode */

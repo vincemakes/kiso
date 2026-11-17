@@ -129,6 +129,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		dirOf: (k) => join(dirname(currentDir), k),
 		deliver: async (k, id) => (await spaceFor(k)?.poke(id)) ?? "waiting",
 		mayRead: (self, path) => ((space) => space !== null && readable(path, [space.workspace, ...readEnvironment(space.dir, self.sessionId).added], protectedFiles()))(spaceFor(self.key)),
+		cwdOf: (k) => spaceFor(k)?.workspace,
 		chainOf: (k, id) => ((space) => (space === null ? `${k}/${id}#0` : chainIn(space.store, k, id)))(spaceFor(k)),
 		tierOf: (id) => options.settings.tierOf(id),
 		mayWake: (rootId) => budget.take(rootId),
