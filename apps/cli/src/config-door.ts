@@ -31,7 +31,7 @@ export { adapterOptionsFor } from "./auth/adapter-options.js";
 export type { AdapterAuth, AdapterOptions } from "./auth/adapter-options.js";
 export { AuthError, KNOWN_PROVIDERS, endpointCredentialId, maskSecret, providerIdOf, setCredential } from "./auth/credentials.js";
 export type { Credential } from "./auth/credentials.js";
-export { preferences, rememberEffort, startingEffort } from "./preferences.js";
+export { preferences, preferencesPath, rememberEffort, startingEffort, usePreferences } from "./preferences.js";
 export { isFirstRun, scaffoldFirstRun } from "./first-run.js";
 export { fauxScript as demoScript } from "./demo-script.js";
 export { canonicalPath, claimProjectDir, projectDirFor, projectLayoutActive, sessionFolders } from "./projects.js";

@@ -9,9 +9,11 @@ import {
 	loadUserConfig,
 	mergeConfigs,
 	preferences,
+	preferencesPath,
 	profileAvailable,
 	rememberEffort,
 	startingEffort,
+	usePreferences,
 	type KisoConfig,
 	type ModelProfile,
 } from "@vincemakes/kiso-code/config";
@@ -80,6 +82,7 @@ const isTier = (value: unknown): value is PermissionMode => OFFERED_MODES.some((
 
 export class Settings {
 	readonly #file: string;
+	readonly #prefs: string;
 	/** a scripted model (the proofs); the shared configuration is then not read */
 	readonly #fixed: ModelChoice | null;
 	/** the tier a Work starts with when nothing was set for it */
@@ -89,6 +92,8 @@ export class Settings {
 
 	constructor(home: string, fixed: ModelChoice | null, mode: PermissionMode) {
 		this.#file = join(home, "desktop.json");
+		this.#prefs = preferencesPath(home); // the terminal's remembered choices (preferences.json): one file, both apps
+		usePreferences(this.#prefs);
 		this.#fixed = fixed;
 		const saved = this.#read().mode;
 		this.#default = isTier(saved) ? saved : mode;
@@ -176,6 +181,7 @@ export class Settings {
 	/** The effort a Work asked for (when it is one of the profile's levels), else the terminal's remembered one for the profile. */
 	#effortOf(name: string, session?: string): string | undefined {
 		const own = session === undefined ? undefined : this.#read().works?.[session]?.effort;
+		if (own === undefined) usePreferences(this.#prefs); // read again: a choice the terminal made since counts
 		return own ?? preferences().effort?.[name];
 	}
 
@@ -291,6 +297,7 @@ export class Settings {
 			const next: Work = { ...(profileName !== undefined ? { profile: profileName } : {}), ...(effort !== undefined ? { effort } : {}) };
 			if (next.profile === was.profile && next.effort === was.effort) return null;
 			this.write({ works: { ...this.#read().works, [session]: next } });
+			if (patch.effort !== undefined && effort === patch.effort && profileName !== undefined) rememberEffort(profileName, effort); // new Works start there, as the terminal's choice does
 			return session;
 		}
 		if (patch.profile !== undefined && config.models?.[patch.profile] !== undefined) {
