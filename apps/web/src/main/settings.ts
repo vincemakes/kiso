@@ -186,14 +186,16 @@ export class Settings {
 
 	/** A fork starts with its parent's own tier, model and effort, and remembers where it came from. */
 	forked(parent: string, child: string, fork: Fork): void {
+		this.started(parent, child);
+		this.write({ forks: { ...this.#read().forks, [child]: fork } });
+	}
+
+	/** ADR-0062: a Work another started (or forked) takes its starter's tier, model and effort. */
+	started(parent: string, child: string): void {
 		const own = this.#read();
 		const tier = own.tiers?.[parent];
 		const work = own.works?.[parent];
-		this.write({
-			...(tier !== undefined ? { tiers: { ...own.tiers, [child]: tier } } : {}),
-			...(work !== undefined ? { works: { ...own.works, [child]: work } } : {}),
-			forks: { ...own.forks, [child]: fork },
-		});
+		this.write({ ...(tier !== undefined ? { tiers: { ...own.tiers, [child]: tier } } : {}), ...(work !== undefined ? { works: { ...own.works, [child]: work } } : {}) });
 	}
 
 	forkOf(session: string): Fork | undefined {

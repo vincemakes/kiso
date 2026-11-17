@@ -9,6 +9,7 @@ import { kisoHome, readEnvironment, type SessionStore } from "@vincemakes/kiso-r
 import { protectedFiles } from "./agent.js";
 import { chainIn, notifyParent, readable } from "./message-tool.js";
 import { chainBudget, type SessionsHost } from "./sessions-tool.js";
+import { beginWork, type WorkStart } from "./start-session-tool.js";
 import type { SessionService } from "@vincemakes/kiso-server";
 import type { Settings } from "./settings.js";
 import { Auth } from "./auth.js";
@@ -104,6 +105,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread; the PR its own
 		// `gh pr create` printed becomes the Work's (an earlier run's never replaces a later link)
 		onSettled: (sessionId, runId, store) => {
+			// ADR-0062 § 9: forks asked for in this run start now, cut at its end
+			for (const start of forksAfter.get(`${key}/${sessionId}`) ?? []) void beginWork(spaces.get(key)!, options.settings, key, sessionId, start).catch(() => undefined);
+			forksAfter.delete(`${key}/${sessionId}`);
 			// ADR-0062 § 7: a Work another started reports back to it
 			if (options.sessions === true) void notifyParent(store, key, sessionId, runId, spaces.get(key)?.tasks.managerFor(sessionId).list().some((t) => t.state.kind === "running") ?? false, sessionsHost).catch(() => undefined);
 			if (watch.away(key, sessionId)) unread(sessionId, true);
@@ -122,7 +126,11 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		chainOf: (k, id) => ((space) => (space === null ? `${k}/${id}#0` : chainIn(space.store, k, id)))(spaceFor(k)),
 		tierOf: (id) => options.settings.tierOf(id),
 		mayWake: (rootId) => budget.take(rootId),
+		eventsOf: (k, id) => spaceFor(k)?.store.load(id).map((r) => r.event) ?? [],
+		// a fork is cut at the end of the parent's run, so it waits for that run to settle (onSettled below)
+		startWork: async (k, parent, start) => void (start.fork ? forksAfter.set(`${k}/${parent}`, [...(forksAfter.get(`${k}/${parent}`) ?? []), start]) : await beginWork(spaceFor(k)!, options.settings, k, parent, start)),
 	};
+	const forksAfter = new Map<string, WorkStart[]>();
 	const budget = chainBudget(home);
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
 	const workspace = canonicalPath(options.workspace);

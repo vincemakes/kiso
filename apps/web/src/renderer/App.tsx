@@ -25,7 +25,9 @@ import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
 import { slotOf, workCache } from "./state/workcache.js";
 import { addFolderTo } from "./state/folders.js";
-import { fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
+import { answerCard, fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
+import { Lead } from "./stream/Lead.js";
+import { CardsContext, type CardsHost } from "./stream/SessionCard.js";
 import { ago, t } from "./i18n/index.js";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import type { ContextParts, EnvReply, SettingsReply } from "../shared/settings.js";
@@ -266,23 +268,20 @@ export function App(): ReactNode {
 			),
 		[target, history?.current.key],
 	);
-	const parentRow = env?.fork === undefined ? undefined : rows.find((w) => w.id === env.fork?.parent && w.key === activeKey);
-	const lead =
-		forkError !== null ? (
-			<div className="forknote err" data-kind="fork-error">{forkError}</div>
-		) : env?.fork !== undefined ? (
-			<div className="forknote" data-kind="fork-note">
-				{t.forkedFrom}{" "}
-				{parentRow === undefined ? (
-					<b data-field="fork-parent-gone">{env.fork.title || t.untitled}</b>
-				) : (
-					<button className="flink" data-act="fork-parent" onClick={() => setTarget({ key: target.key, sessionId: env.fork!.parent })}>
-						{parentRow.title || env.fork.title || t.untitled}
-					</button>
-				)}{" "}
-				· {ago(env.fork.at, Date.now())}. {t.forkShared}
-			</div>
-		) : null;
+	const lead = <Lead env={env} rows={rows} activeKey={activeKey} forkError={forkError} open={(id) => setTarget({ key: target.key, sessionId: id })} />;
+	// ADR-0062: the cards this Work's start_session calls drew, and their answers
+	const cardsHost: CardsHost = {
+		cards: env?.cards ?? {},
+		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title,
+		open: (id) => setTarget({ key: target.key, sessionId: id }),
+		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
+		answer: async (callId, action) => {
+			const id = await answerCard(target.key, target.sessionId, callId, action);
+			void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined);
+			void fetchHistory(target.key ?? history?.current.key).then(setHistory, () => undefined);
+			if (id !== undefined) setTarget({ key: target.key, sessionId: id });
+		},
+	};
 	const openWork = (row: WorkRow): void => {
 		setView("work");
 		setTarget({ key: row.key === history?.current.key ? null : row.key, sessionId: row.id });
@@ -339,7 +338,7 @@ export function App(): ReactNode {
 					<Settings />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{header}{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><ForkContext.Provider value={onFork}><WorkView
+						<div className="chat">{header}{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><ForkContext.Provider value={onFork}><CardsContext.Provider value={cardsHost}><WorkView
 								key={`${target.key ?? ""}/${target.sessionId}`}
 								session={session}
 								auto={launch.auto}
@@ -356,7 +355,7 @@ export function App(): ReactNode {
 								focusDecision={focusDecision}
 								onFocused={() => setFocusDecision(null)}
 								lead={lead}
-							/></ForkContext.Provider></WorkContext.Provider></KeyContext.Provider></RootContext.Provider>}</div>
+							/></CardsContext.Provider></ForkContext.Provider></WorkContext.Provider></KeyContext.Provider></RootContext.Provider>}</div>
 						{railOn && panel !== null && session !== null ? (
 							<Panels
 								kind={panel.kind}

@@ -61,7 +61,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
-import { readForkOrigin, readSessionName, type ForkOrigin } from "./profile.js";
+import { readForkOrigin, readSessionName, readStartedBy, type ForkOrigin } from "./profile.js";
 import { forkSession } from "./fork.js";
 import {
 	LockedError,
@@ -103,6 +103,8 @@ export interface SessionMeta {
 	readonly updatedAt: number;
 	/** the session this one was forked from (SessionStore.fork), when it is a fork */
 	readonly forkedFrom?: string;
+	/** ADR-0062: the session that started this one (its id; start_session makes it in the starter's own folder) */
+	readonly startedBy?: string;
 }
 
 /** Session ids become file names — keep them host-safe. */
@@ -575,6 +577,7 @@ export class SessionStore {
 				createdAt: records[0]?.ts ?? 0,
 				updatedAt: records.at(-1)?.ts ?? 0,
 				...((origin) => (origin === null ? {} : { forkedFrom: origin.session }))(readForkOrigin(this.root, id)),
+				...((by) => (by === null ? {} : { startedBy: by.slice(by.lastIndexOf("/") + 1) }))(readStartedBy(this.root, id)),
 			});
 		}
 		return metas.sort((a, b) => a.id.localeCompare(b.id));
