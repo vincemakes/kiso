@@ -21,7 +21,7 @@ const data = scratch("rail-data");
 const app = await launchApp({ data, workspace, env: { KISO_WEB_MODE: "accept-edits", KISO_WEB_MIN_FG_MS: "0", KISO_WEB_SESSION: "rail" }, fauxScript: [
 	{ events: [{ type: "text_delta", text: "Reading." }, call("c1", "read_file", { path: "README.md" }), use(1000, 80, 0), stop] },
 	{ events: [call("c2", "edit_file", { path: "README.md", edits: [{ oldText: "1. one\n2. two\n3. three", newText: "1. first\n2. second" }] }), use(1300, 60, 1000), use(1300, 64, 1000), stop] },
-	{ events: [call("c3", "shell", { command: "echo hello-from-task; sleep 60", foregroundMs: 300 }), use(1400, 40, 1300), stop] },
+	{ events: [call("c3", "shell", { command: "echo hello-from-task; sleep 60", description: "Wait sixty seconds and then report what this long-named background command printed for the proof", foregroundMs: 300 }), use(1400, 40, 1300), stop] },
 	{ events: [{ type: "text_delta", text: "All done." }, use(1500, 120, 1400), { type: "stop", reason: "end_turn" }] },
 ] });
 const q = (js) => app.evaluate(js);
@@ -54,7 +54,7 @@ const hover = async (name) => {
 	return waitUntil(async () => (await app.count("[data-kind=tip]")) === 1, 3000).then(() => q(`document.querySelector('[data-kind=tip]')?.innerText ?? ''`));
 };
 let tip = await hover("task");
-check(tip.includes("hello-from-task") && (await app.count("[data-act=task-stop]")) === 1, "the background task's row: its last output in the hover, and a stop button while it runs");
+check(tip.includes("hello-from-task") && tip.includes("this long-named background command printed for the proof") && (await app.count("[data-act=task-stop]")) === 1, "the background task's row: its full name and its last output in the hover, and a stop button while it runs");
 await q(`document.querySelector('[data-field=task]').dispatchEvent(new MouseEvent('mouseleave'))`);
 await app.click("[data-act=task-stop]");
 check(await waitUntil(async () => (await app.count("[data-act=task-stop]")) === 0 && /stopped/.test((await app.text("[data-field=task]")) ?? ""), 15_000) && (await app.count("[data-act=finished]")) === 0 && (await app.count("[data-field=task]")) === 1, "stop ends the task: its row stays in the one list, now stopped, with no group folding the ended ones");
