@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 import { readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
-import { completionNotice, currentChain, InboxRefusedError, peerMessageId, reachesFurther, MESSAGE, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
+import { completionMessage, currentChain, fileRevision, InboxRefusedError, peerMessageId, reachesFurther, MESSAGE, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
 import type { WorkRow } from "../shared/history.js";
 import type { SessionsHost } from "./sessions-tool.js";
 
@@ -24,13 +23,6 @@ const WENT = {
 	elsewhere: "it is open elsewhere (the terminal), so it is not running here; the message waits in its inbox until kiso web opens it.",
 } as const;
 
-/** The file tools' revision (`rev:` + the first 16 hex of sha256), read as a stream so a large file never sits in memory. */
-const revisionOf = async (path: string): Promise<string> => {
-	const hash = createHash("sha256");
-	for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
-	return `rev:${hash.digest("hex").slice(0, 16)}`;
-};
-
 /** A path the sender may read: inside one of its roots (its folder, the folders it was given), never a protected file. */
 export const readable = (path: string, roots: readonly string[], protectedPaths: readonly string[]): boolean => {
 	// both sides through their links (a temporary folder is often reached through one): the comparison is of real places
@@ -43,15 +35,11 @@ export const readable = (path: string, roots: readonly string[], protectedPaths:
 export async function notifyParent(store: SessionStore, key: string, sessionId: string, runId: string, tasksRunning: boolean, host: SessionsHost): Promise<void> {
 	const parent = readStartedBy(store.root, sessionId);
 	if (parent === null) return;
-	const records = store.load(sessionId);
-	const run = records.filter((r) => r.runId === runId).map((r) => r.event);
-	const notice = completionNotice({ run, firstRun: records[0]?.runId === runId, parent, tasksRunning, waiting: false });
+	const fromTitle = (await host.list()).works.find((w) => w.key === key && w.id === sessionId)?.title ?? sessionId;
+	const notice = completionMessage({ records: store.load(sessionId), runId, from: `${key}/${sessionId}`, fromTitle, parent, tasksRunning });
 	if (notice === null) return;
-	const from = `${key}/${sessionId}`;
 	const [pKey, pId] = [parent.slice(0, parent.lastIndexOf("/")), parent.slice(parent.lastIndexOf("/") + 1)];
-	const title = (await host.list()).works.find((w) => w.key === key && w.id === sessionId)?.title ?? sessionId;
-	const messageId = createHash("sha256").update(`${from}\n${runId}\ncompletion`).digest("hex").slice(0, 24);
-	await writeMessage(host.dirOf(pKey), pId, { messageId, from, fromTitle: title, text: `${notice.state}.${notice.excerpt === "" ? "" : `\n\n${notice.excerpt}`}`, files: [], rootId: currentChain(run, from), at: Date.now(), event: "completion" });
+	await writeMessage(host.dirOf(pKey), pId, notice);
 	await host.deliver(pKey, pId).catch(() => undefined);
 }
 
@@ -83,7 +71,7 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 			for (const path of input.files ?? []) {
 				if (!isAbsolute(path) || !statSync(path, { throwIfNoEntry: false })?.isFile()) return refused(`${path}: not a file (give an absolute path that exists)`);
 				if (!host.mayRead(self, path)) return refused(`${path}: this session may not read it, so it cannot send it`);
-				files.push({ path, rev: await revisionOf(path) });
+				files.push({ path, rev: await fileRevision(path) });
 			}
 			const from = `${self.key}/${self.sessionId}`;
 			// a send the crash rerun cut off takes that call's id, so the receiver takes it once (ADR-0062 § 5)

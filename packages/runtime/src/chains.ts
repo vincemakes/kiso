@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isRuntimeInput, type Event } from "@vincemakes/kiso-core";
+import type { PeerMessage } from "./inbox.js";
 
 /**
  * ADR-0062 § 6–§ 7: the causal chain across sessions, its wake budget, and the completion notice a child owes its parent.
@@ -85,6 +86,24 @@ export function completionNotice(input: {
 	const reply = input.run.slice(Math.max(0, last)).flatMap((e) => (e.type === "text_delta" ? [e.text] : [])).join("");
 	const state: CompletionState = input.waiting ? "waiting on you" : terminal?.type === "terminal" && terminal.outcome.kind !== "completed" ? "failed" : input.tasksRunning ? "ended with tasks still running" : "finished";
 	return { state, excerpt: reply.length > 400 ? `${reply.slice(0, 400)}…` : reply };
+}
+
+/** ADR-0062 § 7: the completion message a child (`from`) writes to its parent's inbox for the run `runId` that just settled,
+ *  or null when none is owed. One per run: its id is the child, the run and "completion", so however many of the parent's
+ *  messages the run admitted, and however often the settle is reported, the parent's inbox holds one. */
+export function completionMessage(input: {
+	readonly records: readonly { readonly runId: string; readonly event: Event }[];
+	readonly runId: string;
+	readonly from: string;
+	readonly fromTitle: string;
+	readonly parent: string;
+	readonly tasksRunning: boolean;
+}): PeerMessage | null {
+	const run = input.records.filter((r) => r.runId === input.runId).map((r) => r.event);
+	const notice = completionNotice({ run, firstRun: input.records[0]?.runId === input.runId, parent: input.parent, tasksRunning: input.tasksRunning, waiting: false });
+	if (notice === null) return null;
+	const messageId = createHash("sha256").update(`${input.from}\n${input.runId}\ncompletion`).digest("hex").slice(0, 24);
+	return { messageId, from: input.from, fromTitle: input.fromTitle, text: `${notice.state}.${notice.excerpt === "" ? "" : `\n\n${notice.excerpt}`}`, files: [], rootId: currentChain(run, input.from), at: Date.now(), event: "completion" };
 }
 
 /**

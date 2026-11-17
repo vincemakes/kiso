@@ -71,7 +71,9 @@ export const SESSIONS_REFUSAL = "This needs kiso web: the session was created th
 
 /** The terminal's twins: the specs above, each refusing. */
 export function refusingSessionsExtension(): KisoExtension {
-	const refuse = async (): Promise<ToolResult> => ({ content: SESSIONS_REFUSAL, isError: true });
+	// a precondition, as the web host's refusals are: nothing ran, so the kernel never adds "its side effects may have partially
+	// applied" to a refusal that says there were none
+	const refuse = async (): Promise<ToolResult> => ({ content: SESSIONS_REFUSAL, isError: true, errorKind: "precondition" });
 	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [defineTool({ ...LIST_SESSIONS, execute: refuse }), defineTool({ ...MESSAGE, execute: refuse }), defineTool({ ...START_SESSION, execute: refuse })] };
 }
 

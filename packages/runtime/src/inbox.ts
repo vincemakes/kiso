@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, createReadStream, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import type { Event } from "@vincemakes/kiso-core";
 import { fsyncDir } from "./tasks/journal.js";
@@ -151,6 +151,14 @@ export function removeMessage(root: string, sessionId: string, messageId: string
 	} catch {
 		// litter: deleted next time
 	}
+}
+
+/** A file's revision as the file tools print it (`rev:` + the first 16 hex of sha256), read as a stream so a large file never
+ *  sits in memory (ADR-0062 § 3). */
+export async function fileRevision(path: string): Promise<string> {
+	const hash = createHash("sha256");
+	for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+	return `rev:${hash.digest("hex").slice(0, 16)}`;
 }
 
 /** A message's id: the sender's address, the call, the receiver's address and the text (ADR-0062 § 5). */

@@ -27,9 +27,10 @@ export interface PeerDeliveryOptions {
 	readonly mayWake?: (rootId: string) => boolean;
 }
 
-/** What the model reads: who sent it, the text, and the files as paths (the receiver reads them with its own tools). */
+/** What the model reads: who sent it, the text, and the files as paths with their revisions when sent (the receiver reads
+ *  them with its own tools; a read printing another revision is a file changed since, ADR-0062 § 3's v1). */
 export function peerInput(m: PeerMessage): PeerInput {
-	const files = m.files.length === 0 ? "" : `\n\nFiles (local paths; read them if you need them):\n${m.files.map((f) => `- ${f.path}`).join("\n")}`;
+	const files = m.files.length === 0 ? "" : `\n\nFiles (local paths; read them if you need them):\n${m.files.map((f) => `- ${f.path} (${f.rev} when sent)`).join("\n")}`;
 	const head = m.event === "completion" ? `The session "${m.fromTitle}" (${m.from}), which this session started, ended a turn:` : `Message from the session "${m.fromTitle}" (${m.from}):`;
 	return { kind: "runtime", content: `${head}\n\n${m.text}${files}`, source: "system", via: { kind: "peer", event: m.event ?? "message", from: m.from, messageId: m.messageId, rootId: m.rootId } };
 }
