@@ -12,7 +12,7 @@ const ask = (callId, questions) => ({ events: [{ type: "tool_call_start", callId
 const range = { question: "Which year range should the import cover?", options: [{ label: "2024 only (recommended)", description: "The invoices the request names" }, { label: "2023 to 2024", description: "Two years, for the comparisons" }, { label: "Everything", description: "All invoices on record" }] };
 const parts = { question: "Which parts should it touch?", multiSelect: true, options: [{ label: "Importer" }, { label: "Schema" }, { label: "Docs" }] };
 const data = scratch("ask-data");
-const app = await launchApp({ data, workspace: scratch("ask-ws"), env: { KISO_WEB_SESSION: "w-ask" }, fauxScript: [ask("a1", [range, parts]), ok, ask("a2", [range]), ok, ask("a3", [range]), ok] });
+const app = await launchApp({ data, workspace: scratch("ask-ws"), env: { KISO_WEB_SESSION: "w-ask" }, fauxScript: [ask("a1", [range, parts]), ok, ask("a2", [range]), ok, ask("a3", [range]), ok, ask("a4", [range]), ok] });
 const q = (js) => app.evaluate(js);
 const host = () => app.host();
 const key = (await fetch(`${host().origin}/desk/history`, { headers: { authorization: `Bearer ${host().token}` } }).then((r) => r.json())).current.key;
@@ -54,5 +54,12 @@ await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1
 await app.click("[data-act=q-skip]");
 await waitUntil(async () => result("a3") !== undefined, 15_000);
 check(result("a3") === JSON.stringify({ declined: [range.question] }), "skipping every question declines, in the terminal's shape");
+// F8: the host is killed while a question waits: no card or marker left to answer; the model reads that it was never answered and
+// asks again (a restarted scripted host starts its script over, so the call it makes on Resume is a1's again)
+await q(`window.__kiso.send("Import them all.")`);
+await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000).then(() => app.restart());
+check(await waitUntil(async () => (await app.count("[data-kind=resume]")) === 1 && (await app.count("[data-kind=question-card]")) === 0 && (await app.count("[data-kind=needs-input]")) === 0, 20_000), "killed while a question waits: Resume, and no card or Needs your input left to answer");
+await app.click("[data-act=resume]");
+check((await waitUntil(() => /Ask it again: call ask_user/.test(result("a4") ?? ""), 15_000)) && !/Permission denied/.test(result("a4")) && (await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000)), "the model reads that the question was never answered, without a permission prefix, and asks again: the card is back");
 await app.close();
 verdict();

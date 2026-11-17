@@ -41,8 +41,9 @@ await waitUntil(() => log().some((e) => e.type === "text_delta" && e.text === "F
 await ended();
 check(log().some((e) => e.type === "text_delta" && e.text === "Fixed."), "sending again goes on");
 check((await app.count("[data-act=rewind]")) === 0, "a run that finished cannot be taken back");
-// Enter, then Esc at once, before the page has seen the run start (the owner's "send, Esc, ↺"): the run stops, ↺ takes it back
-await q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); el.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, 'Delete the old invoices'); el.dispatchEvent(new Event('input', { bubbles: true })); for (const key of ['Enter', 'Escape']) el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); return true; })()`);
+// Enter, then Esc at once (real key events), before the page has seen the run start (the owner's "send, Esc, ↺"): the run stops, ↺ takes it back
+await q(`document.querySelector('[data-kind=composer] textarea').focus(); true`).then(() => app.cdp("Input.insertText", { text: "Delete the old invoices" }));
+for (const [key, vk] of [["Enter", 13], ["Escape", 27]]) for (const type of ["keyDown", "keyUp"]) await app.cdp("Input.dispatchKeyEvent", { type, key, code: key, windowsVirtualKeyCode: vk, ...(key === "Enter" && type === "keyDown" ? { text: "\r" } : {}) }); // real keys, Esc right after Enter
 await waitUntil(() => log().filter((e) => e.type === "terminal").length === 4, 15_000);
 check(log().filter((e) => e.type === "terminal").at(-1)?.outcome.kind === "aborted" && !log().some((e) => e.type === "tool_call_end" && e.callId === "x1"), "Enter then Esc at 0 ms: the run stops before it does anything");
 check(await waitUntil(async () => (await app.count("[data-act=rewind]")) === 1, 10_000), "and ↺ can take that line back");

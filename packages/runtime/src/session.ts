@@ -1517,7 +1517,7 @@ export class AgentSession {
 	 * model-facing result — a dangling tool_use with NO result would be
 	 * rejected by real providers (review finding 1).
 	 */
-	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): Promise<void> {
+	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned", content?: string): Promise<void> {
 		// round 4: a poisoned session may not mutate the log.
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
@@ -1543,7 +1543,8 @@ export class AgentSession {
 		// the normal live path emits the result with tags before the pause,
 		// so a crash-window repair reproduces them.
 		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
-			const denial = denialResult(
+			// a host that knows the tool may say what the model should do instead (ADR-0062 § 10c: a question cut off is asked again)
+			const denial = content !== undefined ? { content, errorKind: "precondition" as const } : denialResult(
 				resolution === "rerun"
 					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
 					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
