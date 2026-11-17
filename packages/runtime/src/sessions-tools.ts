@@ -74,3 +74,20 @@ export function refusingSessionsExtension(): KisoExtension {
 	const refuse = async (): Promise<ToolResult> => ({ content: SESSIONS_REFUSAL, isError: true });
 	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [defineTool({ ...LIST_SESSIONS, execute: refuse }), defineTool({ ...MESSAGE, execute: refuse }), defineTool({ ...START_SESSION, execute: refuse })] };
 }
+
+/**
+ * ADR-0062 PR 1: the refs `list_sessions` prints and `message` resolves: the shortest suffix of a session id, four characters
+ * at least, that no other listed id ends with; an id listed twice (two folders mint ids alone) is written `folder/id`. Keyed
+ * by `folder/id`.
+ */
+export function shortRefs(rows: readonly { readonly id: string; readonly folder: string }[]): Map<string, string> {
+	const refs = new Map<string, string>();
+	const ids = rows.map((r) => r.id);
+	for (const row of rows) {
+		const twins = ids.filter((id) => id === row.id).length > 1;
+		let n = 4;
+		while (n < row.id.length && ids.some((id) => id !== row.id && id.endsWith(row.id.slice(-n)))) n += 1;
+		refs.set(`${row.folder}/${row.id}`, twins ? `${row.folder}/${row.id}` : row.id.slice(-n));
+	}
+	return refs;
+}

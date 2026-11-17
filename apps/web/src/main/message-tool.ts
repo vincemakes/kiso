@@ -3,9 +3,9 @@ import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 import { readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
-import { completionNotice, currentChain, InboxRefusedError, reachesFurther, MESSAGE, readStartedBy, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
+import { completionNotice, currentChain, InboxRefusedError, peerMessageId, reachesFurther, MESSAGE, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
 import type { WorkRow } from "../shared/history.js";
-import { shortRefs, type SessionsHost } from "./sessions-tool.js";
+import type { SessionsHost } from "./sessions-tool.js";
 
 /**
  * ADR-0062 PR 2: `message`, the web host's half. `to` is resolved against the same listing `list_sessions` prints: a short
@@ -86,8 +86,8 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 				files.push({ path, rev: await revisionOf(path) });
 			}
 			const from = `${self.key}/${self.sessionId}`;
-			// no execution id in it: a send rerun after a crash writes the same id, which the receiver takes once (ADR-0062 § 5)
-			const messageId = createHash("sha256").update(`${from}\n${ctx.callId ?? ""}\n${target.key}/${target.id}\n${input.text}`).digest("hex").slice(0, 24);
+			// a send the crash rerun cut off takes that call's id, so the receiver takes it once (ADR-0062 § 5)
+			const messageId = peerMessageId(from, retriedSendCallId(host.eventsOf(self.key, self.sessionId), input) ?? ctx.callId ?? "", `${target.key}/${target.id}`, input.text);
 			const reach = (key: string, id: string) => ({ tier: host.tierOf(id), added: readEnvironment(host.dirOf(key), id).added });
 			const held = reachesFurther(reach(self.key, self.sessionId), reach(target.key, target.id));
 			const fromTitle = reply.works.find((w) => w.key === self.key && w.id === self.sessionId)?.title ?? self.sessionId;

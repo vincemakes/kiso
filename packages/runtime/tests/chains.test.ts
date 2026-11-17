@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
 import type { Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
-import { ChainBudget, completionNotice, currentChain, reachesFurther } from "../src/chains.js";
+import { ChainBudget, completionNotice, currentChain, reachesFurther, runStarter, startInitiation } from "../src/chains.js";
 import { writeMessage, type PeerMessage } from "../src/inbox.js";
 
 const u = (seq: number, extra: Record<string, unknown> = {}) => ({ seq, type: "user_input", content: "x", ...extra }) as unknown as Event;
@@ -88,5 +88,31 @@ describe("delivery with a budget and a hold", () => {
 		for await (const _ of session.run("the person speaks")) void _;
 		const ids = session.log.all.flatMap((e) => (e.type === "user_input" && e.via?.kind === "peer" ? [e.via.messageId] : []));
 		expect(ids, "the waiting one rode the person's run; the held one did not").toEqual(["waits"]);
+	});
+});
+
+// § 14 test 12: who started the turn decides what a start_session call may do (owner, 2026-11-16)
+describe("startInitiation", () => {
+	const ended = { seq: 1, type: "terminal", reason: "completed" } as unknown as Event;
+	const task = u(2, { source: "system", via: { kind: "tasks", ids: ["t1"] } });
+
+	it("the person's own line keeps asked and named; a later run's start counts, not an earlier one's", () => {
+		expect(runStarter([u(0)])).toBe("person");
+		expect(startInitiation([u(0)], "asked")).toBe("asked");
+		expect(startInitiation([u(0)], "named")).toBe("named");
+		expect(startInitiation([peer(0, "k/p#0"), ended, u(2)], "asked"), "the person's line after a message's run").toBe("asked");
+	});
+
+	it("a run another session's message started refuses the call (null), whatever it asks", () => {
+		for (const asked of ["asked", "named", "proposed"] as const) expect(startInitiation([u(0), ended, peer(2, "k/p#0")], asked)).toBeNull();
+		expect(runStarter([u(0), ended, peer(2, "k/p#0")])).toBe("message");
+	});
+
+	it("a task notice, a completion notice or a run with no line yet turns asked and named into proposed", () => {
+		for (const events of [[u(0), ended, task], [u(0), ended, peer(2, "k/p#0", "k/child", "completion")], [u(0), ended]]) {
+			expect(runStarter(events), JSON.stringify(events.at(-1))).toBe("other");
+			expect(startInitiation(events, "asked")).toBe("proposed");
+			expect(startInitiation(events, "named")).toBe("proposed");
+		}
 	});
 });

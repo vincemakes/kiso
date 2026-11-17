@@ -182,6 +182,7 @@
   "packages/runtime/tests/framing-lock.test.ts",
   "packages/runtime/tests/lock-stale-same-pid.test.ts",
   "packages/runtime/tests/lifecycle-barrier.test.ts",
+  "packages/runtime/tests/message-crash-kill9.test.ts",
   "packages/runtime/tests/native-lock-race.test.ts",
   "packages/runtime/tests/session-ids.test.ts",
   "packages/runtime/tests/sessions-tools.test.ts",
