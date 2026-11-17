@@ -219,6 +219,18 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 	};
 	const resume = (): Promise<void> => act(() => api.resume());
 	/** A new run for a line, waiting (up to 10 s) while the run before it is still closing (409 in_flight), rather than losing the line. */
+	/** A line for the live run, admitted at its next boundary; with no run to join, or one already closing, it starts a run of its own. */
+	const steerLine = async (text: WireInput): Promise<void> => {
+		const id = ++waitingId;
+		setWaiting([...waiting, { id, input: text, text: textOf(text) }]);
+		try {
+			await api.steer(withNote(options.key, options.sessionId, text));
+		} catch (e) {
+			setWaiting(waiting.filter((w) => w.id !== id));
+			if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await runWhenFree(text);
+			else throw e;
+		}
+	};
 	const runWhenFree = async (input: WireInput): Promise<void> => {
 		for (let tries = 0; ; tries++) {
 			try {
@@ -242,20 +254,9 @@ export function openSession(options: { readonly baseUrl: string; readonly sessio
 		retryNow: () => api.retryNow(),
 		// an open run is resumed to its end first: the new line is not lost and the old run is not abandoned
 		// a Stop pressed while the line is still on its way (sent, the run not started yet) waits for the run, then stops it
-		send: (text) => act(() => (sending = api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {})).finally(() => void (sending = null))),
-		steer: (text) =>
-			act(async () => {
-				const id = ++waitingId;
-				setWaiting([...waiting, { id, input: text, text: textOf(text) }]);
-				try {
-					await api.steer(withNote(options.key, options.sessionId, text));
-				} catch (e) {
-					setWaiting(waiting.filter((w) => w.id !== id));
-					// no run to join, or it was already closing: the line starts a run of its own, once the closing one has ended
-					if (e instanceof ClientError && (e.code === "idle" || e.code === "closed")) await runWhenFree(text);
-					else throw e;
-				}
-			}),
+		// a run the page has not seen start yet (409 in_flight) takes the line as a steer, rather than bouncing it back into the box
+		send: (text) => act(() => (sending = api.run(withNote(options.key, options.sessionId, text), state.snapshot?.openRun != null && !state.snapshot.running ? { resumeFirst: true } : {}).catch((e: unknown) => (e instanceof ClientError && e.code === "in_flight" ? steerLine(text) : Promise.reject(e)))).finally(() => void (sending = null))),
+		steer: (text) => act(() => steerLine(text)),
 		pending: () => waiting,
 		unsteer: async (id) => {
 			const gone = waiting.find((w) => w.id === id);

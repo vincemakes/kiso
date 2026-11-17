@@ -8,7 +8,7 @@ const { check, verdict } = checker("approvals-ui");
 const ok = { events: [{ type: "text_delta", text: "Ok." }, { type: "stop", reason: "end_turn" }] };
 const shell = (callId, command) => ({ type: "tool_call_end", callId, name: "shell", input: { command } });
 const data = scratch("approvals-data");
-const app = await launchApp({ data, workspace: scratch("approvals-ws"), env: { KISO_WEB_SESSION: "w", KISO_WEB_MODE: "default" }, fauxScript: [{ events: [shell("b1", "touch staged.txt"), { type: "stop", reason: "tool_use" }] }, ok, ok, { events: [shell("a1", "npm install"), { type: "stop", reason: "tool_use" }] }, ok, ok] });
+const app = await launchApp({ data, workspace: scratch("approvals-ws"), env: { KISO_WEB_SESSION: "w", KISO_WEB_MODE: "default" }, fauxScript: [{ events: [shell("b1", "touch staged.txt"), { type: "stop", reason: "tool_use" }] }, ok, ok, { events: [shell("c1", "touch sent.txt"), { type: "stop", reason: "tool_use" }] }, ok, { events: [shell("a1", "npm install"), { type: "stop", reason: "tool_use" }] }, ok, ok] });
 const q = (js) => app.evaluate(js);
 const s = clientFor(app.host()).session("w");
 const key = (await fetch(`${app.host().origin}/desk/history`, { headers: { authorization: `Bearer ${app.host().token}` } }).then((r) => r.json())).current.key;
@@ -22,12 +22,18 @@ const idle = async () => (await waitUntil(async () => !(await s.state()).running
 // in_flight); the line waits for the run to end and is admitted once, never left in the box. A real "closed" comes only once the run has
 // decided to end, so its tool here is quick (a slow one, like npm install on a CI runner, outlasts the 10 s a closing run is given)
 await q(`window.__kiso.send("Install again.")`); // first: its runs take a fixed share of the script (b1, ok, then the line's run)
-await waitUntil(async () => open().length === 1, 15_000);
+await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && open().length === 1, 15_000); // the page shows the approval: the line is a steer
 await q(`(() => { const f = window.fetch; let once = true; window.fetch = (u, o) => (once && o?.method === "POST" && /\\/steer$/.test(String(u)) ? ((once = false), Promise.resolve(new Response(JSON.stringify({ code: "closed", message: "the run is closing" }), { status: 409, headers: { "content-type": "application/json" } }))) : f(u, o)); return true; })()`);
 await type("Use the lockfile.").then(() => sleep(500)).then(() => s.approve(open()[0].decisionId, true));
 await waitUntil(() => lines("Use the lockfile.") > 0, 15_000).then(idle);
 const box = await q(`document.querySelector('[data-kind=composer] textarea').value`);
 check(lines("Use the lockfile.") === 1 && box === "", `a line that meets a closing run waits for it to end and is admitted once; nothing is left in the box (admitted ${lines("Use the lockfile.")}, box ${JSON.stringify(box)})`);
+// a line sent as a new run while a run is live, before the page has seen it start (the host answers in_flight): it joins the run as a
+// steer and is admitted once, never bounced back into the box
+await q(`window.__kiso.send("Touch it.")`);
+await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && open().length === 1, 15_000).then(() => q(`window.__kiso.send("Also note it in the log.").then(() => true)`));
+await s.approve(open()[0].decisionId, true).then(() => waitUntil(() => lines("Also note it in the log.") > 0, 15_000)).then(idle);
+check(lines("Also note it in the log.") === 1 && (await q(`document.querySelector('[data-kind=composer] textarea').value`)) === "", `a send that meets a live run is taken as a steer, admitted once (admitted ${lines("Also note it in the log.")})`);
 await q(`window.__kiso.send("Install the dependencies.")`);
 await waitUntil(async () => (await app.count("[data-kind=ask]")) === 1 && open().length === 1, 15_000);
 await Promise.all([s.approve(open()[0].decisionId, true).catch(() => undefined), type("Then run the tests.")]); // the race
