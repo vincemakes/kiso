@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, t } from "../i18n/index.js";
 import { byFolder, groupWorks, type FolderGroup } from "../state/works.js";
 import type { WorkRow } from "../../shared/history.js";
@@ -125,6 +125,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 	const [menu, setMenu] = useState<{ readonly row: WorkRow; readonly at: DOMRect } | null>(null);
 	const [renaming, setRenaming] = useState<WorkRow | null>(null);
 	const renamingNow = useRef<WorkRow | null>(null);
+	useLayoutEffect(() => void (renaming !== null && (box.current?.focus(), box.current?.select())), [renaming]);
 	const [draft, setDraft] = useState("");
 	const [deleting, setDeleting] = useState<WorkRow | null>(null);
 	const nestedN = deleting === null ? 0 : subtree(works, deleting).length - 1;
@@ -176,7 +177,6 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 		if (what === "rename") {
 			setDraft(row.title);
 			setRenaming((renamingNow.current = row));
-			requestAnimationFrame(() => box.current?.select());
 		} else if (what === "fork") onFork(row);
 		else if (what === "pr") open(pr, "_blank", "noopener");
 		else if (what === "link") (setError(null), setPrDraft(""), setLinking(row));

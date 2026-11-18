@@ -13,6 +13,8 @@ const key = (k) => app.cdp("Input.dispatchKeyEvent", { type: "keyDown", key: k, 
 const away = async () => { for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await app.cdp("Input.dispatchMouseEvent", { type, x: 700, y: 330, button: "left", clickCount: 1 }); };
 const open = async (side) => { if (side) { await q(`document.querySelector('[data-act=work-menu][data-for=rn]').click()`); await waitUntil(async () => (await app.count("[data-kind=work-menu]")) === 1); await q("document.querySelector('[data-menu-act=rename]').click()"); } else await app.click("[data-field=title]"); await waitUntil(async () => (await app.count(side ? "[data-field=row-title-input]" : "[data-field=title-input]")) === 1, 5000); await sleep(200); };
 const type = (side, name) => q(`(() => { const i = document.querySelector('[data-field=${side ? "row-title-input" : "title-input"}]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, ${JSON.stringify(name)}); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+// typed at once, with no wait for the box: the first keys must land in it (it is focused and selected when it appears)
+const quick = async (side, name) => { if (side) { await q(`document.querySelector('[data-act=work-menu][data-for=rn]').click()`); await waitUntil(async () => (await app.count("[data-kind=work-menu]")) === 1); await q("document.querySelector('[data-menu-act=rename]').click()"); } else await app.click("[data-field=title]"); await app.cdp("Input.insertText", { text: name }); await key("Enter"); await sleep(700); return seen(); };
 // every sample for 1.5 s after the commit: never the old name in either place, and in the end the new one in both
 const steady = async (name, old) => { const bad = []; for (let i = 0; i < 30; i++) { const [h, s] = await seen(); if (h === old || s === old) bad.push([h, s]); await sleep(50); } const [h, s] = await seen(); return h === name && s === name ? bad : [...bad, [h, s]]; };
 for (const [side, label] of [[false, "header"], [true, "sidebar row"]]) {
@@ -21,8 +23,9 @@ for (const [side, label] of [[false, "header"], [true, "sidebar row"]]) {
 	check(bad.length === 0 && (await q("window.__rn.length")) === n0 + 1, `${label}: a click away saves, the new name never flickers back (${JSON.stringify(bad.slice(0, 2))})`);
 	await open(side); await type(side, b); await key("Enter"); await away(); bad = await steady(b, a);
 	check(bad.length === 0 && (await q("window.__rn.length")) === n0 + 2, `${label}: Enter saves, and Enter then a blur sends one request (${(await q("window.__rn.length")) - n0 - 1})`);
+	check((await quick(side, `${label} typed at once`)).every((x) => x === `${label} typed at once`), `${label}: typing right after the click replaces the name (nothing is lost before the box is ready)`);
 	await open(side); await type(side, c); await key("Escape"); await sleep(300);
-	check((await seen()).every((x) => x === b) && (await q("window.__rn.length")) === n0 + 2 && (await app.count("[data-field=title-input], [data-field=row-title-input]")) === 0, `${label}: Esc leaves the name as it was and sends nothing`);
+	check((await seen()).every((x) => x === `${label} typed at once`) && (await q("window.__rn.length")) === n0 + 3 && (await app.count("[data-field=title-input], [data-field=row-title-input]")) === 0, `${label}: Esc leaves the name as it was and sends nothing`);
 }
 // while it runs, the page re-renders all the time: a click away still saves, and nothing goes back to the old name
 await q(`window.__kiso.send("again")`); const running = () => q("document.querySelector('.item[data-work=rn]')?.dataset.state === 'running'"); await waitUntil(running, 5000); await sleep(300);

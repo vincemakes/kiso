@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "../i18n/index.js";
 import { byPerson } from "./blur.js";
 
@@ -24,8 +24,9 @@ export function Header({ title, onRename, children }: Props): ReactNode {
 	const start = (): void => {
 		setDraft(title);
 		setEditing((live.current = true));
-		requestAnimationFrame(() => box.current?.select());
 	};
+	// focused and selected before the next paint, so what is typed right after the click replaces the name (a frame callback came late, or never in a hidden window)
+	useLayoutEffect(() => void (editing && (box.current?.focus(), box.current?.select())), [editing]);
 	// Enter and a click away both save (once: the box is gone after the first); Esc leaves it as it was; a blur with nothing typed saves nothing
 	const keep = (blur = false): void => {
 		if (!live.current) return;
