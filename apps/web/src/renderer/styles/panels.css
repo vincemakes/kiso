@@ -94,6 +94,7 @@ select.chip { appearance: none; padding-right: 14px; cursor: pointer; font: inhe
    read as one header; the title (a click renames it in place) and the folder at the left, the overview key and ⋯ at the right */
 .hdr { position: absolute; top: 0; left: 0; right: 0; z-index: 60; height: 54px; display: flex; align-items: center; gap: 4px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: #fff; min-width: 0; }
 .win[data-side="0"] .hdr { padding-left: 54px; }
+.hdr-err { color: var(--red); font-size: 12px; margin-left: 6px; }
 .hdr-title { min-width: 0; max-width: 55%; padding: 5px 8px; border-radius: 8px; font-weight: 600; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .hdr-title:hover { background: var(--sunk); }
 input.hdr-title.edit { width: min(440px, 55%); max-width: none; border: 0; outline: 0; background: transparent; font: inherit; font-weight: 600; font-size: 14px; }

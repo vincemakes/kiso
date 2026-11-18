@@ -25,6 +25,7 @@ import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
 import { slotOf, workCache } from "./state/workcache.js";
 import { addFolderTo } from "./state/folders.js";
+import { useRenames } from "./state/renames.js";
 import { answerCard, answerHeld, fetchEnv, fetchHistory, newWorkId, refTitle, sessionsUrl, type Target } from "./state/works.js";
 import { Lead } from "./stream/Lead.js";
 import { CardsContext, type CardsHost } from "./stream/SessionCard.js";
@@ -231,20 +232,16 @@ export function App(): ReactNode {
 	}, [liveNow, signedIn, refresh]);
 	const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
 	const markGone = (row: WorkRow, on: boolean): void => setGone((s) => new Set(on ? [...s, `${row.key}\n${row.id}`] : [...s].filter((g) => g !== `${row.key}\n${row.id}`)));
-	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState === "idle" && w.state === "waiting" ? "waiting" : ownState }))(w) : w));
+	const [named, rename] = useRenames(history?.works ?? []);
+	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w): WorkRow => (named[w.id] === undefined ? w : { ...w, title: named[w.id]! })).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState === "idle" && w.state === "waiting" ? "waiting" : ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
-	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
 	const title = named[target.sessionId] ?? row?.title ?? session?.state.turns[0]?.user.split("\n")[0] ?? "";
 	// a name shows at once; a cleared one waits for the listing, which reads names live, to give back the first-request title
 	// a row's folder key as the routes take it (null: the folder in use), and the listing read again for that folder
 	const keyOf = (row: WorkRow): string | null => (row.key === history?.current.key ? null : row.key);
 	const reread = (key: string | undefined): Promise<void> => fetchHistory(key).then(setHistory, () => undefined);
-	const renameRow = (key: string | null, id: string, name: string): Promise<void> =>
-		renameWork(key, id, name).then((r) => {
-			setNamed(({ [id]: _, ...n }) => (r.name === null ? n : { ...n, [id]: r.name }));
-			return reread(key ?? history?.current.key);
-		});
+	const renameRow = (key: string | null, id: string, name: string): Promise<void> => rename(id, name, () => renameWork(key, id, name)).then(() => reread(key ?? history?.current.key));
 	const onRename = (name: string): Promise<void> => renameRow(target.key, target.sessionId, name);
 	const header =
 		railOn && session !== null ? (
