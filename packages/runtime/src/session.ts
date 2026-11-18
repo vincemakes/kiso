@@ -126,6 +126,16 @@ export class PoisonedSessionError extends Error {
 	}
 }
 
+/** ADR-0038: a verdict asked for on a call this session is still running (only an interrupted one takes a verdict). */
+export class ExecutionLiveError extends Error {
+	readonly executionId: string;
+	constructor(executionId: string) {
+		super(`this action is still running: only an interrupted action takes a verdict (${executionId})`);
+		this.name = "ExecutionLiveError";
+		this.executionId = executionId;
+	}
+}
+
 export class ResumeBlockedError extends Error {
 	readonly uncertain: readonly { executionId: string; callId: string; name: string }[];
 	constructor(uncertain: readonly { executionId: string; callId: string; name: string }[]) {
@@ -321,6 +331,8 @@ export class AgentSession {
 	}
 
 	readonly #activeRuns = new Set<Run>();
+	/** Executions this process started and has no receipt for yet: a call still running here (ADR-0038: never uncertain). */
+	readonly #executing = new Set<string>();
 
 	constructor(id: string, log: EventLog, store: SessionStore, adapter: Adapter, config: SessionConfig, lastUsageAt?: number) {
 		this.#lastUsageAt = lastUsageAt;
@@ -403,6 +415,15 @@ export class AgentSession {
 				this.#newSession = undefined;
 				this.#writeProfileRevision(workspace);
 			}
+			if (event.type === "tool_execution_started") this.#executing.add(event.executionId);
+			if (event.type === "tool_execution_succeeded" || event.type === "tool_execution_failed") this.#executing.delete(event.executionId);
+			// the commit point: an execution that already has a verdict keeps it. A receipt that arrives after it, or a second result,
+			// is not written (looked up and appended with nothing awaited between, so no verdict lands in the gap)
+			const late = this.#afterVerdict(event);
+			if (late !== null) {
+				process.stderr.write(`kiso: ${late}\n`);
+				return;
+			}
 			await this.#store.append(this.id, runId, event);
 			if (event.type === "usage" && event.known) this.#lastUsageAt = Date.now();
 		} catch (err) {
@@ -413,6 +434,29 @@ export class AgentSession {
 			this.poison((err as Error).message);
 			throw err;
 		}
+	}
+
+	/** Why `event` must not be written, or null: a receipt for an execution that already has a verdict, or a result after its
+	 *  verdict's own one (the person decided it; the call's own late outcome never adds a second tool_result for one call). */
+	#afterVerdict(event: Event): string | null {
+		const receipt = event.type === "tool_execution_succeeded" || event.type === "tool_execution_failed";
+		const result = event.type === "tool_result" && event.executionId !== undefined;
+		if (!receipt && !result) return null;
+		const id = (event as { executionId: string }).executionId;
+		const before = this.log.all.filter((e) => e.seq < event.seq);
+		if (!before.some((e) => e.type === "tool_execution_resolved" && e.executionId === id)) return null;
+		if (receipt) return `${event.type} for ${id} (call ${event.callId}) not written: the execution already has a verdict`;
+		if (before.some((e) => e.type === "tool_result" && e.executionId === id)) return `a second tool_result for ${id} (call ${event.callId}) not written: the execution already has one`;
+		return null;
+	}
+
+	/** ADR-0038: an execution belongs to the crash window only when nothing here is running it: not this process's executor,
+	 *  not a live run of this session that owns it. A call in flight has started and not ended too, and is not uncertain. */
+	#isLive(executionId: string): boolean {
+		if (this.#executing.has(executionId)) return true;
+		if (this.#activeRuns.size === 0) return false;
+		const owner = this.#store.load(this.id).find((r) => r.event.type === "tool_execution_started" && (r.event as { executionId?: string }).executionId === executionId)?.runId;
+		return [...this.#activeRuns].some((r) => owner === undefined || r.runId === owner);
 	}
 
 	// ── one active run per session (Area 1) ──────────────────────────────
@@ -1507,6 +1551,11 @@ export class AgentSession {
 		return [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain");
 	}
 
+	/** The uncertain executions nothing here is still running: the crash window's, the only ones a verdict may be given on. */
+	interruptedExecutions() {
+		return this.uncertainExecutions().filter((r) => !this.#isLive(r.executionId));
+	}
+
 	/**
 	 * The human's verdict on an interrupted execution, keyed by EXECUTION ID
 	 * (B group): "rerun" (the human says the side effect did NOT happen — the
@@ -1523,6 +1572,9 @@ export class AgentSession {
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible (the append below is synchronous, so a same-tick second call sees it)
+		// ADR-0038: a call still running is not uncertain, whatever the ledger's shape; a verdict on it would add a result the
+		// call's own outcome then repeats (two tool_result for one call, which a provider refuses)
+		if (this.#isLive(executionId)) throw new ExecutionLiveError(executionId);
 		// CT-1 (ADR-0051 Amendment 6): the verdict is persisted directly — there
 		// is no live resolver to hand it to (the loop never read one since
 		// ADR-0038; the round-7 live branch that waited for it was unreachable).
