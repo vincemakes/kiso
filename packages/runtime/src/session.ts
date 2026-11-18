@@ -333,11 +333,16 @@ export class AgentSession {
 	readonly #activeRuns = new Set<Run>();
 	/** Executions this process started and has no receipt for yet: a call still running here (ADR-0038: never uncertain). */
 	readonly #executing = new Set<string>();
+	/** Executions with a verdict, and those whose verdict's result is written: kept as events are written (rebuilt from the log
+	 *  once, when the session loads), so the commit point's look-up is constant time on a session of any length. */
+	readonly #judged = new Set<string>();
+	readonly #filled = new Set<string>();
 
 	constructor(id: string, log: EventLog, store: SessionStore, adapter: Adapter, config: SessionConfig, lastUsageAt?: number) {
 		this.#lastUsageAt = lastUsageAt;
 		this.id = id;
 		this.log = log;
+		for (const e of log.all) this.#note(e);
 		this.#store = store;
 		this.#adapter = adapter;
 		// E1: extension tools join the registry. The collision check already
@@ -424,6 +429,7 @@ export class AgentSession {
 				process.stderr.write(`kiso: ${late}\n`);
 				return;
 			}
+			this.#note(event);
 			await this.#store.append(this.id, runId, event);
 			if (event.type === "usage" && event.known) this.#lastUsageAt = Date.now();
 		} catch (err) {
@@ -439,15 +445,19 @@ export class AgentSession {
 	/** Why `event` must not be written, or null: a receipt for an execution that already has a verdict, or a result after its
 	 *  verdict's own one (the person decided it; the call's own late outcome never adds a second tool_result for one call). */
 	#afterVerdict(event: Event): string | null {
-		const receipt = event.type === "tool_execution_succeeded" || event.type === "tool_execution_failed";
-		const result = event.type === "tool_result" && event.executionId !== undefined;
-		if (!receipt && !result) return null;
-		const id = (event as { executionId: string }).executionId;
-		const before = this.log.all.filter((e) => e.seq < event.seq);
-		if (!before.some((e) => e.type === "tool_execution_resolved" && e.executionId === id)) return null;
-		if (receipt) return `${event.type} for ${id} (call ${event.callId}) not written: the execution already has a verdict`;
-		if (before.some((e) => e.type === "tool_result" && e.executionId === id)) return `a second tool_result for ${id} (call ${event.callId}) not written: the execution already has one`;
+		if (event.type === "tool_execution_succeeded" || event.type === "tool_execution_failed") {
+			return this.#judged.has(event.executionId) ? `${event.type} for ${event.executionId} (call ${event.callId}) not written: the execution already has a verdict` : null;
+		}
+		if (event.type === "tool_result" && event.executionId !== undefined && this.#filled.has(event.executionId)) {
+			return `a second tool_result for ${event.executionId} (call ${event.callId}) not written: the execution already has one`;
+		}
 		return null;
+	}
+
+	/** Keeps the two sets as an event is written (or read back from the log): a verdict, then the one result that answers it. */
+	#note(event: Event): void {
+		if (event.type === "tool_execution_resolved") this.#judged.add(event.executionId);
+		else if (event.type === "tool_result" && event.executionId !== undefined && this.#judged.has(event.executionId)) this.#filled.add(event.executionId);
 	}
 
 	/** ADR-0038: an execution belongs to the crash window only when nothing here is running it: not this process's executor,

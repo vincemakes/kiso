@@ -71,6 +71,31 @@ describe("a late receipt after a verdict", () => {
 		expect(said.some((l) => l.includes("a second tool_result for ex-1"))).toBe(true);
 	});
 
+	it("verdicts in an old run and in this one leave every other call's result to be written", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-vl-")));
+		const put = (runId: string, e: Record<string, unknown>) => store.append("s", runId, e as unknown as Event);
+		// an old run: a crash, its verdict and result, ended
+		await put("r-old", { seq: 0, type: "user_input", content: "go" });
+		await put("r-old", { seq: 1, type: "tool_call_end", callId: "call-old", name: "slow", input: {} });
+		await put("r-old", { seq: 2, type: "tool_execution_started", executionId: "ex-old", callId: "call-old", name: "slow", input: {} });
+		await put("r-old", { seq: 3, type: "tool_execution_resolved", executionId: "ex-old", callId: "call-old", resolution: "abandoned" });
+		await put("r-old", { seq: 4, type: "tool_result", callId: "call-old", content: "abandoned", isError: true, executionId: "ex-old" });
+		await put("r-old", { seq: 5, type: "terminal", outcome: { kind: "completed" } });
+		// this round: another crash, judged now (the set is rebuilt from the log at load, then kept as it goes)
+		await put("r-now", { seq: 6, type: "user_input", content: "again" });
+		await put("r-now", { seq: 7, type: "tool_call_end", callId: "call-now", name: "slow", input: {} });
+		await put("r-now", { seq: 8, type: "tool_execution_started", executionId: "ex-now", callId: "call-now", name: "slow", input: {} });
+		const quick = defineTool({ name: "slow", description: "slow", parameters: { type: "object" }, execute: async () => ({ content: "ok", isError: false }) });
+		const twoCalls = { events: [{ type: "tool_call_end", callId: "call-a", name: "slow", input: {} }, { type: "tool_call_end", callId: "call-b", name: "slow", input: {} }, { type: "stop", reason: "tool_use" }] };
+		const agent = createAgent({ model: "m", store, systemPrompt: "t", tools: [quick] as never, adapter: createFauxProvider([say("Resumed."), twoCalls, say("Done.")] as never) });
+		const session = await agent.session({ id: "s" });
+		await session.resolveUncertain("ex-now", "abandoned");
+		for await (const _ of session.resume()) void _;
+		for await (const _ of session.run("two more")) void _;
+		for (const call of ["call-old", "call-now", "call-a", "call-b"]) expect(results(store, "s", call), call).toHaveLength(1);
+		expect(store.load("s").filter((r) => r.event.type === "tool_execution_succeeded").map((r) => (r.event as { callId: string }).callId).sort()).toEqual(["call-a", "call-b"]);
+	});
+
 	it("a call's own result, with no verdict, is always written", async () => {
 		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-vl-")));
 		const quick = defineTool({ name: "slow", description: "slow", parameters: { type: "object" }, execute: async () => ({ content: "ok", isError: false }) });
