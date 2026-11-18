@@ -35,11 +35,15 @@ export const MESSAGE = {
 export const START_SESSION = {
 	name: "start_session",
 	description: [
-		"Start a separate Work (a full session the person can open, talk to, steer and review) for a task of its own.",
-		"Decide by one question: do you need its result before you answer this turn? Yes: use delegate. A few tool calls: do it here. It ends in something of its own (a branch, a PR, a document, a long run) and this turn does not wait: start_session. A result another session needs goes to it with message; pieces of one change, or a wide search, are delegate, not several Works.",
-		'initiation: "asked" only when the person explicitly asked for a separate Work; "named" when they named a task without saying where, or asked whether one should be opened (they choose in a card); "proposed" for your own idea (a card they may start). When unsure, "named".',
-		"brief: everything the new Work needs, written for a reader who has seen nothing else: the goal, the context, the deliverable and how it is accepted. It becomes the new Work's first message.",
-		'context: "fork" when the new Work needs this whole conversation (it starts from the end of this turn); "fresh" otherwise.',
+		"Start a separate Work (a full session the person can open, steer and review), or offer a Work card. A Work is for an independent task, not a step of the current change. A Work runs independently; it does not return a result needed to answer this turn.",
+		"Decide where work belongs from the person's intent, before its size:",
+		'- The person explicitly asks for a separate session or Work: initiation "asked" (it starts now).',
+		'- The person asks whether to open a separate Work, or introduces another actionable, independent task while work is already underway, without assigning it to this session or an existing one: initiation "named" (a choice card), even for a small task. Do not start or do that task before the person chooses, and do not ask the same choice again through ask_user or in plain text.',
+		"- Otherwise, handle the requested task here. An ordinary single request, a step of the same change, or a request assigned to this session needs no card. A passing mention is not an instruction to act. If unsure whether a task is independent, keep it here unless the person asks about separating it.",
+		'- Only for a separate, self-contained deliverable you discover that the person did not ask for, you may offer initiation "proposed" (a choice card). Offer it only when separation has a clear benefit. Do not split one change or a broad search into several Works.',
+		"- To notify an existing session or hand it work, use message, not start_session.",
+		'brief: a standalone first message for the new Work: the goal, the context, the deliverable, the constraints and how it is accepted. With context "fresh" it cannot see this conversation.',
+		"context: \"fresh\" when the brief holds what is needed; \"fork\" only when the new Work needs this conversation's history (it starts from the end of this turn).",
 	].join("\n"),
 	parameters: {
 		type: "object",
