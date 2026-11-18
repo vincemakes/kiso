@@ -6,7 +6,7 @@ import { Chevron, Gear, I, Plus, PullRequest } from "../stream/Icons.js";
 import { Dialog } from "../rail/GitDialogs.js";
 import { SideMenu, viewRead, VIEW, type View } from "./SideMenu.js";
 
-export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete";
+export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete" | "delete-tree";
 
 interface Props {
 	readonly works: readonly WorkRow[];
@@ -83,6 +83,12 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 	);
 }
 
+/** A Work and every session nested under it, its folder only (what "Delete all" removes; the host counts the same way). */
+export const subtree = (rows: readonly WorkRow[], row: WorkRow): readonly WorkRow[] => {
+	const out = [row];
+	for (let i = 0; i < out.length; i++) for (const w of rows) if (w.key === row.key && w.parent === out[i]!.id && !out.includes(w)) out.push(w);
+	return out;
+};
 /** A nested session (a fork, under the row it came from) when its parent is among these rows and it is not pinned. */
 const childIn = (rows: readonly WorkRow[], row: WorkRow): boolean => row.parent !== undefined && row.pinned === undefined && rows.some((w) => w.key === row.key && w.id === row.parent);
 /** A folder shows five Works (each with its nested sessions), then "Show N more"; the sidebar twelve folders, then "N more folders". */
@@ -119,6 +125,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 	const [renaming, setRenaming] = useState<WorkRow | null>(null);
 	const [draft, setDraft] = useState("");
 	const [deleting, setDeleting] = useState<WorkRow | null>(null);
+	const nestedN = deleting === null ? 0 : subtree(works, deleting).length - 1;
 	const [linking, setLinking] = useState<WorkRow | null>(null);
 	const [prDraft, setPrDraft] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -358,16 +365,17 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 			{deleting !== null ? (
 				<Dialog
 					kind="delete"
-					title={fmt(t.deleteTitle, { title: deleting.title === "" ? t.untitled : deleting.title })}
+					title={nestedN > 0 ? t.deleteTreeTitle : fmt(t.deleteTitle, { title: deleting.title === "" ? t.untitled : deleting.title })}
 					sub={deleting.folder}
 					busy={busy}
 					error={error}
-					confirm={t.deleteConfirm}
+					confirm={nestedN > 0 ? t.deleteThis : t.deleteConfirm}
+					alt={nestedN > 0 ? { label: fmt(t.deleteAll, { n: nestedN + 1 }), onClick: () => (setDeleting(null), setError(null), void onAct(deleting, "delete-tree").catch((e: Error) => setError(e.message))) } : undefined}
 					danger
 					onCancel={() => setDeleting(null)}
 					onConfirm={() => (setDeleting(null), setError(null), void onAct(deleting, "delete").catch((e: Error) => setError(e.message)))}
 				>
-					<p className="dlg-p" data-kind="delete-what">{fmt(t.deleteWhat, { runs: deleting.runs === 1 ? t.oneRun : fmt(t.nRuns, { n: deleting.runs }) })}</p>
+					<p className="dlg-p" data-kind="delete-what">{nestedN > 0 ? fmt(nestedN === 1 ? t.deleteTreeWhatOne : t.deleteTreeWhat, { title: deleting.title === "" ? t.untitled : deleting.title, n: nestedN }) : fmt(t.deleteWhat, { runs: deleting.runs === 1 ? t.oneRun : fmt(t.nRuns, { n: deleting.runs }) })}</p>
 				</Dialog>
 			) : null}
 			{/* the foot of the sidebar: Settings, one row (the Functions fold that held only it is gone, owner 2026-11-04) */}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Sidebar } from "./sidebar/Sidebar.js";
+import { Sidebar, subtree } from "./sidebar/Sidebar.js";
 import { Mark, Overview, Sidebar as SidebarIcon } from "./stream/Icons.js";
 import { Rail } from "./rail/Rail.js";
 import { PanelContext } from "./panels/context.js";
@@ -310,11 +310,10 @@ export function App(): ReactNode {
 				active={{ key: activeKey, id: target.sessionId }}
 				settingsOn={view === "settings"}
 				onOpen={openWork}
-				onAct={(row, act) => (act === "delete" && markGone(row, true), actOnWork(keyOf(row), row.id, act).then(() => {
-					if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
-					if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
-					return reread(row.key);
-				}, (e: Error) => (act === "delete" && markGone(row, false), Promise.reject(e))))}
+				onAct={(row, act) => {
+					const gone = act === "delete-tree" ? subtree(rows, row) : act === "delete" ? [row] : []; gone.forEach((w) => markGone(w, true));
+					return actOnWork(keyOf(row), row.id, act).then(() => (gone.forEach((w) => workCache.drop(slotOf(keyOf(w), w.id))), gone.some((w) => w.id === target.sessionId) && setTarget({ key: null, sessionId: newWorkId() }), reread(row.key)), (e: Error) => (gone.forEach((w) => markGone(w, false)), Promise.reject(e)));
+				}}
 				onRename={(row, name) => renameRow(keyOf(row), row.id, name)}
 				onLinkPr={(row, pr) => linkPr(keyOf(row), row.id, pr).then(() => reread(row.key))}
 				onFork={(row) =>

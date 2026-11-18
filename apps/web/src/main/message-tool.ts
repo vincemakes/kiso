@@ -1,5 +1,5 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, resolve, sep } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
 import { readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
 import { completionMessage, currentChain, fileRevision, InboxRefusedError, readInbox, peerMessageId, reachesFurther, MESSAGE, readForkOrigin, readStartedBy, retriedSendCallId, shortRefs, writeMessage, type PeerFile } from "@vincemakes/kiso-runtime/internal";
@@ -35,11 +35,12 @@ export const readable = (path: string, roots: readonly string[], protectedPaths:
 export async function notifyParent(store: SessionStore, key: string, sessionId: string, runId: string, tasksRunning: boolean, host: SessionsHost): Promise<void> {
 	const parent = readStartedBy(store.root, sessionId);
 	if (parent === null) return;
+	const [pKey, pId] = [parent.slice(0, parent.lastIndexOf("/")), parent.slice(parent.lastIndexOf("/") + 1)];
+	if (!existsSync(join(host.dirOf(pKey), `${pId}.meta.json`))) return; // the parent was deleted: nothing is sent, and nothing of it is made again
 	const fromTitle = (await host.list()).works.find((w) => w.key === key && w.id === sessionId)?.title ?? sessionId;
 	const forkAfterSeq = readForkOrigin(store.root, sessionId)?.afterSeq; // a fork opens on the parent's runs
 	const notice = completionMessage({ records: store.load(sessionId), runId, from: `${key}/${sessionId}`, fromTitle, parent, tasksRunning, ...(forkAfterSeq !== undefined ? { forkAfterSeq } : {}) });
 	if (notice === null) return;
-	const [pKey, pId] = [parent.slice(0, parent.lastIndexOf("/")), parent.slice(parent.lastIndexOf("/") + 1)];
 	await writeMessage(host.dirOf(pKey), pId, notice);
 	await host.deliver(pKey, pId).catch(() => undefined);
 }
@@ -71,6 +72,7 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 			const others = reply.works.filter((w) => !(w.key === self.key && w.id === self.sessionId));
 			const target = resolveTo(others, input.to);
 			if (typeof target === "string") return refused(target);
+			if (!existsSync(join(host.dirOf(target.key), `${target.id}.meta.json`))) return refused(`"${target.title}" no longer exists. Call list_sessions to see the current sessions.`);
 			const files: PeerFile[] = [];
 			for (const given of input.files ?? []) {
 				const cwd = host.cwdOf(self.key) ?? "";
