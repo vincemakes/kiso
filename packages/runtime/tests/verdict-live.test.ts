@@ -51,6 +51,32 @@ describe("a verdict on a live execution", () => {
 	});
 });
 
+describe("a verdict and a resume at the same moment", () => {
+	it("the resume reads the verdict with its own result, never a verdict whose result is still to come (the store held 200 ms)", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-vl-")));
+		await store.append("s", "r-dead", { seq: 0, type: "user_input", content: "go" } as Event);
+		await store.append("s", "r-dead", { seq: 1, type: "tool_call_end", callId: "call-1", name: "ask_user", input: {} } as Event);
+		await store.append("s", "r-dead", { seq: 2, type: "tool_execution_started", executionId: "ex-1", callId: "call-1", name: "ask_user", input: {} } as Event);
+		const agent = createAgent({ model: "m", store, systemPrompt: "t", tools: [], adapter: createFauxProvider([say("Asking again.")] as never) });
+		const session = await agent.session({ id: "s" });
+		// a slow disk: the verdict's write is queued in order but takes 200 ms to come back, the gap a CI runner opened between
+		// the verdict and its result (the store's own queue keeps every write in order)
+		const append = store.append.bind(store);
+		store.append = (async (id: string, runId: string, e: Event) => {
+			const written = append(id, runId, e);
+			if (e.type === "tool_execution_resolved") await new Promise((r) => setTimeout(r, 200));
+			return written;
+		}) as typeof store.append;
+		const verdict = session.resolveUncertain("ex-1", "rerun", "Ask it again: call ask_user"); // as the web host does at open, not awaited
+		await new Promise((r) => setTimeout(r, 20)); // the resume arrives inside the gap
+		for await (const _ of session.resume()) void _;
+		await verdict;
+		const own = results(store, "s", "call-1");
+		expect(own).toHaveLength(1);
+		expect((own[0]!.event as { content: string }).content).toBe("Ask it again: call ask_user");
+	});
+});
+
 describe("a late receipt after a verdict", () => {
 	it("is not written, nor its second tool_result: one result for the call, and a visible line saying why", async () => {
 		const root = mkdtempSync(join(tmpdir(), "kiso-vl-"));
