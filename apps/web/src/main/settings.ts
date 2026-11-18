@@ -58,6 +58,8 @@ interface Own {
 	/** the pull request each Work made or was linked to */
 	readonly prs?: Readonly<Record<string, Pr>>;
 	readonly recent?: readonly string[];
+	/** Works deleted here, as `key/id`, the latest first: never opened again, whatever asks (a tab still open, a poll) */
+	readonly deleted?: readonly string[];
 }
 
 interface Work {
@@ -234,6 +236,16 @@ export class Settings {
 		const own = this.#read();
 		const drop = <T>(m: Readonly<Record<string, T>> | undefined): Record<string, T> => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => k !== session));
 		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session), prs: drop(own.prs) });
+	}
+
+	/** A deleted Work's tombstone: its id is never opened again in that folder (kept across restarts, the latest 2,000). */
+	bury(key: string, session: string): void {
+		const id = `${key}/${session}`;
+		this.write({ deleted: [id, ...(this.#read().deleted ?? []).filter((d) => d !== id)].slice(0, 2000) });
+	}
+
+	buried(key: string, session: string): boolean {
+		return this.#read().deleted?.includes(`${key}/${session}`) ?? false;
 	}
 
 	restoreWork(session: string, work: Work | undefined): void {

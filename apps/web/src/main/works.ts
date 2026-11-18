@@ -17,6 +17,7 @@ const busyOf = (space: Space, id: string): string | null => (space.service.isRun
 
 /** Everything a Work leaves: closed first (the store refuses any later write to it, so nothing brings the files back). */
 function remove(space: Space, settings: Settings, session: string): void {
+	settings.bury(space.key, session); // first: from here on nothing opens it again, not even a read
 	space.store.close(session);
 	space.tasks.forget(session);
 	for (const path of [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`]) rmSync(join(space.dir, path), { recursive: true, force: true });
