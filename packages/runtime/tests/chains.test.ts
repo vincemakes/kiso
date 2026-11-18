@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
-import type { Event } from "@vincemakes/kiso-core";
+import { defineTool, type Event } from "@vincemakes/kiso-core";
 import { createAgent, SessionStore } from "../src/index.js";
 import { ChainBudget, completionMessage, completionNotice, currentChain, reachesFurther, runStarter, startInitiation } from "../src/chains.js";
 import { writeMessage, type PeerMessage } from "../src/inbox.js";
@@ -80,6 +80,39 @@ describe("completionNotice", () => {
 		expect(cut.endsWith("\n\n(cut; the full reply is in that session — message it to ask)")).toBe(true);
 		const wide = excerpt("😀".repeat(4000))!; // 16,000 bytes: cut by bytes too, so the notice fits the 16 KB inbox message
 		expect(Buffer.byteLength(wide) < 12_100 && wide.endsWith("message it to ask)") && !wide.includes("\uFFFD")).toBe(true);
+	});
+});
+
+// the excerpt read from real logs: an agent run with a tool call, not an imagined sequence (the log carries no assistant_start)
+describe("the excerpt is the child's last reply, from its real log", () => {
+	const look = defineTool({ name: "look", description: "look", parameters: { type: "object" }, execute: async () => ({ content: "seen", isError: false }) });
+	const logOf = async (script: unknown[]): Promise<readonly Event[]> => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-cx-")));
+		const agent = createAgent({ model: "m", store, systemPrompt: "t", tools: [look] as never, adapter: createFauxProvider(script as never) });
+		const session = await agent.session({ id: "c" });
+		for await (const _ of session.run("do it")) void _;
+		return session.log.all;
+	};
+	const narrate = (text: string, id: string) => ({ events: [{ type: "text_delta", text }, { type: "tool_call_end", callId: id, name: "look", input: {} }, { type: "stop", reason: "tool_use" }] });
+	const excerptOf = (run: readonly Event[]) => completionNotice({ run, firstRun: true, parent: "k/p", tasksRunning: false, waiting: false })!.excerpt;
+	const NARRATION = "Let me look at the importer first. ".repeat(10);
+
+	it("a run with tool calls: a 3,919-character reply whole, with none of the narration before the calls", async () => {
+		const final = "f".repeat(3919);
+		const run = await logOf([narrate(NARRATION, "c1"), narrate(NARRATION, "c2"), say(final)]);
+		expect(run.some((e) => e.type === "assistant_start"), "the real log has no assistant_start").toBe(false);
+		expect(run.filter((e) => e.type === "text_delta").map((e) => (e as { text: string }).text).join("").length).toBeGreaterThan(4000);
+		expect(excerptOf(run)).toBe(final);
+	});
+
+	it("a run with tool calls whose reply passes 4,000 characters: cut there, saying so, narration still out", async () => {
+		const cut = excerptOf(await logOf([narrate(NARRATION, "c1"), say("r".repeat(4500))]));
+		expect(cut).toBe(`${"r".repeat(4000)}\n\n(cut; the full reply is in that session — message it to ask)`);
+	});
+
+	it("a run with no tool call: its whole text, as before", async () => {
+		const run = await logOf([{ events: [{ type: "text_delta", text: "All " }, { type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] }]);
+		expect(excerptOf(run)).toBe("All done.");
 	});
 });
 
