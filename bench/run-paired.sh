@@ -36,6 +36,9 @@ VOID=0
 run_leg() {
 	ARM=$1; RUN=$2
 	echo "--- $TASK $RUN ($ARM)"
+	# BENCH_PRE_LEG (the 0.55.0 kit, a shared workstation): a command run before each leg, before its runner starts the wall
+	# clock, so whatever it waits for is never counted in the leg's wall; unset, nothing runs (the legs as before)
+	if [ -n "${BENCH_PRE_LEG:-}" ]; then sh -c "$BENCH_PRE_LEG" "$TASK" "$RUN" "$ARM" || echo "    (BENCH_PRE_LEG exited non-zero; the leg runs)"; fi
 	if [ "$TASK" = T5 ]; then
 		KISO_ROUND="$ROUND" KISO_BIN="$(bin_for "$ARM")" KISO_VERSION="" sh "$B/run-t5.sh" kiso "$RUN" || echo "    (runner exited non-zero; its status file is the record)"
 	elif [ "$TASK" = T6 ]; then
