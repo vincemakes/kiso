@@ -190,6 +190,39 @@ describe("R4: the HTTP + SSE transport", () => {
 		expect(((await (await fetch(`${h.base}/s/state`)).json()) as { openRun: unknown }).openRun).toBeNull();
 	});
 
+	// ADR-0038: uncertain belongs to the crash window. A call a live run is executing has started and not ended, and the
+	// ledger counts it; the snapshot must not offer it for a verdict, and a verdict on it is refused.
+	it("a call executing in a live run is not uncertain: the snapshot has none, a verdict is 409; after the run, still none", async () => {
+		const gated = gatedTool("t");
+		const h = await host({ tools: [gated.tool] });
+		expect((await h.post("/s/run", { input: "go" })).status).toBe(202);
+		const snap = async () => (await (await fetch(`${h.base}/s`)).json()) as { running: boolean; openRun: string | null; uncertain: unknown[] };
+		for (let i = 0; i < 100 && !h.service.events("s").some((e) => e.type === "tool_execution_started"); i++) await new Promise((r) => setTimeout(r, 20));
+		const [inFlight] = await h.service.uncertainExecutions("s"); // the ledger's view, which the transport must not pass on
+		expect(inFlight).toBeDefined();
+		expect(await snap()).toMatchObject({ running: true, uncertain: [] });
+		const verdict = await h.post("/s/uncertain", { executionId: inFlight!.executionId, resolution: "rerun" });
+		expect(verdict.status).toBe(409);
+		expect((await verdict.json()) as WireError).toMatchObject({ code: "in_flight", message: "a run is live: its actions are not uncertain" });
+		gated.release();
+		for (let i = 0; i < 100 && (await snap()).running; i++) await new Promise((r) => setTimeout(r, 20));
+		expect(await snap()).toMatchObject({ running: false, openRun: null, uncertain: [] });
+		expect(h.service.events("s").some((e) => e.type === "tool_execution_resolved")).toBe(false); // no verdict was recorded
+		expect(h.service.events("s").at(-1)).toMatchObject({ type: "terminal", outcome: { kind: "completed" } });
+	});
+
+	it("the crash window still reports it: a started call in a run no process holds is uncertain, and a verdict is taken", async () => {
+		const h = await host();
+		await h.store.append("s", "r-dead", { seq: 0, type: "user_input", content: "go" });
+		await h.store.append("s", "r-dead", { seq: 1, type: "tool_call_end", callId: "c1", name: "t", input: {} });
+		await h.store.append("s", "r-dead", { seq: 2, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "t", input: {} });
+		const state = (await (await fetch(`${h.base}/s`)).json()) as { running: boolean; openRun: string | null; uncertain: { executionId: string }[] };
+		expect(state).toMatchObject({ running: false, openRun: "r-dead", uncertain: [{ executionId: "ex-1", callId: "c1", name: "t" }] });
+		const verdict = await h.post("/s/uncertain", { executionId: "ex-1", resolution: "abandoned" });
+		expect(verdict.status).toBe(200);
+		expect(await verdict.json()).toEqual({ remaining: 0 });
+	});
+
 	it("a parked run: abort → 409 parked with the approval; approve → 200 needsResume false; then completed", async () => {
 		const h = await host({
 			script: callThen("deploy"),

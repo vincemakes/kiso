@@ -7,7 +7,7 @@ import { Turn } from "./Turn.js";
 import { isInterrupted, isLive } from "../state/model.js";
 import { READING } from "../state/reading.js";
 import type { Session } from "../state/store.js";
-import { ResumeCard, VerdictPanel } from "./Interrupt.js";
+import { ResumeCard, VerdictPanel, uncertainOf } from "./Interrupt.js";
 import { t } from "../i18n/index.js";
 import { Copy, I } from "./Icons.js";
 import { InboxRows } from "./PeerRows.js";
@@ -82,7 +82,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);
-	const uncertain = (session.state.snapshot?.uncertain.length ?? 0) > 0;
+	const uncertain = uncertainOf(session.state).length > 0; // never while a run is live (ADR-0038)
 	const held = uncertain ? t.verdictFirst : null;
 	const message = session.message();
 	// Stick to the bottom while the person is there. Once they scroll up, the view is never moved for them: whatever the content does
