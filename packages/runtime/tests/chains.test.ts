@@ -110,6 +110,15 @@ describe("the excerpt is the child's last reply, from its real log", () => {
 		expect(cut).toBe(`${"r".repeat(4000)}\n\n(cut; the full reply is in that session — message it to ask)`);
 	});
 
+	it("a run that fails after a tool's result, with nothing said since: the text before it, never an empty notice", async () => {
+		const run = await logOf([narrate("Checking the importer before I change it.", "c1")]); // the script ends: the next request fails
+		expect(run.at(-1)).toMatchObject({ type: "terminal" });
+		expect(run.map((e) => e.type).lastIndexOf("tool_result")).toBeGreaterThan(run.map((e) => e.type).lastIndexOf("text_delta"));
+		const notice = completionNotice({ run, firstRun: true, parent: "k/p", tasksRunning: false, waiting: false })!;
+		expect(notice.state).toBe("failed");
+		expect(notice.excerpt).toBe("Checking the importer before I change it.");
+	});
+
 	it("a run with no tool call: its whole text, as before", async () => {
 		const run = await logOf([{ events: [{ type: "text_delta", text: "All " }, { type: "text_delta", text: "done." }, { type: "stop", reason: "end_turn" }] }]);
 		expect(excerptOf(run)).toBe("All done.");

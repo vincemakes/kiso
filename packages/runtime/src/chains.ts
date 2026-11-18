@@ -90,10 +90,14 @@ export function completionNotice(input: {
 	const terminal = [...input.run].reverse().find((e) => e.type === "terminal");
 	// the reply is the run's last assistant message: the text after its last boundary. The durable log carries no assistant_start
 	// (adapters never emit one); a message's boundaries there are a tool's result and an admitted line. Text before a tool call is
-	// that step's narration, never the reply. A run with no tool call: everything after its line.
-	const types = input.run.map((e) => e.type);
-	const last = Math.max(types.lastIndexOf("tool_result"), types.lastIndexOf("user_input"), types.lastIndexOf("assistant_start"));
-	const reply = input.run.slice(last + 1).flatMap((e) => (e.type === "text_delta" ? [e.text] : [])).join("");
+	// that step's narration, never the reply. A run with no tool call: everything after its line. When the last stretch has no
+	// text (the run failed or was stopped after a tool's result, or a line came in after the reply), the last stretch that has some.
+	const stretches: string[] = [""];
+	for (const e of input.run) {
+		if (e.type === "tool_result" || e.type === "user_input" || e.type === "assistant_start") stretches.push("");
+		else if (e.type === "text_delta") stretches[stretches.length - 1] += e.text;
+	}
+	const reply = [...stretches].reverse().find((t) => t !== "") ?? "";
 	const state: CompletionState = input.waiting ? "waiting on you" : terminal?.type === "terminal" && terminal.outcome.kind !== "completed" ? "failed" : input.tasksRunning ? "ended with tasks still running" : "finished";
 	// characters for the reader, bytes for the inbox (16 KB a message): wide characters are cut sooner, so the notice always fits
 	let cut = [...reply].slice(0, EXCERPT_CHARS).join("");
