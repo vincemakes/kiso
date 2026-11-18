@@ -96,6 +96,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		dir,
 		prefix,
 		model: (ctx) => options.settings.model(ctx),
+		buried: (sessionId) => options.settings.buried(key, sessionId),
 		tierOf: (sessionId) => options.settings.tierOf(sessionId),
 		checkRunners: () => options.settings.checks(),
 		secretEnvNames: options.settings.secretEnvNames(),
@@ -276,6 +277,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
 				return void res.end(JSON.stringify(answer.body));
 			}
 			const space = other === null ? current : spaceFor(other[1]!);
+			// a deleted Work's id answers 404 before the session layer sees it: nothing opens it, writes its lock or its meta
+			const id = /\/v1\/sessions\/([^/?]+)/.exec(url.pathname)?.[1];
+			if (space !== null && id !== undefined && options.settings.buried(space.key, decodeURIComponent(id))) return refuse(res, 404, "this Work was deleted");
 			if (space === null || !(await space.handler.handle(req, res))) {
 				res.writeHead(404);
 				res.end();

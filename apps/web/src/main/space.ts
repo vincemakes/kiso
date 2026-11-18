@@ -53,6 +53,8 @@ export interface SpaceOptions {
 	readonly ask?: AskBridge;
 	/** ADR-0062: the sessions extension is on; a new Work is created with it */
 	readonly sessions?: SessionsHost;
+	/** a deleted Work's tombstone: such an id is never opened (no lock, no meta written for it) */
+	readonly buried?: (sessionId: string) => boolean;
 	/** after each run has settled (however short): the host's what-next, read from the store */
 	readonly onSettled?: (sessionId: string, runId: string, store: SessionStore) => void;
 }
@@ -165,6 +167,7 @@ export function createSpace(options: SpaceOptions): Space {
 			},
 		},
 		open: async (sessionId) => {
+			if (options.buried?.(sessionId) === true) throw new Error(`the Work ${sessionId} was deleted`); // whatever path asked
 			opened.add(sessionId);
 			const sessionsExt = options.sessions === undefined ? undefined : sessionsFor(options.dir, { key: options.key, sessionId }, options.sessions);
 			return createWebAgent({
