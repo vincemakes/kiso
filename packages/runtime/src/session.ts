@@ -1591,44 +1591,44 @@ export class AgentSession {
 		// round 4: the verdict is attributed to the ORIGINAL run of the execution
 		// — never the fake runId "resolution".
 		const runId = this.runIdFor(executionId);
+		// the verdict and the result it fills are appended together, nothing awaited between: a run resuming at the same moment
+		// reads both or neither, never a verdict whose result is missing (it would fill its own and this one would be skipped)
+		const filled = this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId);
+		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT — the normal live path emits the result
+		// with tags before the pause, so a crash-window repair reproduces them
+		const receipt = [...this.log.all]
+			.reverse()
+			.find(
+				(e): e is Event & { type: "tool_execution_failed" | "tool_execution_succeeded"; tags?: readonly string[] } =>
+					(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") && e.executionId === executionId,
+			);
+		// a host that knows the tool may say what the model should do instead (ADR-0062 § 10c: a question cut off is asked again)
+		const denial = content !== undefined ? { content, errorKind: "precondition" as const } : denialResult(
+			resolution === "rerun"
+				? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
+				: "abandoned by human decision — the interrupted attempt must not be treated as applied",
+		);
 		const resolved = this.log.append({
 			type: "tool_execution_resolved",
 			executionId,
 			callId: record.callId,
 			resolution,
 		});
-		await this.persist(runId, resolved);
-		// round 4: the fill is keyed by THIS execution — a tool_result belonging to
-		// a different (same-callId) execution must not suppress the verdict's
-		// model-facing result, and the fill itself carries the executionId.
-		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT —
-		// the normal live path emits the result with tags before the pause,
-		// so a crash-window repair reproduces them.
-		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
-			// a host that knows the tool may say what the model should do instead (ADR-0062 § 10c: a question cut off is asked again)
-			const denial = content !== undefined ? { content, errorKind: "precondition" as const } : denialResult(
-				resolution === "rerun"
-					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
-					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
-			);
-			const receipt = [...this.log.all]
-				.reverse()
-				.find(
-					(e): e is Event & { type: "tool_execution_failed" | "tool_execution_succeeded"; tags?: readonly string[] } =>
-						(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") &&
-						e.executionId === executionId,
-				);
-			const result = this.log.append({
-				type: "tool_result",
-				callId: record.callId,
-				content: denial.content,
-				isError: true,
-				errorKind: denial.errorKind,
-				...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),
-				executionId: record.executionId,
-			});
-			await this.persist(runId, result);
-		}
+		// round 4: the fill is keyed by THIS execution — a tool_result belonging to a different (same-callId) execution must not
+		// suppress the verdict's model-facing result, and the fill itself carries the executionId
+		const result = filled
+			? null
+			: this.log.append({
+					type: "tool_result",
+					callId: record.callId,
+					content: denial.content,
+					isError: true,
+					errorKind: denial.errorKind,
+					...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),
+					executionId: record.executionId,
+				});
+		// both writes are queued now, in order (the store keeps one queue per session): a run's next event cannot land between them
+		await Promise.all([this.persist(runId, resolved), ...(result !== null ? [this.persist(runId, result)] : [])]);
 	}
 
 	/** The runId that owns an execution — from its durable started record. */
