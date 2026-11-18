@@ -9,7 +9,8 @@ import { hasSessionsTools, markSessionsTools, readSessionName, readStartedBy, wr
 import { ChainBudget } from "../src/chains.js";
 import { peerMessageId, readInbox, writeMessage } from "../src/inbox.js";
 import { heldElsewhere } from "../src/lock-adapter.js";
-import { LIST_SESSIONS, SESSIONS_REFUSAL, refusingSessionsExtension, shortRefs } from "../src/sessions-tools.js";
+import { createHash } from "node:crypto";
+import { LIST_SESSIONS, SESSIONS_REFUSAL, START_SESSION, refusingSessionsExtension, shortRefs } from "../src/sessions-tools.js";
 
 const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 
@@ -34,6 +35,18 @@ describe("the sessions tools' mark", () => {
 		const s = await agent.session({ id: "q" });
 		for await (const _ of s.run("first")) void _;
 		expect(hasSessionsTools(store.root, store.fork("q").id)).toBe(false);
+	});
+});
+
+// the description the choice eval v3 measures (owner, 2026-11-18): a change to it is a new candidate, never a quiet edit
+describe("start_session's description", () => {
+	it("is the eval v3 text: 1,780 bytes, the tool entry 2,247 bytes and digest 2a543634a20996a4", () => {
+		const sorted = (v: unknown): unknown => (Array.isArray(v) ? v.map(sorted) : v !== null && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted((v as Record<string, unknown>)[k])])) : v);
+		const entry = JSON.stringify(sorted({ type: "function", function: { name: START_SESSION.name, description: START_SESSION.description, parameters: START_SESSION.parameters } }));
+		expect(Buffer.byteLength(START_SESSION.description)).toBe(1780);
+		expect(START_SESSION.description.split("\n")).toHaveLength(9);
+		expect(Buffer.byteLength(entry)).toBe(2247);
+		expect(createHash("sha256").update(entry).digest("hex").slice(0, 16)).toBe("2a543634a20996a4");
 	});
 });
 
