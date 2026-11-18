@@ -197,10 +197,11 @@ export function createSpace(options: SpaceOptions): Space {
 					if (options.sessions !== undefined) {
 						session.usePeers({ root: options.dir, onWake: wake, mayWake: options.sessions.mayWake });
 						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
-						for (const u of session.uncertainExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
+						for (const u of session.interruptedExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
 					}
-					// ADR-0062 § 10c: a question cut off by a restart is asked again when the run resumes (ask_user is idempotent)
-					for (const u of session.uncertainExecutions()) if (u.name === "ask_user") void session.resolveUncertain(u.executionId, "rerun", ASKED_AGAIN).catch(() => undefined);
+					// ADR-0062 § 10c: a question cut off by a restart is asked again when the run resumes (ask_user is idempotent); only an
+					// interrupted one, never one a live run is still asking (ADR-0038)
+					for (const u of session.interruptedExecutions()) if (u.name === "ask_user") void session.resolveUncertain(u.executionId, "rerun", ASKED_AGAIN).catch(() => undefined);
 				},
 			});
 		},
