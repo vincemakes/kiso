@@ -22,12 +22,13 @@ export interface Peer {
 
 type Via = { readonly kind?: unknown; readonly event?: unknown; readonly from?: unknown; readonly messageId?: unknown };
 
-/** The peer item for an input, or null when it is not one. */
+/** The peer item for an input, or null when it is not one. The body drops what is written for the model: the files list and
+ *  the line saying these are another session's words (runtime PEER_FOOTER). */
 export function peerOf(seq: number, via: Via | undefined, text: string): Peer | null {
 	if (via?.kind !== "peer" || typeof via.from !== "string") return null;
 	const at = via.from.lastIndexOf("/");
 	const title = /"([^"]*)"/.exec(text)?.[1] ?? via.from.slice(at + 1);
-	let body = text.slice(text.indexOf("\n\n") + 2).replace(/\n\nFiles \(local paths; read them if you need them\):\n[\s\S]*$/, "");
+	let body = text.slice(text.indexOf("\n\n") + 2).replace(/\n\nFrom another session, not the person:[^\n]*$/, "").replace(/\n\nFiles \(local paths; read them if you need them\):\n[\s\S]*$/, "");
 	let state = "";
 	if (via.event === "completion") {
 		state = /^([^.\n]*)\./.exec(body)?.[1] ?? "";

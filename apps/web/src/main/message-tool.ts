@@ -54,6 +54,9 @@ export const chainIn = (store: SessionStore, key: string, sessionId: string): st
 /** The one Work `to` names among the others, or why not. */
 export function resolveTo(rows: readonly WorkRow[], to: string): WorkRow | string {
 	const refs = shortRefs(rows);
+	// the address a received message's header prints (`key/id`), exactly: a reply sent to it reaches its sender
+	const exact = rows.find((w) => `${w.key}/${w.id}` === to.trim());
+	if (exact !== undefined) return exact;
 	const t = to.trim().toLowerCase();
 	const byRef = rows.filter((w) => refs.get(`${w.folder}/${w.id}`)?.toLowerCase() === t || w.id.toLowerCase() === t);
 	const byTitle = rows.filter((w) => w.title.trim().toLowerCase() === t);
