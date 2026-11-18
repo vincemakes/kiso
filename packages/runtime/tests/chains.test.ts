@@ -64,12 +64,22 @@ describe("completionNotice", () => {
 		expect(completionNotice({ ...base, run: [u(10), peer(11, "k/p#0"), ...reply("x"), end("completed")], firstRun: false })?.state).toBe("finished");
 		expect(completionNotice({ ...base, run: [u(10), peer(11, "k/q#0", "k/q"), ...reply("x"), end("completed")], firstRun: false }), "another session's message: no").toBeNull();
 	});
-	it("says how the run ended, never 'finished' for a failure or work left running; the excerpt is 400 characters at most", () => {
+	it("says how the run ended, never 'finished' for a failure or work left running", () => {
 		const base = { parent: "k/p", firstRun: true, waiting: false };
 		expect(completionNotice({ ...base, tasksRunning: false, run: [u(0), end("error")] })?.state).toBe("failed");
 		expect(completionNotice({ ...base, tasksRunning: true, run: [u(0), end("completed")] })?.state).toBe("ended with tasks still running");
 		expect(completionNotice({ ...base, tasksRunning: false, waiting: true, run: [u(0), end("completed")] })?.state).toBe("waiting on you");
-		expect(completionNotice({ ...base, tasksRunning: false, run: [u(0), ...reply("y".repeat(500)), end("completed")] })?.excerpt).toHaveLength(401);
+	});
+	it("the excerpt: a reply up to 4,000 characters whole; a longer one cut there, saying so and where the rest is", () => {
+		const base = { parent: "k/p", firstRun: true, waiting: false, tasksRunning: false };
+		const excerpt = (text: string) => completionNotice({ ...base, run: [u(0), ...reply(text), end("completed")] })?.excerpt;
+		expect(excerpt("short reply")).toBe("short reply");
+		expect(excerpt("y".repeat(4000)), "exactly the cap: whole").toBe("y".repeat(4000));
+		const cut = excerpt("y".repeat(5000))!;
+		expect(cut.startsWith("y".repeat(4000)) && !cut.startsWith("y".repeat(4001))).toBe(true);
+		expect(cut.endsWith("\n\n(cut; the full reply is in that session — message it to ask)")).toBe(true);
+		const wide = excerpt("😀".repeat(4000))!; // 16,000 bytes: cut by bytes too, so the notice fits the 16 KB inbox message
+		expect(Buffer.byteLength(wide) < 12_100 && wide.endsWith("message it to ask)") && !wide.includes("\uFFFD")).toBe(true);
 	});
 });
 

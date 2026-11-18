@@ -68,6 +68,12 @@ export function reachesFurther(sender: { readonly tier: string; readonly added: 
 	return (RANK[receiver.tier] ?? 9) > (RANK[sender.tier] ?? -1) || receiver.added.some((f) => !sender.added.includes(f));
 }
 
+/** ADR-0062 § 7 (owner, 2026-11-17, option a): the child's last reply rides the notice up to this many characters; a longer one
+ *  is cut there and says so, so the parent asks the child instead of reading its log file. */
+export const EXCERPT_CHARS = 4000;
+const EXCERPT_BYTES = 12_000;
+const EXCERPT_CUT = "\n\n(cut; the full reply is in that session — message it to ask)";
+
 export type CompletionState = "finished" | "failed" | "waiting on you" | "ended with tasks still running";
 
 /** The notice a child owes its parent for the run that just ended, or null: owed for its first run, and for a run that
@@ -85,7 +91,10 @@ export function completionNotice(input: {
 	const last = input.run.map((e) => e.type).lastIndexOf("assistant_start");
 	const reply = input.run.slice(Math.max(0, last)).flatMap((e) => (e.type === "text_delta" ? [e.text] : [])).join("");
 	const state: CompletionState = input.waiting ? "waiting on you" : terminal?.type === "terminal" && terminal.outcome.kind !== "completed" ? "failed" : input.tasksRunning ? "ended with tasks still running" : "finished";
-	return { state, excerpt: reply.length > 400 ? `${reply.slice(0, 400)}…` : reply };
+	// characters for the reader, bytes for the inbox (16 KB a message): wide characters are cut sooner, so the notice always fits
+	let cut = [...reply].slice(0, EXCERPT_CHARS).join("");
+	while (Buffer.byteLength(cut) > EXCERPT_BYTES) cut = [...cut].slice(0, -64).join("");
+	return { state, excerpt: cut.length < reply.length ? `${cut}${EXCERPT_CUT}` : reply };
 }
 
 /** ADR-0062 § 7: the completion message a child (`from`) writes to its parent's inbox for the run `runId` that just settled,
