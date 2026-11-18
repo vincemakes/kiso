@@ -36,12 +36,16 @@ export async function notifyParent(store: SessionStore, key: string, sessionId: 
 	const parent = readStartedBy(store.root, sessionId);
 	if (parent === null) return;
 	const [pKey, pId] = [parent.slice(0, parent.lastIndexOf("/")), parent.slice(parent.lastIndexOf("/") + 1)];
-	if (!existsSync(join(host.dirOf(pKey), `${pId}.meta.json`))) return; // the parent was deleted: nothing is sent, and nothing of it is made again
+	const gone = (): boolean => !existsSync(join(host.dirOf(pKey), `${pId}.meta.json`)); // the parent was deleted: nothing is sent, and nothing of it is made again
+	if (gone()) return;
 	const fromTitle = (await host.list()).works.find((w) => w.key === key && w.id === sessionId)?.title ?? sessionId;
 	const forkAfterSeq = readForkOrigin(store.root, sessionId)?.afterSeq; // a fork opens on the parent's runs
 	const notice = completionMessage({ records: store.load(sessionId), runId, from: `${key}/${sessionId}`, fromTitle, parent, tasksRunning, ...(forkAfterSeq !== undefined ? { forkAfterSeq } : {}) });
 	if (notice === null) return;
+	// asked again right before each write, with nothing awaited between: a delete during the scan above lands before the check, never after it
+	if (gone()) return;
 	await writeMessage(host.dirOf(pKey), pId, notice);
+	if (gone()) return; // deleted while it was written: never reopened by delivering
 	await host.deliver(pKey, pId).catch(() => undefined);
 }
 
