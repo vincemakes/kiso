@@ -1,7 +1,7 @@
 # Sessions and messages in kiso web (preview)
 
 Works in kiso web can find each other, write to each other, and start new Works. It is a preview and
-off by default. The decision record is ADR-0062.
+off by default. The decision record is [ADR-0062](adrs/0062-sessions-and-messages.md).
 
 ## Turning it on
 
