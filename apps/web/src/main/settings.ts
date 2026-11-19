@@ -9,9 +9,11 @@ import {
 	loadUserConfig,
 	mergeConfigs,
 	preferences,
+	preferencesPath,
 	profileAvailable,
 	rememberEffort,
 	startingEffort,
+	usePreferences,
 	type KisoConfig,
 	type ModelProfile,
 } from "@vincemakes/kiso-code/config";
@@ -56,6 +58,8 @@ interface Own {
 	/** the pull request each Work made or was linked to */
 	readonly prs?: Readonly<Record<string, Pr>>;
 	readonly recent?: readonly string[];
+	/** Works deleted here, as `key/id`, the latest first: never opened again, whatever asks (a tab still open, a poll) */
+	readonly deleted?: readonly string[];
 }
 
 interface Work {
@@ -80,6 +84,7 @@ const isTier = (value: unknown): value is PermissionMode => OFFERED_MODES.some((
 
 export class Settings {
 	readonly #file: string;
+	readonly #prefs: string;
 	/** a scripted model (the proofs); the shared configuration is then not read */
 	readonly #fixed: ModelChoice | null;
 	/** the tier a Work starts with when nothing was set for it */
@@ -89,6 +94,8 @@ export class Settings {
 
 	constructor(home: string, fixed: ModelChoice | null, mode: PermissionMode) {
 		this.#file = join(home, "desktop.json");
+		this.#prefs = preferencesPath(home); // the terminal's remembered choices (preferences.json): one file, both apps
+		usePreferences(this.#prefs);
 		this.#fixed = fixed;
 		const saved = this.#read().mode;
 		this.#default = isTier(saved) ? saved : mode;
@@ -176,6 +183,7 @@ export class Settings {
 	/** The effort a Work asked for (when it is one of the profile's levels), else the terminal's remembered one for the profile. */
 	#effortOf(name: string, session?: string): string | undefined {
 		const own = session === undefined ? undefined : this.#read().works?.[session]?.effort;
+		if (own === undefined) usePreferences(this.#prefs); // read again: a choice the terminal made since counts
 		return own ?? preferences().effort?.[name];
 	}
 
@@ -186,14 +194,16 @@ export class Settings {
 
 	/** A fork starts with its parent's own tier, model and effort, and remembers where it came from. */
 	forked(parent: string, child: string, fork: Fork): void {
+		this.started(parent, child);
+		this.write({ forks: { ...this.#read().forks, [child]: fork } });
+	}
+
+	/** ADR-0062: a Work another started (or forked) takes its starter's tier, model and effort. */
+	started(parent: string, child: string): void {
 		const own = this.#read();
 		const tier = own.tiers?.[parent];
 		const work = own.works?.[parent];
-		this.write({
-			...(tier !== undefined ? { tiers: { ...own.tiers, [child]: tier } } : {}),
-			...(work !== undefined ? { works: { ...own.works, [child]: work } } : {}),
-			forks: { ...own.forks, [child]: fork },
-		});
+		this.write({ ...(tier !== undefined ? { tiers: { ...own.tiers, [child]: tier } } : {}), ...(work !== undefined ? { works: { ...own.works, [child]: work } } : {}) });
 	}
 
 	forkOf(session: string): Fork | undefined {
@@ -226,6 +236,16 @@ export class Settings {
 		const own = this.#read();
 		const drop = <T>(m: Readonly<Record<string, T>> | undefined): Record<string, T> => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => k !== session));
 		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session), prs: drop(own.prs) });
+	}
+
+	/** A deleted Work's tombstone: its id is never opened again in that folder (kept across restarts, the latest 2,000). */
+	bury(key: string, session: string): void {
+		const id = `${key}/${session}`;
+		this.write({ deleted: [id, ...(this.#read().deleted ?? []).filter((d) => d !== id)].slice(0, 2000) });
+	}
+
+	buried(key: string, session: string): boolean {
+		return this.#read().deleted?.includes(`${key}/${session}`) ?? false;
 	}
 
 	restoreWork(session: string, work: Work | undefined): void {
@@ -289,6 +309,7 @@ export class Settings {
 			const next: Work = { ...(profileName !== undefined ? { profile: profileName } : {}), ...(effort !== undefined ? { effort } : {}) };
 			if (next.profile === was.profile && next.effort === was.effort) return null;
 			this.write({ works: { ...this.#read().works, [session]: next } });
+			if (patch.effort !== undefined && effort === patch.effort && profileName !== undefined) rememberEffort(profileName, effort); // new Works start there, as the terminal's choice does
 			return session;
 		}
 		if (patch.profile !== undefined && config.models?.[patch.profile] !== undefined) {

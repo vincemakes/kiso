@@ -2,13 +2,13 @@ import { memo, useContext, useEffect, useLayoutEffect, useRef, useState, type Re
 import type { TaskRow } from "../../shared/frames.js";
 import { ago, fmt, span, t, tokens } from "../i18n/index.js";
 import { split, type Ask, type Attached, type Turn as TurnModel } from "../state/model.js";
-import { Answer } from "./Answer.js";
+import { Answer, CopyButton } from "./Answer.js";
 import { Approval } from "./Approval.js";
 import { ForkContext, RunContext, WorkContext } from "./links.js";
 import { useNow } from "./useNow.js";
 import { Process } from "./Process.js";
 import { artifactsOf, focusOf, nameOf, Picture } from "./Artifacts.js";
-import { artifactIcon, Check, Copy, Fork } from "./Icons.js";
+import { artifactIcon, Check, Copy, Fork, I } from "./Icons.js";
 import { LightboxContext, useOpenArtifact } from "./Lightbox.js";
 import type { ArtifactRef } from "../../shared/frames.js";
 
@@ -21,6 +21,8 @@ interface Props {
 	readonly interrupted: boolean;
 	/** null while what is drawn is from before a switch away: the approval cards are shown, and cannot be answered yet */
 	readonly onAnswer: ((decisionId: string, allow: boolean) => void) | null;
+	/** ADR-0062 § 10b: the last line can be taken back (null: it is running, so the button waits) */
+	readonly onRewind?: (() => void) | null;
 }
 
 function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
@@ -33,16 +35,6 @@ function Footer({ turn }: { readonly turn: TurnModel }): ReactNode {
 			{fmt(f.cacheRate === null ? t.footerNoCache : t.footer, values)}
 			{f.tokPerSec != null ? fmt(t.footerRate, { rate: f.tokPerSec }) : null}
 		</div>
-	);
-}
-
-/** Copy a line to the clipboard; the icon says it was, for a moment. */
-function CopyButton({ text }: { readonly text: string }): ReactNode {
-	const [done, setDone] = useState(false);
-	return (
-		<button className="ab" title={done ? t.copied : t.copy} aria-label={t.copy} data-act="copy" onClick={() => void navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}>
-			{done ? <Check /> : <Copy />}
-		</button>
 	);
 }
 
@@ -183,7 +175,7 @@ function RunEnd({ turn }: { readonly turn: TurnModel }): ReactNode {
 }
 
 /** One run: the person's line, the process, the approvals still open, the answer, what it made, the live row or the footer. */
-export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: Props): ReactNode {
+export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted, onRewind }: Props): ReactNode {
 	const { process: items, answer, openAsks } = split(turn);
 	const inProcess = items.filter((i) => !(i.kind === "ask" && i.decision === "open"));
 	const live = turn.phase === "running" && !interrupted;
@@ -200,11 +192,12 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted }: P
 			{turn.user !== "" ? (
 				<div className="racts me-acts" data-kind="me-acts">
 					<CopyButton text={turn.user} />
+					{onRewind === undefined ? null : <button className="ab" disabled={onRewind === null} title={onRewind === null ? t.rewindBusy : t.rewind} aria-label={t.rewind} onClick={() => onRewind?.()} data-act="rewind"><I.refresh /></button>}
 				</div>
 			) : null}
 			{inProcess.length > 0 || live ? <Process turn={turn} items={inProcess} tasks={tasks} onAnswer={onAnswer} interrupted={interrupted} /> : null}
 			{openAsks.map((ask: Ask) => (
-				<Approval key={ask.id} ask={ask} onAnswer={onAnswer} />
+				<Approval key={ask.id} ask={ask} onAnswer={interrupted ? null : onAnswer} />
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <RunEnd turn={turn} /> : null}

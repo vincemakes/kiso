@@ -2,6 +2,7 @@ import type { SessionState, WireEvent } from "@vincemakes/kiso-protocol";
 import type { AtFrame, TaskRow, TasksFrame, ToolOutputFrame, UsageFrame } from "../../shared/frames.js";
 import { noticeOf } from "./notice.js";
 import { stepOfTask, titleOf } from "./taskname.js";
+import { peerOf, type Peer } from "./peers.js";
 
 /**
  * The stream's model: wire events and host frames in, the turns the stream
@@ -31,7 +32,7 @@ export interface Text {
 	text: string;
 }
 
-export type StepStatus = "calling" | "waiting" | "running" | "done" | "failed" | "denied";
+export type StepStatus = "calling" | "waiting" | "running" | "done" | "failed" | "denied" | "interrupted";
 
 export interface Step {
 	readonly kind: "step";
@@ -61,12 +62,7 @@ export interface Ask {
 }
 
 /** A line the person added while the run was live (a steer). */
-export interface Steer {
-	readonly kind: "steer";
-	readonly id: string;
-	readonly seq: number;
-	readonly text: string;
-}
+export interface Steer { readonly kind: "steer"; readonly id: string; readonly seq: number; readonly text: string }
 
 /** A runtime notice the model was given (a task ended): drawn as a quiet line, never as the person's. */
 export interface Notice {
@@ -80,7 +76,7 @@ export interface Notice {
 	readonly code: string;
 }
 
-export type Item = Thinking | Text | Step | Ask | Steer | Notice;
+export type Item = Thinking | Text | Step | Ask | Steer | Notice | Peer;
 
 export interface Footer {
 	readonly fresh: number | null;
@@ -206,7 +202,8 @@ export function reduce(s: State, input: Input): State {
 			const text = contentText(e.content);
 			if ((e as { source?: string }).source === "system") {
 				// a runtime notice, not the person: a quiet line inside a live run, nothing otherwise
-				const item: Notice = { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text, (id) => { const st = stepOfTask(s, id); const c = typeof st?.input?.["command"] === "string" ? st.input["command"] : ""; return c === "" ? null : titleOf(c, st?.input?.["description"]); }) };
+				// ADR-0062: a line from another session is its own row, not a notice
+				const item: Notice | Peer = peerOf(e.seq, (e as { via?: Parameters<typeof peerOf>[1] }).via, text) ?? { kind: "notice", id: `n${e.seq}`, seq: e.seq, ...noticeOf(text, (id) => { const st = stepOfTask(s, id); const c = typeof st?.input?.["command"] === "string" ? st.input["command"] : ""; return c === "" ? null : titleOf(c, st?.input?.["description"]); }) };
 				if (turn !== undefined && turn.phase === "running") turn.items.push(item);
 				// no run live: a task's end woke the Work, and this input starts its run, which opens on the notice
 				else s.turns.push({ id: `t${e.seq}`, user: "", woke: true, pictures: [], files: [], items: [item], phase: "running", startedAt: null, endedAt: null, outcome: null, detail: null, live: null, footer: null, endSeq: null });
@@ -224,6 +221,9 @@ export function reduce(s: State, input: Input): State {
 			}
 			return s;
 		}
+		// ADR-0062 § 10b: a line taken back (a veto, no content) goes with the run it started
+		case "user_input_replaced":
+			return (e.content === null && ((at) => at >= 0 && s.turns.splice(at, 1))(s.turns.findIndex((u) => u.id === `t${e.replaces}`)), s);
 		case "thinking": {
 			if (turn === undefined) return s;
 			let item = turn.items.at(-1);
@@ -288,10 +288,11 @@ export function reduce(s: State, input: Input): State {
 			return s;
 		}
 		case "tool_execution_succeeded":
+		case "tool_execution_resolved": // cut off by a restart, then settled by "run it again" or "skip it": interrupted, not an error
 		case "tool_execution_failed": {
 			const step = stepOf(turn, e.callId);
 			if (step === undefined) return s;
-			step.status = e.type === "tool_execution_failed" ? "failed" : "done";
+			step.status = e.type === "tool_execution_failed" ? "failed" : e.type === "tool_execution_resolved" ? "interrupted" : "done";
 			if (e.type === "tool_execution_failed") step.error = e.error;
 			note(step);
 			return s;
@@ -299,8 +300,7 @@ export function reduce(s: State, input: Input): State {
 		case "tool_result": {
 			const step = stepOf(turn, e.callId);
 			if (step === undefined) return s;
-			if (e.isError && step.status !== "denied") step.status = "failed";
-			else if (!e.isError && step.status !== "failed") step.status = "done";
+			step.status = e.isError ? (step.status === "denied" || step.status === "interrupted" ? step.status : "failed") : step.status === "failed" ? "failed" : "done";
 			note(step);
 			return s;
 		}

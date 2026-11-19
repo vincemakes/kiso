@@ -7,6 +7,7 @@ gate compares this list with `package.json`.
 
 | Package | Why |
 |---|---|
+| `@vincemakes/kiso-ask-ext` | `ask_user`: the terminal's own question tool, given the web's `ui.ask` bridge (ADR-0062 § 10c) |
 | `@vincemakes/kiso-client` | the typed client the page and the proofs use over the loopback |
 | `@vincemakes/kiso-code` | the terminal product's doors: `./policy` (prompt, tool rules, floor, guards, mode tiers) and `./config` (profiles, sign-in, session folders) |
 | `@vincemakes/kiso-core` | event and tool types, `projectMessages` |

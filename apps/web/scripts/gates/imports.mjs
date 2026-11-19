@@ -20,11 +20,15 @@ const INTERNAL_ALLOWED = {
 	"src/main/context.ts": ["@vincemakes/kiso-runtime/internal"],
 	// a Work's name: the runtime's session-name store, the terminal's rename (no root export carries it)
 	"src/main/names.ts": ["@vincemakes/kiso-runtime/internal"],
+	// ADR-0062: the sessions tools' shared specs, the session's mark, and whether another process holds a Work (no root export carries them)
+	"src/main/sessions-tool.ts": ["@vincemakes/kiso-runtime/internal"],
+	"src/main/message-tool.ts": ["@vincemakes/kiso-runtime/internal"],
+	"src/main/start-session-tool.ts": ["@vincemakes/kiso-runtime/internal"],
 };
 
 /** workspace package name → its `exports` keys (null: no exports map). */
 const packages = new Map();
-for (const base of ["packages", "apps"]) {
+for (const base of ["packages", "apps", "extensions"]) {
 	for (const dir of readdirSync(join(repo, base))) {
 		try {
 			const json = JSON.parse(readFileSync(join(repo, base, dir, "package.json"), "utf8"));

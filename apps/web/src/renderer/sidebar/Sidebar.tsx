@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, t } from "../i18n/index.js";
 import { byFolder, groupWorks, type FolderGroup } from "../state/works.js";
 import type { WorkRow } from "../../shared/history.js";
 import { Chevron, Gear, I, Plus, PullRequest } from "../stream/Icons.js";
 import { Dialog } from "../rail/GitDialogs.js";
+import { byPerson } from "../rail/blur.js";
 import { SideMenu, viewRead, VIEW, type View } from "./SideMenu.js";
 
-export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete";
+export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete" | "delete-tree";
 
 interface Props {
 	readonly works: readonly WorkRow[];
@@ -83,6 +84,12 @@ function WorkMenu({ row, at, onClose, onPick, prOf }: { readonly row: WorkRow; r
 	);
 }
 
+/** A Work and every session nested under it, its folder only (what "Delete all" removes; the host counts the same way). */
+export const subtree = (rows: readonly WorkRow[], row: WorkRow): readonly WorkRow[] => {
+	const out = [row];
+	for (let i = 0; i < out.length; i++) for (const w of rows) if (w.key === row.key && w.parent === out[i]!.id && !out.includes(w)) out.push(w);
+	return out;
+};
 /** A nested session (a fork, under the row it came from) when its parent is among these rows and it is not pinned. */
 const childIn = (rows: readonly WorkRow[], row: WorkRow): boolean => row.parent !== undefined && row.pinned === undefined && rows.some((w) => w.key === row.key && w.id === row.parent);
 /** A folder shows five Works (each with its nested sessions), then "Show N more"; the sidebar twelve folders, then "N more folders". */
@@ -117,8 +124,11 @@ const dotOf = (row: WorkRow): ReactNode => {
 export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onSettings, onAct, onRename, onFork, onLinkPr, prOf }: Props): ReactNode {
 	const [menu, setMenu] = useState<{ readonly row: WorkRow; readonly at: DOMRect } | null>(null);
 	const [renaming, setRenaming] = useState<WorkRow | null>(null);
+	const renamingNow = useRef<WorkRow | null>(null);
+	useLayoutEffect(() => void (renaming !== null && (box.current?.focus(), box.current?.select())), [renaming]);
 	const [draft, setDraft] = useState("");
 	const [deleting, setDeleting] = useState<WorkRow | null>(null);
+	const nestedN = deleting === null ? 0 : subtree(works, deleting).length - 1;
 	const [linking, setLinking] = useState<WorkRow | null>(null);
 	const [prDraft, setPrDraft] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -166,8 +176,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 		setMenu(null);
 		if (what === "rename") {
 			setDraft(row.title);
-			setRenaming(row);
-			requestAnimationFrame(() => box.current?.select());
+			setRenaming((renamingNow.current = row));
 		} else if (what === "fork") onFork(row);
 		else if (what === "pr") open(pr, "_blank", "noopener");
 		else if (what === "link") (setError(null), setPrDraft(""), setLinking(row));
@@ -175,9 +184,11 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 		else if (what === "delete") (setError(null), setDeleting(row));
 		else act(row, what);
 	};
-	const keep = (row: WorkRow): void => {
-		setRenaming(null);
-		if (draft.trim() !== row.title) void onRename(row, draft);
+	// Enter and a click away both save (once: the box is gone after the first); Esc leaves it as it was; a blur with nothing typed saves nothing
+	const keep = (row: WorkRow, blur = false): void => {
+		if (!same(renamingNow.current, row)) return;
+		setRenaming((renamingNow.current = null));
+		if (draft.trim() !== row.title && !(blur && draft.trim() === "")) void onRename(row, draft).catch((e: Error) => setError(e.message));
 	};
 	const [shutKids, setShutKids] = useState<readonly string[]>(() => foldsRead(KID_FOLDS));
 	const foldKids = (row: WorkRow): void => {
@@ -206,9 +217,9 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 						onChange={(e) => setDraft(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" && !e.nativeEvent.isComposing) keep(row);
-							else if (e.key === "Escape") setRenaming(null);
+							else if (e.key === "Escape") setRenaming((renamingNow.current = null));
 						}}
-						onBlur={() => setRenaming(null)}
+						onBlur={() => (byPerson() ? keep(row, true) : box.current?.focus())}
 					/>
 				</div>
 			) : (
@@ -358,16 +369,17 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 			{deleting !== null ? (
 				<Dialog
 					kind="delete"
-					title={fmt(t.deleteTitle, { title: deleting.title === "" ? t.untitled : deleting.title })}
+					title={nestedN > 0 ? t.deleteTreeTitle : fmt(t.deleteTitle, { title: deleting.title === "" ? t.untitled : deleting.title })}
 					sub={deleting.folder}
 					busy={busy}
 					error={error}
-					confirm={t.deleteConfirm}
+					confirm={nestedN > 0 ? t.deleteThis : t.deleteConfirm}
+					alt={nestedN > 0 ? { label: fmt(t.deleteAll, { n: nestedN + 1 }), onClick: () => (setDeleting(null), setError(null), void onAct(deleting, "delete-tree").catch((e: Error) => setError(e.message))) } : undefined}
 					danger
 					onCancel={() => setDeleting(null)}
 					onConfirm={() => (setDeleting(null), setError(null), void onAct(deleting, "delete").catch((e: Error) => setError(e.message)))}
 				>
-					<p className="dlg-p" data-kind="delete-what">{fmt(t.deleteWhat, { runs: deleting.runs === 1 ? t.oneRun : fmt(t.nRuns, { n: deleting.runs }) })}</p>
+					<p className="dlg-p" data-kind="delete-what">{nestedN > 0 ? fmt(nestedN === 1 ? t.deleteTreeWhatOne : t.deleteTreeWhat, { title: deleting.title === "" ? t.untitled : deleting.title, n: nestedN }) : fmt(t.deleteWhat, { runs: deleting.runs === 1 ? t.oneRun : fmt(t.nRuns, { n: deleting.runs }) })}</p>
 				</Dialog>
 			) : null}
 			{/* the foot of the sidebar: Settings, one row (the Functions fold that held only it is gone, owner 2026-11-04) */}

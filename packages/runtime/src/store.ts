@@ -61,7 +61,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { isKisoEvent, type Event } from "@vincemakes/kiso-core";
-import { readForkOrigin, readSessionName, type ForkOrigin } from "./profile.js";
+import { readForkOrigin, readSessionName, readStartedBy, type ForkOrigin } from "./profile.js";
 import { forkSession } from "./fork.js";
 import {
 	LockedError,
@@ -103,6 +103,8 @@ export interface SessionMeta {
 	readonly updatedAt: number;
 	/** the session this one was forked from (SessionStore.fork), when it is a fork */
 	readonly forkedFrom?: string;
+	/** ADR-0062: the session that started this one (its id; start_session makes it in the starter's own folder) */
+	readonly startedBy?: string;
 }
 
 /** Session ids become file names — keep them host-safe. */
@@ -177,10 +179,12 @@ function contentText(content: unknown): string {
 }
 
 export function sessionTitle(records: readonly StoreRecord[]): string {
+	// ADR-0062 § 10b: a line the person took back (a veto, no content) never names the session
+	const vetoed = new Set(records.flatMap((r) => (r.event.type === "user_input_replaced" && r.event.content === null ? [r.event.replaces] : [])));
 	const asked = records
-		.map((r) => r.event as { type: string; content?: unknown; via?: { kind?: unknown; line?: unknown } })
+		.map((r) => r.event as { type: string; seq?: number; content?: unknown; via?: { kind?: unknown; line?: unknown } })
 		// ADR-0058: a task notice is the runtime's, never the person's words
-		.filter((e) => e.type === "user_input" && e.via?.kind !== "tasks")
+		.filter((e) => e.type === "user_input" && e.via?.kind !== "tasks" && !vetoed.has(e.seq ?? -1))
 		// 0.40.0: a skill turn is named by what the person TYPED — its
 		// content is a SKILL.md body the person never wrote.
 		.map((e) => (typeof e.via?.line === "string" ? e.via.line : contentText(e.content)).trim())
@@ -575,6 +579,7 @@ export class SessionStore {
 				createdAt: records[0]?.ts ?? 0,
 				updatedAt: records.at(-1)?.ts ?? 0,
 				...((origin) => (origin === null ? {} : { forkedFrom: origin.session }))(readForkOrigin(this.root, id)),
+				...((by) => (by === null ? {} : { startedBy: by.slice(by.lastIndexOf("/") + 1) }))(readStartedBy(this.root, id)),
 			});
 		}
 		return metas.sort((a, b) => a.id.localeCompare(b.id));

@@ -197,7 +197,9 @@ export const NOT_ON_WIRE = ["usage", "stop", "assistant_start", "assistant_end",
  *  holds — leakage by omission is impossible. `seq` and `type` are
  *  implicit on every event. */
 export const WIRE_FIELDS: Readonly<Record<WireEventType, readonly string[]>> = {
-	user_input: ["content", "source"],
+	// ADR-0062: `via` names where a runtime input came from (a message or a completion notice from another session, a task
+	// notice, a skill), so a page draws it from the event itself, alike on a cold open, a reconnect and a replay
+	user_input: ["content", "source", "via"],
 	user_input_replaced: ["replaces", "content", "source"],
 	text_start: [],
 	text_delta: ["text"],
@@ -227,8 +229,12 @@ export interface WireEventBase {
 	readonly type: WireEventType;
 }
 
+/** Where an input came from, as the durable event says (`kind`: "peer" | "tasks" | "skill"); a peer's carries its event
+ *  ("message" | "completion"), the sender's address (`<folder key>/<session id>`), the message id and the chain. */
+export type WireVia = { readonly kind: string } & Readonly<Record<string, unknown>>;
+
 export type WireEvent =
-	| (WireEventBase & { readonly type: "user_input"; readonly content: WireInput; readonly source?: WireSource })
+	| (WireEventBase & { readonly type: "user_input"; readonly content: WireInput; readonly source?: WireSource; readonly via?: WireVia })
 	| (WireEventBase & { readonly type: "user_input_replaced"; readonly replaces: number; readonly content: WireInput | null; readonly source?: WireSource })
 	| (WireEventBase & { readonly type: "text_start" })
 	| (WireEventBase & { readonly type: "text_delta"; readonly text: string })

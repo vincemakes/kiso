@@ -1,5 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "../i18n/index.js";
+import { byPerson } from "./blur.js";
 
 interface Props {
 	/** the Work's name, else its first-request title */
@@ -18,14 +19,19 @@ export function Header({ title, onRename, children }: Props): ReactNode {
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState(title);
 	const box = useRef<HTMLInputElement>(null);
+	const live = useRef(false);
+	const [err, setErr] = useState<string | null>(null);
 	const start = (): void => {
 		setDraft(title);
-		setEditing(true);
-		requestAnimationFrame(() => box.current?.select());
+		setEditing((live.current = true));
 	};
-	const keep = (): void => {
-		setEditing(false);
-		if (draft.trim() !== title) void onRename(draft);
+	// focused and selected before the next paint, so what is typed right after the click replaces the name (a frame callback came late, or never in a hidden window)
+	useLayoutEffect(() => void (editing && (box.current?.focus(), box.current?.select())), [editing]);
+	// Enter and a click away both save (once: the box is gone after the first); Esc leaves it as it was; a blur with nothing typed saves nothing
+	const keep = (blur = false): void => {
+		if (!live.current) return;
+		setEditing((live.current = false));
+		if (draft.trim() !== title && !(blur && draft.trim() === "")) void onRename(draft).then(() => setErr(null), (e: Error) => setErr(e.message));
 	};
 	return (
 		<header className="hdr" data-kind="header">
@@ -40,15 +46,16 @@ export function Header({ title, onRename, children }: Props): ReactNode {
 					onChange={(e) => setDraft(e.target.value)}
 					onKeyDown={(e) => {
 						if (e.key === "Enter" && !e.nativeEvent.isComposing) keep();
-						else if (e.key === "Escape") setEditing(false);
+						else if (e.key === "Escape") setEditing((live.current = false));
 					}}
-					onBlur={() => setEditing(false)}
+					onBlur={() => (byPerson() ? keep(true) : box.current?.focus())}
 				/>
 			) : (
 				<button className="hdr-title" onClick={start} title={t.renameWork} data-field="title">
 					{title}
 				</button>
 			)}
+			{err === null ? null : <span className="hdr-err" data-field="title-error" role="alert">{err}</span>}
 			<span className="grow" />
 			{children}
 		</header>

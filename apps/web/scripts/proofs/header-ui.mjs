@@ -74,7 +74,7 @@ await type("Install steps, shorter");
 await key("Enter");
 const meta = () => JSON.parse(readFileSync(logFile().replace(/\.jsonl$/, ".meta.json"), "utf8"));
 check(await waitUntil(async () => (await text("[data-field=title]")) === "Install steps, shorter" && (await q("[...document.querySelectorAll('.item[data-work=hdr]')].some((e) => e.textContent.includes('Install steps, shorter'))"))), "Enter keeps the name: the header and the sidebar show it");
-check(meta().name === "Install steps, shorter" && logSha() === sha, "the name is in the runtime's own name store, and the log's bytes did not move");
+check((await waitUntil(async () => meta().name === "Install steps, shorter", 10_000)) && logSha() === sha, "the name is in the runtime's own name store, and the log's bytes did not move");
 await app.restart();
 await q("location.reload()");
 await sleep(1500);

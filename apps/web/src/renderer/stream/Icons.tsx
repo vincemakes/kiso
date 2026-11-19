@@ -73,5 +73,12 @@ const ICONS: Readonly<Record<string, ReactNode>> = {
 	shell: svg(<path d="m5 8 5 4-5 4M12 17h7" />),
 	search_text: svg(<><circle cx="11" cy="11" r="6" /><path d="m20 20-4.5-4.5" /></>),
 	list_dir: svg(<path d="M4 6h16M4 12h16M4 18h10" />),
+	ask_user: svg(<><circle cx="12" cy="12" r="8" /><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5M12 16.5v.01" /></>),
+	list_sessions: svg(<path d="M4 7h16M4 12h16M4 17h16M8 4v6M8 14v6" />),
+	read_skill: svg(<path d="M5 5a2 2 0 0 1 2-2h12v16H7a2 2 0 0 0-2 2ZM5 19V5M9 7h6" />),
+	delegate: svg(<path d="M6 4v8a4 4 0 0 0 4 4h8M18 12l4 4-4 4M6 4 3 7M6 4l3 3" />),
+	message: svg(<path d="M4 6h16v10H9l-5 4Z" />),
+	start_session: svg(<path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2ZM12 9v6M9 12h6" />),
+	mcp: svg(<path d="M9 3v5M15 3v5M6 8h12v4a6 6 0 0 1-12 0ZM12 18v3" />),
 };
-export const toolIcon = (name: string): ReactNode => ICONS[name] ?? ICONS["shell"];
+export const toolIcon = (name: string): ReactNode => ICONS[name] ?? (name.startsWith("mcp__") ? ICONS["mcp"] : ICONS["shell"]);

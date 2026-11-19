@@ -164,6 +164,48 @@ export function writeSessionName(root: string, sessionId: string, name: string |
 	writeTenants(root, sessionId, name === null ? tenants : { ...tenants, name });
 }
 
+/** ADR-0062: whether the session was created with the sessions extension (a Work the web host made while it was on). Both
+ *  apps read it, so a session keeps the tool table it was created with: the web gives a marked Work the extension, the
+ *  terminal gives it twins that refuse. The sidecar's fifth tenant; a fork carries it. */
+export function hasSessionsTools(root: string, sessionId: string): boolean {
+	return currentTenants(root, sessionId).sessionsTools === true;
+}
+
+/** Mark the session as created with the sessions extension; the other tenants ride through. */
+export function markSessionsTools(root: string, sessionId: string): void {
+	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), sessionsTools: true });
+}
+
+/** ADR-0062 § 7: the session that started this one with start_session (its address, `<folder key>/<session id>`), or null.
+ *  The completion wake follows this link; nothing else does (any session may message any session). */
+export function readStartedBy(root: string, sessionId: string): string | null {
+	const by = currentTenants(root, sessionId).startedBy;
+	return typeof by === "string" && by !== "" ? by : null;
+}
+
+export function writeStartedBy(root: string, sessionId: string, parent: string): void {
+	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), startedBy: parent });
+}
+
+/** ADR-0062 § 9: the Work cards this session's start_session calls drew, by call id: pending until the person answers. */
+export interface WorkCard {
+	readonly state: "pending" | "started" | "dismissed" | "here";
+	readonly title: string;
+	readonly at: number;
+	/** the Work it started */
+	readonly work?: string;
+}
+
+export function readCards(root: string, sessionId: string): Readonly<Record<string, WorkCard>> {
+	const c = currentTenants(root, sessionId).cards;
+	return c !== null && typeof c === "object" && !Array.isArray(c) ? (c as Record<string, WorkCard>) : {};
+}
+
+export function writeCard(root: string, sessionId: string, callId: string, card: WorkCard): void {
+	const tenants = currentTenants(root, sessionId);
+	writeTenants(root, sessionId, { ...tenants, cards: { ...readCards(root, sessionId), [callId]: card } });
+}
+
 /** Where a fork came from (SessionStore.fork): the parent session, the seq of the parent's `terminal` it was cut after,
  *  when, and the parent's title then. The sidecar's fourth tenant; lineage, not authority. */
 export interface ForkOrigin {
@@ -179,10 +221,10 @@ export function readForkOrigin(root: string, sessionId: string): ForkOrigin | nu
 	return f !== undefined && typeof f.session === "string" && typeof f.afterSeq === "number" && typeof f.at === "number" && typeof f.title === "string" ? (f as ForkOrigin) : null;
 }
 
-/** A new fork's sidecar, whole: the parent's execution profile, the fork's name, and its origin. The parent's summary is
+/** A new fork's sidecar, whole: the parent's execution profile, the fork's name, its origin, and whether the parent carries the sessions tools. The parent's summary is
  *  not carried: it may describe runs after the cut, and the fork writes its own. */
-export function writeForkSidecar(root: string, sessionId: string, tenants: { readonly profile?: unknown; readonly name: string; readonly forkedFrom: ForkOrigin }): void {
-	writeTenants(root, sessionId, { ...(tenants.profile !== undefined ? { profile: tenants.profile } : {}), name: tenants.name, forkedFrom: tenants.forkedFrom });
+export function writeForkSidecar(root: string, sessionId: string, tenants: { readonly profile?: unknown; readonly name: string; readonly forkedFrom: ForkOrigin; readonly sessionsTools?: unknown }): void {
+	writeTenants(root, sessionId, { ...(tenants.profile !== undefined ? { profile: tenants.profile } : {}), name: tenants.name, forkedFrom: tenants.forkedFrom, ...(tenants.sessionsTools === true ? { sessionsTools: true } : {}) });
 }
 
 /** The parent's tenants, read for a fork. */

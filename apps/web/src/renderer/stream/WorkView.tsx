@@ -7,9 +7,12 @@ import { Turn } from "./Turn.js";
 import { isInterrupted, isLive } from "../state/model.js";
 import { READING } from "../state/reading.js";
 import type { Session } from "../state/store.js";
-import { ResumeCard, VerdictPanel } from "./Interrupt.js";
+import { ResumeCard, VerdictPanel, uncertainOf } from "./Interrupt.js";
 import { t } from "../i18n/index.js";
 import { Copy, I } from "./Icons.js";
+import { InboxRows } from "./PeerRows.js";
+import { askInput, isAsking } from "./AskCard.js";
+import { rewindLine } from "../state/works.js";
 
 // the input handed to the page at launch is sent once, into the first Work that opens
 let autoSent = false;
@@ -66,10 +69,20 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const down = useLink(session);
 	const { turns, tasks } = session.state;
 	const running = isLive(session.state);
+	// ADR-0062 S3: with exactly one approval open, a typed line declines it (if it is still open once the line is in) and becomes the next instruction (queued first, so
+	// it is admitted once at the boundary after the decline); with several open, none is declined and the line waits as a steer
+	const open = isInterrupted(session.state) ? [] : (turns.at(-1)?.items ?? []).filter((i) => i.kind === "ask" && i.decision === "open"); // a run cut off (Resume): its old approval is dead, typing declines nothing
+	// ADR-0062 § 10c: a question waiting: the stream ends on "Needs your input", and a typed line is its Other (S2)
+	const asking = isAsking(turns) && !isInterrupted(session.state); // a question in a run cut off waits for Resume, not for an answer
+	const [workKey, workId] = [useContext(KeyContext), useContext(WorkContext)];
+	// ADR-0062 § 10b: the last line, stopped before it did anything, comes back to the box with its attachments
+	const rewindOf = (turn: (typeof turns)[number]): { onRewind?: (() => void) | null } =>
+		turn.phase === "running" && !turn.items.some((i) => i.kind === "step") ? { onRewind: null } : turn.outcome === "aborted" && !turn.items.some((i) => i.kind === "step" || i.kind === "ask") ? { onRewind: () => void rewindLine(workKey, workId).then((back) => dispatchEvent(new CustomEvent("kiso:restore", { detail: back }))) } : {};
+	const steer = (x: Parameters<typeof session.steer>[0]): Promise<void> => asking && typeof x === "string" && askInput.current !== null ? Promise.resolve(askInput.current(x)) : (open.length === 1 && open[0]!.kind === "ask" ? session.steer(x).then(() => ((id) => void ((session.state.turns.at(-1)?.items ?? []).some((i) => i.kind === "ask" && i.decisionId === id && i.decision === "open") && session.approve(id, false)))((open[0] as { decisionId: string }).decisionId)) : session.steer(x));
 	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
 	const interrupted = isInterrupted(session.state);
-	const uncertain = (session.state.snapshot?.uncertain.length ?? 0) > 0;
+	const uncertain = uncertainOf(session.state).length > 0; // never while a run is live (ADR-0038)
 	const held = uncertain ? t.verdictFirst : null;
 	const message = session.message();
 	// Stick to the bottom while the person is there. Once they scroll up, the view is never moved for them: whatever the content does
@@ -228,7 +241,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					) : null}
 					{turns.length > 0 ? lead : null}
 					{turns.map((turn, i) => (
-						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={session.stale() ? null : (id, allow) => void session.approve(id, allow)} />
+						<Turn key={turn.id} turn={turn} rev={i === turns.length - 1 ? version : 0} tasks={tasks} interrupted={interrupted && i === turns.length - 1} onAnswer={session.stale() ? null : (id, allow) => void session.approve(id, allow)} {...(i === turns.length - 1 && turn.user !== "" ? rewindOf(turn) : {})} />
 					))}
 					{session.pending().map((w) => (
 						<div key={w.id} className="pend" data-kind="pending-steer">
@@ -242,6 +255,8 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 							<div className="pend-note">{t.pendingNote}</div>
 						</div>
 					))}
+					{asking ? <div className="needs" data-kind="needs-input"><span className="dot" />{t.needsInput}</div> : null}
+					<InboxRows seen={new Set(turns.flatMap((u) => u.items.flatMap((i) => (i.kind === "peer" ? [i.messageId] : []))))} after={open.length > 0} />
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}
 				</div>
@@ -266,7 +281,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					)}
 				</div>
 			) : (
-				<Composer down={down} held={held} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={(x) => session.steer(x)} onStop={() => void session.abort()} />
+				<Composer down={down} held={held} hint={asking ? t.answerHint : open.length === 1 ? t.declineHint : null} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={steer} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

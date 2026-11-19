@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Sidebar } from "./sidebar/Sidebar.js";
+import { Sidebar, subtree } from "./sidebar/Sidebar.js";
 import { Mark, Overview, Sidebar as SidebarIcon } from "./stream/Icons.js";
 import { Rail } from "./rail/Rail.js";
 import { PanelContext } from "./panels/context.js";
@@ -25,7 +25,11 @@ import { watchNotices } from "./state/notify.js";
 import { launchParams, openSession, type Session } from "./state/store.js";
 import { slotOf, workCache } from "./state/workcache.js";
 import { addFolderTo } from "./state/folders.js";
-import { fetchEnv, fetchHistory, newWorkId, sessionsUrl, type Target } from "./state/works.js";
+import { useRenames } from "./state/renames.js";
+import { answerCard, answerHeld, fetchEnv, fetchHistory, newWorkId, refTitle, sessionsUrl, type Target } from "./state/works.js";
+import { Lead } from "./stream/Lead.js";
+import { CardsContext, type CardsHost } from "./stream/SessionCard.js";
+import { isAsking } from "./stream/AskCard.js";
 import { ago, t } from "./i18n/index.js";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import type { ContextParts, EnvReply, SettingsReply } from "../shared/settings.js";
@@ -222,26 +226,22 @@ export function App(): ReactNode {
 	const activeKey = target.key ?? history?.current.key ?? "";
 	// the Work on the page knows its own state first (once it has read it): its row follows the run's end at once, the host's list catches up on the next read
 	const liveNow = session !== null && isLive(session.state);
-	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 ? "waiting" : "running";
+	const ownState = !liveNow ? "idle" : (session.state.snapshot?.pendingApprovals.length ?? 0) > 0 || isAsking(session.state.turns) || (session.state.turns.at(-1)?.items ?? []).some((i) => i.kind === "ask" && i.decision === "open") ? "waiting" : "running"; // an approval drawn in the stream waits on the person even before the snapshot is read again
 	useEffect(() => {
-		if (!liveNow && signedIn === true) refresh();
+		if (signedIn === true && (!liveNow || !(history?.works ?? []).some((w) => w.id === target.sessionId))) refresh(liveNow ? activeKey : undefined); // a new Work's first run: its row now, not at the next poll
 	}, [liveNow, signedIn, refresh]);
 	const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
 	const markGone = (row: WorkRow, on: boolean): void => setGone((s) => new Set(on ? [...s, `${row.key}\n${row.id}`] : [...s].filter((g) => g !== `${row.key}\n${row.id}`)));
-	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState }))(w) : w));
+	const [named, rename] = useRenames(history?.works ?? []);
+	const rows: readonly WorkRow[] = (history?.works ?? []).filter((w) => !gone.has(`${w.key}\n${w.id}`)).map((w): WorkRow => (named[w.id] === undefined ? w : { ...w, title: named[w.id]! })).map((w) => (w.id === target.sessionId && w.key === activeKey && session?.state.snapshot != null ? (({ unread: _, ...rest }) => ({ ...rest, state: ownState === "idle" && w.state === "waiting" ? "waiting" : ownState }))(w) : w));
 	// the header: the Work's name (a rename shows at once, the listing catches up), else its first request (the folder and branch are in the overview)
-	const [named, setNamed] = useState<Readonly<Record<string, string>>>({});
 	const row = rows.find((w) => w.id === target.sessionId && w.key === activeKey);
 	const title = named[target.sessionId] ?? row?.title ?? session?.state.turns[0]?.user.split("\n")[0] ?? "";
 	// a name shows at once; a cleared one waits for the listing, which reads names live, to give back the first-request title
 	// a row's folder key as the routes take it (null: the folder in use), and the listing read again for that folder
 	const keyOf = (row: WorkRow): string | null => (row.key === history?.current.key ? null : row.key);
 	const reread = (key: string | undefined): Promise<void> => fetchHistory(key).then(setHistory, () => undefined);
-	const renameRow = (key: string | null, id: string, name: string): Promise<void> =>
-		renameWork(key, id, name).then((r) => {
-			setNamed(({ [id]: _, ...n }) => (r.name === null ? n : { ...n, [id]: r.name }));
-			return reread(key ?? history?.current.key);
-		});
+	const renameRow = (key: string | null, id: string, name: string): Promise<void> => rename(id, name, () => renameWork(key, id, name)).then(() => reread(key ?? history?.current.key));
 	const onRename = (name: string): Promise<void> => renameRow(target.key, target.sessionId, name);
 	const header =
 		railOn && session !== null ? (
@@ -266,23 +266,21 @@ export function App(): ReactNode {
 			),
 		[target, history?.current.key],
 	);
-	const parentRow = env?.fork === undefined ? undefined : rows.find((w) => w.id === env.fork?.parent && w.key === activeKey);
-	const lead =
-		forkError !== null ? (
-			<div className="forknote err" data-kind="fork-error">{forkError}</div>
-		) : env?.fork !== undefined ? (
-			<div className="forknote" data-kind="fork-note">
-				{t.forkedFrom}{" "}
-				{parentRow === undefined ? (
-					<b data-field="fork-parent-gone">{env.fork.title || t.untitled}</b>
-				) : (
-					<button className="flink" data-act="fork-parent" onClick={() => setTarget({ key: target.key, sessionId: env.fork!.parent })}>
-						{parentRow.title || env.fork.title || t.untitled}
-					</button>
-				)}{" "}
-				· {ago(env.fork.at, Date.now())}. {t.forkShared}
-			</div>
-		) : null;
+	const lead = <Lead env={env} rows={rows} activeKey={activeKey} forkError={forkError} open={(id) => setTarget({ key: target.key, sessionId: id })} />;
+	// ADR-0062: the cards this Work's start_session calls drew, and their answers
+	const cardsHost: CardsHost = {
+		cards: env?.cards ?? {},
+		titleOf: (id) => rows.find((w) => w.id === id && w.key === activeKey)?.title, nameOf: (to) => refTitle(rows, to),
+		open: (id, key) => setTarget({ key: key === undefined ? target.key : key === history?.current.key ? null : key, sessionId: id }),
+		refresh: () => void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined),
+		inbox: env?.inbox ?? [], release: async (messageId, action) => (await answerHeld(target.key, target.sessionId, messageId, action), void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined)),
+		answer: async (callId, action) => {
+			const id = await answerCard(target.key, target.sessionId, callId, action);
+			void fetchEnv(target.key, target.sessionId).then(setEnv, () => undefined);
+			void fetchHistory(target.key ?? history?.current.key).then(setHistory, () => undefined);
+			if (id !== undefined) setTarget({ key: target.key, sessionId: id });
+		},
+	};
 	const openWork = (row: WorkRow): void => {
 		setView("work");
 		setTarget({ key: row.key === history?.current.key ? null : row.key, sessionId: row.id });
@@ -309,11 +307,10 @@ export function App(): ReactNode {
 				active={{ key: activeKey, id: target.sessionId }}
 				settingsOn={view === "settings"}
 				onOpen={openWork}
-				onAct={(row, act) => (act === "delete" && markGone(row, true), actOnWork(keyOf(row), row.id, act).then(() => {
-					if (act === "delete") workCache.drop(slotOf(keyOf(row), row.id));
-					if (act === "delete" && row.id === target.sessionId) setTarget({ key: null, sessionId: newWorkId() });
-					return reread(row.key);
-				}, (e: Error) => (act === "delete" && markGone(row, false), Promise.reject(e))))}
+				onAct={(row, act) => {
+					const gone = act === "delete-tree" ? subtree(rows, row) : act === "delete" ? [row] : []; gone.forEach((w) => markGone(w, true));
+					return actOnWork(keyOf(row), row.id, act).then(() => (gone.forEach((w) => workCache.drop(slotOf(keyOf(w), w.id))), gone.some((w) => w.id === target.sessionId) && setTarget({ key: null, sessionId: newWorkId() }), reread(row.key)), (e: Error) => (gone.forEach((w) => markGone(w, false)), Promise.reject(e)));
+				}}
 				onRename={(row, name) => renameRow(keyOf(row), row.id, name)}
 				onLinkPr={(row, pr) => linkPr(keyOf(row), row.id, pr).then(() => reread(row.key))}
 				onFork={(row) =>
@@ -339,7 +336,7 @@ export function App(): ReactNode {
 					<Settings />
 				) : (
 					<div className={`work${railOn && panel !== null ? " paneled" : ""}`}>
-						<div className="chat">{header}{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><ForkContext.Provider value={onFork}><WorkView
+						<div className="chat">{header}{session === null ? <div className="scroll"><div className="col"><Loading /></div></div> : <RootContext.Provider value={env?.root ?? ""}><KeyContext.Provider value={target.key}><WorkContext.Provider value={target.sessionId}><ForkContext.Provider value={onFork}><CardsContext.Provider value={cardsHost}><WorkView
 								key={`${target.key ?? ""}/${target.sessionId}`}
 								session={session}
 								auto={launch.auto}
@@ -356,7 +353,7 @@ export function App(): ReactNode {
 								focusDecision={focusDecision}
 								onFocused={() => setFocusDecision(null)}
 								lead={lead}
-							/></ForkContext.Provider></WorkContext.Provider></KeyContext.Provider></RootContext.Provider>}</div>
+							/></CardsContext.Provider></ForkContext.Provider></WorkContext.Provider></KeyContext.Provider></RootContext.Provider>}</div>
 						{railOn && panel !== null && session !== null ? (
 							<Panels
 								kind={panel.kind}

@@ -1,9 +1,10 @@
 import { realpathSync } from "node:fs";
 import { isEnvironmentNote, SessionStore, type Agent } from "@vincemakes/kiso-runtime";
-import { named, titleIfUnnamed } from "./names.js";
+import { named, titleIfUnnamed, untitle } from "./names.js";
 import { createSessionService, InFlightError, toWireEvent, type SessionService } from "@vincemakes/kiso-server";
 import { createHttpHandler, type HttpHandlerOptions } from "@vincemakes/kiso-server/http";
-import type { Event } from "@vincemakes/kiso-core";
+import type { Event, UserInputVia } from "@vincemakes/kiso-core";
+import { sessionsFor, type SessionsHost } from "./sessions-tool.js";
 import type { WireFrame } from "@vincemakes/kiso-protocol";
 import { createWebAgent, routeOf, type ModelChoice, type PermissionMode } from "./agent.js";
 import { createTaskHub, rowsOf, type TaskHub } from "./tasks.js";
@@ -12,6 +13,10 @@ import { webSanitize } from "./sanitize.js";
 import { StampCache, TimeIndex } from "./times.js";
 import { artifactsOf, LogImages, type CallInfo } from "./artifacts.js";
 import type { AtFrame, TasksFrame, ToolOutputFrame } from "../shared/frames.js";
+import type { AskBridge } from "./ask-bridge.js";
+
+/** ADR-0062 § 10c: what the model reads for a question a restart cut off, so it asks again (the card cannot come back alone). */
+const ASKED_AGAIN = "Not answered: kiso web restarted while this question was waiting, and the person never answered it. Ask it again: call ask_user with the same questions.";
 
 /**
  * One project folder's sessions as a service: the store in the folder's
@@ -44,6 +49,12 @@ export interface SpaceOptions {
 	readonly taskWake?: boolean;
 	/** title a Work from its first message (Session.title), beside its first run */
 	readonly titles?: boolean;
+	/** ADR-0062 § 10c: the ask_user bridge; absent, Works carry no ask_user */
+	readonly ask?: AskBridge;
+	/** ADR-0062: the sessions extension is on; a new Work is created with it */
+	readonly sessions?: SessionsHost;
+	/** a deleted Work's tombstone: such an id is never opened (no lock, no meta written for it) */
+	readonly buried?: (sessionId: string) => boolean;
 	/** after each run has settled (however short): the host's what-next, read from the store */
 	readonly onSettled?: (sessionId: string, runId: string, store: SessionStore) => void;
 }
@@ -64,6 +75,10 @@ export interface Space {
 	 *  run's own request as the prefix (Session.followUp); "" when off, not the latest run, not completed, or it failed. */
 	readonly followUp: (sessionId: string, seq: number) => Promise<string>;
 	readonly reopen: (sessionId: string) => Promise<"now" | "next">; // rebuilt so its next run reads its settings: now when idle, else once its run settles
+	/** ADR-0062: a message waits in this Work's inbox: open it (refused when another process holds it) and have it look */
+	readonly poke: (sessionId: string) => Promise<"handed" | "woke" | "waiting">;
+	/** ADR-0062 § 10b: take back the person's last line (its content, for the box), or null when it cannot be */
+	readonly rewind: (sessionId: string) => Promise<unknown>;
 	/** Orderly exit, in the order that keeps every run resumable (packages/server README): `drain` first, then the host stops listening, then `close`. */
 	readonly drain: (graceMs: number) => Promise<unknown>;
 	readonly close: () => Promise<void>;
@@ -96,8 +111,12 @@ export function createSpace(options: SpaceOptions): Space {
 	// asks at most twice for a Work: the first time, and once more after a failure (a provider timeout, a refusal), so a Work whose only
 	// ask failed is not left with its first request as its name for good.
 	const tries = new Map<string, number>();
+	// a line the person took back (rewind: user_input_replaced with no content) names nothing
+	const vetoed = (events: readonly Event[]): Set<number> => new Set(events.flatMap((e) => (e.type === "user_input_replaced" && e.content === null ? [e.replaces] : [])));
+	const autoTitles = new Map<string, string>(); // the titles this host made, so a rewind can tell them from the person's names
 	const firstText = (sessionId: string): string => {
-		const first = store.load(sessionId).map((r) => r.event).find((e) => e.type === "user_input");
+		const events = store.load(sessionId).map((r) => r.event);
+		const first = ((v) => events.find((e) => e.type === "user_input" && !v.has(e.seq)))(vetoed(events));
 		if (first === undefined || first.type !== "user_input") return "";
 		const parts = typeof first.content === "string" ? [first.content] : first.content.map((b) => (b.type === "text" ? b.text : ""));
 		return parts.filter((p) => !isEnvironmentNote(p) && !p.startsWith("This session was forked from the session ")).join(" ").trim(); // the one note filter is the runtime's
@@ -111,12 +130,12 @@ export function createSpace(options: SpaceOptions): Space {
 		if (session === undefined) return;
 		tries.set(sessionId, (tries.get(sessionId) ?? 0) + 1);
 		const failed = (): void => ensureTitle(sessionId);
-		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => (name === "" ? failed() : titleIfUnnamed(options.dir, sessionId, name)), failed);
+		void session.title(text, { signal: AbortSignal.timeout(15_000) }).then((name) => (name === "" ? failed() : (titleIfUnnamed(options.dir, sessionId, name), autoTitles.set(sessionId, name))), failed);
 	};
 	const title = (sessionId: string, event: Extract<Event, { type: "user_input" }>): void => {
 		const session = sessions.get(sessionId);
 		if (options.titles !== true || session === undefined || titled.has(sessionId) || Date.now() - times.at(sessionId, event.seq) > 60_000) return;
-		if (service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq) || named(options.dir, sessionId)) return;
+		if (((v) => service.events(sessionId).some((e) => e.type === "user_input" && e.seq < event.seq && !v.has(e.seq)))(vetoed(service.events(sessionId))) || named(options.dir, sessionId)) return;
 		titled.add(sessionId);
 		const text = typeof event.content === "string" ? event.content : event.content.map((b) => (b.type === "text" && !isEnvironmentNote(b.text) ? b.text : "")).join(" ").trim();
 		ask(sessionId, text);
@@ -148,7 +167,9 @@ export function createSpace(options: SpaceOptions): Space {
 			},
 		},
 		open: async (sessionId) => {
+			if (options.buried?.(sessionId) === true) throw new Error(`the Work ${sessionId} was deleted`); // whatever path asked
 			opened.add(sessionId);
+			const sessionsExt = options.sessions === undefined ? undefined : sessionsFor(options.dir, { key: options.key, sessionId }, options.sessions);
 			return createWebAgent({
 				store,
 				workspace: options.workspace,
@@ -159,22 +180,31 @@ export function createSpace(options: SpaceOptions): Space {
 				tasks,
 				...(options.secretEnvNames !== undefined ? { secretEnvNames: options.secretEnvNames } : {}),
 				...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
+				...(sessionsExt !== undefined ? { sessions: sessionsExt } : {}),
+				...(options.ask !== undefined ? { ask: await options.ask.extension() } : {}),
 				onSession: (sessionId, session) => {
 					sessions.set(sessionId, session);
 					setTimeout(() => ensureTitle(sessionId), 0); // a Work opened again after a restart, still unnamed
 					// a task's end wakes an idle Work, as it does the terminal: one run whose input is the notice (ADR-0058 §8). The
 					// delivery hands the notice over once; a person's run that started in the same moment refuses it (in flight), so the
 					// wake waits for that run to end and goes then, rather than being dropped
-					session.useTasks(tasks.managerFor(sessionId), {
-						wake: options.taskWake !== false,
-						onWake: (w) => {
-							const go = (tries: number): void =>
-								void service.run(sessionId, w.content, { source: "system", via: w.via }).catch((e: unknown) => {
-									if (e instanceof InFlightError && tries < 600) setTimeout(() => go(tries + 1), 1000);
-								});
-							go(0);
-						},
-					});
+					const wake = (w: { readonly content: string; readonly via: UserInputVia }): void => {
+						const go = (tries: number): void =>
+							void service.run(sessionId, w.content, { source: "system", via: w.via }).catch((e: unknown) => {
+								if (e instanceof InFlightError && tries < 600) setTimeout(() => go(tries + 1), 1000);
+							});
+						go(0);
+					};
+					session.useTasks(tasks.managerFor(sessionId), { wake: options.taskWake !== false, onWake: wake });
+					// ADR-0062: messages from other Works, read from its inbox now and whenever one is written
+					if (options.sessions !== undefined) {
+						session.usePeers({ root: options.dir, onWake: wake, mayWake: options.sessions.mayWake });
+						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
+						for (const u of session.interruptedExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
+					}
+					// ADR-0062 § 10c: a question cut off by a restart is asked again when the run resumes (ask_user is idempotent); only an
+					// interrupted one, never one a live run is still asking (ADR-0038)
+					for (const u of session.interruptedExecutions()) if (u.name === "ask_user") void session.resolveUncertain(u.executionId, "rerun", ASKED_AGAIN).catch(() => undefined);
 				},
 			});
 		},
@@ -305,6 +335,12 @@ export function createSpace(options: SpaceOptions): Space {
 		handler,
 		opened: () => opened,
 		followUp, reopen,
+		// the first line taken back takes its title with it: the next line names the Work (owner's dogfood, F15)
+		rewind: async (sessionId) => ((back) => (back !== null && firstText(sessionId) === "" && untitle(options.dir, sessionId, autoTitles.get(sessionId)) && (titled.delete(sessionId), tries.delete(sessionId)), back))(await service.rewind(sessionId)),
+		poke: async (sessionId) => {
+			await service.pendingApprovals(sessionId); // opens the Work if it is not open yet
+			return sessions.get(sessionId)?.pokePeers() ?? "waiting";
+		},
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {
 			await tasks.close();

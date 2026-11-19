@@ -48,7 +48,10 @@ export interface TaskNotice {
 /** The runtime's words, marked so the model never takes them for a person's. */
 export const NOTICE_FOOTER = "Runtime notice — not the user.";
 
-type Ingress = { readonly kind: "human"; readonly content: string | readonly ContentBlock[] } | { readonly kind: "runtime"; readonly notice: TaskNotice };
+/** ADR-0062: a message from another session, admitted as it is: its own user_input, its own id. */
+export type PeerInput = AdmissionInput & { readonly via: Extract<AdmissionInput["via"], { readonly kind: "peer" }> };
+
+type Ingress = { readonly kind: "human"; readonly content: string | readonly ContentBlock[] } | { readonly kind: "runtime"; readonly notice: TaskNotice } | { readonly kind: "peer"; readonly input: PeerInput };
 
 export class Run implements AsyncIterable<Event> {
 	runId: string;
@@ -76,6 +79,7 @@ export class Run implements AsyncIterable<Event> {
 	readonly #ingress: Ingress[] = [];
 	readonly #unadmitted: (string | readonly ContentBlock[])[] = [];
 	readonly #unadmittedNotices: TaskNotice[] = [];
+	readonly #unadmittedPeers: string[] = [];
 	#sealed = false;
 
 	constructor(
@@ -135,6 +139,20 @@ export class Run implements AsyncIterable<Event> {
 		return true;
 	}
 
+	/** ADR-0062 — hand this run a message from another session: admitted at the next Safe Admission boundary as its own
+	 *  runtime user_input (never merged with a neighbour), never passing onUserMessage. False once the run has decided to
+	 *  end: the message stays in the inbox for the next run or a wake. */
+	deliver(input: PeerInput): boolean {
+		if (this.#sealed) return false;
+		this.#ingress.push({ kind: "peer", input });
+		return true;
+	}
+
+	/** ADR-0062 — the ids of messages handed to this run that it never admitted. */
+	unadmittedPeers(): readonly string[] {
+		return [...this.#unadmittedPeers];
+	}
+
 	/** ADR-0057 — take back the person's input that has not been admitted
 	 *  yet. A task notice is not the person's, and stays. */
 	retract(): readonly (string | readonly ContentBlock[])[] {
@@ -163,20 +181,24 @@ export class Run implements AsyncIterable<Event> {
 
 	/** The kernel's `admit`: the ingress in arrival order, neighbours of one
 	 *  kind merged — a person's lines as ONE human input (a single line as
-	 *  itself, several as text blocks), task notices as ONE runtime input. */
+	 *  itself, several as text blocks), task notices as ONE runtime input.
+	 *  ADR-0062: a message from another session is never merged: each is its
+	 *  own input, so each has its own durable admission and id. */
 	async #admit(mode: "take" | "takeOrSeal" | "seal"): Promise<readonly AdmissionInput[]> {
 		if (mode !== "seal" && this.#ingress.length > 0) {
 			// group neighbours of one kind, in arrival order
-			const groups: ({ kind: "human"; contents: (string | readonly ContentBlock[])[] } | { kind: "runtime"; notices: TaskNotice[] })[] = [];
+			const groups: ({ kind: "human"; contents: (string | readonly ContentBlock[])[] } | { kind: "runtime"; notices: TaskNotice[] } | { kind: "peer"; input: PeerInput })[] = [];
 			for (const entry of this.#ingress.splice(0)) {
 				const last = groups.at(-1);
-				if (entry.kind === "human") {
+				if (entry.kind === "peer") groups.push(entry);
+				else if (entry.kind === "human") {
 					if (last?.kind === "human") last.contents.push(entry.content);
 					else groups.push({ kind: "human", contents: [entry.content] });
 				} else if (last?.kind === "runtime") last.notices.push(entry.notice);
 				else groups.push({ kind: "runtime", notices: [entry.notice] });
 			}
 			return groups.map((g): AdmissionInput => {
+				if (g.kind === "peer") return g.input;
 				if (g.kind === "human") {
 					const content = g.contents.length === 1 ? g.contents[0]! : g.contents.flatMap((l): readonly ContentBlock[] => (typeof l === "string" ? [{ type: "text", text: l }] : l));
 					return { kind: "human", content, source: "user" };
@@ -193,6 +215,7 @@ export class Run implements AsyncIterable<Event> {
 		this.#sealed = true;
 		for (const entry of this.#ingress.splice(0)) {
 			if (entry.kind === "human") this.#unadmitted.push(entry.content);
+			else if (entry.kind === "peer") this.#unadmittedPeers.push(entry.input.via.messageId);
 			else this.#unadmittedNotices.push(entry.notice);
 		}
 	}

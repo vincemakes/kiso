@@ -9,6 +9,10 @@ import { Chevron } from "./Icons.js";
 import { Delta, Step } from "./Step.js";
 import { artifactsOf, PinnedContext, Thumbs } from "./Artifacts.js";
 import { RunContext, WorkContext } from "./links.js";
+import { SessionCard } from "./SessionCard.js";
+import { AskCard } from "./AskCard.js";
+import { MessagedRow, PeerGroup, PeerRow } from "./PeerRows.js";
+import type { Peer } from "../state/peers.js";
 import { Thinking } from "./Thinking.js";
 import { useNow } from "./useNow.js";
 
@@ -97,7 +101,7 @@ function Group({ id, items, turn, tasks, onAnswer, interrupted, live }: Omit<Pro
 							) : item.kind === "step" ? (
 								<Step key={item.id} step={item} task={tasks.find((r) => r.id === item.taskId)} frozen={interrupted} shown={shown.has(item.id)} onShow={() => toggle(item.id)} />
 							) : item.kind === "ask" ? (
-								<Approval key={item.id} ask={item} onAnswer={onAnswer} />
+								<Approval key={item.id} ask={item} onAnswer={interrupted ? null : onAnswer} />
 							) : null,
 						)}
 					</div>
@@ -114,15 +118,28 @@ function Group({ id, items, turn, tasks, onAnswer, interrupted, live }: Omit<Pro
  */
 export function Process({ turn, items, tasks, onAnswer, interrupted = false }: Props): ReactNode {
 	const live = turn.phase === "running" && !interrupted;
-	const segments = segmentsOf(items);
+	// ADR-0062: a start_session call is drawn as its card or its line, after its group and never folded into it
+	const isMessage = (s: (typeof segments)[number] | undefined): boolean => s?.kind === "line" && s.item.kind === "peer" && s.item.event === "message";
+	// ADR-0062 § 10c: an ask_user call waiting for its answer is its question card, out of the group, once its questions are in (a
+	// streamed call starts before its input: a card mounted then would hold no questions in its state)
+	const isStart = (i: Item): boolean => i.kind === "step" && (i.name === "start_session" || i.name === "message" || (i.name === "ask_user" && i.input !== null && !interrupted && i.status !== "done" && i.status !== "failed" && i.status !== "denied" && i.status !== "interrupted"));
+	const segments = segmentsOf(items).map((s) => (s.kind === "group" ? { ...s, items: s.items.filter((i) => !isStart(i)), cards: s.items.filter(isStart) as StepItem[] } : s));
 	// while it works, the run's live line is its last group: one that is still empty when the run has nothing in a group yet
-	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [] });
+	if (live && segments.at(-1)?.kind !== "group") segments.push({ kind: "group", id: "live", items: [], cards: [] });
 	const lines = segments.filter((s) => s.kind === "group" && (s.items.some((i) => i.kind !== "thinking") || (live && s === segments.at(-1))));
 		return (
 		<div className={`proc${live ? "" : " ended"}`} data-kind="process" data-folded={lines.length > 0 && !live && !interrupted}>
 			{segments.map((seg, i) => {
 				const last = i === segments.length - 1;
 				if (seg.kind === "say") return <Blocks key={seg.item.id} className="say" kind="say" text={seg.item.text} live={live && last} />;
+				// ADR-0062: messages admitted together (none held, one after another) are one row
+				if (seg.kind === "line" && seg.item.kind === "peer") {
+					if (seg.item.event !== "message") return <PeerRow key={seg.item.id} peer={seg.item} />;
+					if (isMessage(segments[i - 1])) return null; // drawn in the group it starts
+					const run: Peer[] = [];
+					for (let j = i; isMessage(segments[j]); j++) run.push((segments[j] as { item: Peer }).item);
+					return run.length > 1 ? <PeerGroup key={seg.item.id} peers={run} /> : <PeerRow key={seg.item.id} peer={seg.item} />;
+				}
 				if (seg.kind === "line")
 					return seg.item.kind === "steer" ? (
 						<Fragment key={seg.item.id}>
@@ -135,8 +152,14 @@ export function Process({ turn, items, tasks, onAnswer, interrupted = false }: P
 							{seg.item.code === "" ? null : <small>{seg.item.code}</small>}
 						</div>
 					) : null;
-				if (!lines.includes(seg)) return seg.items.map((item) => (item.kind === "thinking" ? <Thinking key={item.id} item={item} /> : null));
-				return <Group key={seg.id} id={seg.id} items={seg.items} turn={turn} tasks={tasks} onAnswer={onAnswer} interrupted={interrupted} live={live && last} />;
+				const cards = "cards" in seg ? seg.cards.map((c) => (c.name === "message" ? <MessagedRow key={c.id} step={c} /> : c.name === "ask_user" ? <AskCard key={c.id} step={c} /> : <SessionCard key={c.id} step={c} />)) : null;
+				if (!lines.includes(seg)) return [...seg.items.map((item) => (item.kind === "thinking" ? <Thinking key={item.id} item={item} /> : null)), cards];
+				return (
+					<Fragment key={seg.id}>
+						<Group id={seg.id} items={seg.items} turn={turn} tasks={tasks} onAnswer={onAnswer} interrupted={interrupted} live={live && last} />
+						{cards}
+					</Fragment>
+				);
 			})}
 		</div>
 	);

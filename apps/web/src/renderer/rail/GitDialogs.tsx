@@ -3,7 +3,7 @@ import type { GitFile } from "../../shared/git.js";
 import { fmt, t } from "../i18n/index.js";
 
 /** A dialog over the window: Esc or Cancel closes it; nothing it holds is done until its confirm. `kind` names it for the proofs. */
-export function Dialog({ kind = "git", danger = false, title, sub, busy, error, confirm, onConfirm, onCancel, children }: { readonly kind?: string; readonly danger?: boolean; readonly title: string; readonly sub: string; readonly busy: boolean; readonly error: string | null; readonly confirm: string; readonly onConfirm: () => void; readonly onCancel: () => void; readonly children: ReactNode }): ReactNode {
+export function Dialog({ kind = "git", danger = false, title, sub, busy, error, confirm, alt, onConfirm, onCancel, children }: { readonly alt?: { readonly label: string; readonly onClick: () => void } | undefined; readonly kind?: string; readonly danger?: boolean; readonly title: string; readonly sub: string; readonly busy: boolean; readonly error: string | null; readonly confirm: string; readonly onConfirm: () => void; readonly onCancel: () => void; readonly children: ReactNode }): ReactNode {
 	useEffect(() => {
 		const key = (e: KeyboardEvent): void => void (e.key === "Escape" && !busy && onCancel());
 		addEventListener("keydown", key);
@@ -20,6 +20,7 @@ export function Dialog({ kind = "git", danger = false, title, sub, busy, error, 
 					<button type="button" onClick={onCancel} disabled={busy} data-act={`${kind}-cancel`}>
 						{t.cancel}
 					</button>
+					{alt === undefined ? null : <button type="button" onClick={alt.onClick} disabled={busy} data-act={`${kind}-alt`}>{alt.label}</button>}
 					<button type="button" className={danger ? "go danger" : "go"} onClick={onConfirm} disabled={busy} data-act={`${kind}-confirm`}>
 						{busy ? t.working : confirm}
 					</button>

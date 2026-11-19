@@ -118,7 +118,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const task = (x: TaskRow): ReactNode => {
 		const n = taskNameOf(state, x);
 		return (
-			<div className={`r-row${x.endedAt === null ? "" : " dim"}`} key={x.id} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over({ head: n.command, log: x.tail, rows: [[t.railState, n.status]] })}>
+			<div className={`r-row${x.endedAt === null ? "" : " dim"}`} key={x.id} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over({ title: n.name, head: n.command, log: x.tail, rows: [[t.railState, n.status]] })}>
 				<span className="r-ic"><I.term /></span>
 				<span className="r-nm">{n.title}</span>
 				<span className="r-mt">{n.status} · {clock(x.elapsedMs)}</span>

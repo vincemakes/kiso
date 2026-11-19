@@ -1,11 +1,15 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { appendFileSync, readFileSync, unwatchFile, watchFile } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { canonicalPath, claimProjectDir, projectDirFor, sessionFolders } from "@vincemakes/kiso-code/config";
-import { kisoHome, type SessionStore } from "@vincemakes/kiso-runtime";
+import { kisoHome, readEnvironment, type SessionStore } from "@vincemakes/kiso-runtime";
+import { protectedFiles } from "./agent.js";
+import { chainIn, holdsHeld, notifyParent, readable } from "./message-tool.js";
+import { chainBudget, type SessionsHost } from "./sessions-tool.js";
+import { beginWork, type WorkStart } from "./start-session-tool.js";
 import type { SessionService } from "@vincemakes/kiso-server";
 import type { Settings } from "./settings.js";
 import { Auth } from "./auth.js";
@@ -17,6 +21,7 @@ import { PrStates, prOfEvents } from "./prs.js";
 import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
+import { AskBridge } from "./ask-bridge.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -57,6 +62,10 @@ export interface HostOptions {
 	readonly taskWake?: boolean;
 	/** Title a Work from its first message with its own model (default true; the proofs turn it off). */
 	readonly titles?: boolean;
+	/** ADR-0062 § 10c: Works carry ask_user (default on) */
+	readonly ask?: boolean;
+	/** ADR-0062: Works created from now on carry the sessions extension (KISO_WEB_SESSIONS=on) */
+	readonly sessions?: boolean;
 }
 
 export interface Host {
@@ -79,12 +88,15 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const token = options.token ?? randomBytes(32).toString("hex");
 	const home = options.home ?? kisoHome();
 	const spaces = new Map<string, Space>();
+	// ADR-0062 § 10c: ask_user's questions, waiting for the page (KISO_WEB_ASK=off leaves the tool out)
+	const asks = new AskBridge();
 	const spaceOptions = (key: string, workspace: string, dir: string, prefix: string): Parameters<typeof createSpace>[0] => ({
 		key,
 		workspace,
 		dir,
 		prefix,
 		model: (ctx) => options.settings.model(ctx),
+		buried: (sessionId) => options.settings.buried(key, sessionId),
 		tierOf: (sessionId) => options.settings.tierOf(sessionId),
 		checkRunners: () => options.settings.checks(),
 		secretEnvNames: options.settings.secretEnvNames(),
@@ -93,17 +105,41 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		...(options.keepaliveMs !== undefined ? { keepaliveMs: options.keepaliveMs } : {}),
 		...(options.toolLimits !== undefined ? { toolLimits: options.toolLimits } : {}),
 		followUps: options.followUps ?? true,
+		...(options.ask !== false ? { ask: asks } : {}),
 		taskWake: options.taskWake ?? true,
 		titles: options.titles ?? true,
+		...(options.sessions === true ? { sessions: sessionsHost } : {}),
 		// a run settled (however short; the watch's one-second look can miss it): out of sight, its Work is unread; the PR its own
 		// `gh pr create` printed becomes the Work's (an earlier run's never replaces a later link)
 		onSettled: (sessionId, runId, store) => {
+			// ADR-0062 § 9: forks asked for in this run start now, cut at its end
+			for (const start of forksAfter.get(`${key}/${sessionId}`) ?? []) void beginWork(spaces.get(key)!, options.settings, key, sessionId, start).catch(() => undefined);
+			forksAfter.delete(`${key}/${sessionId}`);
+			// ADR-0062 § 7: a Work another started reports back to it
+			if (options.sessions === true) void notifyParent(store, key, sessionId, runId, spaces.get(key)?.tasks.managerFor(sessionId).list().some((t) => t.state.kind === "running") ?? false, sessionsHost).catch(() => undefined);
 			if (watch.away(key, sessionId)) unread(sessionId, true);
 			const pr = prOfEvents(store.load(sessionId).filter((r) => r.runId === runId).map((r) => r.event as Parameters<typeof prOfEvents>[0][number]));
 			if (pr !== null && options.settings.marksOf(sessionId).pr?.url !== pr.url) options.settings.setPr(sessionId, pr);
 		},
 	});
 
+	// ADR-0062: what the sessions tools ask of the host (closures: `history` and `spaceFor` below exist by the time a Work opens)
+	const sessionsHost: SessionsHost = {
+		// this folder read afresh (a Work made a moment ago is listed), and a scan still reading folders waited for, 3 s at most
+		list: async () => { for (let i = 0; ; i++) { const r = await history.snapshot({ key: current.key, dir: currentDir }, current.key); if (!r.scanning || i >= 30) return r; await new Promise((ok) => setTimeout(ok, 100)); } },
+		dirOf: (k) => join(dirname(currentDir), k),
+		deliver: async (k, id) => (await spaceFor(k)?.poke(id)) ?? "waiting",
+		mayRead: (self, path) => ((space) => space !== null && readable(path, [space.workspace, ...readEnvironment(space.dir, self.sessionId).added], protectedFiles()))(spaceFor(self.key)),
+		cwdOf: (k) => spaceFor(k)?.workspace,
+		chainOf: (k, id) => ((space) => (space === null ? `${k}/${id}#0` : chainIn(space.store, k, id)))(spaceFor(k)),
+		tierOf: (id) => options.settings.tierOf(id),
+		mayWake: (rootId) => budget.take(rootId),
+		eventsOf: (k, id) => spaceFor(k)?.store.load(id).map((r) => r.event) ?? [],
+		// a fork is cut at the end of the parent's run, so it waits for that run to settle (onSettled below)
+		startWork: async (k, parent, start) => void (start.fork ? forksAfter.set(`${k}/${parent}`, [...(forksAfter.get(`${k}/${parent}`) ?? []), start]) : await beginWork(spaceFor(k)!, options.settings, k, parent, start)),
+	};
+	const forksAfter = new Map<string, WorkStart[]>();
+	const budget = chainBudget(home);
 	// the folder in use: its directory is claimed (named after its path) the way the terminal claims it
 	const workspace = canonicalPath(options.workspace);
 	const currentDir = projectDirFor(home, workspace);
@@ -124,8 +160,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const prStates = new PrStates();
 	const history = new History(home, async (key, sessionId): Promise<WorkState> => {
 		const space = spaces.get(key);
-		if (space === undefined || !space.service.isRunning(sessionId)) return "idle";
-		return (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
+		const held = space !== undefined && holdsHeld(space.dir, sessionId); // ADR-0062 § 8: a held message waits on the person
+		if (space === undefined || !space.service.isRunning(sessionId)) return held ? "waiting" : "idle";
+		return held || asks.waiting(sessionId) || (await space.service.pendingApprovals(sessionId)).length > 0 ? "waiting" : "running";
 	}, (id) => {
 		const marks = options.settings.marksOf(id);
 		const state = marks.pr === undefined ? undefined : prStates.stateOf(marks.pr.url);
@@ -143,7 +180,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const unread = (sessionId: string, on: boolean): void => void ((options.settings.marksOf(sessionId).unread === true) !== on && options.settings.mark(sessionId, "unread", on));
 	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence, unread);
 	watch.start();
-	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews };
+	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews, asks };
 
 	let origins: ReadonlySet<string> = new Set();
 	let hosts: ReadonlySet<string> = new Set();
@@ -240,6 +277,9 @@ export async function startHost(options: HostOptions): Promise<Host> {
 				return void res.end(JSON.stringify(answer.body));
 			}
 			const space = other === null ? current : spaceFor(other[1]!);
+			// a deleted Work's id answers 404 before the session layer sees it: nothing opens it, writes its lock or its meta
+			const id = /\/v1\/sessions\/([^/?]+)/.exec(url.pathname)?.[1];
+			if (space !== null && id !== undefined && options.settings.buried(space.key, decodeURIComponent(id))) return refuse(res, 404, "this Work was deleted");
 			if (space === null || !(await space.handler.handle(req, res))) {
 				res.writeHead(404);
 				res.end();

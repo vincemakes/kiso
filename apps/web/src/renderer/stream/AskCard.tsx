@@ -1,0 +1,88 @@
+import { useContext, useEffect, useState, type ReactNode } from "react";
+import { fmt, t } from "../i18n/index.js";
+import type { Item, Step } from "../state/model.js";
+import { answerAsk } from "../state/works.js";
+import { KeyContext, WorkContext } from "./links.js";
+
+/**
+ * ADR-0062 § 10c (the owner's reference screenshots): an ask_user call waiting for the person, drawn in the stream, never over
+ * the box. A grey head with the question and, for several, "‹ 1 of 2 ›"; one row per option (a radio, or a box for
+ * multiSelect, the label, a grey line of description, "(Recommended)" after the recommended one); a last row "Other" that
+ * takes typing; Skip, and Next ⌘↩ (Submit ⌘↩ on the last). Answered, the call is an ordinary step again. While it waits, a
+ * line typed in the box is this question's Other (S2): `askInput`.
+ */
+
+type Q = { readonly question: string; readonly multiSelect?: boolean; readonly options: readonly { readonly label: string; readonly description?: string }[] };
+
+/** Whether the Work's last run waits on an ask_user call (the sidebar and the stream show it as waiting for the person). */
+export const isAsking = (turns: readonly { readonly items: readonly Item[] }[]): boolean =>
+	(turns.at(-1)?.items ?? []).some((i) => i.kind === "step" && i.name === "ask_user" && (i.status === "running" || i.status === "calling" || i.status === "waiting"));
+
+/** S2: the waiting card's door for a line typed in the box. */
+export const askInput: { current: ((text: string) => void) | null } = { current: null };
+
+const RECOMMENDED = /\s*\(recommended\)\s*$/i;
+
+export function AskCard({ step }: { readonly step: Step }): ReactNode {
+	const key = useContext(KeyContext);
+	const work = useContext(WorkContext);
+	const qs = ((step.input?.["questions"] ?? []) as readonly Q[]).filter((q) => Array.isArray(q.options));
+	const [page, setPage] = useState(0);
+	// per question, read with a default and written over every question: never sized from the questions at mount (a card can mount
+	// before a streamed call's input is in, or be drawn again on a cold open)
+	const [picks, setPicks] = useState<(number[] | undefined)[]>([]);
+	const [other, setOther] = useState<(string | null | undefined)[]>([]);
+	const [skipped, setSkipped] = useState<(boolean | undefined)[]>([]);
+	const at = <T,>(arr: readonly (T | undefined)[], i: number, v: T, d: T): T[] => qs.map((_, j) => (j === i ? v : (arr[j] ?? d)));
+	const [error, setError] = useState<string | null>(null);
+	const submit = (o: readonly (string | null | undefined)[], s: readonly (boolean | undefined)[]): void => {
+		// a multi-select keeps its picks beside Other: the words join the choices (the terminal's three shapes: choice, choices, custom)
+		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [q.multiSelect === true && (picks[i] ?? []).length > 0 ? { q: q.question, choices: [...(picks[i] ?? []).map((n) => q.options[n]!.label), ...((o[i] ?? "") !== "" ? [o[i]!] : [])] } : (o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: [] } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? -1]?.label ?? "" }]));
+		const declined = qs.filter((_, i) => s[i] === true).map((q) => q.question);
+		void answerAsk(key, work, step.callId, answers.length === 0 ? { declined } : declined.length === 0 ? { answers } : { answers, declined }).catch((e: Error) => setError(e.message));
+	};
+	// a question is answered (a pick, or Other with words) or skipped; nothing is ever chosen for the person: Next and Submit wait for it
+	const done = (i: number, o = other, s = skipped): boolean => s[i] === true || (o[i] ?? "") !== "" || (picks[i] ?? []).length > 0;
+	const next = (o = other, s = skipped): void => void (!done(page, o, s) ? undefined : page < qs.length - 1 ? setPage(page + 1) : ((u) => (u < 0 ? submit(o, s) : setPage(u)))(qs.findIndex((_, i) => !done(i, o, s))));
+	useEffect(() => {
+		askInput.current = (text) => next(at(other, page, text, null));
+		const onKey = (e: KeyboardEvent): void => void (e.key === "Enter" && (e.metaKey || e.ctrlKey) && (e.preventDefault(), next()));
+		addEventListener("keydown", onKey);
+		return () => ((askInput.current = null), removeEventListener("keydown", onKey));
+	});
+	const q = qs[page];
+	if (q === undefined) return null;
+	const pick = (n: number): void => {
+		const p = picks[page] ?? [];
+		if (q.multiSelect !== true) setOther(at(other, page, null, null)); // one answer: a pick takes Other's place; several: they stand together
+		setPicks(at(picks, page, q.multiSelect === true ? (p.includes(n) ? p.filter((m) => m !== n) : [...p, n]) : [n], []));
+	};
+	const input = q.multiSelect === true ? "checkbox" : "radio";
+	return (
+		<div className="ask qcard" data-kind="question-card">
+			<div className="q-head">
+				<span>{q.question}</span>
+				{qs.length > 1 ? (
+					<span className="q-pager">
+						<button disabled={page === 0} onClick={() => setPage(page - 1)} aria-label={t.qPrev}>‹</button> {fmt(t.qOf, { n: page + 1, of: qs.length })} <button disabled={page === qs.length - 1} onClick={() => setPage(page + 1)} aria-label={t.qNext}>›</button>
+					</span>
+				) : null}
+			</div>
+			{q.options.map((o, n) => (
+				<label key={n} className="q-opt" data-act="q-option">
+					<input type={input} name={`q${step.callId}-${page}`} checked={(q.multiSelect === true || (other[page] ?? null) === null) && (picks[page] ?? []).includes(n)} onChange={() => pick(n)} />
+					<span><span><b>{o.label.replace(RECOMMENDED, "")}</b>{RECOMMENDED.test(o.label) ? <i> {t.qRecommended}</i> : null}</span>{o.description ? <small>{o.description}</small> : null}</span>
+				</label>
+			))}
+			<label className="q-opt" data-act="q-other">
+				<input type={input} name={`q${step.callId}-${page}`} checked={(other[page] ?? null) !== null} onChange={() => setOther(at(other, page, q.multiSelect === true && (other[page] ?? null) !== null ? null : (other[page] ?? ""), null))} />
+				<span><b>{t.qOther}</b>{(other[page] ?? null) !== null ? <input className="q-text" autoFocus value={other[page] ?? ""} onChange={(e) => setOther(at(other, page, e.target.value, null))} /> : null}</span>
+			</label>
+			{error === null ? null : <p className="wcard-err">{error}</p>}
+			<div className="wcard-acts">
+				<button className="wcard-here" data-act="q-skip" onClick={() => ((s) => (setSkipped(s), next(other, s)))(at(skipped, page, true, false))}>{t.qSkip}</button>
+				<button className="wcard-start" data-act="q-next" disabled={!done(page)} onClick={() => next()}>{page < qs.length - 1 ? t.qNextKey : t.qSubmitKey}</button>
+			</div>
+		</div>
+	);
+}

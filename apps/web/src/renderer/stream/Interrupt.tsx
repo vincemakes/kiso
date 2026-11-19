@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { t } from "../i18n/index.js";
-import type { State } from "../state/model.js";
+import { isLive, type State } from "../state/model.js";
 import { Warn } from "./Icons.js";
 
 /** What the uncertain execution was, from the step that made the call. */
@@ -41,6 +41,10 @@ export function ResumeCard({ onResume }: { readonly onResume: () => void }): Rea
 	);
 }
 
+/** ADR-0038: the crash window, the only place an execution is uncertain: no run is live and one was left open. A call a live
+ *  run is executing (or one a stop is still cutting) is never offered for a verdict, whatever a snapshot says. */
+export const uncertainOf = (s: State): NonNullable<State["snapshot"]>["uncertain"] => (s.snapshot !== null && !s.snapshot.running && s.snapshot.openRun !== null && !isLive(s) ? s.snapshot.uncertain : []);
+
 /**
  * Executions kiso cannot vouch for: the process stopped while a tool ran,
  * so the effect may or may not have happened. The person decides for each:
@@ -48,7 +52,7 @@ export function ResumeCard({ onResume }: { readonly onResume: () => void }): Rea
  */
 export function VerdictPanel({ state, onVerdict }: { readonly state: State; readonly onVerdict: (executionId: string, resolution: "rerun" | "abandoned") => void }): ReactNode {
 	const [sent, setSent] = useState<ReadonlySet<string>>(new Set());
-	const items = state.snapshot?.uncertain ?? [];
+	const items = uncertainOf(state);
 	if (items.length === 0) return null;
 	const give = (id: string, resolution: "rerun" | "abandoned"): void => {
 		setSent(new Set([...sent, id]));

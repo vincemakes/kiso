@@ -38,6 +38,7 @@ import createSubagentExtension from "../extensions/subagent/src/kiso-subagent.mj
 import createSkillsExtension from "../extensions/skills/src/kiso-skills.mjs";
 // @ts-expect-error — same
 import createAskExtension from "../extensions/ask/src/kiso-ask.mjs";
+import { refusingSessionsExtension } from "../packages/runtime/src/sessions-tools.js";
 
 interface NamedSchema {
 	readonly tool: string;
@@ -69,6 +70,8 @@ async function firstPartySchemas(): Promise<NamedSchema[]> {
 	for (const t of skills.tools ?? []) tools.push(t);
 	const ask = await createAskExtension({ ask: async () => ({ answers: [] }) });
 	for (const t of ask.tools ?? []) tools.push(t);
+	// ADR-0062: the sessions tools (the web's implementation and the terminal's twins share this spec)
+	for (const t of refusingSessionsExtension().tools ?? []) tools.push(t);
 	return tools.map((t) => ({ tool: t.name, schema: t.parameters }));
 }
 
@@ -76,6 +79,9 @@ async function firstPartySchemas(): Promise<NamedSchema[]> {
 const VALID_INPUTS: Readonly<Record<string, Record<string, unknown>>> = {
 	read_file: { path: "a.txt" },
 	list_dir: {},
+	list_sessions: {},
+	message: { to: "a1b2", text: "hi" },
+	start_session: { title: "t", brief: "b", initiation: "named" },
 	search_text: { pattern: "x" },
 	write_file: { path: "a.txt", content: "hi", expectedRevision: "absent" },
 	edit_file: { path: "a.txt", edits: [{ oldText: "a", newText: "b" }], expectedRevision: "rev:x" },

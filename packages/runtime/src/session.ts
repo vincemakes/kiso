@@ -49,7 +49,7 @@ import {
 import { executionLedger } from "./ledger.js";
 import { overflowBelt, type OverflowMeasure } from "./overflow-belt.js";
 import { windowLearner } from "./window-learner.js";
-import { denialResult, type ContinuationScope } from "@vincemakes/kiso-core";
+import { denialResult, isRuntimeInput, type ContinuationScope } from "@vincemakes/kiso-core";
 import { buildProfile, readForkOrigin, readProfile, writeProfile, writeSummary } from "./profile.js";
 import { forkNote } from "./fork.js";
 import { summarizeEvents } from "./session-summary.js";
@@ -84,6 +84,7 @@ import { ABORTED_BEFORE_EXECUTION, unansweredAbortedCalls } from "./aborted-call
 import { breakEvenFactor, guardedPruneSeq, KEEP_COMPACTABLE_RESULTS, microcompactBoundarySeq, outputReserve, phaseEnd, runsACheck, tierReason, tiersFor } from "./compaction-policy.js";
 import { Run } from "./run.js";
 import { TaskDelivery, type TaskDeliveryOptions } from "./tasks/delivery.js";
+import { PeerDelivery, type PeerDeliveryOptions, type PeerOutcome } from "./peer-delivery.js";
 import type { TaskManager } from "./tasks/manager.js";
 // TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
 // sameness is the whole point (one ledger, one shape, no second path).
@@ -122,6 +123,16 @@ export class PoisonedSessionError extends Error {
 	constructor(reason: string) {
 		super(`session is poisoned: ${reason} — reload it; the in-memory log no longer matches the disk`);
 		this.name = "PoisonedSessionError";
+	}
+}
+
+/** ADR-0038: a verdict asked for on a call this session is still running (only an interrupted one takes a verdict). */
+export class ExecutionLiveError extends Error {
+	readonly executionId: string;
+	constructor(executionId: string) {
+		super(`this action is still running: only an interrupted action takes a verdict (${executionId})`);
+		this.name = "ExecutionLiveError";
+		this.executionId = executionId;
 	}
 }
 
@@ -320,11 +331,18 @@ export class AgentSession {
 	}
 
 	readonly #activeRuns = new Set<Run>();
+	/** Executions this process started and has no receipt for yet: a call still running here (ADR-0038: never uncertain). */
+	readonly #executing = new Set<string>();
+	/** Executions with a verdict, and those whose verdict's result is written: kept as events are written (rebuilt from the log
+	 *  once, when the session loads), so the commit point's look-up is constant time on a session of any length. */
+	readonly #judged = new Set<string>();
+	readonly #filled = new Set<string>();
 
 	constructor(id: string, log: EventLog, store: SessionStore, adapter: Adapter, config: SessionConfig, lastUsageAt?: number) {
 		this.#lastUsageAt = lastUsageAt;
 		this.id = id;
 		this.log = log;
+		for (const e of log.all) this.#note(e);
 		this.#store = store;
 		this.#adapter = adapter;
 		// E1: extension tools join the registry. The collision check already
@@ -402,6 +420,16 @@ export class AgentSession {
 				this.#newSession = undefined;
 				this.#writeProfileRevision(workspace);
 			}
+			if (event.type === "tool_execution_started") this.#executing.add(event.executionId);
+			if (event.type === "tool_execution_succeeded" || event.type === "tool_execution_failed") this.#executing.delete(event.executionId);
+			// the commit point: an execution that already has a verdict keeps it. A receipt that arrives after it, or a second result,
+			// is not written (looked up and appended with nothing awaited between, so no verdict lands in the gap)
+			const late = this.#afterVerdict(event);
+			if (late !== null) {
+				process.stderr.write(`kiso: ${late}\n`);
+				return;
+			}
+			this.#note(event);
 			await this.#store.append(this.id, runId, event);
 			if (event.type === "usage" && event.known) this.#lastUsageAt = Date.now();
 		} catch (err) {
@@ -414,6 +442,33 @@ export class AgentSession {
 		}
 	}
 
+	/** Why `event` must not be written, or null: a receipt for an execution that already has a verdict, or a result after its
+	 *  verdict's own one (the person decided it; the call's own late outcome never adds a second tool_result for one call). */
+	#afterVerdict(event: Event): string | null {
+		if (event.type === "tool_execution_succeeded" || event.type === "tool_execution_failed") {
+			return this.#judged.has(event.executionId) ? `${event.type} for ${event.executionId} (call ${event.callId}) not written: the execution already has a verdict` : null;
+		}
+		if (event.type === "tool_result" && event.executionId !== undefined && this.#filled.has(event.executionId)) {
+			return `a second tool_result for ${event.executionId} (call ${event.callId}) not written: the execution already has one`;
+		}
+		return null;
+	}
+
+	/** Keeps the two sets as an event is written (or read back from the log): a verdict, then the one result that answers it. */
+	#note(event: Event): void {
+		if (event.type === "tool_execution_resolved") this.#judged.add(event.executionId);
+		else if (event.type === "tool_result" && event.executionId !== undefined && this.#judged.has(event.executionId)) this.#filled.add(event.executionId);
+	}
+
+	/** ADR-0038: an execution belongs to the crash window only when nothing here is running it: not this process's executor,
+	 *  not a live run of this session that owns it. A call in flight has started and not ended too, and is not uncertain. */
+	#isLive(executionId: string): boolean {
+		if (this.#executing.has(executionId)) return true;
+		if (this.#activeRuns.size === 0) return false;
+		const owner = this.#store.load(this.id).find((r) => r.event.type === "tool_execution_started" && (r.event as { executionId?: string }).executionId === executionId)?.runId;
+		return [...this.#activeRuns].some((r) => owner === undefined || r.runId === owner);
+	}
+
 	// ── one active run per session (Area 1) ──────────────────────────────
 
 	beginRun(run: Run): void {
@@ -422,11 +477,13 @@ export class AgentSession {
 		}
 		this.#activeRuns.add(run);
 		this.#delivery?.takeForRun(run); // ADR-0058: pending task notices ride its first admission
+		this.#peers?.takeForRun(run); // ADR-0062: and waiting messages
 	}
 
 	endRun(run: Run): void {
 		this.#activeRuns.delete(run);
 		this.#delivery?.onRunSettled(run); // the slot is free: a wake may follow
+		this.#peers?.onRunSettled(run);
 	}
 
 	// ── ADR-0058 (3c): the session's tasks reach the model ────────────────
@@ -455,6 +512,28 @@ export class AgentSession {
 			if (this.#delivery === delivery) this.#delivery = undefined;
 			if (this.#tasks === manager) this.#tasks = undefined;
 		};
+	}
+
+	// ── ADR-0062: messages from other sessions reach the model ─────────────
+
+	#peers: PeerDelivery | undefined;
+
+	/** Deliver the messages in this session's inbox (`root` is its store's directory): into a live run at its next safe
+	 *  point, or — idle — one wake run through `onWake`. Reads the inbox at once. */
+	usePeers(options: Pick<PeerDeliveryOptions, "root" | "onWake" | "mayWake">): () => void {
+		this.#peers?.close();
+		const peers = new PeerDelivery({ ...options, sessionId: this.id, events: () => this.log.all, liveRun: () => [...this.#activeRuns][0] });
+		this.#peers = peers;
+		peers.poke();
+		return () => {
+			peers.close();
+			if (this.#peers === peers) this.#peers = undefined;
+		};
+	}
+
+	/** A message was written to this session's inbox: look now. */
+	pokePeers(): PeerOutcome {
+		return this.#peers?.poke() ?? "waiting";
 	}
 
 	/** ADR-0057 §5 (3e D1) — a person's steer arrived: the foreground
@@ -1482,6 +1561,11 @@ export class AgentSession {
 		return [...executionLedger(this.log.all).values()].filter((r) => r.status === "uncertain");
 	}
 
+	/** The uncertain executions nothing here is still running: the crash window's, the only ones a verdict may be given on. */
+	interruptedExecutions() {
+		return this.uncertainExecutions().filter((r) => !this.#isLive(r.executionId));
+	}
+
 	/**
 	 * The human's verdict on an interrupted execution, keyed by EXECUTION ID
 	 * (B group): "rerun" (the human says the side effect did NOT happen — the
@@ -1492,58 +1576,93 @@ export class AgentSession {
 	 * model-facing result — a dangling tool_use with NO result would be
 	 * rejected by real providers (review finding 1).
 	 */
-	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned"): Promise<void> {
+	async resolveUncertain(executionId: string, resolution: "rerun" | "abandoned", content?: string): Promise<void> {
 		// round 4: a poisoned session may not mutate the log.
 		this.ensureHealthy();
 		const record = executionLedger(this.log.all).get(executionId);
 		if (!record) throw new Error(`no execution record for ${executionId}`);
 		if (record.status !== "uncertain") return; // idempotent + irreversible (the append below is synchronous, so a same-tick second call sees it)
+		// ADR-0038: a call still running is not uncertain, whatever the ledger's shape; a verdict on it would add a result the
+		// call's own outcome then repeats (two tool_result for one call, which a provider refuses)
+		if (this.#isLive(executionId)) throw new ExecutionLiveError(executionId);
 		// CT-1 (ADR-0051 Amendment 6): the verdict is persisted directly — there
 		// is no live resolver to hand it to (the loop never read one since
 		// ADR-0038; the round-7 live branch that waited for it was unreachable).
 		// round 4: the verdict is attributed to the ORIGINAL run of the execution
 		// — never the fake runId "resolution".
 		const runId = this.runIdFor(executionId);
+		// the verdict and the result it fills are appended together, nothing awaited between: a run resuming at the same moment
+		// reads both or neither, never a verdict whose result is missing (it would fill its own and this one would be skipped)
+		const filled = this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId);
+		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT — the normal live path emits the result
+		// with tags before the pause, so a crash-window repair reproduces them
+		const receipt = [...this.log.all]
+			.reverse()
+			.find(
+				(e): e is Event & { type: "tool_execution_failed" | "tool_execution_succeeded"; tags?: readonly string[] } =>
+					(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") && e.executionId === executionId,
+			);
+		// a host that knows the tool may say what the model should do instead (ADR-0062 § 10c: a question cut off is asked again)
+		const denial = content !== undefined ? { content, errorKind: "precondition" as const } : denialResult(
+			resolution === "rerun"
+				? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
+				: "abandoned by human decision — the interrupted attempt must not be treated as applied",
+		);
 		const resolved = this.log.append({
 			type: "tool_execution_resolved",
 			executionId,
 			callId: record.callId,
 			resolution,
 		});
-		await this.persist(runId, resolved);
-		// round 4: the fill is keyed by THIS execution — a tool_result belonging to
-		// a different (same-callId) execution must not suppress the verdict's
-		// model-facing result, and the fill itself carries the executionId.
-		// round 8 (adversarial): the fill also carries the tags from the durable RECEIPT —
-		// the normal live path emits the result with tags before the pause,
-		// so a crash-window repair reproduces them.
-		if (!this.log.all.some((e) => e.type === "tool_result" && e.executionId === record.executionId)) {
-			const denial = denialResult(
-				resolution === "rerun"
-					? "interrupted execution — rerun approved: the attempt is treated as NOT applied; the model may retry"
-					: "abandoned by human decision — the interrupted attempt must not be treated as applied",
-			);
-			const receipt = [...this.log.all]
-				.reverse()
-				.find(
-					(e): e is Event & { type: "tool_execution_failed" | "tool_execution_succeeded"; tags?: readonly string[] } =>
-						(e.type === "tool_execution_failed" || e.type === "tool_execution_succeeded") &&
-						e.executionId === executionId,
-				);
-			const result = this.log.append({
-				type: "tool_result",
-				callId: record.callId,
-				content: denial.content,
-				isError: true,
-				errorKind: denial.errorKind,
-				...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),
-				executionId: record.executionId,
-			});
-			await this.persist(runId, result);
-		}
+		// round 4: the fill is keyed by THIS execution — a tool_result belonging to a different (same-callId) execution must not
+		// suppress the verdict's model-facing result, and the fill itself carries the executionId
+		const result = filled
+			? null
+			: this.log.append({
+					type: "tool_result",
+					callId: record.callId,
+					content: denial.content,
+					isError: true,
+					errorKind: denial.errorKind,
+					...(receipt?.tags !== undefined ? { tags: receipt.tags } : {}),
+					executionId: record.executionId,
+				});
+		// both writes are queued now, in order (the store keeps one queue per session): a run's next event cannot land between them
+		await Promise.all([this.persist(runId, resolved), ...(result !== null ? [this.persist(runId, result)] : [])]);
 	}
 
 	/** The runId that owns an execution — from its durable started record. */
+	// ── ADR-0062 § 10b: rewind the line just sent ───────────────────────────
+
+	/** The person's last line, when it can be taken back: the session is idle, and its last run holds that one input (the
+	 *  person's own), ended `aborted`, with no committed model turn (`stop`) and no started execution. Null otherwise. */
+	rewindable(): { readonly seq: number; readonly content: string | readonly ContentBlock[] } | null {
+		if (this.#activeRuns.size > 0) return null;
+		const events = this.log.all;
+		const end = events.length - 1;
+		const last = events[end];
+		if (last?.type !== "terminal" || last.outcome.kind !== "aborted") return null;
+		let start = end - 1;
+		while (start >= 0 && events[start]!.type !== "terminal") start--;
+		const run = events.slice(start + 1, end);
+		const inputs = run.filter((e) => e.type === "user_input");
+		const line = inputs[0];
+		if (inputs.length !== 1 || line?.type !== "user_input" || isRuntimeInput(line) || line.source === "system") return null;
+		if (run.some((e) => e.type === "stop" || e.type === "tool_execution_started")) return null;
+		return { seq: line.seq, content: line.content };
+	}
+
+	/** Take back the person's last line (rewindable() says when): one `user_input_replaced` with no content, appended outside
+	 *  any run, so the projection renders nothing at the line's place and the next request is byte for byte what it would have
+	 *  been had the line never been sent; same session, same cache. Returns the line's content, for the box. */
+	async rewind(): Promise<string | readonly ContentBlock[] | null> {
+		const line = this.rewindable();
+		if (line === null) return null;
+		const runId = this.#store.load(this.id).at(-1)?.runId ?? "rewind";
+		await this.persist(runId, this.log.append({ type: "user_input_replaced", replaces: line.seq, content: null }));
+		return line.content;
+	}
+
 	private runIdFor(executionId: string): string {
 		const rec = this.#store
 			.load(this.id)

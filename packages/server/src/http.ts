@@ -135,15 +135,19 @@ export function createHttpHandler(service: SessionService, options: HttpHandlerO
 		throw new BadRequest("input must be a non-empty string or a non-empty array of content blocks");
 	};
 
+	/** ADR-0038: an execution is uncertain only in the crash window: no run is live here and one was left open. A call still
+	 *  executing in a live run has started and not ended too, but it is running, not uncertain. */
 	const state = async (sessionId: string): Promise<SessionState> => {
 		const events = service.events(sessionId);
+		const running = service.isRunning(sessionId);
+		const openRun = service.openRun(sessionId);
 		return {
 			sessionId,
-			running: service.isRunning(sessionId),
+			running,
 			highWater: events.at(-1)?.seq ?? -1,
-			openRun: service.openRun(sessionId),
+			openRun,
 			pendingApprovals: await service.pendingApprovals(sessionId),
-			uncertain: (await service.uncertainExecutions(sessionId)).map((u) => ({ executionId: u.executionId, callId: u.callId, name: u.name })),
+			uncertain: !running && openRun !== null ? (await service.uncertainExecutions(sessionId)).map((u) => ({ executionId: u.executionId, callId: u.callId, name: u.name })) : [],
 		};
 	};
 
@@ -312,6 +316,8 @@ export function createHttpHandler(service: SessionService, options: HttpHandlerO
 				if (typeof executionId !== "string" || executionId === "" || (resolution !== "rerun" && resolution !== "abandoned")) {
 					throw new BadRequest('executionId (string) and resolution ("rerun" | "abandoned") are required');
 				}
+				// a verdict on a call a live run is still executing would record a rerun of something running
+				if (service.isRunning(sessionId)) return (fail(res, 409, "in_flight", "a run is live: its actions are not uncertain"), true);
 				json(res, 200, await service.resolveUncertain(sessionId, executionId, resolution));
 				return true;
 			}
