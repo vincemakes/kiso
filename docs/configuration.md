@@ -303,3 +303,15 @@ a recognised origin (`api.openai.com`, `api.deepseek.com`, `api.z.ai`); the
 env key won by accident rather than by rule. The stored one wins there now.
 `kiso logout <provider>` removes it and the env var takes over again, exactly
 as the message has always said.
+
+## kiso web switches
+
+kiso web reads the same `~/.kiso/config.json` and sign-ins. Two environment
+switches change what its Works carry:
+
+| variable | effect |
+|---|---|
+| `KISO_WEB_SESSIONS=on` | Works created from then on carry the sessions tools (`list_sessions`, `message`, `start_session`). Off by default; a preview. See [web-sessions.md](web-sessions.md). |
+| `KISO_WEB_ASK=off` | Works carry no `ask_user`. On by default. |
+
+The rest of kiso web's environment is listed in `apps/web/src/main/env.ts`.

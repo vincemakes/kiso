@@ -80,6 +80,24 @@ To keep it on the desktop, open the page once and add it as an app: Safari (macO
 
 Sign-in is local: the command opens the page on a one-time code, which the page trades for a session cookie. **A signed-in session is a key to this machine's shell**: whoever holds it can run commands as you. The host listens on 127.0.0.1 only. `kiso web --revoke-sessions` signs every page out; each signs in again from the command.
 
+### Sessions and messages (preview)
+
+Off by default. With `KISO_WEB_SESSIONS=on kiso web`, Works created from then on can reach each other:
+
+- **`list_sessions` and `message`:** a Work finds the others and writes to one; the message wakes it, and its reply comes back to the sender's address.
+- **`start_session`:** a Work starts another, fresh or as a fork of itself. What you asked for starts at once; anything else is a card you start, do here, or dismiss. The new Work sits under its parent, and the parent hears when it finishes.
+
+Also in kiso web, on by default: `ask_user`, a question with options in the stream (`KISO_WEB_ASK=off` turns it off). Deleting a Work with Works under it asks whether to delete only it, so they move up, or the whole tree.
+
+A Work keeps the tools it was created with: a session started in the terminal and opened in the web has no sessions tools, so start a new Work from New task instead. The terminal's own requests are unchanged. More in [docs/web-sessions.md](docs/web-sessions.md).
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/web-messages.png" alt="kiso web: the weather-cli Work receives a message from the api-server Work, replies with the message tool, and lists the unit values it accepts"></td>
+<td width="50%"><img src="assets/readme/web-card.png" alt="kiso web: a New Work card titled Document the units flag, with Do it here and Start; in the sidebar, a Work started earlier sits under its parent"></td>
+</tr>
+</table>
+
 ## What it does
 
 ### It picks up where it left off
