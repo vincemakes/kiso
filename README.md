@@ -93,8 +93,8 @@ A Work keeps the tools it was created with: a session started in the terminal an
 
 <table>
 <tr>
-<td width="50%"><img src="assets/readme/web-messages.png" alt="kiso web: the weather-cli Work receives a message from the api-server Work, replies with the message tool, and lists the unit values it accepts"></td>
-<td width="50%"><img src="assets/readme/web-card.png" alt="kiso web: a New Work card titled Document the units flag, with Do it here and Start; in the sidebar, a Work started earlier sits under its parent"></td>
+<td width="50%"><img src="assets/readme/web-messages.png" alt="kiso web: the api-server Work receives a message from the docs-site Work, answers it with the message tool, and states the port its server listens on"></td>
+<td width="50%"><img src="assets/readme/web-card.png" alt="kiso web: a New Work card titled Add a --help flag, with Do it here and Start; in the sidebar, a Work started earlier sits under its parent"></td>
 </tr>
 </table>
 

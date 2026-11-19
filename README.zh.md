@@ -80,6 +80,24 @@ kiso web
 
 登录只在本机进行：命令用一次性代码打开页面，页面用它换取会话 cookie。**已登录的会话就是这台机器 shell 的钥匙**：拿到它的人可以用你的身份执行命令。宿主只监听 127.0.0.1。`kiso web --revoke-sessions` 让所有页面退出登录，之后每个页面都要再从命令登录一次。
 
+### 会话与消息（预览）
+
+默认关闭。用 `KISO_WEB_SESSIONS=on kiso web` 启动后，此后新建的 Work 可以互相联络：
+
+- **`list_sessions` 和 `message`：** 一个 Work 能找到其他 Work 并给其中一个发消息；消息会唤醒对方，对方的回复会回到发送方的地址。
+- **`start_session`：** 一个 Work 可以开出另一个，可以是全新的，也可以从自己分叉。你亲口要的会立刻开始；其余情况先出一张卡片，由你选择开始、在这里做，或者关掉。新 Work 挂在它的父 Work 下面，跑完时父 Work 会收到通知。
+
+kiso web 里还有，默认开启：`ask_user`，模型在消息流里向你提一个带选项的问题（`KISO_WEB_ASK=off` 关闭）。删除一个下面还挂着 Work 的 Work 时，会问你只删它（下面的 Work 上移一层），还是删掉整棵树。
+
+一个 Work 保持创建时的那套工具：在终端开始、再拿到网页里打开的会话没有会话工具，这时请从 New task 新开一个 Work。终端自己的请求不受影响。详见 [docs/web-sessions.md](docs/web-sessions.md)。
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/web-messages.png" alt="kiso web：api-server 的 Work 收到 docs-site 的 Work 发来的消息，用 message 工具回复，说明它的服务器监听哪个端口"></td>
+<td width="50%"><img src="assets/readme/web-card.png" alt="kiso web：一张标题为 Add a --help flag 的 New Work 卡片，带「Do it here」和「Start」；侧栏里，早先开出的一个 Work 挂在它的父 Work 下面"></td>
+</tr>
+</table>
+
 ## 它能做什么
 
 ### 断了能接着做
