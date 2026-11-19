@@ -2,10 +2,10 @@
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/lockup-dark.png"><img src="assets/readme/lockup-light.png" height="52" alt="kiso"></picture>
 
-### 断了能接着做的编程助手。
+### 断了能接着做的持久 agent 运行框架（harness）。
 
 **终端里用，浏览器里也能用。哪家的模型都能接。`kill -9` 也不丢东西。**<br>
-底层是一个持久的 agent 运行时，内核上限 2,200 行。
+TypeScript 内核上限 2,200 行，上面建了一个编程助手。
 
 <b>v0.55.0</b> · Node ≥ 22 · macOS 和 Linux
 
@@ -26,7 +26,7 @@
 - **你会换模型。** DeepSeek、Claude、GPT、ChatGPT 订阅，或任何 OpenAI 兼容的端点和网关，每个都能用它支持的推理强度。
 - **你的任务很长，进程会死。** 崩溃、`kill -9`、合上笔记本：`kiso resume` 从已提交的地方接着做。结果不确定的命令交给你决定，绝不悄悄重做。
 - **你想看清它在干什么。** 每轮结束都显示输入、输出、缓存命中和速度；每个会话都是一份可以直接读的 JSONL 日志。
-- **你自己也在做 agent。** 它底下的运行时就是一个库：持久的会话存储、agent 工厂和带类型的事件流。
+- **你自己也在做 agent。** 这套运行框架本身就是一个库：持久的会话存储、agent 工厂和带类型的事件流。
 
 如果你要的是机器关着也能干活的云端 agent，或者现在就要在 Windows 上用，kiso 暂时还不是。
 

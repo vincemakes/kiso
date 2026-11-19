@@ -2,10 +2,10 @@
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/lockup-dark.png"><img src="assets/readme/lockup-light.png" height="52" alt="kiso"></picture>
 
-### A coding agent that picks up where it left off.
+### A durable agent harness that picks up where it left off.
 
 **In your terminal or your browser. Any model you have. A `kill -9` costs you nothing.**<br>
-Built on a durable agent runtime whose kernel is capped at 2,200 lines.
+A TypeScript kernel capped at 2,200 lines, and a coding agent built on it.
 
 <b>v0.55.0</b> · Node ≥ 22 · macOS and Linux
 
@@ -26,7 +26,7 @@ Built on a durable agent runtime whose kernel is capped at 2,200 lines.
 - **You switch models.** DeepSeek, Claude, GPT, a ChatGPT subscription, or any OpenAI-compatible endpoint or gateway, with the effort level each one accepts.
 - **Your tasks are long, and things die.** A crash, a `kill -9`, a closed laptop: `kiso resume` continues from what was committed. A command whose outcome is unknown goes to you, never silently repeated.
 - **You want to see where it goes.** Every turn ends with its input, output, cache hits and speed; every session is a JSONL log you can read.
-- **You build agents yourself.** The runtime under it is a library: a durable session store, an agent factory and a typed event stream.
+- **You build agents yourself.** The harness is a library: a durable session store, an agent factory and a typed event stream.
 
 If you want a cloud agent that works while your machine is off, or Windows today, kiso is not that yet.
 
