@@ -2,10 +2,10 @@
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/lockup-dark.png"><img src="assets/readme/lockup-light.png" height="52" alt="kiso"></picture>
 
-### A coding agent that picks up where it left off.
+### A durable agent harness that picks up where it left off.
 
 **In your terminal or your browser. Any model you have. A `kill -9` costs you nothing.**<br>
-Built on a durable agent runtime whose kernel is capped at 2,200 lines.
+A TypeScript kernel capped at 2,200 lines, and a coding agent built on it.
 
 <b>v0.55.0</b> · Node ≥ 22 · macOS and Linux
 
@@ -26,7 +26,7 @@ Built on a durable agent runtime whose kernel is capped at 2,200 lines.
 - **You switch models.** DeepSeek, Claude, GPT, a ChatGPT subscription, or any OpenAI-compatible endpoint or gateway, with the effort level each one accepts.
 - **Your tasks are long, and things die.** A crash, a `kill -9`, a closed laptop: `kiso resume` continues from what was committed. A command whose outcome is unknown goes to you, never silently repeated.
 - **You want to see where it goes.** Every turn ends with its input, output, cache hits and speed; every session is a JSONL log you can read.
-- **You build agents yourself.** The runtime under it is a library: a durable session store, an agent factory and a typed event stream.
+- **You build agents yourself.** The harness is a library: a durable session store, an agent factory and a typed event stream.
 
 If you want a cloud agent that works while your machine is off, or Windows today, kiso is not that yet.
 
@@ -79,6 +79,24 @@ kiso web
 To keep it on the desktop, open the page once and add it as an app: Safari (macOS Sonoma or later), File > Add to Dock; Chrome or Edge (macOS or Linux), Install page as app. The port is fixed, so the app keeps its address; start `kiso web` before opening it. kiso web runs on macOS and Linux; Windows is not supported yet.
 
 Sign-in is local: the command opens the page on a one-time code, which the page trades for a session cookie. **A signed-in session is a key to this machine's shell**: whoever holds it can run commands as you. The host listens on 127.0.0.1 only. `kiso web --revoke-sessions` signs every page out; each signs in again from the command.
+
+### Sessions and messages (preview)
+
+Off by default. With `KISO_WEB_SESSIONS=on kiso web`, Works created from then on can reach each other:
+
+- **`list_sessions` and `message`:** a Work finds the others and writes to one; the message wakes it, and its reply comes back to the sender's address.
+- **`start_session`:** a Work starts another, fresh or as a fork of itself. What you asked for starts at once; anything else is a card you start, do here, or dismiss. The new Work sits under its parent, and the parent hears when it finishes.
+
+Also in kiso web, on by default: `ask_user`, a question with options in the stream (`KISO_WEB_ASK=off` turns it off). Deleting a Work with Works under it asks whether to delete only it, so they move up, or the whole tree.
+
+A Work keeps the tools it was created with: a session started in the terminal and opened in the web has no sessions tools, so start a new Work from New task instead. The terminal's own requests are unchanged. More in [docs/web-sessions.md](docs/web-sessions.md).
+
+<table>
+<tr>
+<td width="50%"><img src="assets/readme/web-messages.png" alt="kiso web: the api-server Work receives a message from the docs-site Work, answers it with the message tool, and states the port its server listens on"></td>
+<td width="50%"><img src="assets/readme/web-card.png" alt="kiso web: a New Work card titled Add a --help flag, with Do it here and Start; in the sidebar, a Work started earlier sits under its parent"></td>
+</tr>
+</table>
 
 ## What it does
 
