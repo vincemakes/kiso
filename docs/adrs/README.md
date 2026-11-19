@@ -153,6 +153,15 @@ not another recalibration)
   (`edits` of `{oldText, newText}`), the old vocabulary taken only by the
   executor; a replay found 80 of 86 failed edits had `search`/`replace`
   swapped (0060 was the revision witness, not adopted)
+- 0062 — Sessions and messages: in kiso web, Works find, start and talk to
+  each other (`list_sessions`, `message`, `start_session`), as one optional
+  extension fixed in a Work's tool table at creation; a durable inbox per
+  Work (reversing 0057's parked inbox), one `peer` kind in the core's
+  `UserInputVia`, a causal wake budget of 20 per chain, a completion
+  notice to the parent, and a hold when the sender may reach less than
+  the receiver (a known cross-folder gap, finding G1); plus the steer's
+  visible Send now, rewind and `ask_user` in the web. Shipped in 0.55.0,
+  off by default until the choice eval passes
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's
