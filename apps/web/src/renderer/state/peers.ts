@@ -27,7 +27,11 @@ type Via = { readonly kind?: unknown; readonly event?: unknown; readonly from?: 
 export function peerOf(seq: number, via: Via | undefined, text: string): Peer | null {
 	if (via?.kind !== "peer" || typeof via.from !== "string") return null;
 	const at = via.from.lastIndexOf("/");
-	const title = /"([^"]*)"/.exec(text)?.[1] ?? via.from.slice(at + 1);
+	// the title sits between the header's first quote and the quote before " (<address>)", so quotes inside it stay (finding G6)
+	const head = text.slice(0, text.indexOf("\n") < 0 ? text.length : text.indexOf("\n"));
+	const open = head.indexOf('"');
+	const close = head.lastIndexOf(`" (${via.from})`);
+	const title = open >= 0 && close > open ? head.slice(open + 1, close) : via.from.slice(at + 1);
 	let body = text.slice(text.indexOf("\n\n") + 2).replace(/\n\nFrom another session, not the person:[^\n]*$/, "").replace(/\n\nFiles \(local paths; read them if you need them\):\n[\s\S]*$/, "");
 	let state = "";
 	if (via.event === "completion") {

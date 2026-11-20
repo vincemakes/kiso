@@ -6,6 +6,7 @@ import { launch, clientFor, scratch, checker, sleep, waitUntil } from "./lib.mjs
 import { initialState, reduce, split, folded, isInterrupted, isLive } from "../../dist/renderer/state/model.js";
 import { holdBack, parse, render } from "../../dist/renderer/state/markdown.js";
 import { editDiff } from "../../dist/renderer/state/diff.js";
+import { peerOf } from "../../dist/renderer/state/peers.js";
 
 const { check, verdict } = checker("model");
 const call = (callId, name, input) => ({ type: "tool_call_end", callId, name, input });
@@ -92,4 +93,13 @@ const li = (t) => parse(t)[0].items;
 check(li("- a\n  - b\n    - c\n- d").length === 2 && li("- a\n  - b\n    - c\n- d")[0].children[0].items[0].children[0].t === "ul" && li("1. foo\n  - under a numbered item\n2. bar")[0].children[0].t === "ul", "a sub-list keeps its level, under a bullet or a number, however far it is indented");
 check(li("- one\n  continues\n- two")[0].inline.map((x) => x.text).join("") === "one continues" && parse("1. a\n```\nx\n```\n2. b").map((b) => b.t + (b.start ?? "")).join() === "ol1,code,ol2" && li("- a\n\n- b").length === 2, "an indented line continues its item, a list resumes at its own number after a code block, a blank line between items keeps one list");
 check(li("- [ ] a\n- [x] b").map((i) => i.task).join() === "false,true" && li("1. Run:\n   ```sh\n   x\n   ```")[0].children[0].t === "code" && holdBack("- [") === "" && holdBack("- [x] ") === "" && holdBack("- [x] ok") === "- [x] ok", "task boxes and a code block under an item; a task box is withheld until its text starts");
+// finding G6: a sender's title that holds quotes is drawn whole, in a message and in a completion notice
+{
+	const via = (event) => ({ kind: "peer", event, from: "k/2026-11-20T10-00-00-ab12", messageId: "m1" });
+	const msg = peerOf(1, via("message"), 'Message from the session "Fix the "login" bug" (k/2026-11-20T10-00-00-ab12):\n\nhello\n\nFrom another session, not the person: x');
+	const done = peerOf(2, via("completion"), 'The session "Say "hi"" (k/2026-11-20T10-00-00-ab12), which this session started, ended a turn:\n\nfinished.\n\nok');
+	check(msg?.title === 'Fix the "login" bug' && msg?.body === "hello", "a message's sender title with quotes is whole");
+	check(done?.title === 'Say "hi"' && done?.state === "finished" && done?.body === "ok", "a completion's child title with quotes is whole");
+	check(peerOf(3, via("message"), "no header at all")?.title === "2026-11-20T10-00-00-ab12", "no header: the session id");
+}
 verdict();
