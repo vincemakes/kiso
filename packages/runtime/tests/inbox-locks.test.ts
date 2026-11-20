@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ChainBudget } from "../src/chains.js";
 import { takeOverStale } from "../src/dir-lock.js";
@@ -54,7 +55,7 @@ describe("releaseMessage (finding G3)", () => {
 describe("ChainBudget across processes (finding G3)", () => {
 	it("four processes taking at once spend exactly the budget, never more", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-cbp-"));
-		const dist = resolve(__dirname, "../dist/chains.js");
+		const dist = pathToFileURL(resolve(__dirname, "../dist/chains.js")).href; // a file URL: Windows imports no bare drive path
 		const env = { ...process.env };
 		delete env["NODE_TEST_CONTEXT"];
 		// every process waits for the same moment, then takes as fast as it can
