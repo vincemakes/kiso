@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 import { defineTool, type Tool, type ToolResult } from "@vincemakes/kiso-core";
-import { readCards, readInbox, readStartedBy, releaseMessage, removeMessage, START_SESSION, startInitiation, writeCard, writeSessionName, writeStartedBy, type WorkCard } from "@vincemakes/kiso-runtime/internal";
+import { readCards, readInbox, readStartedBy, releaseMessage, dropHeldMessage, START_SESSION, startInitiation, writeCard, writeSessionName, writeStartedBy, type WorkCard } from "@vincemakes/kiso-runtime/internal";
 import { forkWork } from "./fork.js";
 import type { SessionsHost } from "./sessions-tool.js";
 import type { Settings } from "./settings.js";
@@ -79,7 +79,7 @@ export function workLinks(space: Space, session: string): { started?: { readonly
 
 /** ADR-0062 § 8: the person admits a held message (it is delivered: the Work looks now) or drops it. */
 export async function answerHeld(space: Space, session: string, messageId: string, action: string): Promise<{ readonly status: number; readonly body: unknown }> {
-	if (action === "drop") return (removeMessage(space.dir, session, messageId), { status: 200, body: {} });
+	if (action === "drop") return (await dropHeldMessage(space.dir, session, messageId)) ? { status: 200, body: {} } : { status: 409, body: { error: "no such held message" } };
 	if (action !== "admit" || !(await releaseMessage(space.dir, session, messageId))) return { status: 409, body: { error: "no such held message" } };
 	await space.poke(session).catch(() => undefined);
 	return { status: 200, body: {} };

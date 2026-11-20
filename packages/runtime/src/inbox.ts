@@ -126,6 +126,19 @@ export async function releaseMessage(root: string, sessionId: string, messageId:
 	});
 }
 
+/** ADR-0062 § 8: the person drops a held message. Only a held one: a message on its way to its receiver is not the person's
+ *  to drop (finding G5). False when it is not there or not held. */
+export async function dropHeldMessage(root: string, sessionId: string, messageId: string): Promise<boolean> {
+	const dir = inboxDir(root, sessionId);
+	if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return false;
+	return locked(dir, () => {
+		const m = readInbox(root, sessionId).find((x) => x.messageId === messageId);
+		if (m === undefined || m.held !== true) return false;
+		rmSync(join(dir, `${messageId}.json`), { force: true });
+		return true;
+	});
+}
+
 /** Delete an admitted message. A failure leaves litter, never a second admission: the log's id is checked first. */
 export function removeMessage(root: string, sessionId: string, messageId: string): void {
 	try {

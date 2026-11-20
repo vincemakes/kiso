@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ChainBudget } from "../src/chains.js";
 import { takeOverStale } from "../src/dir-lock.js";
-import { inboxDir, readInbox, releaseMessage, writeMessage, type PeerMessage } from "../src/inbox.js";
+import { dropHeldMessage, inboxDir, readInbox, releaseMessage, writeMessage, type PeerMessage } from "../src/inbox.js";
 
 // finding G3: the inbox's lock take-over, releasing a held message, and the chain budget's read-modify-write
 const msg = (id: string, extra: Partial<PeerMessage> = {}): PeerMessage => ({ messageId: id, from: "k/s", fromTitle: "S", text: id, files: [], rootId: "k/s#0", at: 1, ...extra });
@@ -75,4 +75,17 @@ describe("ChainBudget across processes (finding G3)", () => {
 		expect(taken, "never more yeses than the budget").toBe(120);
 		expect(new ChainBudget(dir, 120).spent("k/a#0"), "every yes was counted").toBe(120);
 	}, 60_000);
+});
+
+describe("dropHeldMessage (finding G5)", () => {
+	it("drops a held message, and only a held one: a message on its way to the receiver stays", async () => {
+		const root = mkdtempSync(join(tmpdir(), "kiso-dh-"));
+		await writeMessage(root, "r", msg("held", { held: true }));
+		await writeMessage(root, "r", msg("free"));
+		expect(await dropHeldMessage(root, "r", "free"), "not held: not the person's to drop").toBe(false);
+		expect(await dropHeldMessage(root, "r", "held")).toBe(true);
+		expect(readInbox(root, "r").map((m) => m.messageId)).toEqual(["free"]);
+		expect(await dropHeldMessage(root, "r", "held"), "already gone").toBe(false);
+		expect(await dropHeldMessage(root, "never-messaged", "x"), "no inbox").toBe(false);
+	});
 });
