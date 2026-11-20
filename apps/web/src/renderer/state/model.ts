@@ -335,7 +335,8 @@ function frame(s: State, name: string, data: unknown): void {
 			const last = s.last;
 			if (turn === undefined || last === null || last.seq !== seq) return;
 			const step = last.itemId === null ? undefined : turn.items.find((i): i is Step => i.kind === "step" && i.id === last.itemId);
-			if (last.type === "user_input") turn.startedAt = ts;
+			// finding #8: only the input that opened the turn starts its clock; a steer, a notice or a peer line inside the run does not
+			if (last.type === "user_input") turn.startedAt ??= ts;
 			else if (last.type === "terminal") {
 				turn.endedAt = ts;
 				closeThinking(turn, ts);
