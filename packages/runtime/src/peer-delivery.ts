@@ -21,8 +21,9 @@ export interface PeerDeliveryOptions {
 	readonly sessionId: string;
 	readonly events: () => readonly Event[];
 	readonly liveRun: () => Run | undefined;
-	/** Start ONE run whose first input is this message. Absent: messages wait for the next run. */
-	readonly onWake?: (input: { readonly content: string; readonly via: UserInputVia }) => void;
+	/** Start ONE run whose first input is this message. Absent: messages wait for the next run. A promise it returns that
+	 *  rejects, or a throw, is a wake that never started: the message waits again and the next look may wake (finding G2). */
+	readonly onWake?: (input: { readonly content: string; readonly via: UserInputVia }) => void | Promise<unknown>;
 	/** ADR-0062 § 6: spend one of the chain's wakes; false: the chain's budget is spent, the message waits for a run */
 	readonly mayWake?: (rootId: string) => boolean;
 }
@@ -49,6 +50,7 @@ export class PeerDelivery {
 	readonly #o: PeerDeliveryOptions;
 	readonly #inFlight = new Set<string>();
 	#waking = false;
+	#wakeNo = 0;
 	#closed = false;
 
 	constructor(options: PeerDeliveryOptions) {
@@ -66,11 +68,27 @@ export class PeerDelivery {
 			return "handed";
 		}
 		if (this.#waking) return "woke";
-		if (this.#o.onWake === undefined || pending.length === 0 || !(this.#o.mayWake?.(pending[0]!.rootId) ?? true)) return "waiting";
-		const first = peerInput(pending[0]!);
+		if (this.#o.onWake === undefined) return "waiting";
+		// the first message whose chain may still wake: a spent chain at the head never blocks another chain (finding G2)
+		const next = pending.find((m) => this.#o.mayWake?.(m.rootId) ?? true);
+		if (next === undefined) return "waiting";
+		const first = peerInput(next);
+		const id = first.via.messageId;
 		this.#waking = true;
-		this.#inFlight.add(first.via.messageId);
-		this.#o.onWake({ content: first.content as string, via: first.via });
+		this.#inFlight.add(id);
+		const no = ++this.#wakeNo;
+		const failed = (): void => {
+			if (no !== this.#wakeNo || !this.#waking) return; // a run began since (takeForRun), or a later wake owns the state
+			this.#waking = false;
+			this.#inFlight.delete(id);
+		};
+		try {
+			const started = this.#o.onWake({ content: first.content as string, via: first.via });
+			if (started instanceof Promise) started.catch(failed);
+		} catch {
+			failed();
+			return "waiting";
+		}
 		return "woke";
 	}
 

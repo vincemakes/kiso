@@ -150,7 +150,7 @@ describe("delivery with a budget and a hold", () => {
 		await writeMessage(store.root, "r", msg("held", { held: true }));
 		await writeMessage(store.root, "r", msg("waits"));
 		let woke = false;
-		session.usePeers({ root: store.root, onWake: () => (woke = true), mayWake: () => false });
+		session.usePeers({ root: store.root, onWake: () => void (woke = true), mayWake: () => false });
 		expect(woke, "the chain's budget is spent").toBe(false);
 		expect(session.pokePeers(), "and the sender is told it waits").toBe("waiting");
 		for await (const _ of session.run("the person speaks")) void _;
