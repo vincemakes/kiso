@@ -91,7 +91,7 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 			const from = `${self.key}/${self.sessionId}`;
 			// a send the crash rerun cut off takes that call's id, so the receiver takes it once (ADR-0062 § 5)
 			const messageId = peerMessageId(from, retriedSendCallId(host.eventsOf(self.key, self.sessionId), input) ?? ctx.callId ?? "", `${target.key}/${target.id}`, input.text);
-			const reach = (key: string, id: string) => ({ tier: host.tierOf(id), added: readEnvironment(host.dirOf(key), id).added });
+			const reach = (key: string, id: string) => ({ tier: host.tierOf(id), folder: host.cwdOf(key) ?? null, added: readEnvironment(host.dirOf(key), id).added });
 			const held = reachesFurther(reach(self.key, self.sessionId), reach(target.key, target.id));
 			const fromTitle = reply.works.find((w) => w.key === self.key && w.id === self.sessionId)?.title ?? self.sessionId;
 			try {

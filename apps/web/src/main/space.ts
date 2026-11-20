@@ -188,17 +188,21 @@ export function createSpace(options: SpaceOptions): Space {
 					// a task's end wakes an idle Work, as it does the terminal: one run whose input is the notice (ADR-0058 §8). The
 					// delivery hands the notice over once; a person's run that started in the same moment refuses it (in flight), so the
 					// wake waits for that run to end and goes then, rather than being dropped
-					const wake = (w: { readonly content: string; readonly via: UserInputVia }): void => {
-						const go = (tries: number): void =>
-							void service.run(sessionId, w.content, { source: "system", via: w.via }).catch((e: unknown) => {
-								if (e instanceof InFlightError && tries < 600) setTimeout(() => go(tries + 1), 1000);
-							});
-						go(0);
-					};
+					// resolves once the run started; rejects when it never will, so a peer wake is not left believed (finding G2)
+					const wakeRun = (w: { readonly content: string; readonly via: UserInputVia }): Promise<void> =>
+						new Promise<void>((started, never) => {
+							const go = (tries: number): void =>
+								void service.run(sessionId, w.content, { source: "system", via: w.via }).then(
+									() => started(),
+									(e: unknown) => (e instanceof InFlightError && tries < 600 ? setTimeout(() => go(tries + 1), 1000) : never(e)),
+								);
+							go(0);
+						});
+					const wake = (w: { readonly content: string; readonly via: UserInputVia }): void => void wakeRun(w).catch(() => undefined);
 					session.useTasks(tasks.managerFor(sessionId), { wake: options.taskWake !== false, onWake: wake });
 					// ADR-0062: messages from other Works, read from its inbox now and whenever one is written
 					if (options.sessions !== undefined) {
-						session.usePeers({ root: options.dir, onWake: wake, mayWake: options.sessions.mayWake });
+						session.usePeers({ root: options.dir, onWake: wakeRun, mayWake: options.sessions.mayWake });
 						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
 						for (const u of session.interruptedExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
 					}

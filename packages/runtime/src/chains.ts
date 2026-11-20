@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { isRuntimeInput, type Event } from "@vincemakes/kiso-core";
+import { withDirLockSync } from "./dir-lock.js";
 import type { PeerMessage } from "./inbox.js";
 
 /**
@@ -47,25 +48,46 @@ export class ChainBudget {
 		}
 	}
 
+	/** Read, check and write under one lock per chain, so two hosts taking at once never both spend the last wake (finding
+	 *  G3). Busy for seconds (a lock that will not go): no wake, the message waits for the next run. */
 	take(rootId: string): boolean {
-		const wakes = this.spent(rootId);
-		if (wakes >= this.#max) return false;
 		mkdirSync(this.#dir, { recursive: true, mode: 0o700 });
 		const path = this.#path(rootId);
-		writeFileSync(`${path}.${process.pid}.tmp`, JSON.stringify({ rootId, wakes: wakes + 1, at: Date.now() }), { mode: 0o600 });
-		renameSync(`${path}.${process.pid}.tmp`, path);
-		return true;
+		try {
+			return withDirLockSync(`${path}.lock`, () => {
+				const wakes = this.spent(rootId);
+				if (wakes >= this.#max) return false;
+				writeFileSync(`${path}.${process.pid}.tmp`, JSON.stringify({ rootId, wakes: wakes + 1, at: Date.now() }), { mode: 0o600 });
+				renameSync(`${path}.${process.pid}.tmp`, path);
+				return true;
+			}, () => new Error("the chain's budget is busy"));
+		} catch {
+			return false;
+		}
 	}
 }
 
 const RANK: Readonly<Record<string, number>> = { plan: 0, default: 1, "accept-edits": 2, "full-access": 3 };
 
+/** A session's reach for the hold: its permission mode, its own folder (null when it cannot be read) and the folders it was
+ *  added. */
+export type Reach = { readonly tier: string; readonly folder: string | null; readonly added: readonly string[] };
+
 /** ADR-0062 § 8: whether the receiver may reach further than the sender, so a message between them is held for the person: a
- *  wider permission mode, or a folder the sender was not given; a mode that cannot be ranked counts as further. Two sessions in
- *  full access are never held (owner, 2026-11-16): nothing is wider than full access, and folders do not bound it. */
-export function reachesFurther(sender: { readonly tier: string; readonly added: readonly string[] }, receiver: { readonly tier: string; readonly added: readonly string[] }): boolean {
+ *  wider permission mode, or a folder of the receiver's (its own or an added one) that none of the sender's folders holds; a
+ *  mode that cannot be ranked, or a folder that cannot be read, counts as further (finding G1: the own folders were never
+ *  compared). Two sessions in full access are never held (owner, 2026-11-16): nothing is wider than full access, and folders
+ *  do not bound it. */
+export function reachesFurther(sender: Reach, receiver: Reach): boolean {
 	if (sender.tier === "full-access" && receiver.tier === "full-access") return false;
-	return (RANK[receiver.tier] ?? 9) > (RANK[sender.tier] ?? -1) || receiver.added.some((f) => !sender.added.includes(f));
+	if ((RANK[receiver.tier] ?? 9) > (RANK[sender.tier] ?? -1)) return true;
+	if (sender.folder === null || receiver.folder === null) return true;
+	const reached = [sender.folder, ...sender.added];
+	const holds = (outer: string, inner: string) => {
+		const rel = relative(outer, inner);
+		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+	};
+	return [receiver.folder, ...receiver.added].some((f) => !reached.some((r) => holds(r, f)));
 }
 
 /** ADR-0062 § 7 (owner, 2026-11-17, option a): the child's last reply rides the notice up to this many characters; a longer one

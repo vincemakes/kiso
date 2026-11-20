@@ -41,9 +41,9 @@ export * from "./request-budget.js";
 export { isForkNote } from "./fork.js";
 // ADR-0062: the sessions extension's tool specs, shared by the web host and the terminal's refusing twins
 export * from "./sessions-tools.js";
-export { INBOX_LIMITS, InboxRefusedError, fileRevision, peerMessageId, readInbox, retriedSendCallId, releaseMessage, removeMessage, writeMessage, type PeerFile, type PeerMessage } from "./inbox.js";
+export { INBOX_LIMITS, InboxRefusedError, fileRevision, peerMessageId, readInbox, retriedSendCallId, releaseMessage, removeMessage, dropHeldMessage, writeMessage, type PeerFile, type PeerMessage } from "./inbox.js";
 export type { PeerOutcome } from "./peer-delivery.js";
-export { ChainBudget, MAX_CHAIN_WAKES, completionMessage, completionNotice, currentChain, reachesFurther, runStarter, startInitiation, type CompletionState } from "./chains.js";
+export { ChainBudget, MAX_CHAIN_WAKES, completionMessage, completionNotice, currentChain, reachesFurther, runStarter, startInitiation, type CompletionState, type Reach } from "./chains.js";
 export { hasSessionsTools, markSessionsTools, readCards, readStartedBy, writeCard, writeStartedBy, type WorkCard, readForkOrigin, readProfile, readSessionName, readSummary, writeSessionName, writeSummary, type ExecutionProfile, type ProfileReadResult } from "./profile.js";
 export { SUMMARY_MIGRATION_MARKER, listSessionSidecars, migrateSummaries, sessionSummary, summarizeEvents, summaryMigrationPending, type SessionListing, type SessionSummary } from "./session-summary.js";
 // ADR-0058 §6: the task journal and the TaskManager (internal until the

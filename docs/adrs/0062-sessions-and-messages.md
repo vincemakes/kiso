@@ -274,14 +274,12 @@ shown, hold.** Whatever the receiver then does passes its own permission
 checks. The owner works in the widest mode almost always, so this rarely
 fires.
 
-**Known gap, as shipped** (finding G1, from an outside review of 0.55.0;
-scheduled for the next release, test first). The hold is not complete.
-The built comparison (`reachesFurther`, `packages/runtime/src/chains.ts`)
-ranks the two modes and the folders each Work was added, but never the
-Works' own folders: a sender in one folder can drive a receiver in the
-same mode in another folder with no hold, although the rule above says to
-hold when equality cannot be shown. Two Works in full access are never
-held either way (§ 16, PR 3), so the owner's usual setup does not meet it.
+**Fixed after 0.55.0** (finding G1, from an outside review of 0.55.0). As shipped, the built comparison
+(`reachesFurther`, `packages/runtime/src/chains.ts`) ranked the two modes and the folders each Work was
+added, but never the Works' own folders, so a sender in one folder could drive a receiver in the same mode
+in another folder with no hold. It now compares them too: a receiver's folder, its own or an added one,
+that none of the sender's folders holds is reaching further, and a folder that cannot be read counts as
+further. Two Works in full access are still never held (§ 16, PR 3).
 
 ## 9. `start_session({ title, brief, initiation, context })`
 
@@ -1012,7 +1010,6 @@ v1; "Suggestion expired" stays (§ 9).
 
 **Open (2026-11-19):** the choice eval (§ 9), which gates turning the extension on by default
 (`KISO_WEB_SESSIONS`, off until it passes; its third round, on description v3, scored 79 of 96
-against a pass line of 82, with 9 unauthorised edits, so 0.55.0 ships it off); the hold's
-cross-folder gap (§ 8, finding G1, next release); a Work started in the terminal and opened in the
+against a pass line of 82, with 9 unauthorised edits, so 0.55.0 ships it off); a Work started in the terminal and opened in the
 web has no sessions tools (an amendment is proposed, not decided); merging the task and message wake budgets, after the
 0.55 dogfood; a terminal that only receives messages (v2 candidate). (The coverage gaps of § 16 were closed by #480 and #481.)
