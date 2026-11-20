@@ -25,7 +25,7 @@ describe("currentChain", () => {
 });
 
 describe("reachesFurther (the hold)", () => {
-	const at = (tier: string, added: string[] = []) => ({ tier, added });
+	const at = (tier: string, added: string[] = [], folder: string | null = "/w") => ({ tier, added, folder });
 	it("two sessions in full access are never held, whatever folders either was given (owner, 2026-11-16)", () => {
 		expect(reachesFurther(at("full-access"), at("full-access"))).toBe(false);
 		expect(reachesFurther(at("full-access"), at("full-access", ["/elsewhere"]))).toBe(false);
@@ -36,6 +36,22 @@ describe("reachesFurther (the hold)", () => {
 		expect(reachesFurther(at("plan"), at("accept-edits"))).toBe(true);
 		expect(reachesFurther(at("default"), at("default", ["/x"]))).toBe(true);
 		expect(reachesFurther(at("default"), at("mystery"))).toBe(true);
+	});
+	it("held when the receiver's own folder is one the sender cannot reach, in the same mode (finding G1)", () => {
+		expect(reachesFurther(at("default", [], "/repo-a"), at("default", [], "/repo-b"))).toBe(true);
+		expect(reachesFurther(at("accept-edits", [], "/repo-a"), at("accept-edits", [], "/repo-a-sibling"))).toBe(true);
+		expect(reachesFurther(at("default", [], "/repo-a"), at("default", [], null)), "a folder that cannot be read: equality is not shown").toBe(true);
+		expect(reachesFurther(at("default", [], null), at("default", [], "/repo-b"))).toBe(true);
+	});
+	it("not held when the sender reaches the receiver's folder: the same one, one inside it, or one it was added", () => {
+		expect(reachesFurther(at("default", [], "/repo-a"), at("default", [], "/repo-a"))).toBe(false);
+		expect(reachesFurther(at("default", [], "/repo"), at("default", [], "/repo/pkg"))).toBe(false);
+		expect(reachesFurther(at("default", ["/repo-b"], "/repo-a"), at("default", [], "/repo-b"))).toBe(false);
+		expect(reachesFurther(at("default", [], "/repo/pkg"), at("default", [], "/repo")), "the receiver's folder holds the sender's: wider").toBe(true);
+	});
+	it("full access across folders is still never held (owner, 2026-11-16)", () => {
+		expect(reachesFurther(at("full-access", [], "/repo-a"), at("full-access", [], "/repo-b"))).toBe(false);
+		expect(reachesFurther(at("full-access", [], null), at("full-access", [], null))).toBe(false);
 	});
 	it("not held when the receiver reaches no further", () => {
 		expect(reachesFurther(at("full-access"), at("default"))).toBe(false);
