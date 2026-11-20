@@ -50,7 +50,7 @@
 /* a row with nested sessions folds them: the chevron after its title shows on hover (down while they show) and stays, pointing
    right, while they are folded, as a group head's does */
 .item .kid-fold { flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-left: -4px; border-radius: 5px; color: var(--mute); }
-.row:hover .item .kid-fold, .row.menu-open .item .kid-fold { margin-right: 26px; } /* the row's ⋯ takes the right edge on hover: the chevron stands left of it */
+.row:hover .item, .row.menu-open .item { padding-right: 36px; } /* the row's ⋯ takes the right edge on hover: the title ends in … and the chevron stands left of it */
 .item .kid-fold:hover { color: var(--ink); background: rgba(0, 0, 0, 0.06); }
 .item .kid-fold .chev { color: inherit; opacity: 0; transform: rotate(90deg); }
 .item:hover .kid-fold .chev, .item .kid-fold:focus-visible .chev, .item .kid-fold.shut .chev { opacity: 1; }
@@ -113,3 +113,5 @@
 	.sidetoggle, .brand { z-index: 90; }
 	.chat { min-width: 0; }
 }
+/* finding #3: the whole title of a cut row, under it */
+.row-tip { position: fixed; z-index: 160; max-width: 320px; padding: 6px 10px; border-radius: 8px; background: #1f1f22; color: #f4f4f5; font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; pointer-events: none; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); animation: in 0.12s var(--ease) both; }

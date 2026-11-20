@@ -6,6 +6,7 @@ import { Chevron, Gear, I, Plus, PullRequest } from "../stream/Icons.js";
 import { Dialog } from "../rail/GitDialogs.js";
 import { byPerson } from "../rail/blur.js";
 import { SideMenu, viewRead, VIEW, type View } from "./SideMenu.js";
+import { useRowTip } from "./RowTip.js";
 
 export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete" | "delete-tree";
 
@@ -144,6 +145,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 	};
 	const [view, setView] = useState(viewRead);
 	const [sideMenu, setSideMenu] = useState<DOMRect | null>(null);
+	const rowTip = useRowTip();
 	const pickView = (next: View): void => {
 		setView(next);
 		setSideMenu(null);
@@ -223,7 +225,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 					/>
 				</div>
 			) : (
-				<button className={`item ${className}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => onOpen(row)} data-work={row.id} data-state={row.state}>
+				<button className={`item ${className}${active?.key === row.key && active.id === row.id ? " on" : ""}`} onClick={() => (rowTip.off(), onOpen(row))} onMouseEnter={rowTip.on} onMouseLeave={rowTip.off} data-work={row.id} data-state={row.state}>
 					<span className="tt">{row.title === "" ? t.untitled : row.title}</span>
 					{row.pr !== undefined ? (
 						<span className="pr-ico" role="link" data-pr-state={row.pr.state?.toLowerCase() ?? "unknown"} title={`${fmt(t.prOf, { n: row.pr.number })}${row.pr.state === undefined ? "" : ` · ${t.prStates.split("|")[["OPEN", "MERGED", "CLOSED"].indexOf(row.pr.state)]}`}`} data-act="row-pr" onClick={(e) => (e.stopPropagation(), open(row.pr!.url, "_blank", "noopener"))}>
@@ -390,6 +392,7 @@ export function Sidebar({ works, active, settingsOn, onOpen, onNew, onNewIn, onS
 				</button>
 			</div>
 			</div>
+			{rowTip.tip}
 		</aside>
 	);
 }
