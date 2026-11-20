@@ -1,14 +1,13 @@
 import type { SessionState, WireEvent } from "@vincemakes/kiso-protocol";
 import type { AtFrame, TaskRow, TasksFrame, ToolOutputFrame, UsageFrame } from "../../shared/frames.js";
 import { noticeOf } from "./notice.js";
-import { stepOfTask, titleOf } from "./taskname.js";
+import { nameStop, stepOfTask, titleOf } from "./taskname.js";
 import { peerOf, type Peer } from "./peers.js";
 
 /**
- * The stream's model: wire events and host frames in, the turns the stream
- * draws out. A pure reducer over one ordered input, so the same code builds
- * the view live, after a page reload (the whole log replayed) and in the
- * proofs. Nothing here knows React or the DOM.
+ * The stream's model: wire events and host frames in, the turns the stream draws out. A pure reducer
+ * over one ordered input, so the same code builds the view live, after a page reload (the whole log
+ * replayed) and in the proofs. Nothing here knows React or the DOM.
  *
  * A turn is one run: the person's line, then the process (thinking, text
  * that precedes a tool, steps, approvals) and, after the last step, the
@@ -48,6 +47,7 @@ export interface Step {
 	error: string | null;
 	/** set when the result says the command moved to the background */
 	taskId: string | null;
+	subject?: string; // finding #5: a task_stop's task by its name
 }
 
 export interface Ask {
@@ -258,7 +258,7 @@ export function reduce(s: State, input: Input): State {
 				step = { kind: "step", id: `s${e.callId}`, seq: e.seq, callId: e.callId, name: e.name, input: null, status: "calling", startedAt: null, endedAt: null, output: null, error: null, taskId: null };
 				turn.items.push(step);
 			}
-			if (e.type === "tool_call_end") step.input = e.input;
+			if (e.type === "tool_call_end") nameStop(s, Object.assign(step, { input: e.input }));
 			note(step);
 			return s;
 		}
@@ -335,8 +335,7 @@ function frame(s: State, name: string, data: unknown): void {
 			const last = s.last;
 			if (turn === undefined || last === null || last.seq !== seq) return;
 			const step = last.itemId === null ? undefined : turn.items.find((i): i is Step => i.kind === "step" && i.id === last.itemId);
-			// finding #8: only the input that opened the turn starts its clock; a steer, a notice or a peer line inside the run does not
-			if (last.type === "user_input") turn.startedAt ??= ts;
+			if (last.type === "user_input") turn.startedAt ??= ts; // finding #8: a steer, a notice or a peer line inside the run never restarts it
 			else if (last.type === "terminal") {
 				turn.endedAt = ts;
 				closeThinking(turn, ts);

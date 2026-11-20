@@ -120,4 +120,17 @@ check(li("- [ ] a\n- [x] b").map((i) => i.task).join() === "false,true" && li("1
 	const t = st.turns[0];
 	check(st.turns.length === 1 && t.startedAt === T0 && t.endedAt - t.startedAt === 84 * 60_000 + 38_000, "a run with a steer, five task notices and a peer line keeps its whole span (1 h 24 min 38 s)");
 }
+// finding #5: a task_stop names the task it stops, not its id
+{
+	const st = initialState();
+	let seq = 0;
+	const ev = (event) => reduce(st, { kind: "event", event: { seq: (seq += 1), ...event } });
+	ev({ type: "user_input", content: "watch the build" });
+	ev({ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "npm run build -- --watch", description: "Watch the build" } });
+	reduce(st, { kind: "frame", name: "tool_output", data: { callId: "c1", head: ["still running: it continues as background task t7"], lines: 1 } });
+	ev({ type: "tool_call_end", callId: "c2", name: "task_stop", input: { id: "t7" } });
+	ev({ type: "tool_call_end", callId: "c3", name: "task_stop", input: { id: "t99" } });
+	const [, a, b] = st.turns[0].items;
+	check(st.turns[0].items[0].taskId === "t7" && a.subject === "Watch the build" && b.subject === undefined, "a task_stop step carries its task's name; an unknown id keeps the id");
+}
 verdict();
