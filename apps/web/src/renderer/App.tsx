@@ -292,7 +292,7 @@ export function App(): ReactNode {
 		<ControlsContext.Provider value={controls}>
 		<div className="win" onClick={(e) => { if (narrow && e.target === e.currentTarget) (setOpen(false), setRailChoice(false)); }} data-side={open ? "1" : "0"} data-rail={railOpen ? "1" : "0"} data-panel={railOn && panel !== null ? panel.mode : "closed"}>
 			{browsing ? <Folders onChoose={openFolder} onClose={() => setBrowsing(false)} /> : null}
-			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New task is the button below it) */}
+			{/* the brand: the mark and the word at the top of the open sidebar, nothing beside the toggle with it closed; a click does nothing (New Conversation is the button below it) */}
 			{open ? (
 				<div className="brand" data-kind="brand">
 					<Mark size={24} />
