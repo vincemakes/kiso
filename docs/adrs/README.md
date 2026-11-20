@@ -159,7 +159,7 @@ not another recalibration)
   Work (reversing 0057's parked inbox), one `peer` kind in the core's
   `UserInputVia`, a causal wake budget of 20 per chain, a completion
   notice to the parent, and a hold when the sender may reach less than
-  the receiver (a known cross-folder gap, finding G1); plus the steer's
+  the receiver (its own folders compared since finding G1); plus the steer's
   visible Send now, rewind and `ask_user` in the web. Shipped in 0.55.0,
   off by default until the choice eval passes
 
