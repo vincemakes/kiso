@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { isRuntimeInput, type Event } from "@vincemakes/kiso-core";
+import { withDirLockSync } from "./dir-lock.js";
 import type { PeerMessage } from "./inbox.js";
 
 /**
@@ -47,14 +48,22 @@ export class ChainBudget {
 		}
 	}
 
+	/** Read, check and write under one lock per chain, so two hosts taking at once never both spend the last wake (finding
+	 *  G3). Busy for seconds (a lock that will not go): no wake, the message waits for the next run. */
 	take(rootId: string): boolean {
-		const wakes = this.spent(rootId);
-		if (wakes >= this.#max) return false;
 		mkdirSync(this.#dir, { recursive: true, mode: 0o700 });
 		const path = this.#path(rootId);
-		writeFileSync(`${path}.${process.pid}.tmp`, JSON.stringify({ rootId, wakes: wakes + 1, at: Date.now() }), { mode: 0o600 });
-		renameSync(`${path}.${process.pid}.tmp`, path);
-		return true;
+		try {
+			return withDirLockSync(`${path}.lock`, () => {
+				const wakes = this.spent(rootId);
+				if (wakes >= this.#max) return false;
+				writeFileSync(`${path}.${process.pid}.tmp`, JSON.stringify({ rootId, wakes: wakes + 1, at: Date.now() }), { mode: 0o600 });
+				renameSync(`${path}.${process.pid}.tmp`, path);
+				return true;
+			}, () => new Error("the chain's budget is busy"));
+		} catch {
+			return false;
+		}
 	}
 }
 

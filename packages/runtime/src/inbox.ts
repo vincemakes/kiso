@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, createReadStream, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import type { Event } from "@vincemakes/kiso-core";
+import { withDirLock } from "./dir-lock.js";
 import { fsyncDir } from "./tasks/journal.js";
 
 /**
@@ -47,31 +48,23 @@ export class InboxRefusedError extends Error {
 export const inboxDir = (root: string, sessionId: string): string => join(root, `${sessionId}.inbox`);
 const isMessageFile = (name: string): boolean => name.endsWith(".json") && !name.startsWith(".");
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+/** One writer at a time per inbox, across processes (`dir-lock.ts`: a directory made atomically, a dead holder's taken over). */
+const locked = <T>(dir: string, fn: () => T): Promise<T> =>
+	withDirLock(join(dir, ".lock"), fn, () => new InboxRefusedError("the receiver's inbox is busy; send again in a moment"));
 
-/** One writer at a time per inbox, across processes: a directory made atomically, taken over when older than 10 s. */
-async function locked<T>(dir: string, fn: () => T): Promise<T> {
-	const lock = join(dir, ".lock");
-	for (let tries = 0; ; tries++) {
-		try {
-			mkdirSync(lock);
-			break;
-		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-			try {
-				if (Date.now() - statSync(lock).mtimeMs > 10_000) rmSync(lock, { recursive: true, force: true });
-			} catch {
-				// it went between the two calls
-			}
-			if (tries > 300) throw new InboxRefusedError("the receiver's inbox is busy; send again in a moment");
-			await sleep(10);
-		}
-	}
+/** A message file, whole: temp, fsync, rename, then the directory entry (on POSIX; Windows opens no directory as a file, the
+ *  task journal's rule). */
+function publish(dir: string, messageId: string, bytes: Buffer): void {
+	const tmp = join(dir, `.${messageId}.${process.pid}.tmp`);
+	const fd = openSync(tmp, "w", 0o600);
 	try {
-		return fn();
+		writeSync(fd, bytes);
+		fsyncSync(fd);
 	} finally {
-		rmSync(lock, { recursive: true, force: true });
+		closeSync(fd);
 	}
+	renameSync(tmp, join(dir, `${messageId}.json`));
+	fsyncDir(dir);
 }
 
 /** Write a message into the receiver's inbox. "duplicate" when that id is already there (a replayed send). */
@@ -93,17 +86,7 @@ export async function writeMessage(root: string, sessionId: string, message: Pee
 			}
 		}
 		if (names.length >= INBOX_LIMITS.messages || held + bytes.length > INBOX_LIMITS.bytes) throw new InboxRefusedError("the receiver's inbox is full; send later");
-		const path = join(dir, `${message.messageId}.json`);
-		const tmp = join(dir, `.${message.messageId}.${process.pid}.tmp`);
-		const fd = openSync(tmp, "w", 0o600);
-		try {
-			writeSync(fd, bytes);
-			fsyncSync(fd);
-		} finally {
-			closeSync(fd);
-		}
-		renameSync(tmp, path);
-		fsyncDir(dir); // the entry too, on POSIX; Windows opens no directory as a file (the task journal's rule)
+		publish(dir, message.messageId, bytes);
 		return "written";
 	});
 }
@@ -133,13 +116,12 @@ export function readInbox(root: string, sessionId: string): PeerMessage[] {
  *  receiver's next look delivers it. False when it is not there or not held. */
 export async function releaseMessage(root: string, sessionId: string, messageId: string): Promise<boolean> {
 	const dir = inboxDir(root, sessionId);
+	if (!statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return false; // no inbox: nothing held (finding G3)
 	return locked(dir, () => {
 		const m = readInbox(root, sessionId).find((x) => x.messageId === messageId);
 		if (m === undefined || m.held !== true) return false;
 		const { held: _, ...free } = m;
-		const tmp = join(dir, `.${messageId}.${process.pid}.tmp`);
-		writeFileSync(tmp, JSON.stringify(free), { mode: 0o600 });
-		renameSync(tmp, join(dir, `${messageId}.json`));
+		publish(dir, messageId, Buffer.from(JSON.stringify(free))); // durable as the first write was (finding G3)
 		return true;
 	});
 }
