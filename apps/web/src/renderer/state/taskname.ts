@@ -21,6 +21,12 @@ export function titleOf(command: string, description?: unknown): string {
 /** The shell call a task came from, by its id on the Work's own steps (a background start or a promoted foreground command; any replay finds it). */
 export const stepOfTask = (state: State, id: string): Step | undefined => state.turns.flatMap((t) => t.items).find((i): i is Step => i.kind === "step" && i.taskId === id);
 
+/** finding #5: a task_stop step keeps the name of the task it stops, found on this Work's own steps; an unknown id keeps none. */
+export function nameStop(state: State, step: Step): void {
+	const of = step.name === "task_stop" && typeof step.input?.["id"] === "string" ? stepOfTask(state, step.input["id"]) : undefined;
+	if (of !== undefined) step.subject = titleOf(typeof of.input?.["command"] === "string" ? of.input["command"] : "", of.input?.["description"]);
+}
+
 /** "running", "finished", "failed · exit 2", "stopped". */
 export function statusOf(label: string): string {
 	const exit = /(?:failed|exited) (\d+)$/.exec(label);

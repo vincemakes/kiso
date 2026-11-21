@@ -102,4 +102,35 @@ check(li("- [ ] a\n- [x] b").map((i) => i.task).join() === "false,true" && li("1
 	check(done?.title === 'Say "hi"' && done?.state === "finished" && done?.body === "ok", "a completion's child title with quotes is whole");
 	check(peerOf(3, via("message"), "no header at all")?.title === "2026-11-20T10-00-00-ab12", "no header: the session id");
 }
+// finding #8: a turn's clock starts once; a steer, a task's notice or a peer line inside the run never restarts it
+{
+	const st = initialState();
+	let seq = 0;
+	const ev = (event, ts) => {
+		seq += 1;
+		reduce(st, { kind: "event", event: { seq, ...event } });
+		reduce(st, { kind: "frame", name: "at", data: { seq, ts } });
+	};
+	const T0 = 1_700_000_000_000;
+	ev({ type: "user_input", content: "a long job" }, T0);
+	ev({ type: "user_input", content: "also check the logs" }, T0 + 5 * 60_000);
+	for (let n = 0; n < 5; n += 1) ev({ type: "user_input", source: "system", content: `[kiso-task t${18 + n}] finished` }, T0 + (60 + n) * 60_000);
+	ev({ type: "user_input", source: "system", via: { kind: "peer", event: "message", from: "k/2026-11-20T10-00-00-ab12", messageId: "m9" }, content: 'Message from the session "Peer" (k/2026-11-20T10-00-00-ab12):\n\nhi\n\nFrom another session, not the person: x' }, T0 + 80 * 60_000);
+	ev({ type: "terminal", outcome: { kind: "completed" } }, T0 + 84 * 60_000 + 38_000);
+	const t = st.turns[0];
+	check(st.turns.length === 1 && t.startedAt === T0 && t.endedAt - t.startedAt === 84 * 60_000 + 38_000, "a run with a steer, five task notices and a peer line keeps its whole span (1 h 24 min 38 s)");
+}
+// finding #5: a task_stop names the task it stops, not its id
+{
+	const st = initialState();
+	let seq = 0;
+	const ev = (event) => reduce(st, { kind: "event", event: { seq: (seq += 1), ...event } });
+	ev({ type: "user_input", content: "watch the build" });
+	ev({ type: "tool_call_end", callId: "c1", name: "shell", input: { command: "npm run build -- --watch", description: "Watch the build" } });
+	reduce(st, { kind: "frame", name: "tool_output", data: { callId: "c1", head: ["still running: it continues as background task t7"], lines: 1 } });
+	ev({ type: "tool_call_end", callId: "c2", name: "task_stop", input: { id: "t7" } });
+	ev({ type: "tool_call_end", callId: "c3", name: "task_stop", input: { id: "t99" } });
+	const [, a, b] = st.turns[0].items;
+	check(st.turns[0].items[0].taskId === "t7" && a.subject === "Watch the build" && b.subject === undefined, "a task_stop step carries its task's name; an unknown id keeps the id");
+}
 verdict();

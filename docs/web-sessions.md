@@ -52,7 +52,7 @@ survives a restart.
 ## Limits
 
 - **A session started in the terminal and opened in the web has no sessions tools**, because its tool
-  table was fixed by its first run. Start a new Work from New task to get them.
+  table was fixed by its first run. Start a new Work from New Conversation to get them.
 - A Work with the sessions tools, opened in the terminal, keeps the three tool names, and each refuses
   with a reason. Its messages wait in its inbox until kiso web opens it.
 - The terminal's own sessions and requests are unchanged by the switch.

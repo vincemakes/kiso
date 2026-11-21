@@ -19,7 +19,7 @@ export function objectOf(step: StepItem): string {
 	const pick = (k: string): string => (typeof i[k] === "string" ? (i[k] as string) : "");
 	if (step.name === "shell") return pick("command").split("\n")[0]!;
 	if (step.name === "search_text") return pick("pattern");
-	if (step.name === "task_stop") return pick("id");
+	if (step.name === "task_stop") return step.subject ?? pick("id");
 	if (step.name === "list_sessions") return pick("query");
 	if (step.name === "read_skill") return pick("name");
 	const first = (key: string, field: string): string => { const a = i[key]; const o = Array.isArray(a) ? (a[0] as Record<string, unknown> | undefined) : undefined; return typeof o?.[field] === "string" ? (o[field] as string) : ""; };

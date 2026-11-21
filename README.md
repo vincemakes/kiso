@@ -89,7 +89,7 @@ Off by default. With `KISO_WEB_SESSIONS=on kiso web`, Works created from then on
 
 Also in kiso web, on by default: `ask_user`, a question with options in the stream (`KISO_WEB_ASK=off` turns it off). Deleting a Work with Works under it asks whether to delete only it, so they move up, or the whole tree.
 
-A Work keeps the tools it was created with: a session started in the terminal and opened in the web has no sessions tools, so start a new Work from New task instead. The terminal's own requests are unchanged. More in [docs/web-sessions.md](docs/web-sessions.md).
+A Work keeps the tools it was created with: a session started in the terminal and opened in the web has no sessions tools, so start a new Work from New Conversation instead. The terminal's own requests are unchanged. More in [docs/web-sessions.md](docs/web-sessions.md).
 
 <table>
 <tr>

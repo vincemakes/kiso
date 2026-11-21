@@ -42,7 +42,7 @@ await q(`document.querySelector('.item[data-work=work-a]').click()`);
 check(await waitUntil(async () => (await app.text("[data-kind=answer]"))?.includes("alpha task done.")), "a click opens a Work of the other folder and replays its log");
 check(await q(`(() => { const w = (e) => getComputedStyle(e).fontWeight, on = document.querySelector('.item.on'), off = document.querySelector('.item:not(.on)'); return !!on && !!off && w(on) === w(off); })()`), "the open Work's title is no bolder than the others");
 await app.click("[data-act=new]");
-check(await waitUntil(async () => (await app.count("[data-kind=answer]")) === 0), "New task opens an empty Work");
+check(await waitUntil(async () => (await app.count("[data-kind=answer]")) === 0), "New Conversation opens an empty Work");
 await q(`window.__kiso.send("gamma task")`);
 check(await waitUntil(async () => (await q(`[...document.querySelectorAll('.item .tt')].map((n) => n.textContent).join()`)).startsWith("gamma task"), 20_000), "the new Work joins the list after its first request");
 await app.shot("sidebar-new-work");
