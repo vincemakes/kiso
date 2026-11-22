@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, type ReactNode } from "react";
-import { taskNameOf } from "../state/taskname.js";
+import { isLost, taskNameOf } from "../state/taskname.js";
 import { RootContext } from "../stream/root.js";
 import { clock, t } from "../i18n/index.js";
 import { fetchTaskLog } from "../state/api.js";
@@ -40,7 +40,7 @@ export function Term({ state, wkey, sessionId, tab }: Props): ReactNode {
 			{task !== undefined && name !== null ? (
 				<>
 					<div className="tmeta">
-						<b>{name.title}</b> · {name.status} · {clock(task.elapsedMs)}
+						<b>{name.title}</b> · {name.status}{isLost(task) ? "" : ` · ${clock(task.elapsedMs)}`}
 					</div>
 					<dl className="tdet mono" data-field="task-detail">
 						<dt>{t.taskCommand}</dt>

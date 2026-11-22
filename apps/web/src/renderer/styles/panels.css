@@ -101,8 +101,9 @@ input.hdr-title.edit { width: min(440px, 55%); max-width: none; border: 0; outli
 input.hdr-title.edit:hover { background: transparent; }
 .hdr-title.edit::selection { background: #cfe0ff; }
 /* a panel's tabs of one kind in its top bar: pages in the browser, tasks in the terminal; + opens a page, each page closes */
-.ptabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; margin-right: auto; }
-.ptab { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 200px; height: 32px; padding: 0 6px 0 10px; border-radius: 9px; color: #555; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.ptabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-right: auto; }
+.ptabs::-webkit-scrollbar { display: none; }
+.ptab { display: inline-flex; align-items: center; gap: 6px; flex: none; max-width: 200px; height: 32px; padding: 0 6px 0 10px; border-radius: 9px; color: #555; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .ptab > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ptab:hover { background: var(--sunk); }
 .ptab.on { background: #fff; color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
@@ -113,3 +114,10 @@ input.hdr-title.edit:hover { background: transparent; }
 .tabpane { flex: 1; min-height: 0; flex-direction: column; }
 .urlbar a, .urlbar button { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: #555; }
 .urlbar a:hover, .urlbar button:hover { background: #ececef; }
+/* finding #10: the finished tasks in one list beside the tabs */
+.pfin { position: relative; flex: none; }
+.pmenu { position: absolute; top: 38px; right: 0; z-index: 40; width: 260px; max-height: 320px; overflow-y: auto; background: #fff; border-radius: 12px; box-shadow: 0 14px 50px rgba(0, 0, 0, 0.18), 0 0 0 1px var(--line); padding: 4px; }
+.pmenu button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; font-size: 13px; }
+.pmenu button:hover { background: var(--sunk); }
+.pmenu button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmenu button small { flex: none; color: var(--mute); font-size: 12px; }

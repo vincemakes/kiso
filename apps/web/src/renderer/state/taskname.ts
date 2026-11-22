@@ -27,6 +27,10 @@ export function nameStop(state: State, step: Step): void {
 	if (of !== undefined) step.subject = titleOf(typeof of.input?.["command"] === "string" ? of.input["command"] : "", of.input?.["description"]);
 }
 
+/** A task kiso lost track of (state unknown): not counted as running, no clock, no stop button, tabbed with the finished. */
+export const isLost = (x: Pick<TaskRow, "label">): boolean => x.label === "lost track";
+export const isRunning = (x: Pick<TaskRow, "label" | "endedAt">): boolean => x.endedAt === null && !isLost(x);
+
 /** "running", "finished", "failed · exit 2", "stopped". */
 export function statusOf(label: string): string {
 	const exit = /(?:failed|exited) (\d+)$/.exec(label);
