@@ -9,7 +9,7 @@ import { forkWork } from "./fork.js";
 import { answerCard, answerHeld, workLinks } from "./start-session-tool.js";
 import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
 import { commit, gitOf, openPr, prDraft, tryRun } from "./git.js";
-import { prOfUrl } from "./prs.js";
+import { prOfUrl, type PrStates } from "./prs.js";
 import { existing, Refusal, resolveInside } from "./files.js";
 import { artifactKind } from "./artifacts.js";
 import type { Previews } from "./preview.js";
@@ -17,7 +17,10 @@ import { listDirs, validateFolder } from "./folders.js";
 import { pickFolder } from "./pick-folder.js";
 import { folderInfo } from "./folder-info.js";
 import { changeFolders, foldersOf, stopRoots } from "./work-folders.js";
-import { environmentRows, openRow } from "./environment.js";
+import { environmentRows, openRow, workPrs } from "./environment.js";
+import type { PrRow } from "../shared/git.js";
+
+const PRS_SHOWN = 10;
 import type { History } from "./history.js";
 import type { Notice, Presence } from "./approvals.js";
 import type { Settings } from "./settings.js";
@@ -44,6 +47,8 @@ export interface DeskContext {
 	/** ADR-0062 § 10c: ask_user's waiting questions */
 	readonly asks: AskBridge;
 	readonly updates: UpdateWatch;
+	/** `gh`'s last word on each pull request, asked sparingly */
+	readonly prStates: PrStates;
 }
 
 /** An answer: JSON, or bytes (an image) with their headers. */
@@ -100,6 +105,17 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (space === null) return json(404, {});
 			return req.method === "GET" ? json(200, url.searchParams.has("draft") ? await prDraft(space.workspace) : await gitOf(space.workspace)) : json(405, {});
 		}
+		if (path === "/desk/prs") {
+			// the pull requests a Work opened or was linked to, with the state `gh` last gave (asked in the background, never here)
+			if (space === null) return json(404, {});
+			const session = url.searchParams.get("session") ?? "";
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			const rows: PrRow[] = workPrs(space, session, ctx.settings.prLinksOf(session)).slice(0, PRS_SHOWN).map((pr) => {
+				const info = ctx.prStates.infoOf(pr.url);
+				return { number: pr.number, url: pr.url, repo: /github\.com\/([\w.-]+\/[\w.-]+)\//.exec(pr.url)?.[1] ?? "", ...(info === undefined ? {} : info) };
+			});
+			return json(200, { prs: rows });
+		}
 		if (path === "/desk/commit" || path === "/desk/pr") {
 			if (!post) return json(405, {});
 			if (space === null) return json(404, {});
@@ -107,7 +123,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (path === "/desk/commit") return json(200, await commit(space.workspace, str(body["message"]) ?? "", Array.isArray(body["paths"]) ? body["paths"].filter((p): p is string => typeof p === "string") : []));
 			const pr = await openPr(space.workspace, str(body["title"]) ?? "", str(body["body"]) ?? "");
 			const session = str(body["session"]) ?? "";
-			if (SAFE_ID.test(session) && space.store.ids().includes(session)) ctx.settings.setPr(session, pr);
+			if (SAFE_ID.test(session) && space.store.ids().includes(session)) ctx.settings.linkPr(session, pr);
 			return json(200, pr);
 		}
 		if (path === "/desk/work-pr") {
@@ -117,11 +133,11 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const body = await readJson(req);
 			const session = str(body["session"]) ?? "";
 			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
-			if (body["pr"] === null) return (ctx.settings.setPr(session, null), json(200, { pr: null }));
+			if (body["pr"] === null) return (ctx.settings.unlinkPr(session), json(200, { pr: null }));
 			const asked = (str(body["pr"]) ?? "").trim().replace(/^#/, "");
 			const pr = prOfUrl(asked) ?? (/^\d+$/.test(asked) ? prOfUrl((await tryRun(space.workspace, "gh", ["pr", "view", asked, "--json", "url", "--jq", ".url"], 8000)) ?? "") : null);
 			if (pr === null) throw new Refusal(400, "give a pull request's GitHub URL, or its number in this folder's repository");
-			ctx.settings.setPr(session, pr);
+			ctx.settings.linkPr(session, pr);
 			return json(200, { pr });
 		}
 		if (path === "/desk/work-folders") {

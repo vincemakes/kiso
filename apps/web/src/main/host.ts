@@ -184,7 +184,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	// the check for a newer kiso web (update-check.ts): at start and daily, never in front of the first page
 	const updates = new UpdateWatch({ home, version: (JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string }).version, choices: options.settings.updateChoices(), faux: process.env["KISO_WEB_FAUX"] !== undefined });
 	updates.start();
-	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews, asks, updates };
+	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews, asks, updates, prStates };
 
 	let origins: ReadonlySet<string> = new Set();
 	let hosts: ReadonlySet<string> = new Set();

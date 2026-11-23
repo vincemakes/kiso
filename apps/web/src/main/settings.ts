@@ -57,6 +57,8 @@ interface Own {
 	readonly unread?: readonly string[];
 	/** the pull request each Work made or was linked to */
 	readonly prs?: Readonly<Record<string, Pr>>;
+	/** the pull requests a Work was linked to by hand or opened from the rail (the ones its log does not print), newest first */
+	readonly prLinks?: Readonly<Record<string, readonly Pr[]>>;
 	readonly recent?: readonly string[];
 	/** the Settings switch for the check for a newer release: absent means on */
 	readonly updateCheck?: boolean;
@@ -252,6 +254,24 @@ export class Settings {
 		this.write({ prs: pr === null ? rest : { ...rest, [session]: pr } });
 	}
 
+	/** A pull request the Work was linked to or opened from the rail: it is the Work's latest and joins its list. */
+	linkPr(session: string, pr: Pr): void {
+		const list = [pr, ...(this.#read().prLinks?.[session] ?? []).filter((p) => p.url !== pr.url)].slice(0, 20);
+		this.setPr(session, pr);
+		this.write({ prLinks: { ...this.#read().prLinks, [session]: list } });
+	}
+
+	/** Unlink: the latest link goes, from the list too; a pull request the log printed stays in the rail. */
+	unlinkPr(session: string): void {
+		const url = this.#read().prs?.[session]?.url;
+		this.setPr(session, null);
+		if (url !== undefined) this.write({ prLinks: { ...this.#read().prLinks, [session]: (this.#read().prLinks?.[session] ?? []).filter((p) => p.url !== url) } });
+	}
+
+	prLinksOf(session: string): readonly Pr[] {
+		return this.#read().prLinks?.[session] ?? [];
+	}
+
 	/** What the sidebar shows of a Work beyond its log: the fork's parent, its pin's place, whether it is archived or unread, its PR. */
 	marksOf(session: string): { readonly parent?: string; readonly pinned?: number; readonly archived?: true; readonly unread?: true; readonly pr?: Pr } {
 		const own = this.#read();
@@ -265,7 +285,7 @@ export class Settings {
 	forget(session: string): void {
 		const own = this.#read();
 		const drop = <T>(m: Readonly<Record<string, T>> | undefined): Record<string, T> => Object.fromEntries(Object.entries(m ?? {}).filter(([k]) => k !== session));
-		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session), prs: drop(own.prs) });
+		this.write({ tiers: drop(own.tiers), works: drop(own.works), forks: drop(own.forks), pins: (own.pins ?? []).filter((id) => id !== session), archived: (own.archived ?? []).filter((id) => id !== session), unread: (own.unread ?? []).filter((id) => id !== session), prs: drop(own.prs), prLinks: drop(own.prLinks) });
 	}
 
 	/** A deleted Work's tombstone: its id is never opened again in that folder (kept across restarts, the latest 2,000). */

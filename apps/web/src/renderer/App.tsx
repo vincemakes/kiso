@@ -20,6 +20,7 @@ import { actOnWork, forkWork, renameWork, chooseFolder, fetchAtFiles, fetchConte
 import { CommitDialog, PrDialog } from "./rail/GitDialogs.js";
 import { Header } from "./rail/Header.js";
 import type { GitReply } from "../shared/git.js";
+import { usePrRows } from "./state/prs.js";
 import { ControlsContext, type Controls } from "./stream/ComposerMenus.js";
 import { signIn } from "./state/auth.js";
 import { watchNotices } from "./state/notify.js";
@@ -129,6 +130,7 @@ export function App(): ReactNode {
 	// the rail's Changes from git and the Context parts: read when the Work or its settings change and when a run ends; a pull
 	// request whose checks are still running is read again every 20 s
 	const [git, setGit] = useState<GitReply | null>(null);
+	const prs = usePrRows(target.key, target.sessionId, git);
 	const [parts, setParts] = useState<ContextParts | null>(null);
 	const [dialog, setDialog] = useState<"commit" | "pr" | null>(null);
 	const refreshGit = useCallback(() => void fetchGit(target.key).then(setGit, () => setGit(null)), [target.key]);
@@ -372,7 +374,7 @@ export function App(): ReactNode {
 					</div>
 				)}
 			</main>
-			{railOn && session !== null ? <Rail state={session.state} env={env} session={target.sessionId} where={target.key} onEnvChanged={() => setSettingsBump((n) => n + 1)} git={git} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => stopTask(target.key, target.sessionId, id)} /> : null}
+			{railOn && session !== null ? <Rail state={session.state} env={env} session={target.sessionId} where={target.key} onEnvChanged={() => setSettingsBump((n) => n + 1)} git={git} prs={prs} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => stopTask(target.key, target.sessionId, id)} /> : null}
 			{dialog === "commit" && git?.branch != null ? (
 				<CommitDialog
 					branch={git.branch}

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { ContextParts, EnvReply } from "../../shared/settings.js";
 import type { GitReply } from "../../shared/git.js";
 import type { TaskRow } from "../../shared/frames.js";
+import type { PrRow } from "../../shared/git.js";
 import { clock, fmt, t, tokens, windowLabel } from "../i18n/index.js";
 import type { State } from "../state/model.js";
 import { useOpenPanel } from "../panels/context.js";
@@ -52,6 +53,8 @@ interface Props {
 	readonly onStopTask: (id: string) => Promise<{ readonly stopped: boolean }>;
 	/** the folder's changes from git (null: not read yet); outside git the rail falls back to the Work's own edits from the log */
 	readonly git: GitReply | null;
+	/** the pull requests this Work opened or was linked to */
+	readonly prs: readonly PrRow[];
 	/** what the Work's requests always carry, for the Context breakdown (null: not read yet) */
 	readonly parts: ContextParts | null;
 	readonly onCommit: () => void;
@@ -69,7 +72,7 @@ const pctOf = (n: number, of: number | null): string => (of === null || of === 0
  * (opened the one way the stream opens them). It carries no state of the run itself: the stream shows the live
  * step, and the composer stops a run. Every number is read from the stream's state, built from the durable log.
  */
-export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git, parts, onCommit, onPr }: Props): ReactNode {
+export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git, prs, parts, onCommit, onPr }: Props): ReactNode {
 	const rail = railOf(state);
 	const openPanel = useOpenPanel();
 	const openArtifact = useOpenArtifact();
@@ -104,7 +107,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const ordered = [...live].sort((a, b) => b.startedAt - a.startedAt).concat([...done].sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)));
 	const changes = workChangesOf(state, env?.root ?? null);
 	const g = git?.repo === true ? git : null;
-	const rows = g !== null ? g.files.map((f) => ({ path: f.path, added: f.added ?? 0, removed: f.removed ?? 0, created: f.state === "new", exact: f.added !== null, deleted: f.state === "deleted" })) : changes.map((c) => ({ ...c, deleted: false }));
+	const rows = g !== null ? g.files.map((f) => ({ path: f.path, added: f.added ?? 0, removed: f.removed ?? 0, created: f.state === "new", exact: f.added !== null, deleted: f.state === "deleted", dirty: f.dirty })) : changes.map((c) => ({ ...c, deleted: false, dirty: true }));
 	// the Context breakdown: the parts every request carries (estimated from bytes), the conversation as the measured rest, the free room
 	const fixed = parts === null ? null : [
 		{ key: "system", name: t.ctxSystem, tokens: est(parts.system) },
@@ -112,15 +115,21 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 		{ key: "tools", name: fmt(t.ctxTools, { n: parts.tools.count }), tokens: est(parts.tools.bytes) },
 	];
 	// Changes' branch row only when it carries an action (the branch itself is in Environment)
-	const action = g === null || g.pr !== null ? null : g.dirty ? (
+	const action = g === null ? null : g.dirty ? (
 		<button className="r-act" onClick={onCommit} data-act="commit">
 			{t.commitOpen}
 		</button>
-	) : g.canPr && g.ahead > 0 ? (
+	) : g.pr === null && g.canPr && g.ahead > 0 ? (
 		<button className="r-act" onClick={onPr} data-act="create-pr">
 			{t.prOpen}
 		</button>
 	) : null;
+	// the Work's pull requests, plus the folder's branch pull request when the Work did not open it (a link made outside kiso)
+	const bp = g?.pr ?? null;
+	const prList: readonly PrRow[] = bp === null ? prs : [...prs.map((p) => (p.url === bp.url && p.state === undefined ? { ...p, title: bp.title, state: bp.state as NonNullable<PrRow["state"]>, checks: bp.checks } : p)), ...(prs.some((p) => p.url === bp.url) ? [] : [{ number: bp.number, url: bp.url, repo: "", title: bp.title, state: bp.state as NonNullable<PrRow["state"]>, checks: bp.checks }])];
+	// with pull requests listed, the files shown are the ones not committed yet, folded under one row
+	const fileRows = prList.length > 0 ? rows.filter((r) => r.dirty) : rows;
+	const [fileOpen, setFileOpen] = useState(false);
 	const branch = g?.branch ?? env?.branch ?? null;
 	const segments = fixed === null || used === null ? null : [{ key: "conversation", name: t.ctxConversation, tokens: Math.max(0, used - fixed.reduce((n, f) => n + f.tokens, 0)) }, ...fixed];
 	const outputs = outputsOf(state);
@@ -223,20 +232,22 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 							) : null}
 						</Section>
 					)}
-					{rows.length === 0 && action === null && g?.pr == null ? null : (
+					{fileRows.length === 0 && action === null && prList.length === 0 ? null : (
 						<Section
 							id="changes"
 							name={t.railChanges}
-							count={rows.length}
+							count={prList.length === 0 ? fileRows.length : prList.length + (fileRows.length > 0 ? 1 : 0)}
 							extra={
-								<span className="r-mt">
-									<span className="add">+{rows.reduce((n, c) => n + c.added, 0)}</span> <span className="del">−{rows.reduce((n, c) => n + c.removed, 0)}</span>
-								</span>
+								prList.length > 0 ? undefined : (
+									<span className="r-mt">
+										<span className="add">+{fileRows.reduce((n, c) => n + c.added, 0)}</span> <span className="del">−{fileRows.reduce((n, c) => n + c.removed, 0)}</span>
+									</span>
+								)
 							}
 							open={!folded["changes"]}
 							onToggle={toggle("changes")}
 						>
-							{action === null || branch === null ? null : (
+							{action === null || branch === null || (prList.length > 0 && g?.dirty === true) ? null : (
 								<div className="r-row r-br" data-field="branch-row">
 									<span className="r-ic">
 										<I.branch />
@@ -246,35 +257,45 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 									{action}
 								</div>
 							)}
-							{g?.pr == null ? null : (
-								<a className="r-row r-pr" href={g.pr.url} target="_blank" rel="noreferrer" data-field="pr" title={g.pr.title}>
+							{prList.map((p) => (
+								<a className="r-row r-pr" key={p.url} href={p.url} target="_blank" rel="noreferrer" data-field="pr" data-pr-state={p.state ?? ""} title={`${p.repo === "" ? "" : `${p.repo} `}#${p.number}${p.title ? ` ${p.title}` : ""}`}>
 									<span className="r-ic">
 										<I.pr />
 									</span>
 									<span className="r-nm">
-										#{g.pr.number} {g.pr.title}
+										{prs.some((o) => o.repo !== p.repo) ? `${p.repo.split("/").pop()}` : ""}#{p.number}{p.title ? ` ${p.title}` : ""}
 									</span>
-									<span className={`r-ci${g.pr.checks.failed > 0 ? " bad" : g.pr.checks.done < g.pr.checks.total ? " run" : ""}`} data-field="pr-checks">
-										{g.pr.state === "MERGED" ? t.prMerged : g.pr.checks.total === 0 ? "" : `${g.pr.checks.done}/${g.pr.checks.total}`}
-									</span>
+									{p.additions === undefined ? null : <span className="r-mt"><span className="add">+{p.additions}</span> <span className="del">−{p.deletions}</span></span>}
+									{p.checks === undefined ? null : (
+										<span className={`r-ci${p.checks.failed > 0 ? " bad" : p.checks.done < p.checks.total ? " run" : ""}`} data-field="pr-checks">
+											{p.state === "MERGED" ? t.prMerged : p.state === "CLOSED" ? t.prClosed : p.checks.total === 0 ? "" : `${p.checks.done}/${p.checks.total}`}
+										</span>
+									)}
 								</a>
-							)}
-							{rows.slice(0, allChanges ? CHANGES_MAX : CHANGES_SHOWN).map((c) => (
+							))}
+							{prList.length > 0 && fileRows.length > 0 ? (
+								<div className="r-row r-un" data-field="uncommitted" onClick={() => setFileOpen((o) => !o)}>
+									<span className="r-nm">{t.uncommitted}</span>
+									<span className="r-mt">{fileRows.length === 1 ? t.nFile : fmt(t.nFiles, { n: fileRows.length })}</span>
+									{action}
+								</div>
+							) : null}
+							{(prList.length > 0 && !fileOpen ? [] : fileRows).slice(0, allChanges ? CHANGES_MAX : CHANGES_SHOWN).map((c) => (
 								<div className="r-row" key={c.path} data-field="change" title={c.path} onClick={() => openPanel("diff")}>
 									<span className="r-ic">{artifactIcon("file", c.path)}</span>
 									<span className="r-nm">{c.path.split("/").pop()}</span>
 									<span className="r-mt">{c.deleted ? t.gitState.deleted : c.created ? t.railNew : c.exact ? <><span className="add">+{c.added}</span> <span className="del">−{c.removed}</span></> : t.deltaModified}</span>
 								</div>
 							))}
-							{rows.length > CHANGES_SHOWN && !allChanges ? (
+							{(prList.length > 0 && !fileOpen ? 0 : fileRows.length) > CHANGES_SHOWN && !allChanges ? (
 								<button className="r-row dim" onClick={() => setAllChanges(true)} data-act="more-changes">
 									<span className="r-ic" />
-									<span className="r-nm">{fmt(t.railShowMore, { n: rows.length - CHANGES_SHOWN })}</span>
+									<span className="r-nm">{fmt(t.railShowMore, { n: fileRows.length - CHANGES_SHOWN })}</span>
 								</button>
-							) : rows.length > CHANGES_MAX && allChanges ? (
+							) : fileRows.length > CHANGES_MAX && allChanges ? (
 								<div className="r-row dim" data-field="changes-unlisted">
 									<span className="r-ic" />
-									<span className="r-nm">{fmt(t.railUnlisted, { n: rows.length - CHANGES_MAX })}</span>
+									<span className="r-nm">{fmt(t.railUnlisted, { n: fileRows.length - CHANGES_MAX })}</span>
 								</div>
 							) : null}
 						</Section>

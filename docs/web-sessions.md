@@ -50,6 +50,10 @@ survives a restart.
   unchanged.
 - **Deleting a Work that has Works under it** asks whether to delete only that one (the Works under it
   move to the top level) or the whole tree.
+- **Changes in the rail** lists every pull request a Work opened (each `gh pr create` its log printed, one row per URL) or was
+  linked to by hand or from the rail, newest first, up to ten, with the state and checks `gh` last gave. A merged or closed one is
+  asked of `gh` once; an open one at most once a minute, and only while the page is open. The files not committed yet are folded
+  under one "Uncommitted changes" row. Without `gh`, rows show the number only; outside a repository there is no uncommitted row.
 
 ## Limits
 
