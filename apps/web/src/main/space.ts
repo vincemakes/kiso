@@ -202,7 +202,7 @@ export function createSpace(options: SpaceOptions): Space {
 					session.useTasks(tasks.managerFor(sessionId), { wake: options.taskWake !== false, onWake: wake });
 					// ADR-0062: messages from other Works, read from its inbox now and whenever one is written
 					if (options.sessions !== undefined) {
-						session.usePeers({ root: options.dir, onWake: wakeRun, mayWake: options.sessions.mayWake });
+						session.usePeers({ root: options.dir, onWake: wakeRun, mayWake: options.sessions.mayWake, onAccepted: () => void options.ask?.replaceWaiting(sessionId) });
 						// ADR-0062 § 5: a send cut off by a crash is run again; it writes the same message id, so the receiver takes it once
 						for (const u of session.interruptedExecutions()) if (u.name === "message") void session.resolveUncertain(u.executionId, "rerun").catch(() => undefined);
 					}

@@ -161,6 +161,7 @@ export const en = {
 	qRecommended: "(Recommended)",
 	qOther: "Other",
 	qSkip: "Skip",
+	qReplaced: "Question replaced",
 	qNextKey: "Next ⌘↩",
 	qSubmitKey: "Submit ⌘↩",
 	readNext: "read at the next step",

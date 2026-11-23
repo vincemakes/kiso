@@ -26,6 +26,9 @@ export interface PeerDeliveryOptions {
 	readonly onWake?: (input: { readonly content: string; readonly via: UserInputVia }) => void | Promise<unknown>;
 	/** ADR-0062 § 6: spend one of the chain's wakes; false: the chain's budget is spent, the message waits for a run */
 	readonly mayWake?: (rootId: string) => boolean;
+	/** ADR-0062 § 10c.1: a live run accepted a line (`run.deliver` said yes), before the log holds it. A host with a question
+	 *  waiting in that run's tool call uses it to end the wait, so the line is admitted at the next boundary. */
+	readonly onAccepted?: (messageId: string) => void;
 }
 
 /** What every message and completion notice ends with: a session's words are never the person's approval, and what it
@@ -123,6 +126,12 @@ export class PeerDelivery {
 	}
 
 	#hand(run: Run, m: PeerMessage): void {
-		if (run.deliver(peerInput(m))) this.#inFlight.add(m.messageId);
+		if (!run.deliver(peerInput(m))) return;
+		this.#inFlight.add(m.messageId);
+		try {
+			this.#o.onAccepted?.(m.messageId);
+		} catch {
+			// a host's hook never breaks delivery: the line is handed on either way
+		}
 	}
 }
