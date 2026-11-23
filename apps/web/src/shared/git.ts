@@ -23,3 +23,15 @@ export interface GitReply {
 	readonly canPr: boolean;
 	readonly pr: { readonly number: number; readonly title: string; readonly url: string; readonly state: string; readonly checks: { readonly done: number; readonly total: number; readonly failed: number } } | null;
 }
+
+/** One of the pull requests a Work opened or was linked to (`GET /desk/prs`); the fields after `repo` are what `gh` last said, absent until it has. */
+export interface PrRow {
+	readonly number: number;
+	readonly url: string;
+	readonly repo: string;
+	readonly state?: "OPEN" | "MERGED" | "CLOSED";
+	readonly title?: string;
+	readonly additions?: number;
+	readonly deletions?: number;
+	readonly checks?: { readonly done: number; readonly total: number; readonly failed: number };
+}

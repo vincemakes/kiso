@@ -71,7 +71,7 @@ await q(`(() => { const el = document.querySelector('[data-field=pr-title]'); Ob
 await app.click("[data-act=git-confirm]");
 const args = () => (existsSync(join(state, "create.args")) ? readFileSync(join(state, "create.args"), "utf8").split("\n") : []);
 check(await waitUntil(async () => (await app.count("[data-field=pr]")) === 1, 20_000) && pushed() === git(ws, "rev-parse", "HEAD") && args().includes("Rail changes") && args()[args().indexOf("--base") + 1] === "main", "the confirm pushes the branch and opens the pull request into main with the person's title");
-check(/#42 Rail changes/.test(await text("[data-field=pr]")) && (await text("[data-field=pr-checks]")) === "1/2" && (await app.count("[data-act=create-pr]")) === 0, "the rail shows the pull request and its checks (1 of 2 done)");
+check(await waitUntil(async () => /#42 Rail changes/.test(await text("[data-field=pr]")) && (await text("[data-field=pr-checks]")) === "1/2" && (await app.count("[data-act=create-pr]")) === 0, 15_000), "the rail shows the pull request and its checks (1 of 2 done)");
 await app.shot("changes-git-pr");
 
 // the Context breakdown adds up to the measured size

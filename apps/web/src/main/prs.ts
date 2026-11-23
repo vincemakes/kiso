@@ -42,19 +42,52 @@ export function prOfEvents(events: readonly Ev[]): Pr | null {
 
 export type PrState = "OPEN" | "MERGED" | "CLOSED";
 const FRESH_MS = 60_000;
+const GH_AT_ONCE = 2;
+
+/** What `gh` says of a pull request, as the rail's row shows it. */
+export interface PrInfo {
+	readonly state: PrState;
+	readonly title: string;
+	readonly additions: number;
+	readonly deletions: number;
+	readonly checks: { readonly done: number; readonly total: number; readonly failed: number };
+}
 
 export class PrStates {
-	readonly #known = new Map<string, { state?: PrState; at: number }>();
+	readonly #known = new Map<string, { info?: PrInfo; at: number }>();
+	#active = 0;
+	readonly #waiting: (() => void)[] = [];
 
-	/** The last state known (none yet: asked now, in the background). */
-	stateOf(url: string): PrState | undefined {
+	/** The last answer known. A merged or closed pull request is asked once; an open one or one not yet answered at most once a minute, in the background, two `gh` at a time. */
+	infoOf(url: string): PrInfo | undefined {
 		const held = this.#known.get(url);
+		if (held?.info !== undefined && held.info.state !== "OPEN") return held.info;
 		if (held === undefined || Date.now() - held.at > FRESH_MS) {
-			this.#known.set(url, { ...(held?.state !== undefined ? { state: held.state } : {}), at: Date.now() });
-			void tryRun(process.cwd(), "gh", ["pr", "view", url, "--json", "state", "--jq", ".state"], 8000).then((s) => {
-				if (s === "OPEN" || s === "MERGED" || s === "CLOSED") this.#known.set(url, { state: s, at: Date.now() });
-			});
+			this.#known.set(url, { ...(held?.info !== undefined ? { info: held.info } : {}), at: Date.now() });
+			void this.#ask(url);
 		}
-		return held?.state;
+		return held?.info;
+	}
+
+	stateOf(url: string): PrState | undefined {
+		return this.infoOf(url)?.state;
+	}
+
+	async #ask(url: string): Promise<void> {
+		while (this.#active >= GH_AT_ONCE) await new Promise<void>((resolve) => this.#waiting.push(resolve));
+		this.#active += 1;
+		try {
+			const json = await tryRun(process.cwd(), "gh", ["pr", "view", url, "--json", "state,title,additions,deletions,statusCheckRollup"], 8000);
+			if (json === null) return;
+			const p = JSON.parse(json) as { state?: string; title?: string; additions?: number; deletions?: number; statusCheckRollup?: readonly { status?: string; conclusion?: string }[] };
+			if (p.state !== "OPEN" && p.state !== "MERGED" && p.state !== "CLOSED") return;
+			const c = p.statusCheckRollup ?? [];
+			this.#known.set(url, { info: { state: p.state, title: p.title ?? "", additions: p.additions ?? 0, deletions: p.deletions ?? 0, checks: { total: c.length, done: c.filter((x) => x.status === "COMPLETED").length, failed: c.filter((x) => x.conclusion === "FAILURE").length } }, at: Date.now() });
+		} catch {
+			// an answer that is not JSON is no answer: the row shows what the log said
+		} finally {
+			this.#active -= 1;
+			this.#waiting.shift()?.();
+		}
 	}
 }

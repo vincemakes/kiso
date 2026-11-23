@@ -18,7 +18,7 @@ import { foldersOf } from "./work-folders.js";
  * `gh pr create` whose result is not an error, else the Work's linked one). Cached by the log's last seq; nothing is stored.
  */
 const RECENT_MAX = 8;
-const cache = new Map<string, { readonly seq: number; readonly recent: readonly string[]; readonly repos: readonly EnvRepo[] }>();
+const cache = new Map<string, { readonly seq: number; readonly recent: readonly string[]; readonly repos: readonly EnvRepo[]; readonly prs: readonly Pr[] }>();
 
 /** A pull request's branch from `gh`, asked once off the request (retried after a minute when it could not be read); the row shows it once known. */
 const branches = new Map<string, { branch?: string; at: number }>();
@@ -58,19 +58,24 @@ export function scanLog(events: readonly LogEvent[], base: string, home: string,
 	return { recent, repos };
 }
 
-function derive(space: Space, session: string, linked: Pr | undefined): { readonly recent: readonly string[]; readonly repos: readonly EnvRepo[] } {
+function derive(space: Space, session: string, linked: Pr | undefined): { readonly recent: readonly string[]; readonly repos: readonly EnvRepo[]; readonly prs: readonly Pr[] } {
 	const records = space.store.load(session);
 	const seq = records.at(-1)?.event.seq ?? -1;
 	const slot = `${space.key}\0${session}`; // two folders can hold a Work of the same id and the same last seq
 	const held = cache.get(slot);
 	// both sources, one row per repository: the Work's own link (the person's latest word) first, then what the log printed
 	const both = (log: readonly EnvRepo[]): readonly EnvRepo[] => [...(linked === undefined ? [] : [repoOf(linked)]), ...log].filter((r, i, all) => all.findIndex((x) => x.repo === r.repo) === i);
-	if (held !== undefined && held.seq === seq) return { recent: held.recent, repos: both(held.repos) };
+	if (held !== undefined && held.seq === seq) return { recent: held.recent, repos: both(held.repos), prs: held.prs };
 	const { recent, repos } = scanLog(records.map((r) => r.event), space.workspace, homedir());
 	const kept = [...new Set(recent)].filter((d, _, all) => !all.some((o) => o !== d && d.startsWith(`${o}/`))).slice(0, RECENT_MAX);
-	const out = { seq, recent: kept, repos: repos.filter((r, i) => repos.findIndex((x) => x.repo === r.repo) === i) };
+	const out = { seq, recent: kept, repos: repos.filter((r, i) => repos.findIndex((x) => x.repo === r.repo) === i), prs: repos.filter((r, i) => repos.findIndex((x) => x.url === r.url) === i).map((r) => ({ number: r.number, url: r.url })) };
 	cache.set(slot, out);
-	return { recent: out.recent, repos: both(out.repos) };
+	return { recent: out.recent, repos: both(out.repos), prs: out.prs };
+}
+
+/** Every pull request this Work opened or was linked to, newest first, one per URL (the log's `gh pr create` calls and the links kept in settings). */
+export function workPrs(space: Space, session: string, links: readonly Pr[]): readonly Pr[] {
+	return [...links, ...derive(space, session, undefined).prs].filter((p, i, all) => all.findIndex((x) => x.url === p.url) === i);
 }
 
 const shown = (p: string): string => (p.startsWith(`${homedir()}/`) ? `~${p.slice(homedir().length)}` : p);
