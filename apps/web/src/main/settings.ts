@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	applyEffortDeclarations,
@@ -138,7 +138,20 @@ export class Settings {
 	write(patch: Own): void {
 		try {
 			mkdirSync(join(this.#file, ".."), { recursive: true, mode: 0o700 });
-			writeFileSync(this.#file, `${JSON.stringify({ ...this.#read(), ...patch })}\n`, { mode: 0o600 });
+			// temp then rename (as the runtime's tenants are written): a reader, here or in another process, sees the old file or the
+			// new one, never an empty or half-written one (finding #13)
+			const temp = `${this.#file}.${process.pid}.tmp`;
+			try {
+				writeFileSync(temp, `${JSON.stringify({ ...this.#read(), ...patch })}\n`, { mode: 0o600 });
+				renameSync(temp, this.#file);
+			} catch (e) {
+				try {
+					unlinkSync(temp);
+				} catch {
+					// no temp left to remove
+				}
+				throw e;
+			}
 		} catch {
 			// a read-only home only loses the memory
 		}
