@@ -10,7 +10,7 @@ import { ChainBudget } from "../src/chains.js";
 import { peerMessageId, readInbox, writeMessage } from "../src/inbox.js";
 import { heldElsewhere } from "../src/lock-adapter.js";
 import { createHash } from "node:crypto";
-import { LIST_SESSIONS, SESSIONS_REFUSAL, START_SESSION, refusingSessionsExtension, shortRefs } from "../src/sessions-tools.js";
+import { START_SESSION, shortRefs } from "../src/sessions-tools.js";
 
 const say = (text: string) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 
@@ -59,14 +59,6 @@ describe("heldElsewhere", () => {
 		expect(heldElsewhere(lock(JSON.stringify({ pid: process.pid, token: "t" })))).toBe(false);
 		expect(heldElsewhere(lock(JSON.stringify({ pid: 2 ** 22 - 1, token: "t" }))), "no such process").toBe(false);
 		expect(heldElsewhere(lock(JSON.stringify({ pid: process.ppid, token: "t" }))), "the parent is alive").toBe(true);
-	});
-});
-
-describe("the terminal's twin", () => {
-	it("has the web's name, schema and description, and refuses with a reason", async () => {
-		const tool = refusingSessionsExtension().tools![0]!;
-		expect({ name: tool.name, description: tool.description, parameters: tool.parameters }).toEqual(LIST_SESSIONS);
-		expect(await tool.execute({}, {} as never), "a precondition: nothing ran").toEqual({ content: SESSIONS_REFUSAL, isError: true, errorKind: "precondition" });
 	});
 });
 

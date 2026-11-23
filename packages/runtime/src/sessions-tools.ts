@@ -70,17 +70,6 @@ export const SESSIONS_APPROVALS: readonly ApprovalPolicy[] = [
 	},
 ];
 
-/** What a twin answers in a host that cannot keep the tools' promise. */
-export const SESSIONS_REFUSAL = "This needs kiso web: the session was created there and is open in the terminal now. Tell the person, or continue without it.";
-
-/** The terminal's twins: the specs above, each refusing. */
-export function refusingSessionsExtension(): KisoExtension {
-	// a precondition, as the web host's refusals are: nothing ran, so the kernel never adds "its side effects may have partially
-	// applied" to a refusal that says there were none
-	const refuse = async (): Promise<ToolResult> => ({ content: SESSIONS_REFUSAL, isError: true, errorKind: "precondition" });
-	return { name: "sessions", approvals: SESSIONS_APPROVALS, tools: [defineTool({ ...LIST_SESSIONS, execute: refuse }), defineTool({ ...MESSAGE, execute: refuse }), defineTool({ ...START_SESSION, execute: refuse })] };
-}
-
 /**
  * ADR-0062 PR 1: the refs `list_sessions` prints and `message` resolves: the shortest suffix of a session id, four characters
  * at least, that no other listed id ends with; an id listed twice (two folders mint ids alone) is written `folder/id`. Keyed

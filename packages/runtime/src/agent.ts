@@ -59,6 +59,11 @@ export interface AgentDefinition {
 	 *  (facts injected, views rewritten, tokens counted) passes the unwrapped one here so a title never meets the wrapper.
 	 *  Absent: those requests use `adapter`, as before. */
 	readonly sideAdapter?: Adapter;
+	/** ADR-0062 Amendment 2: whether THIS host's tool table has the sessions tools. A Work follows the host that opens it:
+	 *  once its first event is written (so its lock is held) the sidecar's mark is set or cleared to match, and if the tool
+	 *  table differs from the recorded one the next profile revision records it. A refused open writes nothing. Absent: the
+	 *  host does not say (an SDK caller), and the mark and the revisions are left alone. */
+	readonly sessionsTools?: boolean;
 	/** Lazy provider: "anthropic" | "openai-compat" | "openai-responses"
 	 *  (imports the peer package). */
 	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
@@ -288,6 +293,7 @@ export class AgentRuntime {
 			...(this.#definition.toolRules !== undefined ? { toolRules: this.#definition.toolRules } : {}),
 			...(this.#definition.toolTable !== undefined ? { toolTable: this.#definition.toolTable } : {}),
 			...(this.#definition.extensions !== undefined ? { extensions: this.#definition.extensions } : {}),
+			...(this.#definition.sessionsTools !== undefined ? { followHost: { sessionsTools: this.#definition.sessionsTools } } : {}),
 		};
 		// 0.40.0: the last bill's time rides the RECORD, not the event.
 		let lastUsageAt: number | undefined;
