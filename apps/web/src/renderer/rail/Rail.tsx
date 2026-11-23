@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { ContextParts, EnvReply } from "../../shared/settings.js";
 import type { GitReply } from "../../shared/git.js";
 import type { TaskRow } from "../../shared/frames.js";
@@ -78,6 +78,12 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const [allOutputs, setAllOutputs] = useState(false);
 	const [allChanges, setAllChanges] = useState(false);
 	const [allEnded, setAllEnded] = useState(false);
+	// another Work starts folded again (a section the person folded stays folded)
+	useEffect(() => {
+		setAllOutputs(false);
+		setAllChanges(false);
+		setAllEnded(false);
+	}, [where, session]);
 	const [noStop, setNoStop] = useState<string | null>(null); // a stop the host answered false: why, for a moment
 	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
 	const over = (tip: TipData) => ({
