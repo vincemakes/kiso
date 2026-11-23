@@ -29,7 +29,6 @@ export function UpdateRows(): ReactNode {
 					{fmt(t.updateRunning, { current: u.current })} · {u.latest === null ? t.updateUnknown : fmt(t.updateLatest, { latest: u.latest })}
 					{u.enabled ? (
 						<>
-							{" · "}
 							<button className="chip" data-act="update-check" disabled={busy} onClick={() => (setBusy(true), void checkUpdateNow().then(setU, () => undefined).finally(() => setBusy(false)))}>
 								{busy ? t.updateChecking : t.updateCheckNow}
 							</button>

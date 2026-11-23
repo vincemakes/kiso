@@ -34,3 +34,4 @@
 .folders button.dir:hover { background: rgba(0, 0, 0, 0.045); }
 .folders .dir.off { color: var(--mute); }
 .signedout { position: fixed; inset: 0; display: grid; place-items: center; color: var(--mute); background: #fff; font-size: 14px; padding: 16px; text-align: center; }
+[data-field=version] .chip { margin-left: 10px; }
