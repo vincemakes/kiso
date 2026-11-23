@@ -63,4 +63,16 @@ check(JSON.stringify(outcomes) === "[true,true,true,false]", "per run, three que
 const other = bridge.ui.ask(spec, { aborted: false }, { sessionId: "s", callId: "d1" });
 check(bridge.replaceWaiting("s") === true && (await other).replaced === true, "another run has its own allowance");
 check(bridge.replaceWaiting("s") === false && bridge.replaceWaiting("nobody") === false, "nothing waiting: false, and the line is handed on as before");
+// a question asked with no signal is keyed per Work: one Work's three ended questions leave another's allowance whole
+for (const sid of ["x", "y"]) {
+	const ends = [];
+	for (let i = 1; i <= 4; i++) {
+		const p = bridge.ui.ask(spec, undefined, { sessionId: sid, callId: `n${i}` });
+		const ended = bridge.replaceWaiting(sid);
+		ends.push(ended);
+		if (!ended) bridge.answer(sid, `n${i}`, { answers: [{ q: "A?", choice: "x" }] });
+		await p;
+	}
+	check(JSON.stringify(ends) === "[true,true,true,false]", `without a signal, Work ${sid} has its own three, not a count shared with another Work`);
+}
 verdict();

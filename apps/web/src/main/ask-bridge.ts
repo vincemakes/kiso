@@ -18,13 +18,22 @@ const PER_RUN = 3;
 export class AskBridge {
 	readonly #waiting = new Map<string, { readonly resolve: (result: unknown) => void; readonly questions: readonly string[]; readonly run: object }>();
 	readonly #ended = new WeakMap<object, number>();
+	readonly #unsignalled = new Map<string, object>();
+
+	/** The run key of a question asked with no signal (the run always gives one; a test or a bridge under repair may not): per Work,
+	 *  never one counter shared by every Work. */
+	#own(sessionId: string): object {
+		let k = this.#unsignalled.get(sessionId);
+		if (k === undefined) this.#unsignalled.set(sessionId, (k = {}));
+		return k;
+	}
 
 	readonly ui = {
 		ask: (spec: unknown, signal: Signal | undefined, ctx: { readonly sessionId?: string; readonly callId?: string }): Promise<unknown> =>
 			new Promise((resolve, reject) => {
 				const key = `${ctx.sessionId}/${ctx.callId}`;
 				const questions = ((spec as { questions?: readonly { question?: unknown }[] }).questions ?? []).map((q) => String(q.question ?? ""));
-				this.#waiting.set(key, { resolve, questions, run: signal ?? this });
+				this.#waiting.set(key, { resolve, questions, run: signal ?? this.#own(ctx.sessionId ?? "") });
 				signal?.addEventListener?.("abort", () => (this.#waiting.delete(key), reject(new Error("the run was stopped"))), { once: true });
 			}),
 	};
