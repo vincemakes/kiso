@@ -99,4 +99,21 @@ describe("Session.title with a host-wrapped adapter (finding: the title query mu
 		expect(wrapped, "a new binding drops the old route's side adapter").toHaveLength(1);
 		expect(raw).toHaveLength(1);
 	});
+
+	it("setAdapter without a side adapter clears it; with one, titles go there", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-ti-")));
+		const seen: Record<string, number> = { old: 0, next: 0, side: 0 };
+		const mk = (k: string, text: string): Adapter => {
+			const faux = createFauxProvider([say(text)] as never);
+			return { stream: (o) => ((seen[k] = seen[k]! + 1), faux.stream(o)) };
+		};
+		const agent = createAgent({ model: "m", store, systemPrompt: "s", tools: [ADD], adapter: mk("old", "O"), sideAdapter: mk("side", "S") });
+		const session = await agent.session({ id: "iso2" });
+		session.setAdapter(mk("next", "Next"));
+		expect(await session.title("hello")).toBe("Next");
+		expect(seen).toEqual({ old: 0, next: 1, side: 0 });
+		session.setAdapter(mk("next", "N2"), mk("side", "Side"));
+		expect(await session.title("hello")).toBe("Side");
+		expect(seen.side).toBe(1);
+	});
 });

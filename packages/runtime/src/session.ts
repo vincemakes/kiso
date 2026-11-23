@@ -792,8 +792,10 @@ export class AgentSession {
 	 * flight keeps the adapter it started with. The CLI calls this between
 	 * turns (dispatch's /model), never mid-run.
 	 */
-	setAdapter(adapter: Adapter): void {
+	setAdapter(adapter: Adapter, sideAdapter?: Adapter): void {
 		this.#adapter = adapter;
+		// the side adapter belongs to the route it was passed for: a swap without a new one clears it
+		this.#sideAdapter = sideAdapter;
 	}
 
 	/** Where session.title and session.sideQuery send their request: an adapter the host has NOT wrapped (a wrapper that
