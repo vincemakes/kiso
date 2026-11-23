@@ -29,7 +29,7 @@ import { modeExtensions, modeSystemPrompt } from "./mode.js";
 import { readOnlyShellExtension } from "./readonly-shell.js";
 import { maxRetriesFromEnv } from "./retries.js";
 import { createCodingTools } from "@vincemakes/kiso-tools-node";
-import { hasSessionsTools, refusingSessionsExtension, runsACheck } from "@vincemakes/kiso-runtime/internal";
+import { runsACheck } from "@vincemakes/kiso-runtime/internal";
 import { providerHost } from "./provider-label.js";
 import { adapterOptionsFor } from "./auth/adapter-options.js";
 import { createFauxProvider } from "@vincemakes/kiso-evals";
@@ -283,8 +283,6 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		...modeExtensions(workspaceRoot),
 		readOnlyShellExtension(codingToolOptions),
 		...loadedExtensions.map((e) => guardSavedAllow(e, neverInherited)),
-		// ADR-0062: a Work the web created with the sessions tools keeps them here, each refusing (this host cannot keep their promise)
-		...(sessionId !== undefined && hasSessionsTools(activeStoreDir, sessionId) ? [refusingSessionsExtension()] : []),
 	];
 	setCurrentAgentExtensions(extensions);
 
@@ -295,6 +293,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	const definition: AgentDefinition = {
 		model,
 		store,
+		// ADR-0062 Amendment 2: the terminal has no sessions tools; a Work it opens follows it (the mark is cleared once the
+		// Work's lock is held, with a recorded revision)
+		sessionsTools: false,
 		// 0.40.0: a NEW session records where it started; the picker scopes by
 		// it. The profile name is recorded only when the model came from a
 		// config profile — a direct provider/model or an env key names none.

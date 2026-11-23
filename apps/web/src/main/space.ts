@@ -169,7 +169,7 @@ export function createSpace(options: SpaceOptions): Space {
 		open: async (sessionId) => {
 			if (options.buried?.(sessionId) === true) throw new Error(`the Work ${sessionId} was deleted`); // whatever path asked
 			opened.add(sessionId);
-			const sessionsExt = options.sessions === undefined ? undefined : sessionsFor(options.dir, { key: options.key, sessionId }, options.sessions);
+			const sessionsExt = options.sessions === undefined ? undefined : sessionsFor({ key: options.key, sessionId }, options.sessions);
 			return createWebAgent({
 				store,
 				workspace: options.workspace,

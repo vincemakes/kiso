@@ -64,7 +64,7 @@ export interface HostOptions {
 	readonly titles?: boolean;
 	/** ADR-0062 § 10c: Works carry ask_user (default on) */
 	readonly ask?: boolean;
-	/** ADR-0062: Works created from now on carry the sessions extension (KISO_WEB_SESSIONS=on) */
+	/** ADR-0062: every Work this host opens has the sessions extension (KISO_WEB_SESSIONS=on) */
 	readonly sessions?: boolean;
 }
 
