@@ -259,16 +259,10 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 								</a>
 							))}
 							{prList.length > 0 && fileRows.length > 0 ? (
-								<div className="r-row r-un" data-field="uncommitted" title={`${t.uncommitted} (${fileRows.length === 1 ? t.nFile : fmt(t.nFiles, { n: fileRows.length })})`} onClick={() => setFileOpen((o) => !o)}>
-									<span className="r-ic">
-										<I.branch />
-									</span>
-									<span className="r-nm">{t.uncommitted} ({fileRows.length === 1 ? t.nFile : fmt(t.nFiles, { n: fileRows.length })})</span>
-									{action ?? (
-										<span className="r-mt">
-											<span className="add">+{fileRows.reduce((n, c) => n + c.added, 0)}</span> <span className="del">−{fileRows.reduce((n, c) => n + c.removed, 0)}</span>
-										</span>
-									)}
+								<div className="r-row r-un" data-field="uncommitted" onClick={() => setFileOpen((o) => !o)}>
+									<span className="r-nm">{t.uncommitted}</span>
+									<span className="r-mt">{fileRows.length === 1 ? t.nFile : fmt(t.nFiles, { n: fileRows.length })}</span>
+									{action}
 								</div>
 							) : null}
 							{(prList.length > 0 && !fileOpen ? [] : fileRows).slice(0, allChanges ? CHANGES_MAX : CHANGES_SHOWN).map((c) => (

@@ -57,6 +57,8 @@ check(await waitUntil(async () => (await app.count("[data-kind=git-dialog]")) ==
 rmSync(join(ws, "c.txt"));
 await q(`window.__kiso.send("again")`);
 check(await waitUntil(async () => (await app.count("[data-act=create-pr]")) === 1, 30_000) && /↑3/.test(await text("[data-field=branch-row]")), "a clean branch ahead of main offers Create PR");
+check(await q(`(() => { const r = document.querySelector("[data-field=branch-row]"); return [...r.children].every((c) => c.scrollWidth <= c.clientWidth + 1); })()`), "the branch row with Create PR reads whole: branch, base and the button, nothing cut");
+await app.shot("changes-git-create-pr");
 
 // the pull request: nothing before the confirm
 const pushed = () => { try { return git(origin, "rev-parse", "--verify", "--quiet", "refs/heads/feat/rail"); } catch { return ""; } };
