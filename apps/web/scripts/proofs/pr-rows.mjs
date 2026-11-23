@@ -22,7 +22,7 @@ const launch = (name, ws, ghBody) => {
 	chmodSync(join(bin, "gh"), 0o755);
 	return { log, run: () => launchApp({ data: scratch(`${name}-data`), workspace: ws, fauxScript: script(), env: { PATH: `${bin}:${process.env.PATH}`, KISO_WEB_SESSION: name, KISO_WEB_MODE: "full-access", ...ID } }) };
 };
-const asked = (log, url) => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter((l) => l.includes(`pr view ${url} `)).length : 0);
+const asked = (log, url) => (existsSync(log) ? readFileSync(log, "utf8").split("\n").filter((l) => l.includes(`pr view ${url} --json state`)).length : 0);
 
 // 1: a repository with an uncommitted file, gh answering per URL
 const ws = scratch("prr-ws");
@@ -50,7 +50,8 @@ const before = asked(ok.log, `${A}/1`);
 await app.evaluate(`window.__kiso.send("again")`);
 await waitUntil(async () => (await app.count("[data-kind=footer]")) === 2, 30_000);
 await sleep(1500);
-check(before === 1 && asked(ok.log, `${A}/1`) === 1, "a merged pull request is asked of gh once");
+const after = asked(ok.log, `${A}/1`);
+check(before === 1 && after === 1, `a merged pull request is asked of gh once for its state (before ${before}, after ${after}; the Environment card's own headRefName ask is a different call and not counted)`);
 await app.close();
 
 // 2: no gh answers, and the folder is not a repository
