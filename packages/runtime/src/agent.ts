@@ -55,6 +55,10 @@ export interface AgentDefinition {
 	readonly hooks?: HookHost;
 	/** Direct adapter injection (tests, faux, custom providers). */
 	readonly adapter?: Adapter;
+	/** The adapter off-trajectory requests (session.title, session.sideQuery) go through. A host that wraps `adapter`
+	 *  (facts injected, views rewritten, tokens counted) passes the unwrapped one here so a title never meets the wrapper.
+	 *  Absent: those requests use `adapter`, as before. */
+	readonly sideAdapter?: Adapter;
 	/** Lazy provider: "anthropic" | "openai-compat" | "openai-responses"
 	 *  (imports the peer package). */
 	readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
@@ -294,7 +298,9 @@ export class AgentRuntime {
 				break;
 			}
 		}
-		return new AgentSession(options.id, log, store, adapter, config, lastUsageAt);
+		const session = new AgentSession(options.id, log, store, adapter, config, lastUsageAt);
+		session.setSideAdapter(this.#definition.sideAdapter);
+		return session;
 	}
 }
 

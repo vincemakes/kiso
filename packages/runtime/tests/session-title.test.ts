@@ -78,3 +78,42 @@ describe("cleanTitle", () => {
 		expect(cleanTitle("")).toBe("");
 	});
 });
+
+describe("Session.title with a host-wrapped adapter (finding: the title query must not meet the wrapper)", () => {
+	it("sends the title through the side adapter, never the wrapped one; a binding switch clears it", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-ti-")));
+		const wrapped: StreamOptions[] = [];
+		const raw: StreamOptions[] = [];
+		const mk = (log: StreamOptions[], text: string): Adapter => {
+			const faux = createFauxProvider([say(text), say(text)] as never);
+			return { stream: (o) => (log.push(o), faux.stream(o)) };
+		};
+		const agent = createAgent({ model: "m", store, systemPrompt: "s", tools: [ADD], adapter: mk(wrapped, "W"), sideAdapter: mk(raw, "Raw title") });
+		const session = await agent.session({ id: "iso" });
+		expect(await session.title("hello")).toBe("Raw title");
+		expect(wrapped, "the wrapper saw nothing").toHaveLength(0);
+		expect(raw).toHaveLength(1);
+		const next = mk(wrapped, "Next");
+		session.setModelBinding({ adapter: next, model: "m2" });
+		expect(await session.title("hello")).toBe("Next");
+		expect(wrapped, "a new binding drops the old route's side adapter").toHaveLength(1);
+		expect(raw).toHaveLength(1);
+	});
+
+	it("setAdapter without a side adapter clears it; with one, titles go there", async () => {
+		const store = new SessionStore(mkdtempSync(join(tmpdir(), "kiso-ti-")));
+		const seen: Record<string, number> = { old: 0, next: 0, side: 0 };
+		const mk = (k: string, text: string): Adapter => {
+			const faux = createFauxProvider([say(text)] as never);
+			return { stream: (o) => ((seen[k] = seen[k]! + 1), faux.stream(o)) };
+		};
+		const agent = createAgent({ model: "m", store, systemPrompt: "s", tools: [ADD], adapter: mk("old", "O"), sideAdapter: mk("side", "S") });
+		const session = await agent.session({ id: "iso2" });
+		session.setAdapter(mk("next", "Next"));
+		expect(await session.title("hello")).toBe("Next");
+		expect(seen).toEqual({ old: 0, next: 1, side: 0 });
+		session.setAdapter(mk("next", "N2"), mk("side", "Side"));
+		expect(await session.title("hello")).toBe("Side");
+		expect(seen.side).toBe(1);
+	});
+});

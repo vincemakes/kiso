@@ -46,6 +46,22 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 	useEffect(() => {
 		document.querySelector(".ptabs .ptab.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
 	}, [termTab, kind]);
+	// the Finished menu closes on Esc and on a press outside it
+	useEffect(() => {
+		if (!finMenu) return;
+		const key = (e: KeyboardEvent): void => {
+			if (e.key === "Escape") setFinMenu(false);
+		};
+		const away = (e: MouseEvent): void => {
+			if (!(e.target instanceof Element) || e.target.closest(".pfin") === null) setFinMenu(false);
+		};
+		document.addEventListener("keydown", key);
+		document.addEventListener("mousedown", away);
+		return () => {
+			document.removeEventListener("keydown", key);
+			document.removeEventListener("mousedown", away);
+		};
+	}, [finMenu]);
 	useEffect(() => {
 		if (focus === null) return;
 		if (kind === "term") return setTermTab(focus);

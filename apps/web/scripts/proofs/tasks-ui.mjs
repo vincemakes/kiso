@@ -40,5 +40,21 @@ check((await app.text("[data-act=finished-tab]")) === "Finished (5)", "five task
 await app.click("[data-act=finished-tab]");
 await app.click("[data-finished]");
 check(await waitUntil(async () => (await app.count(".ptabs .ptab")) === 4 && (await app.text("[data-act=finished-tab]")) === "Finished (4)"), "a task opened from the list becomes the tab in focus");
+// the Finished menu closes on Esc and on a press outside it
+const menu = () => app.count("[data-kind=finished-list]");
+await app.click("[data-act=finished-tab]");
+check((await menu()) === 1, "the Finished menu opens");
+await q(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+check(await waitUntil(async () => (await menu()) === 0), "Esc closes the Finished menu");
+await app.click("[data-act=finished-tab]");
+await q(`document.querySelector(".ptabs").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))`);
+check(await waitUntil(async () => (await menu()) === 0), "a press outside closes the Finished menu");
+await app.click("[data-act=finished-tab]");
+check((await menu()) === 1 && (await q(`document.querySelector("[data-kind=finished-list]").dispatchEvent(new MouseEvent("mousedown", { bubbles: true })), 1`)) === 1 && (await menu()) === 1, "a press inside it keeps it open");
+// the lost task's detail has no empty Folder row
+await q(`[...document.querySelectorAll("[data-finished]")].find((b) => b.textContent.includes("lost track")).click()`);
+check(await waitUntil(() => q(`!!document.querySelector("[data-field=task-detail]") && document.querySelector(".tmeta")?.textContent.includes("lost track")`)), "the lost task opens");
+check(await q(`[...document.querySelectorAll("[data-field=task-detail] dt")].every((d) => d.nextElementSibling.textContent.trim() !== "")`), "every row of its detail has a value (no empty Folder row)");
+await app.shot("task-lost-detail");
 await app.close();
 verdict();

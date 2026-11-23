@@ -45,8 +45,12 @@ export function Term({ state, wkey, sessionId, tab }: Props): ReactNode {
 					<dl className="tdet mono" data-field="task-detail">
 						<dt>{t.taskCommand}</dt>
 						<dd>{name.command}</dd>
-						<dt>{t.taskFolder}</dt>
-						<dd>{name.folder ?? root}</dd>
+						{(name.folder || root) ? (
+							<>
+								<dt>{t.taskFolder}</dt>
+								<dd>{name.folder || root}</dd>
+							</>
+						) : null}
 						<dt>{t.taskId}</dt>
 						<dd>{task.id}</dd>
 					</dl>

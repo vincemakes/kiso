@@ -250,6 +250,8 @@ export class AgentSession {
 	// NOT readonly since 0.1.23: /model replaces it between runs (the
 	// constructor, setAdapter, and setModelBinding are the only writers).
 	#adapter: Adapter;
+	/** the unwrapped adapter off-trajectory requests use; absent: `#adapter` */
+	#sideAdapter: Adapter | undefined;
 	/** the last request a run sent, as the provider adapter got it (in memory only): what followUp sends again */
 	#lastRequest: StreamOptions | null = null;
 	readonly #config: SessionConfig;
@@ -790,8 +792,17 @@ export class AgentSession {
 	 * flight keeps the adapter it started with. The CLI calls this between
 	 * turns (dispatch's /model), never mid-run.
 	 */
-	setAdapter(adapter: Adapter): void {
+	setAdapter(adapter: Adapter, sideAdapter?: Adapter): void {
 		this.#adapter = adapter;
+		// the side adapter belongs to the route it was passed for: a swap without a new one clears it
+		this.#sideAdapter = sideAdapter;
+	}
+
+	/** Where session.title and session.sideQuery send their request: an adapter the host has NOT wrapped (a wrapper that
+	 *  injects facts, rewrites views or counts tokens belongs to the trajectory, not to a title). `undefined` restores
+	 *  the default, the session's own adapter. */
+	setSideAdapter(adapter: Adapter | undefined): void {
+		this.#sideAdapter = adapter;
 	}
 
 	/**
@@ -807,6 +818,9 @@ export class AgentSession {
 	 */
 	setModelBinding(binding: {
 		readonly adapter: Adapter;
+		/** the unwrapped adapter for title/sideQuery on the new binding; absent clears it (the old one belongs to
+		 *  the old route), and those requests use `adapter` */
+		readonly sideAdapter?: Adapter;
 		readonly model: string;
 		readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
 		/** OR-1: the endpoint moves with the adapter too — the cost path
@@ -836,6 +850,7 @@ export class AgentSession {
 			this.#anchorFloorSeq = this.log.all.at(-1)?.seq ?? -1;
 		}
 		this.#adapter = binding.adapter;
+		this.#sideAdapter = binding.sideAdapter;
 		this.#model = binding.model;
 		this.#provider = binding.provider;
 		this.#baseUrl = binding.baseUrl;
@@ -1098,7 +1113,7 @@ export class AgentSession {
 		});
 		tracer.init();
 		// LT-1: the summary request is a model stream too — the same watchdog
-		const guarded = traceGuard(tracer, idleGuard(this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
+		const guarded = traceGuard(tracer, idleGuard(this.#sideAdapter ?? this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
 		let text = "";
 		try {
 			for await (const ev of guarded.stream({
