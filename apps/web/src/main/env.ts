@@ -25,7 +25,7 @@ import type { Notice } from "./approvals.js";
  *   KISO_WEB_KEEPALIVE   keepalive period in ms
  *   KISO_WEB_MIN_FG_MS   the shell's least foreground wait (0 keeps the model's value)
  *   KISO_WEB_ASK         off: Works carry no ask_user (ADR-0062 § 10c)
- *   KISO_WEB_SESSIONS    on: Works created from now on carry the sessions tools (ADR-0062; off until the tool-schema round)
+ *   KISO_WEB_SESSIONS    on: every Work this host opens has the sessions tools (a Work follows the host that opens it; ADR-0062 Amendment 1) (ADR-0062; off until the tool-schema round)
  *   KISO_WEB_TASK_WAKE   off: a task's end does not wake an idle Work (the proofs; the config's taskWake: false too)
  *   KISO_WEB_PORT        the port (default 4317; 0: the system picks), and KISO_WEB_TOKEN the scripts' bearer
  *                            token (default: a fresh one per launch, never printed) — the crash script restarts

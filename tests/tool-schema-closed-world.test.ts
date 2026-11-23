@@ -38,7 +38,7 @@ import createSubagentExtension from "../extensions/subagent/src/kiso-subagent.mj
 import createSkillsExtension from "../extensions/skills/src/kiso-skills.mjs";
 // @ts-expect-error — same
 import createAskExtension from "../extensions/ask/src/kiso-ask.mjs";
-import { refusingSessionsExtension } from "../packages/runtime/src/sessions-tools.js";
+import { LIST_SESSIONS, MESSAGE, START_SESSION } from "../packages/runtime/src/sessions-tools.js";
 
 interface NamedSchema {
 	readonly tool: string;
@@ -70,8 +70,8 @@ async function firstPartySchemas(): Promise<NamedSchema[]> {
 	for (const t of skills.tools ?? []) tools.push(t);
 	const ask = await createAskExtension({ ask: async () => ({ answers: [] }) });
 	for (const t of ask.tools ?? []) tools.push(t);
-	// ADR-0062: the sessions tools (the web's implementation and the terminal's twins share this spec)
-	for (const t of refusingSessionsExtension().tools ?? []) tools.push(t);
+	// ADR-0062: the sessions tools (the web host implements them from these specs)
+	for (const t of [LIST_SESSIONS, MESSAGE, START_SESSION]) tools.push({ name: t.name, parameters: t.parameters } as (typeof tools)[number]);
 	return tools.map((t) => ({ tool: t.name, schema: t.parameters }));
 }
 

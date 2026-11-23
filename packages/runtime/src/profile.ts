@@ -164,16 +164,24 @@ export function writeSessionName(root: string, sessionId: string, name: string |
 	writeTenants(root, sessionId, name === null ? tenants : { ...tenants, name });
 }
 
-/** ADR-0062: whether the session was created with the sessions extension (a Work the web host made while it was on). Both
- *  apps read it, so a session keeps the tool table it was created with: the web gives a marked Work the extension, the
- *  terminal gives it twins that refuse. The sidecar's fifth tenant; a fork carries it. */
+/** ADR-0062 (Amendment 2): whether the host that last wrote to the session had the sessions extension in its tool table.
+ *  The Work follows the host that opens it: each host says what its table is (`AgentDefinition.sessionsTools`) and the mark
+ *  and the next profile revision follow it once the first event is written, under the Work's lock. The sidecar's fifth
+ *  tenant; a fork carries it. */
 export function hasSessionsTools(root: string, sessionId: string): boolean {
 	return currentTenants(root, sessionId).sessionsTools === true;
 }
 
-/** Mark the session as created with the sessions extension; the other tenants ride through. */
+/** Mark the session as having the sessions extension; the other tenants ride through. */
 export function markSessionsTools(root: string, sessionId: string): void {
 	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), sessionsTools: true });
+}
+
+/** ADR-0062 Amendment 1: the mark follows the host that last wrote to the Work, so it is set or cleared (the tenant removed). */
+export function writeSessionsTools(root: string, sessionId: string, on: boolean): void {
+	const tenants = { ...currentTenants(root, sessionId) };
+	delete tenants.sessionsTools;
+	writeTenants(root, sessionId, on ? { ...tenants, sessionsTools: true } : tenants);
 }
 
 /** ADR-0062 § 7: the session that started this one with start_session (its address, `<folder key>/<session id>`), or null.

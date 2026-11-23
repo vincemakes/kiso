@@ -126,6 +126,8 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 		toolRules: CODING_TOOL_RULES,
 		tools: [...createCodingTools(toolOptions)],
 		// the terminal's chain, in its order: the guards that deny speak first
+		// ADR-0062 Amendment 1: the Work follows this host's table
+		sessionsTools: options.sessions !== undefined,
 		extensions: [
 			protectedShellExtension({ files: protectedFiles, workspaceRoot: root, env: () => ({ home: homedir(), kisoHome: kisoHome() }) }),
 			floorExtension(() => true, root, undefined, () => readEnvironment(store.root, options.sessionId).added),

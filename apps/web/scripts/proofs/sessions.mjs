@@ -1,5 +1,6 @@
 // ADR-0062 PR 1: list_sessions. With KISO_WEB_SESSIONS=on a new Work is marked and lists the others across folders, a query
-// narrows them; a Work made with it off (or in the terminal) keeps a table without it, even opened by a host that has it on.
+// narrows them; a Work made with it off (or in the terminal) gains it when a host that has it on opens it (Amendment 2: a Work
+// follows the host that opens it).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@vincemakes/kiso-client";
@@ -43,6 +44,6 @@ const keyA = (await fetch(`${b.origin}/desk/history`, { headers: { authorization
 const oa = createClient({ baseUrl: `${b.origin}/w/${keyA}/v1/sessions`, headers: () => ({ authorization: `Bearer ${b.token}` }) }).session("work-a");
 await done(oa, "list from A");
 const l4 = result(keyA, "work-a", "l4");
-check(!marked(keyA, "work-a") && l4.isError && /unknown tool/i.test(l4.content), "a Work made with the tools off keeps its table: opened by a host that has them on, it has no list_sessions");
+check(marked(keyA, "work-a") && l4 !== undefined && !l4.isError && /^2 sessions?:|^1 session:/.test(l4.content), "a Work made with the tools off follows the host that opens it: with them on, it is marked and has list_sessions");
 b.child.kill("SIGKILL");
 verdict();

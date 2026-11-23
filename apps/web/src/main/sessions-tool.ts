@@ -1,15 +1,14 @@
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { defineTool, type Event, type KisoExtension } from "@vincemakes/kiso-core";
-import { ChainBudget, LIST_SESSIONS, SESSIONS_APPROVALS, hasSessionsTools, heldElsewhere, markSessionsTools, shortRefs } from "@vincemakes/kiso-runtime/internal";
+import { ChainBudget, LIST_SESSIONS, SESSIONS_APPROVALS, heldElsewhere, shortRefs } from "@vincemakes/kiso-runtime/internal";
 import type { HistoryReply, WorkRow } from "../shared/history.js";
 import { messageTool } from "./message-tool.js";
 import { startSessionTool, type WorkStart } from "./start-session-tool.js";
 
 /**
- * ADR-0062 PR 1: the sessions extension, the web host's half. A Work gets it only when the host runs with it on
- * (KISO_WEB_SESSIONS=on) and the Work was created that way: a Work with no log yet is marked on its first open, and the mark
- * (a sidecar tenant) is what decides from then on, here and in the terminal, so no table changes mid-session.
+ * ADR-0062 PR 1: the sessions extension, the web host's half. Every Work this host opens gets it when the host runs with it on
+ * (KISO_WEB_SESSIONS=on). Amendment 2 (owner, 2026-11-20): a Work follows the host that opens it, so a Work the terminal made
+ * has the tools here, and the terminal drops them again.
  */
 
 export interface SessionsHost {
@@ -41,10 +40,9 @@ export const chainBudget = (home: string): ChainBudget => new ChainBudget(join(h
 const MAX_LINES = 100;
 const STATE = { running: "running", waiting: "waiting on the person", idle: "idle" } as const;
 
-/** The extension for this Work, or undefined: marks a new Work first. */
-export function sessionsFor(dir: string, self: { readonly key: string; readonly sessionId: string }, host: SessionsHost): KisoExtension | undefined {
-	if (!existsSync(join(dir, `${self.sessionId}.jsonl`)) && !hasSessionsTools(dir, self.sessionId)) markSessionsTools(dir, self.sessionId);
-	if (!hasSessionsTools(dir, self.sessionId)) return undefined;
+/** The extension for this Work. Whether the host runs with it is the host's one switch; the Work follows the host that opens it
+ *  (ADR-0062 Amendment 1), so the sidecar's mark is no longer decided here: the runtime sets it once the Work's lock is held. */
+export function sessionsFor(self: { readonly key: string; readonly sessionId: string }, host: SessionsHost): KisoExtension {
 	const listTool = defineTool({
 		...LIST_SESSIONS,
 		idempotent: true,

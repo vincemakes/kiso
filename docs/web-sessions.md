@@ -9,9 +9,11 @@ off by default. The decision record is [ADR-0062](adrs/0062-sessions-and-message
 KISO_WEB_SESSIONS=on kiso web
 ```
 
-The switch applies to Works **created** while it is on. A Work keeps the tool table it was created
-with: turning the switch off later does not take the tools away from a Work that has them, and turning
-it on does not give them to one that was made without them.
+A Work follows the host that opens it. With the switch on, every Work kiso web opens has the tools,
+including one you started in the terminal; the terminal has none of them, so a Work opened there drops
+them again. Each change of host changes the tool table once, so the model's cache is rebuilt once per
+switch. The change is recorded as a new revision of the Work's profile, written once the Work's first
+event is saved, so a Work that another process still has open is not touched.
 
 ## What a Work can do
 

@@ -50,7 +50,7 @@ import { executionLedger } from "./ledger.js";
 import { overflowBelt, type OverflowMeasure } from "./overflow-belt.js";
 import { windowLearner } from "./window-learner.js";
 import { denialResult, isRuntimeInput, type ContinuationScope } from "@vincemakes/kiso-core";
-import { buildProfile, readForkOrigin, readProfile, writeProfile, writeSummary } from "./profile.js";
+import { buildProfile, hasSessionsTools, readForkOrigin, readProfile, writeProfile, writeSessionsTools, writeSummary } from "./profile.js";
 import { forkNote } from "./fork.js";
 import { summarizeEvents } from "./session-summary.js";
 import { lookupModelMetadata, resolveReasoning, type ReasoningSetting } from "./provider/metadata.js";
@@ -283,6 +283,8 @@ export class AgentSession {
 	#profilePending: boolean;
 	/** DC-60: set until a NEW session's first durable event lands. */
 	#newSession: { readonly workspace: string | null } | undefined;
+	/** ADR-0062 Amendment 1: the host's table, to be followed once the first event is written (the lock is held) */
+	#followHost: { readonly sessionsTools: boolean } | undefined;
 	/** 0.40.0: the config profile name of the live binding (configuration:
 	 *  each revision records the name in force when it is written). */
 	#profileName: string | null;
@@ -370,6 +372,7 @@ export class AgentSession {
 		this.#microcompact = config.microcompact;
 		this.#profilePending = config.profilePending === true;
 		this.#newSession = config.newSession;
+		this.#followHost = config.followHost;
 		this.#profileName = config.profileName ?? null;
 		this.driftAcknowledgement = config.driftAcknowledgement ?? null;
 	}
@@ -434,6 +437,7 @@ export class AgentSession {
 			this.#note(event);
 			await this.#store.append(this.id, runId, event);
 			if (event.type === "usage" && event.known) this.#lastUsageAt = Date.now();
+			this.#followTheHost();
 		} catch (err) {
 			// round 4: ANY rejected write poisons — not only the typed
 			// stale/corruption errors. A live external writer's lock error
@@ -441,6 +445,22 @@ export class AgentSession {
 			// in all of them.
 			this.poison((err as Error).message);
 			throw err;
+		}
+	}
+
+	/** ADR-0062 Amendment 1: after the first event is written (the Work's lock is held, so a refused open never gets here) the
+	 *  sidecar's mark follows the host's table, and the next profile revision records the tool table when it differs from the
+	 *  recorded one (a new Work's revision 1 already has it). Done once; a failed write is tried again with the next event. */
+	#followTheHost(): void {
+		const follow = this.#followHost;
+		if (follow === undefined) return;
+		try {
+			if (hasSessionsTools(this.#store.root, this.id) !== follow.sessionsTools) writeSessionsTools(this.#store.root, this.id, follow.sessionsTools);
+			const prior = readProfile(this.#store.root, this.id);
+			if (prior.kind === "ok" && buildProfile({ revision: 0, modelId: this.#model, provider: null, registry: this.#config.registry }).toolManifestDigest !== prior.profile.toolManifestDigest) this.#writeProfileRevision(null);
+			this.#followHost = undefined;
+		} catch (err) {
+			process.stderr.write(`kiso: the host's tool table was not recorded (${err instanceof Error ? err.message : String(err)}); it is tried again\n`);
 		}
 	}
 
@@ -1868,6 +1888,8 @@ export interface SessionConfig {
 	/** DC-60 internal: a NEW session — nothing is on disk yet; its revision 1
 	 *  (with the workspace it opened in) lands with its first durable event. */
 	readonly newSession?: { readonly workspace: string | null };
+	/** ADR-0062 Amendment 1: the host's table, followed once the first event is written. */
+	readonly followHost?: { readonly sessionsTools: boolean };
 	/** 0.40.0: the config profile name in force — recorded per revision. */
 	readonly profileName?: string;
 	/** 0.40.0: set when this open acknowledged material drift. */
