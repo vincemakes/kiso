@@ -370,7 +370,7 @@ export function App(): ReactNode {
 					</div>
 				)}
 			</main>
-			{railOn && session !== null ? <Rail state={session.state} env={env} session={target.sessionId} where={target.key} onEnvChanged={() => setSettingsBump((n) => n + 1)} git={git} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => void stopTask(target.key, target.sessionId, id)} /> : null}
+			{railOn && session !== null ? <Rail state={session.state} env={env} session={target.sessionId} where={target.key} onEnvChanged={() => setSettingsBump((n) => n + 1)} git={git} parts={parts} onCommit={() => setDialog("commit")} onPr={() => setDialog("pr")} onStopTask={(id) => stopTask(target.key, target.sessionId, id)} /> : null}
 			{dialog === "commit" && git?.branch != null ? (
 				<CommitDialog
 					branch={git.branch}

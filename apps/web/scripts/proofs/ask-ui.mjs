@@ -17,6 +17,8 @@ const q = (js) => app.evaluate(js);
 const host = () => app.host();
 const key = (await fetch(`${host().origin}/desk/history`, { headers: { authorization: `Bearer ${host().token}` } }).then((r) => r.json())).current.key;
 const result = (callId) => readFileSync(join(data, "projects", key, "w-ask.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).event).find((e) => e.type === "tool_result" && e.callId === callId)?.content;
+// a card is drawn at the call's start; the question is answerable only once the host holds it (the sidebar then reads waiting)
+const answerable = () => waitUntil(async () => (await state()) === "waiting", 20_000);
 const state = async () => (await fetch(`${host().origin}/desk/history`, { headers: { authorization: `Bearer ${host().token}` } }).then((r) => r.json())).works.find((w) => w.id === "w-ask")?.state;
 
 await q(`window.__kiso.send("Import the 2024 invoices.")`);
@@ -46,6 +48,7 @@ await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 0
 check(true, "answered, the card and the marker are gone");
 await q(`window.__kiso.send("And the 2023 ones?")`);
 await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000);
+await answerable();
 await q(`(() => { const el = document.querySelector('[data-kind=composer] textarea'); el.focus(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, 'Only March 2023'); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
 await q(`document.querySelector('[data-kind=composer] textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); true`);
 await waitUntil(async () => result("a2") !== undefined, 15_000);
@@ -53,6 +56,7 @@ check(result("a2") === JSON.stringify({ answers: [{ q: range.question, custom: "
 await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 0, 15_000);
 await q(`window.__kiso.send("Never mind the range.")`);
 await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000);
+await answerable();
 await app.click("[data-act=q-skip]");
 await waitUntil(async () => result("a3") !== undefined, 15_000);
 check(result("a3") === JSON.stringify({ declined: [range.question] }), "skipping every question declines, in the terminal's shape");

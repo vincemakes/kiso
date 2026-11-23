@@ -235,6 +235,8 @@ export const en = {
 	prGo: "Push and create",
 	cancel: "Cancel",
 	stopTask: "Stop this task",
+	stopNone: "Nothing to stop: kiso no longer sees this task running.",
+	finishedTab: "Finished ({n})",
 	download: "Download",
 	openInTab: "Open in a new tab",
 	railState: "State",

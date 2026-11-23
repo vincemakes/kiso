@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { t } from "../i18n/index.js";
+import { fmt, t } from "../i18n/index.js";
 import { fetchTree } from "../state/api.js";
 import type { State } from "../state/model.js";
 import type { PanelKind, PanelMode } from "../state/panels.js";
@@ -10,7 +10,7 @@ import { nameOf } from "../stream/Artifacts.js";
 import { FileIcon } from "../stream/links.js";
 import { Preview } from "./Preview.js";
 import { COMMANDS, Term } from "./Term.js";
-import { taskNameOf } from "../state/taskname.js";
+import { isRunning, taskNameOf } from "../state/taskname.js";
 
 import { I } from "../stream/Icons.js";
 
@@ -38,7 +38,14 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 	// tabs of one kind, in the panel's top bar: several pages in the browser (each its own frame, kept while another is shown), one
 	// per background task in the terminal plus the run's commands
 	const [web, setWeb] = useState<{ readonly tabs: readonly { readonly id: number; readonly url: string | null }[]; readonly on: number }>({ tabs: [{ id: 1, url: kind === "web" ? focus : null }], on: 1 });
-	const [termTab, setTermTab] = useState<string>((kind === "term" ? focus : null) ?? state.tasks[0]?.id ?? COMMANDS);
+	const [termTab, setTermTab] = useState<string>((kind === "term" ? focus : null) ?? state.tasks.find(isRunning)?.id ?? COMMANDS);
+	const [finMenu, setFinMenu] = useState(false);
+	// finding #10: tabs for the running tasks, Commands and the one in focus; every other task is in one Finished list, each still openable
+	const finished = state.tasks.filter((x) => !isRunning(x) && x.id !== termTab);
+	// the tab in focus stays in view when the strip scrolls
+	useEffect(() => {
+		document.querySelector(".ptabs .ptab.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+	}, [termTab, kind]);
 	useEffect(() => {
 		if (focus === null) return;
 		if (kind === "term") return setTermTab(focus);
@@ -59,7 +66,7 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 		kind === "web"
 			? web.tabs.map((x) => ({ id: String(x.id), label: x.url === null ? t.newTab : x.url.replace(/^https?:\/\//, ""), icon: <I.globe />, on: x.id === web.on, pick: () => setWeb((w) => ({ ...w, on: x.id })), close: web.tabs.length > 1 ? () => closeWeb(x.id) : null }))
 			: kind === "term"
-				? [...state.tasks.map((x) => ({ id: x.id, label: taskNameOf(state, x).title, icon: <I.term />, on: termTab === x.id, pick: () => setTermTab(x.id), close: null })), { id: COMMANDS, label: t.commandsTab, icon: <I.term />, on: termTab === COMMANDS, pick: () => setTermTab(COMMANDS), close: null }]
+				? [...state.tasks.filter((x) => isRunning(x) || x.id === termTab).map((x) => ({ id: x.id, label: taskNameOf(state, x).title, icon: <I.term />, on: termTab === x.id, pick: () => setTermTab(x.id), close: null })), { id: COMMANDS, label: t.commandsTab, icon: <I.term />, on: termTab === COMMANDS, pick: () => setTermTab(COMMANDS), close: null }]
 				: null;
 	return (
 		<aside className={`panel ${mode}${mode === "full" && !sidebarOpen ? " clear" : ""}`} data-kind="panel" data-panel={kind}>
@@ -92,6 +99,23 @@ export function Panels({ kind, mode, state, wkey, sessionId, focus, sidebarOpen,
 				) : (
 					<span className="name">{NAMES[kind]}</span>
 				)}
+				{kind === "term" && finished.length > 0 ? (
+					<div className="pfin">
+						<button className={`ptab${finMenu ? " on" : ""}`} aria-expanded={finMenu} data-act="finished-tab" onClick={() => setFinMenu((o) => !o)}>
+							{fmt(t.finishedTab, { n: finished.length })}
+						</button>
+						{finMenu ? (
+							<div className="pmenu" role="menu" data-kind="finished-list">
+								{finished.map((x) => (
+									<button key={x.id} role="menuitem" data-finished={x.id} onClick={() => (setTermTab(x.id), setFinMenu(false))}>
+										<span>{taskNameOf(state, x).title}</span>
+										<small>{taskNameOf(state, x).status}</small>
+									</button>
+								))}
+							</div>
+						) : null}
+					</div>
+				) : null}
 				<button className="sbtn" onClick={onFull} aria-label={t.panelFull} data-act="panel-full">
 					<svg className="ico" viewBox="0 0 24 24">
 						<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />

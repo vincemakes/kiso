@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import type { ContextParts, EnvReply } from "../../shared/settings.js";
 import type { GitReply } from "../../shared/git.js";
 import type { TaskRow } from "../../shared/frames.js";
@@ -9,7 +9,7 @@ import { artifactIcon, I } from "../stream/Icons.js";
 import { nameOf } from "../stream/Artifacts.js";
 import { useOpenArtifact } from "../stream/Lightbox.js";
 import { outputsOf, railOf, workChangesOf } from "./derive.js";
-import { taskNameOf } from "../state/taskname.js";
+import { isRunning, taskNameOf } from "../state/taskname.js";
 import { Environment } from "./Environment.js";
 import { Tip, type TipData } from "./Tip.js";
 
@@ -47,7 +47,7 @@ interface Props {
 	/** the folder the Work is in (null: the one in use) */
 	readonly where: string | null;
 	readonly onEnvChanged: () => void;
-	readonly onStopTask: (id: string) => void;
+	readonly onStopTask: (id: string) => Promise<{ readonly stopped: boolean }>;
 	/** the folder's changes from git (null: not read yet); outside git the rail falls back to the Work's own edits from the log */
 	readonly git: GitReply | null;
 	/** what the Work's requests always carry, for the Context breakdown (null: not read yet) */
@@ -75,6 +75,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const [folded, setFolded] = useState<Readonly<Record<string, boolean>>>({ context: true });
 	const [allOutputs, setAllOutputs] = useState(false);
 	const [allChanges, setAllChanges] = useState(false);
+	const [noStop, setNoStop] = useState<string | null>(null); // a stop the host answered false: why, for a moment
 	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
 	const over = (tip: TipData) => ({
 		onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
@@ -88,8 +89,8 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const { tokens: used, window: stated } = state.context;
 	const window = stated ?? 200_000;
 	const share = used === null ? 0 : Math.min(100, (used / window) * 100);
-	const live = state.tasks.filter((x) => x.endedAt === null);
-	const done = state.tasks.filter((x) => x.endedAt !== null);
+	const live = state.tasks.filter(isRunning);
+	const done = state.tasks.filter((x) => !isRunning(x));
 	// running first, newest start first, then the ended, newest end first: output never moves a row
 	const ordered = [...live].sort((a, b) => b.startedAt - a.startedAt).concat([...done].sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)));
 	const changes = workChangesOf(state, env?.root ?? null);
@@ -117,13 +118,17 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const now = Date.now();
 	const task = (x: TaskRow): ReactNode => {
 		const n = taskNameOf(state, x);
+		const on = isRunning(x);
 		return (
-			<div className={`r-row${x.endedAt === null ? "" : " dim"}`} key={x.id} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over({ title: n.name, head: n.command, log: x.tail, rows: [[t.railState, n.status]] })}>
+			<Fragment key={x.id}>
+			<div className={`r-row${on ? "" : " dim"}`} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over({ title: n.name, head: n.command, log: x.tail, rows: [[t.railState, n.status]] })}>
 				<span className="r-ic"><I.term /></span>
 				<span className="r-nm">{n.title}</span>
-				<span className="r-mt">{n.status} · {clock(x.elapsedMs)}</span>
-				{x.endedAt === null ? <button className="r-stop" aria-label={t.stopTask} title={t.stopTask} data-act="task-stop" onClick={(e) => (e.stopPropagation(), onStopTask(x.id))}><i /></button> : null}
+				<span className="r-mt">{on || x.endedAt !== null ? `${n.status} · ${clock(x.elapsedMs)}` : n.status}</span>
+				{on ? <button className="r-stop" aria-label={t.stopTask} title={t.stopTask} data-act="task-stop" onClick={(e) => (e.stopPropagation(), void onStopTask(x.id).then((r) => r.stopped || (setNoStop(x.id), setTimeout(() => setNoStop((c) => (c === x.id ? null : c)), 5_000)), () => undefined))}><i /></button> : null}
 			</div>
+			{noStop === x.id ? <div className="r-row dim" data-field="stop-note"><span className="r-ic" /><span className="r-nm">{t.stopNone}</span></div> : null}
+			</Fragment>
 		);
 	};
 	return (
