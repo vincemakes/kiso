@@ -250,6 +250,8 @@ export class AgentSession {
 	// NOT readonly since 0.1.23: /model replaces it between runs (the
 	// constructor, setAdapter, and setModelBinding are the only writers).
 	#adapter: Adapter;
+	/** the unwrapped adapter off-trajectory requests use; absent: `#adapter` */
+	#sideAdapter: Adapter | undefined;
 	/** the last request a run sent, as the provider adapter got it (in memory only): what followUp sends again */
 	#lastRequest: StreamOptions | null = null;
 	readonly #config: SessionConfig;
@@ -794,6 +796,13 @@ export class AgentSession {
 		this.#adapter = adapter;
 	}
 
+	/** Where session.title and session.sideQuery send their request: an adapter the host has NOT wrapped (a wrapper that
+	 *  injects facts, rewrites views or counts tokens belongs to the trajectory, not to a title). `undefined` restores
+	 *  the default, the session's own adapter. */
+	setSideAdapter(adapter: Adapter | undefined): void {
+		this.#sideAdapter = adapter;
+	}
+
 	/**
 	 * PH-1a (finding PH-F8, P0): the ATOMIC model switch — adapter, model
 	 * id, and provider route replace together, effective at the next run.
@@ -807,6 +816,9 @@ export class AgentSession {
 	 */
 	setModelBinding(binding: {
 		readonly adapter: Adapter;
+		/** the unwrapped adapter for title/sideQuery on the new binding; absent clears it (the old one belongs to
+		 *  the old route), and those requests use `adapter` */
+		readonly sideAdapter?: Adapter;
 		readonly model: string;
 		readonly provider?: "anthropic" | "openai-compat" | "openai-responses";
 		/** OR-1: the endpoint moves with the adapter too — the cost path
@@ -836,6 +848,7 @@ export class AgentSession {
 			this.#anchorFloorSeq = this.log.all.at(-1)?.seq ?? -1;
 		}
 		this.#adapter = binding.adapter;
+		this.#sideAdapter = binding.sideAdapter;
 		this.#model = binding.model;
 		this.#provider = binding.provider;
 		this.#baseUrl = binding.baseUrl;
@@ -1098,7 +1111,7 @@ export class AgentSession {
 		});
 		tracer.init();
 		// LT-1: the summary request is a model stream too — the same watchdog
-		const guarded = traceGuard(tracer, idleGuard(this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
+		const guarded = traceGuard(tracer, idleGuard(this.#sideAdapter ?? this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
 		let text = "";
 		try {
 			for await (const ev of guarded.stream({
