@@ -283,7 +283,7 @@ export class AgentSession {
 	#profilePending: boolean;
 	/** DC-60: set until a NEW session's first durable event lands. */
 	#newSession: { readonly workspace: string | null } | undefined;
-	/** ADR-0062 Amendment 2: the host's table, to be followed once the first event is written (the lock is held) */
+	/** ADR-0062 Amendment 1: the host's table, to be followed once the first event is written (the lock is held) */
 	#followHost: { readonly sessionsTools: boolean } | undefined;
 	/** 0.40.0: the config profile name of the live binding (configuration:
 	 *  each revision records the name in force when it is written). */
@@ -448,7 +448,7 @@ export class AgentSession {
 		}
 	}
 
-	/** ADR-0062 Amendment 2: after the first event is written (the Work's lock is held, so a refused open never gets here) the
+	/** ADR-0062 Amendment 1: after the first event is written (the Work's lock is held, so a refused open never gets here) the
 	 *  sidecar's mark follows the host's table, and the next profile revision records the tool table when it differs from the
 	 *  recorded one (a new Work's revision 1 already has it). Done once; a failed write is tried again with the next event. */
 	#followTheHost(): void {
@@ -1888,7 +1888,7 @@ export interface SessionConfig {
 	/** DC-60 internal: a NEW session — nothing is on disk yet; its revision 1
 	 *  (with the workspace it opened in) lands with its first durable event. */
 	readonly newSession?: { readonly workspace: string | null };
-	/** ADR-0062 Amendment 2: the host's table, followed once the first event is written. */
+	/** ADR-0062 Amendment 1: the host's table, followed once the first event is written. */
 	readonly followHost?: { readonly sessionsTools: boolean };
 	/** 0.40.0: the config profile name in force — recorded per revision. */
 	readonly profileName?: string;

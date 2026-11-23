@@ -177,7 +177,7 @@ export function markSessionsTools(root: string, sessionId: string): void {
 	writeTenants(root, sessionId, { ...currentTenants(root, sessionId), sessionsTools: true });
 }
 
-/** ADR-0062 Amendment 2: the mark follows the host that last wrote to the Work, so it is set or cleared (the tenant removed). */
+/** ADR-0062 Amendment 1: the mark follows the host that last wrote to the Work, so it is set or cleared (the tenant removed). */
 export function writeSessionsTools(root: string, sessionId: string, on: boolean): void {
 	const tenants = { ...currentTenants(root, sessionId) };
 	delete tenants.sessionsTools;

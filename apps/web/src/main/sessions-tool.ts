@@ -41,7 +41,7 @@ const MAX_LINES = 100;
 const STATE = { running: "running", waiting: "waiting on the person", idle: "idle" } as const;
 
 /** The extension for this Work. Whether the host runs with it is the host's one switch; the Work follows the host that opens it
- *  (ADR-0062 Amendment 2), so the sidecar's mark is no longer decided here: the runtime sets it once the Work's lock is held. */
+ *  (ADR-0062 Amendment 1), so the sidecar's mark is no longer decided here: the runtime sets it once the Work's lock is held. */
 export function sessionsFor(self: { readonly key: string; readonly sessionId: string }, host: SessionsHost): KisoExtension {
 	const listTool = defineTool({
 		...LIST_SESSIONS,

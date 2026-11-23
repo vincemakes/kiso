@@ -1,5 +1,5 @@
 /**
- * ADR-0062 Amendment 2 (owner 2026-11-20, a named reversal of "a Work keeps the tool table it was created with"): a Work
+ * ADR-0062 Amendment 1 (owner 2026-11-20, a named reversal of "a Work keeps the tool table it was created with"): a Work
  * follows the host that opens it. The host says whether its table has the sessions tools (`sessionsTools`); the sidecar's
  * mark and the next profile revision are written only once the Work's single-writer lock is held (the first durable
  * event), so a refused open writes nothing, and a Work whose table already matches is not touched.

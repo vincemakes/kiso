@@ -293,7 +293,7 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	const definition: AgentDefinition = {
 		model,
 		store,
-		// ADR-0062 Amendment 2: the terminal has no sessions tools; a Work it opens follows it (the mark is cleared once the
+		// ADR-0062 Amendment 1: the terminal has no sessions tools; a Work it opens follows it (the mark is cleared once the
 		// Work's lock is held, with a recorded revision)
 		sessionsTools: false,
 		// 0.40.0: a NEW session records where it started; the picker scopes by

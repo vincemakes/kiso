@@ -1,4 +1,4 @@
-// ADR-0062 Amendment 2 (owner, 2026-11-20): a Work follows the host that opens it. A Work the terminal made (a host with the
+// ADR-0062 Amendment 1 (owner, 2026-11-20): a Work follows the host that opens it. A Work the terminal made (a host with the
 // sessions tools off, no mark) gains them when kiso web opens it with them on: the mark and the next revision are written once
 // the Work's lock is held, the request's tool table is the one a web-born Work has, and a refused open (the terminal still
 // holds the lock) writes nothing.
