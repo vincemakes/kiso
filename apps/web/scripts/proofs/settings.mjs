@@ -1,10 +1,11 @@
 // One login for the terminal and the web app: a profile and a stored key in a temporary KISO_HOME, no key in the environment,
 // a local endpoint that records what it is sent. Settings answers without the key and changes the tier and the profile.
 import { createServer } from "node:http";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { launch, clientFor, scratch, checker, waitUntil } from "./lib.mjs";
-import { imagesOf } from "../../dist/main/settings.js";
+import { imagesOf, Settings } from "../../dist/main/settings.js";
 
 const { check, verdict } = checker("settings");
 const seen = [];
@@ -64,4 +65,23 @@ await reader;
 host.child.kill("SIGTERM");
 endpoint.close();
 check(imagesOf(null) === null && imagesOf(undefined) === null && imagesOf(["text"]) === false && imagesOf(["text", "image"]) === true, "the table says pictures read (image listed), not read (modalities listed without it: evidence), or unknown (none listed: null)");
+// finding #13: desktop.json is written temp then rename, so a reader never meets an empty or half-written file. A process that
+// reads it without pause while this one rewrites a large file for 1.5 s must parse every read.
+{
+	const dir = scratch("settings-atomic");
+	const store = new Settings(dir, null, "default");
+	store.write({ lastFolder: "/x" });
+	const file = join(dir, "desktop.json");
+	const big = Array.from({ length: 600 }, (_, i) => `/some/project/folder/number/${i}`);
+	const reading = spawn(process.execPath, ["-e", `const fs=require("fs");let bad=0,n=0;const end=Date.now()+1500;while(Date.now()<end){try{JSON.parse(fs.readFileSync(process.argv[1],"utf8"))}catch{bad++}n++}console.log(JSON.stringify({bad,n}))`, file], { stdio: ["ignore", "pipe", "inherit"] });
+	let out = "";
+	reading.stdout.on("data", (d) => (out += d));
+	const done = new Promise((r) => reading.on("exit", r));
+	const until = Date.now() + 1500;
+	while (Date.now() < until) store.write({ recent: big, pins: big });
+	await done;
+	const { bad, n } = JSON.parse(out);
+	check(bad === 0 && n > 500, `a reader that never pauses met no empty or half file in ${n} reads`);
+	check(readdirSync(dir).every((f) => !f.endsWith(".tmp")), "no temp file is left behind");
+}
 verdict();
