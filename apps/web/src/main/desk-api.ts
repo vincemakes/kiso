@@ -21,6 +21,7 @@ import { environmentRows, openRow } from "./environment.js";
 import type { History } from "./history.js";
 import type { Notice, Presence } from "./approvals.js";
 import type { Settings } from "./settings.js";
+import type { UpdateWatch } from "./update-check.js";
 import type { Space } from "./space.js";
 import type { SettingsPatch } from "../shared/settings.js";
 import type { AskBridge } from "./ask-bridge.js";
@@ -42,6 +43,7 @@ export interface DeskContext {
 	readonly previews: Previews;
 	/** ADR-0062 § 10c: ask_user's waiting questions */
 	readonly asks: AskBridge;
+	readonly updates: UpdateWatch;
 }
 
 /** An answer: JSON, or bytes (an image) with their headers. */
@@ -250,6 +252,16 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			return json(200, {});
 		}
 		if (path === "/desk/history") return req.method === "GET" ? json(200, await ctx.history.snapshot({ key: ctx.current.key, dir: ctx.current.dir }, url.searchParams.get("fresh") ?? undefined)) : json(405, {});
+		// kiso web's check for a newer release of itself: what it knows, closing the pill for a release, the Settings switch, Check now
+		if (path === "/desk/update") {
+			if (post) {
+				const body = await readJson(req);
+				if (typeof body["enabled"] === "boolean") ctx.settings.setUpdateCheck(body["enabled"]);
+				if (typeof body["hide"] === "string" && /^[0-9A-Za-z.+-]{1,40}$/.test(body["hide"])) ctx.settings.hideUpdate(body["hide"]);
+				if (body["check"] === true) return json(200, await ctx.updates.check(true));
+			} else if (req.method !== "GET") return json(405, {});
+			return json(200, ctx.updates.state());
+		}
 		if (path === "/desk/settings") {
 			let session = url.searchParams.get("session") ?? undefined;
 			if (post) {

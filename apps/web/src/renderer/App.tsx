@@ -14,6 +14,7 @@ import { Lightbox, LightboxContext } from "./stream/Lightbox.js";
 import { Settings } from "./settings/Settings.js";
 import { Guide } from "./home/Guide.js";
 import { Tray } from "./home/Tray.js";
+import { UpdatePill } from "./home/UpdatePill.js";
 import { Folders } from "./home/Folders.js";
 import { actOnWork, forkWork, renameWork, chooseFolder, fetchAtFiles, fetchContext, fetchGit, fetchPrDraft, fetchSettings, postCommit, linkPr, postPr, saveSettings, sendPresence, stopTask, type OpenWork } from "./state/desk.js";
 import { CommitDialog, PrDialog } from "./rail/GitDialogs.js";
@@ -348,6 +349,7 @@ export function App(): ReactNode {
 											onOpen={openFolder}
 										/>
 									),
+									update: <UpdatePill />,
 									guide: settings !== null && (settings.setup === "signin" || settings.setup === "noprofile") ? <Guide settings={settings} onChanged={() => setSettingsBump((n) => n + 1)} /> : null,
 								}}
 								focusDecision={focusDecision}

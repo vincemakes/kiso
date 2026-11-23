@@ -4,6 +4,7 @@ import { notifyState, turnOff, turnOn, type NotifyState } from "../state/notify.
 import type { SettingsPatch, SettingsReply } from "../../shared/settings.js";
 import { Menu } from "../stream/ComposerMenus.js";
 import { I } from "../stream/Icons.js";
+import { UpdateRows } from "./Updates.js";
 
 /** A field's pill: what is chosen, and the chevron that says it opens (the composer's menus, opening down). */
 const pill = (text: string, field: string): ReactNode => (
@@ -112,6 +113,7 @@ export function Settings(): ReactNode {
 					</span>
 				)}
 			</Row>
+			<UpdateRows />
 			<Row label={t.settingsSignIn}>
 				<span className={s.signIn.ok ? "okline" : "warnline"} data-field="signin">
 					{s.signIn.text}

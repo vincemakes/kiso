@@ -21,7 +21,7 @@ interface Props {
 	readonly session: Session;
 	readonly auto: string | null;
 	/** what an empty Work shows under its title: the tray under the input box, or the first-run guide in its place */
-	readonly home?: { readonly tray: ReactNode; readonly guide: ReactNode | null };
+	readonly home?: { readonly tray: ReactNode; readonly guide: ReactNode | null; readonly update?: ReactNode };
 	/** an approval a notification pointed at: scrolled to and focused once its card is there */
 	readonly focusDecision?: string | null;
 	readonly onFocused?: () => void;
@@ -275,9 +275,12 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 				<div className="homebox" data-kind="home">
 					<h1>{t.homeTitle}</h1>
 					{home.guide ?? (
-						<Composer inline down={down} held={held} view={session.view} running={running} onSend={(x) => session.send(x)} onSteer={(x) => session.steer(x)} onStop={() => void session.abort()}>
+						<>
+							{home.update}
+							<Composer inline down={down} held={held} view={session.view} running={running} onSend={(x) => session.send(x)} onSteer={(x) => session.steer(x)} onStop={() => void session.abort()}>
 							{home.tray}
-						</Composer>
+							</Composer>
+						</>
 					)}
 				</div>
 			) : (

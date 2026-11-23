@@ -58,6 +58,10 @@ interface Own {
 	/** the pull request each Work made or was linked to */
 	readonly prs?: Readonly<Record<string, Pr>>;
 	readonly recent?: readonly string[];
+	/** the Settings switch for the check for a newer release: absent means on */
+	readonly updateCheck?: boolean;
+	/** the release whose pill the person closed */
+	readonly updateHidden?: string;
 	/** Works deleted here, as `key/id`, the latest first: never opened again, whatever asks (a tab still open, a poll) */
 	readonly deleted?: readonly string[];
 }
@@ -138,6 +142,19 @@ export class Settings {
 		} catch {
 			// a read-only home only loses the memory
 		}
+	}
+
+	/** What the person chose about the check for a newer release (kiso web's own, update-check.ts). */
+	updateChoices(): { readonly enabled: () => boolean; readonly hidden: () => string | undefined } {
+		return { enabled: () => this.#read().updateCheck !== false, hidden: () => this.#read().updateHidden };
+	}
+
+	setUpdateCheck(on: boolean): void {
+		this.write({ updateCheck: on });
+	}
+
+	hideUpdate(version: string): void {
+		this.write({ updateHidden: version });
 	}
 
 	lastFolder(): string | undefined {

@@ -43,6 +43,7 @@ const i16 = (children: ReactNode): (() => ReactNode) => () => (
 	</svg>
 );
 export const I = {
+	down: i16(<path d="M12 5v14m-6-6 6 6 6-6" />),
 	term: i16(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m7 9 3 3-3 3M13 15h4" /></>),
 	branch: i16(<><circle cx="6" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="7" r="2" /><path d="M6 7v10M18 9c0 5-6 4-11 8" /></>),
 	folder: i16(<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />),

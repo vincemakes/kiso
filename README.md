@@ -87,7 +87,7 @@ Off by default. With `KISO_WEB_SESSIONS=on kiso web`, Works created from then on
 - **`list_sessions` and `message`:** a Work finds the others and writes to one; the message wakes it, and its reply comes back to the sender's address.
 - **`start_session`:** a Work starts another, fresh or as a fork of itself. What you asked for starts at once; anything else is a card you start, do here, or dismiss. The new Work sits under its parent, and the parent hears when it finishes.
 
-Also in kiso web, on by default: `ask_user`, a question with options in the stream (`KISO_WEB_ASK=off` turns it off). Deleting a Work with Works under it asks whether to delete only it, so they move up, or the whole tree.
+Also in kiso web, on by default: `ask_user`, a question with options in the stream (`KISO_WEB_ASK=off` turns it off). kiso web also asks the npm registry once a day whether a newer release exists, and says so with one small chip above the box on the new-conversation screen (`KISO_NO_UPDATE_CHECK=1`, or the switch in Settings, turns the check off; it never installs anything). Deleting a Work with Works under it asks whether to delete only it, so they move up, or the whole tree.
 
 A Work follows the host that opens it: a session started in the terminal has the sessions tools when it is opened in the web, and loses them when it is opened in the terminal again (the cache is rebuilt once per switch). More in [docs/web-sessions.md](docs/web-sessions.md).
 

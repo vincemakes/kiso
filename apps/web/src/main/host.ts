@@ -22,6 +22,7 @@ import { createSpace, type Space } from "./space.js";
 import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
 import { AskBridge } from "./ask-bridge.js";
+import { UpdateWatch } from "./update-check.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -180,7 +181,10 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const unread = (sessionId: string, on: boolean): void => void ((options.settings.marksOf(sessionId).unread === true) !== on && options.settings.mark(sessionId, "unread", on));
 	const watch = new ApprovalWatch(() => spaces.values(), options.notify, () => presence, unread);
 	watch.start();
-	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews, asks };
+	// the check for a newer kiso web (update-check.ts): at start and daily, never in front of the first page
+	const updates = new UpdateWatch({ home, version: (JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version: string }).version, choices: options.settings.updateChoices(), faux: process.env["KISO_WEB_FAUX"] !== undefined });
+	updates.start();
+	const desk: DeskContext = { home, settings: options.settings, current, history, spaceFor, setPresence: (p) => (presence = p), notices: (seq) => watch.since(seq), previews, asks, updates };
 
 	let origins: ReadonlySet<string> = new Set();
 	let hosts: ReadonlySet<string> = new Set();
@@ -308,7 +312,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		await Promise.all([...spaces.values()].map((space) => space.drain(graceMs)));
 		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
-		watch.stop(), unwatchFile(join(kisoHome(), "auth.json"));
+		watch.stop(), updates.stop(), unwatchFile(join(kisoHome(), "auth.json"));
 		previews.closeAll();
 		history.close();
 		for (const space of spaces.values()) await space.close();

@@ -313,5 +313,14 @@ switches change what its Works carry:
 |---|---|
 | `KISO_WEB_SESSIONS=on` | Every Work kiso web opens has the sessions tools (a Work follows the host that opens it) (`list_sessions`, `message`, `start_session`). Off by default; a preview. See [web-sessions.md](web-sessions.md). |
 | `KISO_WEB_ASK=off` | Works carry no `ask_user`. On by default. |
+| `KISO_NO_UPDATE_CHECK=1` | kiso web does not ask the npm registry whether a newer release exists. The terminal's own check honours the same variable. Settings also has a "Check for updates" switch (the variable wins, and locks it). |
+
+**kiso web's check for a newer release.** At start and then once a day while the host runs, kiso web makes one GET of the npm
+`dist-tags` document of `@vincemakes/kiso-web`: no identity, no usage, no session data, no cookie, a 1.5 second limit, and silence
+when it fails (nothing is shown for no network, a proxy, a bad answer). It is a second outbound request beside the terminal's own
+check, and it shares no code with it. A newer release is one small "Update available" chip above the box on the
+new-conversation screen only; a click shows the command to copy (`npm install -g @vincemakes/kiso-web@latest`), "then restart
+kiso web" and the releases page. kiso web never runs npm. The close mark hides the chip for that release only. What it
+remembers is `update-check-web.json` (the last answer) and, in `desktop.json`, the switch and the release whose chip was closed.
 
 The rest of kiso web's environment is listed in `apps/web/src/main/env.ts`.
