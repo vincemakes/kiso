@@ -504,6 +504,28 @@ bridge and `/desk/ask` (`src/main`), the extension added to the web agent, the c
 proof with screenshots against the owner's reference screenshots. Rough budget: `src/renderer` +220, `src/main` +60,
 `scripts/proofs` +100; the exact numbers go to the leader when it opens.
 
+**10c.1 Amendment (owner, 2026-11-20, option A of finding #12) — a line from another Work ends the waiting question.**
+Read on the tree, then reproduced live: while a Work's run waits inside `ask_user`, it cannot reach a step boundary, so a message
+another Work sent it is handed to the run (`run.deliver` says yes) and then sits out of the log until the person answers; the
+person sees the sender's "Messaged" row and nothing on the receiver. The owner's ruling:
+- **The line ends the question.** When a live run accepts a peer line (`run.deliver` returned true) and one of its questions
+  waits, the host resolves that question with the not-answered shape: `{ declined: [every question], replaced: true, reason }`.
+  The reason says another session sent a message, the question is withdrawn and not declined by the person, and to call
+  `ask_user` again with what is still needed. The line is then admitted at the next boundary, as any peer line; the model
+  reads it, and decides whether to ask again. No core change: the hook is `PeerDeliveryOptions.onAccepted` (runtime), the
+  resolution is the web bridge's (`AskBridge.replaceWaiting`).
+- **Caps.** One per question (once ended, it is over) and **three per run**; past the third, a line waits for the person's
+  answer as before, so a sender cannot keep a question from ever being answered.
+- **The stream.** The ended call is an ordinary step folded to one line, "Question replaced". The message row is in the log
+  before the model's next call, so it is drawn above the new card. A question asked again that did not change keeps the
+  person's picks (by its text; Other's words too); a changed question starts empty. A person's own line in the box is not a
+  peer line: it stays the question's Other (§ 10c, item 2).
+- **Not covered.** Task notices (`run.notify`) do not end a question: they were never the owner's case, and a long task's
+  end is not a reason to withdraw a question. Revising a card in place (same call id) is not built; the model replaces a
+  question by asking again.
+- **What it costs.** No request byte moves: the web's `ask_user` description is unchanged. Proof: the `ask-replaced` proof
+  (a pick made, a message from another Work, the result shape, the log order, the folded row, the kept pick, the cap).
+
 ## 11. In the stream
 
 Collapsed rows, expandable, like any tool row: "Messaged
