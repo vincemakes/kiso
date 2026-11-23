@@ -11,7 +11,7 @@ import type { KisoExtension } from "@vincemakes/kiso-core";
 type Signal = { readonly aborted?: boolean; readonly addEventListener?: (type: "abort", listener: () => void, options?: { once?: boolean }) => void };
 
 /** ADR-0062 § 10c.1: what the model reads when a line from another session ends its waiting question. */
-const REPLACED = "Not answered: another session sent this Work a message while the question waited, so it is withdrawn, not declined by the person. Read the message, then call ask_user again with the questions you still need (the card keeps the person's unchanged picks).";
+const REPLACED = "Not answered: another session sent this Work a message while the question waited, so it is withdrawn, not declined by the person. Read the message, then call ask_user again with the questions you still need (the card keeps the person's unchanged picks). A withdrawn question is never yours to decide: either ask it again, or say plainly that it is still open.";
 /** § 10c.1: at most this many questions a run's incoming lines may end; past it, lines wait for the answer as before. */
 const PER_RUN = 3;
 
