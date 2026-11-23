@@ -53,7 +53,8 @@ carries the automatic report.** Nothing forces a supervisor tree.
 ## 2. The extension, and how a Work is addressed
 
 **The table.** Eleven built-ins become fourteen in a Work the web host
-creates with the extension on; eleven everywhere else. The table is part
+creates with the extension on; eleven everywhere else. **Amendment 1 (owner, 2026-11-20, § 17) reverses what follows:
+a Work follows the host that opens it; the paragraph is kept as the record of what was first built.** The table is part
 of the execution profile, fixed at creation, never changed mid-session (no
 provider is asked to accept a tool addition; the prefix cache holds). A
 web-created Work resumed in the terminal keeps its table; there each of
@@ -1011,5 +1012,45 @@ v1; "Suggestion expired" stays (§ 9).
 **Open (2026-11-19):** the choice eval (§ 9), which gates turning the extension on by default
 (`KISO_WEB_SESSIONS`, off until it passes; its third round, on description v3, scored 79 of 96
 against a pass line of 82, with 9 unauthorised edits, so 0.55.0 ships it off); a Work started in the terminal and opened in the
-web has no sessions tools (an amendment is proposed, not decided); merging the task and message wake budgets, after the
+web has no sessions tools (decided 2026-11-20: Amendment 1, § 17); merging the task and message wake budgets, after the
 0.55 dogfood; a terminal that only receives messages (v2 candidate). (The coverage gaps of § 16 were closed by #480 and #481.)
+
+## 17. Amendment 1 — a Work follows the host that opens it (owner, 2026-11-20)
+
+**Decision (owner, 2026-11-20, option b of finding #6).** The rule "a Work keeps the tool table it was created with" (§ 2, and
+§ 16's PR 1 mark) is **reversed**. A Work has the sessions tools in a host whose table has them and not in a host whose
+table does not: kiso web with `KISO_WEB_SESSIONS=on` adds them to every Work it opens, including one the terminal made; the
+terminal drops them again, and no longer carries twins that refuse. Why: a Work the person started in the terminal and
+continued in the web had no `list_sessions`, `message` or `start_session`, and the model, finding them missing, said it was
+"restricted" and imitated a child by shelling out a second kiso, which then showed as a top-level Work. The table changing
+between hosts is accepted: the prefix cache misses once per switch, as it does for a model switch.
+
+**Mechanism.**
+
+1. Each host says what its table is: `AgentDefinition.sessionsTools` (the web host: whether the extension is on; the terminal:
+   `false`). A caller that does not say (an SDK) leaves the mark and the revisions alone.
+2. The sidecar's `sessionsTools` tenant is no longer "created with" but "the host that last wrote to the Work had them". It is
+   set or cleared by the runtime in `AgentSession.persist`, **after the first event is written**: the Work's single-writer lock
+   is held by then, so a **refused open writes nothing** (a live terminal still holding the Work: the web's run fails with
+   "locked by another writer" and the mark and the profile are as they were), and a **stale lock is taken over as before**
+   (ADR-0050). Opening alone writes nothing, as for a new Work (DC-60).
+3. When the host's tool table differs from the recorded one, the next **profile revision** records it, in the same place and
+   under the same lock; revisions stay monotone per Work (1, 2, 3 …). A table that already matches writes nothing: not the
+   mark, not a revision. A new Work's revision 1 already has its table, so it gets no second revision.
+4. The web host no longer marks a Work at its first open (`sessionsFor` returns the extension whenever the host runs with it
+   on); the terminal no longer registers the refusing twins (`refusingSessionsExtension` and `SESSIONS_REFUSAL` are removed).
+5. A fork carries the mark and the profile as they were at the fork (`writeForkSidecar`, unchanged); opened by the other host
+   it goes on from that revision, and its parent is untouched.
+
+**Not changed.** No core change: `Adapter`, the protocol and the kernel are as they were. The request's bytes for a Work the
+web opens are those of a Work the web made (same tool table, same hash in the trace). Nothing mid-run: the table is read at
+open, so a run in flight keeps its own. Messages already in an inbox of a Work opened by the terminal wait for the web, as
+before (§ 4).
+
+**Tests, each red before its fix.** `packages/runtime/tests/follow-host.test.ts` (gains and drops with a revision, no write
+when the table matches, an SDK caller untouched, a refused open writes nothing, a fork); the web proof `follow-host` (a
+terminal-born Work held by a live writer: refused and unwritten; opened after it lets go: marked, revision 2, the request's
+tool hash equal to a web-born Work's; back to a host without the tools: unmarked, revision 3, replay intact);
+`apps/cli/tests/sessions-follow-cli.test.ts` (test 14, rewritten: the three tools are unknown in the terminal, the mark is
+cleared, nothing they would have made exists); the `sessions` proof (a Work made with the tools off has them when a host with
+them opens it).

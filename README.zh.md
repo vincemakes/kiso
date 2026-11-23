@@ -89,7 +89,7 @@ kiso web
 
 kiso web 里还有，默认开启：`ask_user`，模型在消息流里向你提一个带选项的问题（`KISO_WEB_ASK=off` 关闭）。删除一个下面还挂着 Work 的 Work 时，会问你只删它（下面的 Work 上移一层），还是删掉整棵树。
 
-一个 Work 保持创建时的那套工具：在终端开始、再拿到网页里打开的会话没有会话工具，这时请从 New Conversation 新开一个 Work。终端自己的请求不受影响。详见 [docs/web-sessions.md](docs/web-sessions.md)。
+一个 Work 跟随打开它的宿主：在终端开始的会话拿到网页里打开时就有会话工具，再回终端打开时又会去掉（每切换一次，缓存重建一次）。详见 [docs/web-sessions.md](docs/web-sessions.md)。
 
 <table>
 <tr>

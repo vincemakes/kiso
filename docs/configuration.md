@@ -311,7 +311,7 @@ switches change what its Works carry:
 
 | variable | effect |
 |---|---|
-| `KISO_WEB_SESSIONS=on` | Works created from then on carry the sessions tools (`list_sessions`, `message`, `start_session`). Off by default; a preview. See [web-sessions.md](web-sessions.md). |
+| `KISO_WEB_SESSIONS=on` | Every Work kiso web opens has the sessions tools (a Work follows the host that opens it) (`list_sessions`, `message`, `start_session`). Off by default; a preview. See [web-sessions.md](web-sessions.md). |
 | `KISO_WEB_ASK=off` | Works carry no `ask_user`. On by default. |
 
 The rest of kiso web's environment is listed in `apps/web/src/main/env.ts`.
