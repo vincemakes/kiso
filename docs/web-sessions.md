@@ -45,7 +45,7 @@ survives a restart.
 
 ## Also in kiso web
 
-- **`ask_user`**, on by default: the model asks you a question with options, answered in the stream.
+- **`ask_user`**, on by default: the model asks you a question with options, answered in the stream. A message from another Work ends a waiting question (the model reads the message, then asks again if it still needs to).
   `KISO_WEB_ASK=off` turns it off. It adds about 1.3 KB to each web request; the terminal's requests are
   unchanged.
 - **Deleting a Work that has Works under it** asks whether to delete only that one (the Works under it

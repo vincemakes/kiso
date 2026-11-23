@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, t } from "../i18n/index.js";
 import type { Item, Step } from "../state/model.js";
 import { answerAsk } from "../state/works.js";
@@ -21,6 +21,10 @@ export const isAsking = (turns: readonly { readonly items: readonly Item[] }[]):
 /** S2: the waiting card's door for a line typed in the box. */
 export const askInput: { current: ((text: string) => void) | null } = { current: null };
 
+/** ADR-0062 § 10c.1: a question a message replaced is asked again; the person's picks for a question that did not change come
+ *  back with it. Kept per Work, by the question's text, until an answer is sent. */
+const kept = new Map<string, Map<string, { readonly labels: readonly string[]; readonly other: string | null }>>();
+
 const RECOMMENDED = /\s*\(recommended\)\s*$/i;
 
 export function AskCard({ step }: { readonly step: Step }): ReactNode {
@@ -35,10 +39,27 @@ export function AskCard({ step }: { readonly step: Step }): ReactNode {
 	const [skipped, setSkipped] = useState<(boolean | undefined)[]>([]);
 	const at = <T,>(arr: readonly (T | undefined)[], i: number, v: T, d: T): T[] => qs.map((_, j) => (j === i ? v : (arr[j] ?? d)));
 	const [error, setError] = useState<string | null>(null);
+	const slot = `${key}/${work}`;
+	const seeded = useRef(false);
+	useEffect(() => {
+		if (seeded.current || qs.length === 0) return;
+		seeded.current = true;
+		const old = kept.get(slot);
+		if (old === undefined) return;
+		const at2 = qs.map((q) => old.get(q.question));
+		setPicks(qs.map((q, i) => (at2[i]?.labels ?? []).map((l) => q.options.findIndex((o) => o.label === l)).filter((n) => n >= 0)));
+		setOther(qs.map((_, i) => at2[i]?.other ?? null));
+	}, [qs.length]);
+	useEffect(() => {
+		if (!seeded.current) return;
+		const m = new Map(qs.map((q, i) => [q.question, { labels: (picks[i] ?? []).map((n) => q.options[n]?.label ?? ""), other: other[i] ?? null }] as const));
+		kept.set(slot, m);
+	}, [picks, other]);
 	const submit = (o: readonly (string | null | undefined)[], s: readonly (boolean | undefined)[]): void => {
 		// a multi-select keeps its picks beside Other: the words join the choices (the terminal's three shapes: choice, choices, custom)
 		const answers = qs.flatMap((q, i) => (s[i] === true ? [] : [q.multiSelect === true && (picks[i] ?? []).length > 0 ? { q: q.question, choices: [...(picks[i] ?? []).map((n) => q.options[n]!.label), ...((o[i] ?? "") !== "" ? [o[i]!] : [])] } : (o[i] ?? "") !== "" ? { q: q.question, custom: o[i]! } : q.multiSelect === true ? { q: q.question, choices: [] } : { q: q.question, choice: q.options[(picks[i] ?? [])[0] ?? -1]?.label ?? "" }]));
 		const declined = qs.filter((_, i) => s[i] === true).map((q) => q.question);
+		kept.delete(slot);
 		void answerAsk(key, work, step.callId, answers.length === 0 ? { declined } : declined.length === 0 ? { answers } : { answers, declined }).catch((e: Error) => setError(e.message));
 	};
 	// a question is answered (a pick, or Other with words) or skipped; nothing is ever chosen for the person: Next and Submit wait for it

@@ -60,7 +60,9 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 	const now = useNow(running || (task !== undefined && task.endedAt === null));
 	const began = step.startedAt ?? now;
 	const ms = step.endedAt !== null && step.startedAt !== null ? step.endedAt - step.startedAt : now - began;
-	const all = outputLines(step);
+	// ADR-0062 § 10c.1: a question another session's message ended: one line, not the shape it returned
+	const replaced = step.name === "ask_user" && step.status === "done" && (step.output?.head ?? []).join("").includes('"replaced":true');
+	const all = replaced ? [] : outputLines(step);
 	const lines = all.slice(0, MAX_LINES);
 	// lines the row leaves out on purpose (a revision tag, an image's stand-in) are not counted as more to see
 	const total = step.name === "edit_file" || step.name === "write_file" ? all.length : (step.output?.lines ?? all.length) - ((step.output?.head.length ?? 0) - all.length);
@@ -79,7 +81,7 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 		<div className={`step ${step.status}${shown ? " shown" : ""}`} data-kind="step" data-tool={step.name} data-shown={images ? shown : undefined}>
 			<div className={`s-row${images ? " click" : ""}`} onClick={images ? onShow : undefined}>
 				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
-				<span className="s-verb">{t.verb[step.name] ?? pretty(step.name)}</span>
+				<span className="s-verb">{replaced ? t.qReplaced : (t.verb[step.name] ?? pretty(step.name))}</span>
 				{named !== null ? <span className="s-name" title={object}>{named}</span> : chip ? <Chip path={object} /> : object === "" ? null : <code className="s-obj">{object}</code>}
 				<Delta d={delta(step)} />
 				{images ? <Chevron /> : null}
