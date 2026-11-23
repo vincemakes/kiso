@@ -20,6 +20,8 @@ const SHOWN = 4;
 /** the changed files listed at first, and at most after "Show more": a folder with thousands of changes stays light */
 const CHANGES_SHOWN = 8;
 const CHANGES_MAX = 200;
+/** the ended background tasks listed at first (finding #15: 69 over five days were 69 rows); the rest are one click away */
+const ENDED_SHOWN = 5;
 
 /** A section of the rail: a header that folds it (the name, a count, the chevron after them as in the stream, a figure at the right). */
 function Section({ id, name, count, extra, open, onToggle, children }: { readonly id: string; readonly name: string; readonly count?: number; readonly extra?: ReactNode; readonly open: boolean; readonly onToggle: () => void; readonly children: ReactNode }): ReactNode {
@@ -75,6 +77,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const [folded, setFolded] = useState<Readonly<Record<string, boolean>>>({ context: true });
 	const [allOutputs, setAllOutputs] = useState(false);
 	const [allChanges, setAllChanges] = useState(false);
+	const [allEnded, setAllEnded] = useState(false);
 	const [noStop, setNoStop] = useState<string | null>(null); // a stop the host answered false: why, for a moment
 	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
 	const over = (tip: TipData) => ({
@@ -205,7 +208,13 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 					</section>
 					{state.tasks.length === 0 ? null : (
 						<Section id="tasks" name={t.railTasks} {...(live.length > 0 ? { count: live.length } : {})} open={!folded["tasks"]} onToggle={toggle("tasks")}>
-							{ordered.map(task)}
+							{(allEnded ? ordered : ordered.slice(0, live.length + ENDED_SHOWN)).map(task)}
+							{done.length > ENDED_SHOWN && !allEnded ? (
+								<button className="r-row dim" onClick={() => setAllEnded(true)} data-act="more-tasks">
+									<span className="r-ic" />
+									<span className="r-nm">{fmt(t.railShowMore, { n: done.length - ENDED_SHOWN })}</span>
+								</button>
+							) : null}
 						</Section>
 					)}
 					{rows.length === 0 && action === null && g?.pr == null ? null : (
