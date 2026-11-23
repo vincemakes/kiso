@@ -39,7 +39,7 @@ export * from "./checkpoint.js";
 export * from "./request-budget.js";
 // 0.40.0: the listing reads the recorded workspace and profile name.
 export { isForkNote } from "./fork.js";
-// ADR-0062: the sessions extension's tool specs, shared by the web host and the terminal's refusing twins
+// ADR-0062: the sessions extension's tool specs, used by the web host
 export * from "./sessions-tools.js";
 export { INBOX_LIMITS, InboxRefusedError, fileRevision, peerMessageId, readInbox, retriedSendCallId, releaseMessage, removeMessage, dropHeldMessage, writeMessage, type PeerFile, type PeerMessage } from "./inbox.js";
 export type { PeerOutcome } from "./peer-delivery.js";

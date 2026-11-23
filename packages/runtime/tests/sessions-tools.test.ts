@@ -1,4 +1,4 @@
-// ADR-0062 PR 1: the sessions tools' mark (a sidecar tenant), carried by a fork; the lock probe; the terminal's refusing twin.
+// ADR-0062 PR 1: the sessions tools' mark (a sidecar tenant), carried by a fork; the lock probe.
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

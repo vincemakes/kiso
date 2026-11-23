@@ -112,7 +112,7 @@
   "apps/cli/tests/scrollback-flood.test.ts",
   "apps/cli/tests/session-id-identity.test.ts",
   "apps/cli/tests/session-name-pty.test.ts",
-  "apps/cli/tests/sessions-twins-cli.test.ts",
+  "apps/cli/tests/sessions-follow-cli.test.ts",
   "apps/cli/tests/shell-tasks-cli.test.ts",
   "apps/cli/tests/stale-version-e2e.test.ts",
   "apps/cli/tests/task-claims-cli.test.ts",
