@@ -7,7 +7,7 @@ import type { Space } from "./space.js";
 
 /**
  * The sidebar's acts on one Work. Pin and archive are the host's own memory (`desktop.json`); the log is never touched. Delete
- * removes the Work's files for good (owner ruling 2026-11-02: no trash): its log, its sidecar and its task records. Files it
+ * removes the Work's files for good (owner ruling 2026-11-02: no trash): its log, its sidecar, its task records and its request trace. Files it
  * changed in the folder stay. A Work that is running, or has a background task still running, is refused in words.
  */
 export type WorkAct = "pin" | "unpin" | "archive" | "unarchive" | "delete" | "delete-tree";
@@ -20,7 +20,7 @@ function remove(space: Space, settings: Settings, session: string): void {
 	settings.bury(space.key, session); // first: from here on nothing opens it again, not even a read
 	space.store.close(session);
 	space.tasks.forget(session);
-	for (const path of [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`]) rmSync(join(space.dir, path), { recursive: true, force: true });
+	for (const path of [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`, join("traces", `${session}.jsonl`)]) rmSync(join(space.dir, path), { recursive: true, force: true });
 	settings.forget(session);
 }
 

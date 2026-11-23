@@ -21,8 +21,11 @@ const wx = clientFor(host).session("wx");
 await wx.run("first");
 await waitUntil(async () => !(await wx.state()).running, 8000);
 check(left().some((f) => f === "wx.jsonl"), "the Work exists before the delete");
+const trace = join(dir, "traces", "wx.jsonl"); // the request ledger lives beside the log, not in it
+check(existsSync(trace), "its request trace exists before the delete");
 check((await desk({ session: "wx", act: "delete" })).status === 200, "the Work is deleted");
 check(left().length === 0, `its files are gone (${left().join(",") || "none"})`);
+check(!existsSync(trace), "its request trace is gone too");
 
 // a tab still open asks for it: the snapshot, the stream, a run
 const state = await fetch(`${host.origin}/v1/sessions/wx/state`, { headers: auth() });
