@@ -511,7 +511,8 @@ person sees the sender's "Messaged" row and nothing on the receiver. The owner's
 - **The line ends the question.** When a live run accepts a peer line (`run.deliver` returned true) and one of its questions
   waits, the host resolves that question with the not-answered shape: `{ declined: [every question], replaced: true, reason }`.
   The reason says another session sent a message, the question is withdrawn and not declined by the person, and to call
-  `ask_user` again with what is still needed. The line is then admitted at the next boundary, as any peer line; the model
+  `ask_user` again with what is still needed, and that a withdrawn question is never the model's to decide: it asks it again or
+  says plainly that it is still open (added 2026-11-23 after kit v4: the model decided one itself, once in 24 runs). The line is then admitted at the next boundary, as any peer line; the model
   reads it, and decides whether to ask again. No core change: the hook is `PeerDeliveryOptions.onAccepted` (runtime), the
   resolution is the web bridge's (`AskBridge.replaceWaiting`).
 - **Caps.** One per question (once ended, it is over) and **three per run**; past the third, a line waits for the person's
