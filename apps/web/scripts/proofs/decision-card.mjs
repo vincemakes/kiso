@@ -9,18 +9,19 @@ const { check, verdict } = checker("decision-card");
 const finish = (callId, choices, recommended) => ({ events: [{ type: "text_delta", text: "I would go with the first." }, { type: "tool_call_end", callId, name: "finish_with_choices", input: { choices, ...(recommended === undefined ? {} : { recommended }) } }, { type: "stop", reason: "tool_use" }] });
 const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
 const data = scratch("dc-data");
-const app = await launchApp({ data, workspace: scratch("dc-ws"), env: { KISO_WEB_SESSION: "w-dc" }, fauxScript: [finish("c1", ["Go with JSON", "Keep CSV only"]), say("Kept CSV."), finish("c2", ["Alpha", "Beta", "Gamma"], false), say("Alpha taken."), finish("c3", ["One", "Two"]), say("One taken."), finish("c4", ["Five", "Six"]), say("Typed line taken.")] });
+const app = await launchApp({ data, workspace: scratch("dc-ws"), env: { KISO_WEB_SESSION: "w-dc" }, fauxScript: [finish("c1", ["Go with JSON", "Keep CSV only"]), say("Kept CSV."), finish("c2", ["Alpha", "Beta", "Gamma"], false), say("Alpha taken."), finish("c3", ["One", "Two"]), say("One taken."), finish("c1", ["Five", "Six"]), say("Typed line taken.")] });
 const host = () => app.host();
 const hdr = () => ({ authorization: `Bearer ${host().token}`, "content-type": "application/json" });
 const key = (await fetch(`${host().origin}/desk/history`, { headers: hdr() }).then((r) => r.json())).current.key;
 const events = () => readFileSync(join(data, "projects", key, "w-dc.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).event);
 const post = (body) => fetch(`${host().origin}/desk/decision`, { method: "POST", headers: hdr(), body: JSON.stringify({ session: "w-dc", ...body }) });
+const seqs = (id) => events().filter((e) => e.type === "tool_call_end" && e.callId === id).map((e) => e.seq);
 const card = () => app.count("[data-kind=decision-card]");
 const picks = () => events().filter((e) => e.type === "user_input" && e.via?.kind === "choice");
 
 // the pure function over a table of logs
 const { liveCard } = await import("../../dist/shared/decision.js");
-const R = { seq: 3, type: "tool_result", callId: "k", content: "x", isError: false, tags: ["end-turn"] };
+const R = { seq: 3, type: "tool_result", callId: "k", invocationSeq: 2, content: "x", isError: false, tags: ["end-turn"] };
 const C = { seq: 2, type: "tool_call_end", callId: "k", name: "finish_with_choices", input: { choices: ["a", "b"] } };
 const T = { seq: 4, type: "terminal", outcome: { kind: "completed" } };
 const live = (...ev) => liveCard(ev) !== null;
@@ -40,16 +41,16 @@ await waitUntil(async () => (await app.count(".hlist .item")) >= 1, 20_000);
 await app.evaluate(`document.querySelector(".hlist .item").click()`);
 check(await waitUntil(async () => (await card()) === 1, 20_000), "opened cold, the Work draws the same card");
 await app.click("[data-option='1']");
-check(await waitUntil(() => picks().length === 1, 15_000) && picks()[0].content === "Keep CSV only" && picks()[0].via.callId === "c1" && picks()[0].via.option === 1, "a click appends the label as the person's line, marked as a pick (callId, option)");
+check(await waitUntil(() => picks().length === 1, 15_000) && picks()[0].content === "Keep CSV only" && picks()[0].via.invocationSeq === seqs("c1")[0] && picks()[0].via.option === 1, "a click appends the label as the person's line, marked as a pick (invocationSeq, option)");
 check(await waitUntil(async () => (await card()) === 0 && /Kept CSV/.test((await app.text("body")) ?? ""), 15_000), "the card is gone and the next turn answers");
 
 await app.evaluate(`window.__kiso.send("again")`);
 await waitUntil(async () => (await card()) === 1, 20_000);
 check((await app.count(".dc-pri")) === 0 && (await app.count("[data-act=choice]")) === 3 && (await app.count(".dcard kbd")) === 0, "recommended:false draws all choices equal and no shortcut");
 await app.shot("decision-card-equal");
-const forged = await post({ callId: "c2", option: 0, label: "EVIL" });
+const forged = await post({ invocationSeq: seqs("c2")[0], option: 0, label: "EVIL" });
 check(forged.status === 200 && (await waitUntil(() => picks().length === 2, 15_000)) && picks()[1].content === "Alpha", "a forged label is never read: the line is the model's own choices[option]");
-check((await post({ callId: "c2", option: 1 })).status === 409, "a second click on the same card is 409, and sends nothing");
+check((await post({ invocationSeq: seqs("c2")[0], option: 1 })).status === 409, "a second click on the same card is 409, and sends nothing");
 await waitUntil(async () => /Alpha taken/.test((await app.text("body")) ?? ""), 15_000);
 
 await app.evaluate(`window.__kiso.send("third")`);
@@ -60,9 +61,13 @@ await waitUntil(async () => /One taken/.test((await app.text("body")) ?? ""), 15
 
 await app.evaluate(`window.__kiso.send("fourth")`);
 await waitUntil(async () => (await card()) === 1, 20_000);
+
+check((await app.evaluate(`[...document.querySelectorAll("[data-act=choice]")].map((b) => b.textContent).join("|")`)).startsWith("Five") && seqs("c1").length === 2, "a callId repeated across two runs: the card shows the NEW call's choices (the identity is the call's seq)");
+const old = await post({ invocationSeq: seqs("c1")[0], option: 0 }); // the old card's identity, while a newer card with the same callId is live
+check(old.status === 409 && picks().length === 3, "a stale click on the old card is 409 and never lands on the newer same-callId card");
 await app.evaluate(`window.__kiso.send("never mind")`);
 check(await waitUntil(async () => (await card()) === 0, 15_000), "a typed line overtakes the card");
-const stale = await post({ callId: "c4", option: 0 });
+const stale = await post({ invocationSeq: seqs("c1")[1], option: 0 });
 await sleep(300);
 check(stale.status === 409 && picks().length === 3, "a click on the overtaken card is 409 and sends nothing");
 await app.shot("decision-card-superseded");

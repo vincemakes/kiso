@@ -46,7 +46,7 @@ const withKey = (path: string, key: string | null, more: Record<string, string> 
 export const fetchGit = (key: string | null): Promise<GitReply> => call(withKey("/desk/git", key));
 /** The decision card a Work's last turn left, if it is still live; a pick sends the option's number only (409: overtaken). */
 export const fetchDecision = (key: string | null, session: string): Promise<{ readonly card: DecisionCard | null }> => call(withKey("/desk/decision", key, { session }));
-export const postDecision = (key: string | null, session: string, callId: string, option: number): Promise<unknown> => call(withKey("/desk/decision", key), { session, callId, option });
+export const postDecision = (key: string | null, session: string, invocationSeq: number, option: number): Promise<unknown> => call(withKey("/desk/decision", key), { session, invocationSeq, option });
 /** The pull requests a Work opened or was linked to, with the state `gh` last gave. */
 export const fetchPrs = (key: string | null, session: string): Promise<{ readonly prs: readonly PrRow[] }> => call(withKey("/desk/prs", key, { session }));
 export const fetchPrDraft = (key: string | null): Promise<{ readonly title: string; readonly body: string }> => call(withKey("/desk/git", key, { draft: "1" }));

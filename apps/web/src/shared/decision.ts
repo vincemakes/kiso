@@ -6,7 +6,8 @@ import type { Event } from "@vincemakes/kiso-core";
  * with core's END_TURN, ended the run (`completed`) and nothing came after it: no input of any kind, no further model request.
  */
 export interface DecisionCard {
-	readonly callId: string;
+	/** the identity of the call: the seq of its tool_call_end (a callId is correlation only and may repeat across runs) */
+	readonly invocationSeq: number;
 	readonly choices: readonly string[];
 	/** false: the first choice is not a recommendation (the choice is the person's alone) */
 	readonly recommended: boolean;
@@ -22,10 +23,10 @@ export function liveCard(events: readonly Event[]): DecisionCard | null {
 		else if (e.type === "user_input" || e.type === "stop" || e.type === "tool_call_end") return null; // overtaken: an input, or the model asked again
 	}
 	if (at < 0 || !events.slice(at).some((e) => e.type === "terminal" && e.outcome.kind === "completed")) return null;
-	const callId = (events[at] as { readonly callId: string }).callId;
-	const call = events.find((e) => e.type === "tool_call_end" && e.callId === callId && e.name === FINISH_TOOL);
+	const invocationSeq = (events[at] as { readonly invocationSeq?: number }).invocationSeq;
+	const call = events.find((e) => e.seq === invocationSeq && e.type === "tool_call_end" && e.name === FINISH_TOOL);
 	const input = call?.type === "tool_call_end" ? (call.input as { choices?: unknown; recommended?: unknown } | null) : null;
 	const choices = input?.choices;
-	if (!Array.isArray(choices) || choices.length < 2 || choices.length > 3 || !choices.every((c) => typeof c === "string" && c !== "")) return null;
-	return { callId, choices: choices as string[], recommended: input?.recommended !== false };
+	if (invocationSeq === undefined || !Array.isArray(choices) || choices.length < 2 || choices.length > 3 || !choices.every((c) => typeof c === "string" && c !== "")) return null;
+	return { invocationSeq, choices: choices as string[], recommended: input?.recommended !== false };
 }

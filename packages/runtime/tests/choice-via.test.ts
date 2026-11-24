@@ -3,9 +3,9 @@
  * log, never counts as a runtime input, and a malformed one is corruption.
  */
 import { describe, expect, it } from "vitest";
-import { isKisoEvent, isRuntimeInput } from "@vincemakes/kiso-core";
+import { isKisoEvent, isRuntimeInput, projectMessages } from "@vincemakes/kiso-core";
 
-const via = { kind: "choice", callId: "c1", option: 1 };
+const via = { kind: "choice", invocationSeq: 4, option: 1 };
 
 describe("user_input.via kind choice", () => {
 	it("validates, and is the person's input (not a runtime one)", () => {
@@ -13,6 +13,10 @@ describe("user_input.via kind choice", () => {
 		expect(isRuntimeInput({ via } as never)).toBe(false);
 	});
 	it("a malformed one is corruption", () => {
-		for (const bad of [{ ...via, callId: "" }, { ...via, option: -1 }, { ...via, option: 1.5 }, { ...via, option: "1" }, { kind: "choice" }]) expect(isKisoEvent({ seq: 0, type: "user_input", content: "x", via: bad })).toBe(false);
+		for (const bad of [{ ...via, invocationSeq: -1 }, { ...via, invocationSeq: "4" }, { ...via, option: -1 }, { ...via, option: 1.5 }, { ...via, option: "1" }, { kind: "choice" }]) expect(isKisoEvent({ seq: 0, type: "user_input", content: "x", via: bad })).toBe(false);
+	});
+	it("no byte of it reaches a request: the projection of a pick equals the projection of the same plain line", () => {
+		const plain = { seq: 0, type: "user_input", content: "Keep CSV only", source: "user" } as const;
+		expect(projectMessages([{ ...plain, via } as never])).toEqual(projectMessages([plain as never]));
 	});
 });

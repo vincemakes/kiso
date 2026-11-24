@@ -68,7 +68,7 @@ async function firstPartySchemas(): Promise<NamedSchema[]> {
 	if (prevSkills === undefined) delete process.env.KISO_SKILLS_DIR;
 	else process.env.KISO_SKILLS_DIR = prevSkills;
 	for (const t of skills.tools ?? []) tools.push(t);
-	const ask = await createAskExtension({ ask: async () => ({ answers: [] }) });
+	const ask = await createAskExtension({ ask: async () => ({ answers: [] }), cards: true });
 	for (const t of ask.tools ?? []) tools.push(t);
 	// ADR-0062: the sessions tools (the web host implements them from these specs)
 	for (const t of [LIST_SESSIONS, MESSAGE, START_SESSION]) tools.push({ name: t.name, parameters: t.parameters } as (typeof tools)[number]);
@@ -90,6 +90,7 @@ const VALID_INPUTS: Readonly<Record<string, Record<string, unknown>>> = {
 	delegate: { tasks: [{ role: "explorer", task: "look around" }] },
 	read_skill: { name: "demo" },
 	ask_user: { questions: [{ question: "pick one", options: [{ label: "a" }, { label: "b" }] }] },
+	finish_with_choices: { choices: ["a", "b"] },
 };
 
 /** Nested probes: the invented field sits INSIDE an array-item object. */

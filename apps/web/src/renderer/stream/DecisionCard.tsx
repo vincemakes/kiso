@@ -7,7 +7,7 @@ import { I } from "./Icons.js";
 /**
  * The decision card (plan-decision-card-2026-11-24): what finish_with_choices left in front of the person, under the turn's last
  * message. Whether it is live is the host's to say (a pure function of the log, read again whenever the Work's turns move); the
- * page sends `{ callId, option }` and nothing else. The first choice is drawn dark with ⌘↩ unless `recommended` is false (both
+ * page sends `{ invocationSeq, option }` and nothing else. The first choice is drawn dark with ⌘↩ unless `recommended` is false (both
  * equal, no shortcut). × hides it in this page only.
  */
 export function useDecision(key: string | null, session: string, moved: string): readonly [Card | null, () => void] {
@@ -35,24 +35,24 @@ function DecisionCard({ card, workKey, session, gone }: { readonly card: Card; r
 	const [busy, setBusy] = useState(false);
 	const pick = (option: number): void => {
 		setBusy(true);
-		void postDecision(workKey, session, card.callId, option).catch(gone).finally(() => setBusy(false));
+		void postDecision(workKey, session, card.invocationSeq, option).catch(gone).finally(() => setBusy(false));
 	};
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent): void => {
 			const box = document.activeElement;
-			const empty = !(box instanceof HTMLTextAreaElement) || box.value === "";
+			const empty = !(box instanceof HTMLTextAreaElement || box instanceof HTMLInputElement) || box.value === "";
 			if (card.recommended && !busy && empty && e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.preventDefault(), pick(0));
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [card.callId, card.recommended, busy]);
+	}, [card.invocationSeq, card.recommended, busy]);
 	if (hidden) return null;
 	return (
 		<div className="dcard" data-kind="decision-card" data-recommended={String(card.recommended)}>
 			{card.choices.map((label, n) => (
 				<button key={n} className={card.recommended && n === 0 ? "dc-pri" : "dc-opt"} disabled={busy} onClick={() => pick(n)} data-act="choice" data-option={n}>
 					{label}
-					{card.recommended && n === 0 ? <kbd>⌘↩</kbd> : null}
+					{card.recommended && n === 0 ? <kbd>{/Mac|iPhone|iPad/.test(navigator.platform) ? "⌘↩" : "Ctrl↩"}</kbd> : null}
 				</button>
 			))}
 			<button className="ab" title={t.dismissCard} aria-label={t.dismissCard} onClick={() => setHidden(true)} data-act="choice-dismiss">

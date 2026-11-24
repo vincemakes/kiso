@@ -186,7 +186,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const session = post ? (str(body["session"]) ?? "") : (url.searchParams.get("session") ?? "");
 			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
 			if (!post) return json(200, { card: liveCard(space.service.events(session)) });
-			const answer = await answerDecision(space, session, str(body["callId"]) ?? "", body["option"]);
+			const answer = await answerDecision(space, session, body["invocationSeq"], body["option"]);
 			return json(answer.status, answer.body);
 		}
 		if (path === "/desk/held") {
