@@ -1,7 +1,7 @@
 // The decision card (plan-decision-card-2026-11-24): finish_with_choices ends the run with no further request (core's END_TURN), the
 // card is drawn from the log, a click sends {callId, option} and the host appends the canonical label marked as a pick, a forged
 // label is never read, an overtaken card is a 409, and ⌘↩ takes the recommended choice. No model: a scripted adapter.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
 
@@ -72,4 +72,11 @@ await sleep(300);
 check(stale.status === 409 && picks().length === 3, "a click on the overtaken card is 409 and sends nothing");
 await app.shot("decision-card-superseded");
 await app.close();
+
+// R-SIB: a writing call in the SAME batch as finish_with_choices still runs (END_TURN fires after the batch settles), and the card shows
+const ws2 = scratch("dc2-ws");
+const sib = await launchApp({ data: scratch("dc2-data"), workspace: ws2, env: { KISO_WEB_SESSION: "w-sib", KISO_WEB_MODE: "full-access" }, fauxScript: [{ events: [{ type: "tool_call_end", callId: "f1", name: "finish_with_choices", input: { choices: ["Keep", "Delete"] } }, { type: "tool_call_end", callId: "w1", name: "shell", input: { command: "echo written > sibling.txt" } }, { type: "stop", reason: "tool_use" }] }] });
+await sib.evaluate(`window.__kiso.send("batch")`);
+check(await waitUntil(async () => (await sib.count("[data-kind=decision-card]")) === 1, 20_000) && existsSync(join(ws2, "sibling.txt")), "R-SIB: the writing call batched with the finish ran before the turn ended, and the card is shown (the description asks the model to call it alone)");
+await sib.close();
 verdict();
