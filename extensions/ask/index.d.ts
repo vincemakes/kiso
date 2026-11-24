@@ -24,8 +24,11 @@ export interface AskCallContext {
  *  `ctx` to route the question to the right session. */
 export interface AskUI {
 	ask(spec: AskSpec, signal?: { readonly aborted: boolean }, ctx?: AskCallContext): Promise<AskResult>;
+	/** true: this host draws the decision card, so `finish_with_choices` is offered (a host that only has `ask` still gets `ask_user`) */
+	readonly cards?: boolean;
 }
 
 declare const createAskExtension: (ui?: AskUI) => Promise<KisoExtension>;
 export default createAskExtension;
 export declare const ASK_PARAMETERS: Readonly<Record<string, unknown>>;
+export declare const FINISH_PARAMETERS: Readonly<Record<string, unknown>>;

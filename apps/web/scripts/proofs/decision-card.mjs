@@ -1,0 +1,69 @@
+// The decision card (plan-decision-card-2026-11-24): finish_with_choices ends the run with no further request (core's END_TURN), the
+// card is drawn from the log, a click sends {callId, option} and the host appends the canonical label marked as a pick, a forged
+// label is never read, an overtaken card is a 409, and ⌘↩ takes the recommended choice. No model: a scripted adapter.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
+
+const { check, verdict } = checker("decision-card");
+const finish = (callId, choices, recommended) => ({ events: [{ type: "text_delta", text: "I would go with the first." }, { type: "tool_call_end", callId, name: "finish_with_choices", input: { choices, ...(recommended === undefined ? {} : { recommended }) } }, { type: "stop", reason: "tool_use" }] });
+const say = (text) => ({ events: [{ type: "text_delta", text }, { type: "stop", reason: "end_turn" }] });
+const data = scratch("dc-data");
+const app = await launchApp({ data, workspace: scratch("dc-ws"), env: { KISO_WEB_SESSION: "w-dc" }, fauxScript: [finish("c1", ["Go with JSON", "Keep CSV only"]), say("Kept CSV."), finish("c2", ["Alpha", "Beta", "Gamma"], false), say("Alpha taken."), finish("c3", ["One", "Two"]), say("One taken."), finish("c4", ["Five", "Six"]), say("Typed line taken.")] });
+const host = () => app.host();
+const hdr = () => ({ authorization: `Bearer ${host().token}`, "content-type": "application/json" });
+const key = (await fetch(`${host().origin}/desk/history`, { headers: hdr() }).then((r) => r.json())).current.key;
+const events = () => readFileSync(join(data, "projects", key, "w-dc.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).event);
+const post = (body) => fetch(`${host().origin}/desk/decision`, { method: "POST", headers: hdr(), body: JSON.stringify({ session: "w-dc", ...body }) });
+const card = () => app.count("[data-kind=decision-card]");
+const picks = () => events().filter((e) => e.type === "user_input" && e.via?.kind === "choice");
+
+// the pure function over a table of logs
+const { liveCard } = await import("../../dist/shared/decision.js");
+const R = { seq: 3, type: "tool_result", callId: "k", content: "x", isError: false, tags: ["end-turn"] };
+const C = { seq: 2, type: "tool_call_end", callId: "k", name: "finish_with_choices", input: { choices: ["a", "b"] } };
+const T = { seq: 4, type: "terminal", outcome: { kind: "completed" } };
+const live = (...ev) => liveCard(ev) !== null;
+check(live(C, R, T) && !live(C, R) && !live(C, { ...R, isError: true }, T) && !live(C, { ...R, tags: [] }, T) && !live(C, R, { ...T, outcome: { kind: "aborted" } }), "liveness: a successful END_TURN result and a completed terminal, nothing less");
+check(!live(C, R, T, { seq: 5, type: "user_input", content: "x" }) && !live(C, R, { seq: 4, type: "stop", reason: "end_turn" }, T) && !live({ ...C, input: { choices: ["a"] } }, R, T) && liveCard([C, R, T]).recommended === true, "liveness: an input or a later model request overtakes it; one choice is no card; recommended defaults to true");
+
+await app.evaluate(`window.__kiso.send("export?")`);
+check(await waitUntil(async () => (await card()) === 1, 20_000), "the turn ends and the card hangs under the final message");
+check((await app.count(".dc-pri")) === 1 && (await app.count("[data-act=choice]")) === 2 && (await app.text(".dc-pri kbd")) === "⌘↩", "two buttons, the recommended first and dark, with ⌘↩");
+const log = events();
+const at = log.findIndex((e) => e.type === "tool_result" && e.callId === "c1");
+check(log[at].tags?.includes("end-turn") && !log.slice(at).some((e) => e.type === "stop" || e.type === "text_delta") && log.at(-1).outcome?.kind === "completed", "F4: after the call's result no model request is made, and the run completed");
+await app.shot("decision-card");
+await app.evaluate(`location.reload()`);
+await waitUntil(async () => (await app.count(".hlist .item")) >= 1, 20_000);
+await app.evaluate(`document.querySelector(".hlist .item").click()`);
+check(await waitUntil(async () => (await card()) === 1, 20_000), "opened cold, the Work draws the same card");
+await app.click("[data-option='1']");
+check(await waitUntil(() => picks().length === 1, 15_000) && picks()[0].content === "Keep CSV only" && picks()[0].via.callId === "c1" && picks()[0].via.option === 1, "a click appends the label as the person's line, marked as a pick (callId, option)");
+check(await waitUntil(async () => (await card()) === 0 && /Kept CSV/.test((await app.text("body")) ?? ""), 15_000), "the card is gone and the next turn answers");
+
+await app.evaluate(`window.__kiso.send("again")`);
+await waitUntil(async () => (await card()) === 1, 20_000);
+check((await app.count(".dc-pri")) === 0 && (await app.count("[data-act=choice]")) === 3 && (await app.count(".dcard kbd")) === 0, "recommended:false draws all choices equal and no shortcut");
+await app.shot("decision-card-equal");
+const forged = await post({ callId: "c2", option: 0, label: "EVIL" });
+check(forged.status === 200 && (await waitUntil(() => picks().length === 2, 15_000)) && picks()[1].content === "Alpha", "a forged label is never read: the line is the model's own choices[option]");
+check((await post({ callId: "c2", option: 1 })).status === 409, "a second click on the same card is 409, and sends nothing");
+await waitUntil(async () => /Alpha taken/.test((await app.text("body")) ?? ""), 15_000);
+
+await app.evaluate(`window.__kiso.send("third")`);
+await waitUntil(async () => (await card()) === 1, 20_000);
+await app.evaluate(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true }))`);
+check(await waitUntil(() => picks().length === 3, 15_000) && picks()[2].content === "One", "⌘↩ takes the recommended choice");
+await waitUntil(async () => /One taken/.test((await app.text("body")) ?? ""), 15_000);
+
+await app.evaluate(`window.__kiso.send("fourth")`);
+await waitUntil(async () => (await card()) === 1, 20_000);
+await app.evaluate(`window.__kiso.send("never mind")`);
+check(await waitUntil(async () => (await card()) === 0, 15_000), "a typed line overtakes the card");
+const stale = await post({ callId: "c4", option: 0 });
+await sleep(300);
+check(stale.status === 409 && picks().length === 3, "a click on the overtaken card is 409 and sends nothing");
+await app.shot("decision-card-superseded");
+await app.close();
+verdict();

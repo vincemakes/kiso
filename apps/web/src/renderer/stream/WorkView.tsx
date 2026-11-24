@@ -1,3 +1,4 @@
+import { DecisionCard, useDecision } from "./DecisionCard.js";
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { KeyContext, WorkContext } from "./links.js";
 import { PinnedContext } from "./Artifacts.js";
@@ -81,6 +82,8 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const steer = (x: Parameters<typeof session.steer>[0]): Promise<void> => asking && typeof x === "string" && askInput.current !== null ? Promise.resolve(askInput.current(x)) : (open.length === 1 && open[0]!.kind === "ask" ? session.steer(x).then(() => ((id) => void ((session.state.turns.at(-1)?.items ?? []).some((i) => i.kind === "ask" && i.decisionId === id && i.decision === "open") && session.approve(id, false)))((open[0] as { decisionId: string }).decisionId)) : session.steer(x));
 	// shown again after a switch: until the host has been asked, an approval in it is not offered
 	const suggestion = useFollowUp(turns.at(-1));
+	const tail = turns.at(-1);
+	const [decision, reread] = useDecision(workKey, workId, `${turns.length}:${tail?.phase}:${tail?.items.length}:${tail?.endSeq}`);
 	const interrupted = isInterrupted(session.state);
 	const uncertain = uncertainOf(session.state).length > 0; // never while a run is live (ADR-0038)
 	const held = uncertain ? t.verdictFirst : null;
@@ -256,6 +259,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 						</div>
 					))}
 					{asking ? <div className="needs" data-kind="needs-input"><span className="dot" />{t.needsInput}</div> : null}
+					{decision !== null && !running ? <DecisionCard card={decision} workKey={workKey} session={workId} gone={reread} /> : null}
 					<InboxRows seen={new Set(turns.flatMap((u) => u.items.flatMap((i) => (i.kind === "peer" ? [i.messageId] : []))))} after={open.length > 0} />
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}
@@ -284,7 +288,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 					)}
 				</div>
 			) : (
-				<Composer down={down} held={held} hint={asking ? t.answerHint : open.length === 1 ? t.declineHint : null} view={session.view} running={running} suggestion={suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={steer} onStop={() => void session.abort()} />
+				<Composer down={down} held={held} hint={asking ? t.answerHint : open.length === 1 ? t.declineHint : null} view={session.view} running={running} suggestion={decision !== null && decision.recommended ? decision.choices[0]! : suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={steer} onStop={() => void session.abort()} />
 			)}
 		</PinnedContext.Provider>
 	);

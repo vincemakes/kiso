@@ -194,6 +194,7 @@ export interface UserInputEvent {
 
 export type UserInputVia =
 	| { readonly kind: "skill"; readonly name: string; readonly line: string }
+	| { readonly kind: "choice"; readonly callId: string; readonly option: number }
 	| { readonly kind: "tasks"; readonly items: readonly TaskDeliveryItem[] }
 	| { readonly kind: "peer"; readonly event: "message" | "completion"; readonly from: string; readonly messageId: string; readonly rootId: string };
 
@@ -742,6 +743,7 @@ function isVia(v: Record<string, unknown>): boolean {
 	if (!isPlainObject(via)) return false;
 	if (via.kind === "skill") return typeof via.name === "string" && via.name !== "" && typeof via.line === "string" && via.line !== "";
 	if (via.kind === "peer") return (via.event === "message" || via.event === "completion") && [via.from, via.messageId, via.rootId].every((x) => typeof x === "string" && x !== "");
+	if (via.kind === "choice") return typeof via.callId === "string" && via.callId !== "" && Number.isInteger(via.option) && (via.option as number) >= 0;
 	const items = via.items;
 	return via.kind === "tasks" && Array.isArray(items) && items.length > 0 && items.every((i) => isPlainObject(i) && typeof i.taskId === "string" && i.taskId !== "" && TASK_TRANSITIONS.has(i.transition as string));
 }

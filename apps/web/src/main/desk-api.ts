@@ -7,6 +7,8 @@ import { contextParts } from "./context.js";
 import { rename } from "./names.js";
 import { forkWork } from "./fork.js";
 import { answerCard, answerHeld, workLinks } from "./start-session-tool.js";
+import { answerDecision } from "./decision.js";
+import { liveCard } from "../shared/decision.js";
 import { WORK_ACTS, workAct, type WorkAct } from "./works.js";
 import { commit, gitOf, openPr, prDraft, tryRun } from "./git.js";
 import { prOfUrl, type PrStates } from "./prs.js";
@@ -177,6 +179,15 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			if (!post || space === null) return json(post ? 404 : 405, {});
 			const body = await readJson(req);
 			return ctx.asks.answer(str(body["session"]) ?? "", str(body["callId"]) ?? "", body["result"]) ? json(200, {}) : json(409, { error: "no such question is waiting" });
+		}
+		if (path === "/desk/decision") {
+			if (space === null) return json(404, {});
+			const body = post ? await readJson(req) : {};
+			const session = post ? (str(body["session"]) ?? "") : (url.searchParams.get("session") ?? "");
+			if (!SAFE_ID.test(session) || !space.store.ids().includes(session)) return json(404, {});
+			if (!post) return json(200, { card: liveCard(space.service.events(session)) });
+			const answer = await answerDecision(space, session, str(body["callId"]) ?? "", body["option"]);
+			return json(answer.status, answer.body);
 		}
 		if (path === "/desk/held") {
 			if (!post || space === null) return json(post ? 404 : 405, {});

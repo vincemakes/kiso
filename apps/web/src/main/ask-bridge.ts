@@ -29,6 +29,8 @@ export class AskBridge {
 	}
 
 	readonly ui = {
+		// this host draws the decision card (finish_with_choices) from the log
+		cards: true,
 		ask: (spec: unknown, signal: Signal | undefined, ctx: { readonly sessionId?: string; readonly callId?: string }): Promise<unknown> =>
 			new Promise((resolve, reject) => {
 				const key = `${ctx.sessionId}/${ctx.callId}`;

@@ -332,3 +332,7 @@
 .needs { display: flex; width: fit-content; align-items: center; gap: 7px; margin: 8px 0; padding: 4px 10px; border-radius: 999px; background: #fffbeb; color: #92400e; font-size: 12.5px; }
 .needs .dot { width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; }
 [data-act=rewind] svg { transform: scaleX(-1); } /* ↺, not reload */
+.dcard { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.dcard button[data-act=choice] { padding: 7px 14px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); font-size: 13.5px; }
+.dcard .dc-pri { background: #1a1a1a !important; border-color: #1a1a1a !important; color: #fff !important; }
+.dcard kbd { margin-left: 8px; font: inherit; font-size: 12px; opacity: 0.6; }

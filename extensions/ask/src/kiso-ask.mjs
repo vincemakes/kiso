@@ -84,6 +84,30 @@ const DESCRIPTION = [
 	'No "Other" option: the human can always type an answer.',
 ].join(" ");
 
+/** finish_with_choices (the decision card, plan-decision-card-2026-11-24): the non-blocking half. 2-3 labels, each the complete
+ *  line that will be sent as the person's next message, the first the recommendation unless `recommended` is false. */
+const FINISH_PARAMETERS = {
+	type: "object",
+	properties: {
+		choices: { type: "array", minItems: 2, maxItems: 3, items: { type: "string", minLength: 1, maxLength: 80 } },
+		recommended: { type: "boolean" },
+	},
+	required: ["choices"],
+	additionalProperties: false,
+};
+
+const FINISH_DESCRIPTION = [
+	"Finish this turn with 2-3 choices for the person: the turn ends, and the one they pick reaches you as their next message.",
+	"For a direction or next-step decision that is theirs. In your closing text say what you found and, if you recommend one, which and why; the first choice must be it.",
+	"Each choice is a complete line in the person's voice, at most 80 characters.",
+	"If the choice is theirs alone, say so and pass recommended:false.",
+	"For an answer you need before continuing, use ask_user. Never use this instead of a permission or approval gate.",
+].join(" ");
+
+/** Core's reserved tag `END_TURN` (0.42.0): a settled result carrying it completes the run with no further request. The
+ *  extension has no runtime dependencies, so the constant is spelled here; core's own test pins the two together. */
+const END_TURN = "end-turn";
+
 /** The result the model reads — the answers, or the honest decline. The
  *  panel bridge produces it; this shape is the tool_result's whole
  *  content, so it is JSON and nothing else. */
@@ -99,52 +123,65 @@ function resultContent(result) {
  * that one method.
  */
 export default async function createAskExtension(ui) {
-	// TTY gating by construction: no bridge, no tool. The extension still
-	// loads (it stays countable, shadowable, disposable like the others)
-	// and simply has nothing to offer a session that cannot answer.
-	if (ui === undefined || ui === null || typeof ui.ask !== "function") return { name: "ask", tools: [] };
+	// TTY gating by construction: no bridge, no tool. A host that can also draw the decision card says so (`ui.cards`); one that
+	// cannot never sees finish_with_choices, so a headless run has no card nobody could click.
+	const asks = ui !== undefined && ui !== null && typeof ui.ask === "function";
+	const cards = ui !== undefined && ui !== null && ui.cards === true;
+	if (!asks && !cards) return { name: "ask", tools: [] };
 	return {
 		name: "ask",
-		// The approval chain: ask_user is ALLOWED by this extension, and
-		// nothing else is. Requiring approval to ask a question would put
-		// two panels in front of one decision — "approve asking you
-		// something?" then the question itself — and the second panel can
-		// already be declined, which is the same power the first one
-		// offered. (The chain is deny > allow > ask — the W21/R3 ruling;
-		// this comment once said "deny > ask > allow", corrected at TT-1A —
-		// so this allow never overrides a user extension's DENY or plan
-		// mode's read-only refusal; it does silence an earlier ask, which
-		// is exactly the dont-ask-again power the ordering exists to grant.)
+		// The approval chain: both tools are ALLOWED by this extension, and nothing else is. Requiring approval to ask a question
+		// would put two panels in front of one decision (the chain is deny > allow > ask — the W21/R3 ruling), and a choice the
+		// person may ignore needs none at all.
 		approvals: [
 			{
 				decide: (call) =>
 					call.name === "ask_user"
 						? { action: "allow", reason: "asking the human is the human's own decision to make" }
-						: { action: "abstain" },
+						: call.name === "finish_with_choices"
+							? { action: "allow", reason: "offering the person a choice they may ignore changes nothing" }
+							: { action: "abstain" },
 			},
 		],
 		tools: [
-			{
-				name: "ask_user",
-				description: DESCRIPTION,
-				parameters: ASK_PARAMETERS,
-				// asking again is safe — a question has no side effect
-				idempotent: true,
-				promptSnippet: "ask_user — put a real choice to the human",
-				execute: async (input, ctx) => {
-					const questions = (input ?? {}).questions ?? [];
-					// The schema already refused an empty list; this guard is
-					// for direct tool use (a test, a bridge under repair).
-					if (questions.length === 0) return { content: "ask_user: no questions", isError: true };
-					// The third argument tells a host WHICH session and call is asking: one
-					// runtime may serve many sessions, and a bridge built per runtime cannot
-					// know otherwise. Both are the tool context's own values, passed through.
-					const result = await ui.ask({ questions }, ctx?.signal, { sessionId: ctx?.sessionId, callId: ctx?.callId });
-					return { content: resultContent(result), isError: false };
-				},
-			},
+			...(asks
+				? [
+						{
+							name: "ask_user",
+							description: DESCRIPTION,
+							parameters: ASK_PARAMETERS,
+							// asking again is safe — a question has no side effect
+							idempotent: true,
+							promptSnippet: "ask_user — put a real choice to the human",
+							execute: async (input, ctx) => {
+								const questions = (input ?? {}).questions ?? [];
+								// The schema already refused an empty list; this guard is
+								// for direct tool use (a test, a bridge under repair).
+								if (questions.length === 0) return { content: "ask_user: no questions", isError: true };
+								// The third argument tells a host WHICH session and call is asking: one
+								// runtime may serve many sessions, and a bridge built per runtime cannot
+								// know otherwise. Both are the tool context's own values, passed through.
+								const result = await ui.ask({ questions }, ctx?.signal, { sessionId: ctx?.sessionId, callId: ctx?.callId });
+								return { content: resultContent(result), isError: false };
+							},
+						},
+					]
+				: []),
+			...(cards
+				? [
+						{
+							name: "finish_with_choices",
+							description: FINISH_DESCRIPTION,
+							parameters: FINISH_PARAMETERS,
+							idempotent: true,
+							promptSnippet: "finish_with_choices — end the turn with 2-3 choices for the person",
+							// Nothing is asked and nothing waits: the host draws the card from this call's input and the log. The tag ends the run.
+							execute: async () => ({ content: "Shown to the person; the turn ends here.", isError: false, tags: [END_TURN] }),
+						},
+					]
+				: []),
 		],
 	};
 }
 
-export { ASK_PARAMETERS };
+export { ASK_PARAMETERS, FINISH_PARAMETERS };
