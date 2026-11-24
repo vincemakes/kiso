@@ -97,7 +97,7 @@ const FINISH_PARAMETERS = {
 };
 
 const FINISH_DESCRIPTION = [
-	"Finish this turn with 2-3 choices for the person: the turn ends, and the one they pick reaches you as their next message. Call it alone, as the only call of its batch.",
+	"Finish this turn with 2-3 choices (plain strings) for the person: the turn ends, and the one they pick reaches you as their next message. Call it alone, as the only call of its batch.",
 	"For a direction or next-step decision that is theirs.",
 	"Your closing text must state your recommendation and its main reason, and the first choice is that one; if it is the person's call and you have no recommendation, say so plainly in the text and pass recommended:false.",
 	"Each choice is a complete line in the person's voice, at most 80 characters.",
