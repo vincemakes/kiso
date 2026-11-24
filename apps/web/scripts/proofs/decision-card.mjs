@@ -30,7 +30,7 @@ check(!live(C, R, T, { seq: 5, type: "user_input", content: "x" }) && !live(C, R
 
 await app.evaluate(`window.__kiso.send("export?")`);
 check(await waitUntil(async () => (await card()) === 1, 20_000), "the turn ends and the card hangs under the final message");
-check((await app.count(".dc-pri")) === 1 && (await app.count("[data-act=choice]")) === 2 && (await app.text(".dc-pri kbd")) === "⌘↩", "two buttons, the recommended first and dark, with ⌘↩");
+check((await app.count(".dc-pri")) === 1 && (await app.count("[data-act=choice]")) === 2 && /^(⌘|Ctrl)↩$/.test((await app.text(".dc-pri kbd")) ?? ""), "two buttons, the recommended first and dark, with the shortcut (⌘↩ on a Mac, Ctrl↩ elsewhere)");
 check((await app.count("[data-tool=finish_with_choices]")) === 0 && (await app.evaluate(`(() => { const c = document.querySelector(".turn .dcard"), f = document.querySelector(".turn [data-kind=footer]"); return !!c && !!f && !!(c.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING); })()`)) === true, "the call draws no step row, and the card sits inside its turn, above the footer");
 const log = events();
 const at = log.findIndex((e) => e.type === "tool_result" && e.callId === "c1");
