@@ -1,10 +1,8 @@
 /* process: narration and groups of steps taking turns; each group folds to its own line */
 .proc { display: flex; flex-direction: column; gap: 10px; }
 .ph { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; color: var(--mute); font-size: 13.5px; padding: 4px 0; }
-/* a chevron after its label, turned down while its row is open; on the process and thinking rows it shows on hover and while open */
+/* a chevron after its label, turned down while its row is open; on the process and thinking rows it always shows (owner 2026-11-24), so a folded row says it opens */
 .chev { flex: none; color: var(--faint); transition: transform 0.15s ease, opacity 0.12s; }
-.ph .chev, .th-h .chev { opacity: 0; }
-.ph:hover .chev, .th-h:hover .chev, .ph:focus-visible .chev, .th-h:focus-visible .chev, .grp:not(.folded) > .ph .chev, .think.open .th-h .chev { opacity: 1; }
 .grp:not(.folded) > .ph .chev, .think.open .th-h .chev { transform: rotate(90deg); }
 .ph .lab { color: #555; font-weight: 500; }
 .ph .clk { font-variant-numeric: tabular-nums; }

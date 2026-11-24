@@ -104,13 +104,13 @@ check(!frames.some((f) => f.covered), `nothing was ever drawn over the process h
 check((await app.evaluate("document.querySelector('.say [data-chip]')?.dataset.chip")) === "README.md" && !(await app.text(".say")).includes("`"), "narration gets inline markdown, no backticks: the file in inline code is a chip");
 const off = JSON.parse(await app.evaluate(`JSON.stringify([...document.querySelectorAll('.say [data-chip]')].map((el) => { const at = (n, a, b) => { const r = document.createRange(); r.setStart(n, a); r.setEnd(n, b); return r.getClientRects()[0].bottom; }; const own = [...el.childNodes].filter((n) => n.nodeType === 3).at(-1), prev = el.previousSibling; return Math.abs(at(own, 0, 1) - at(prev, prev.length - 1, prev.length)); }))`));
 check(off.length === 1 && off[0] <= 1, `the chip in the narration sits on the text's baseline (off by ${off[0]?.toFixed(1)} px)`);
-const chev = (q) => app.evaluate(`(() => { const b = document.querySelector('${q}'), c = b.querySelector('.chev'); return [b.getAttribute('aria-expanded'), getComputedStyle(c).transform, !!(c.compareDocumentPosition(b.querySelector('.lab')) & 2)].join(); })()`);
-const turned = "true,matrix(0, 1, -1, 0, 0, 0),true";
+const chev = (q) => app.evaluate(`(() => { const b = document.querySelector('${q}'), c = b.querySelector('.chev'); return [b.getAttribute('aria-expanded'), getComputedStyle(c).transform, !!(c.compareDocumentPosition(b.querySelector('.lab')) & 2), getComputedStyle(c).opacity].join(); })()`);
+const turned = "true,matrix(0, 1, -1, 0, 0, 0),true,1";
 check((await chev(".th-h")) === turned && (await chev(".ph")) === turned, "open rows: the chevron follows the label, turned down, aria-expanded true (process and thinking)");
 await app.click(".th-h");
 await app.click(".ph");
 await sleep(500);
-check((await chev(".th-h")) === "false,none,true" && (await chev(".ph")) === "false,none,true", "folded rows: the chevron points right, aria-expanded false");
+check((await chev(".th-h")) === "false,none,true,1" && (await chev(".ph")) === "false,none,true,1", "folded rows: the chevron points right and shows without a hover, aria-expanded false");
 // a second run with no tool steps, the sidebar open: its label has no step count, and its row stops spinning within a second of the end
 await app.click("[data-act=sidebar]");
 await app.evaluate(`window.__kiso.send("is that all?")`);
