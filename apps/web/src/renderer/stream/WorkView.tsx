@@ -1,4 +1,4 @@
-import { DecisionCard, useDecision } from "./DecisionCard.js";
+import { DecisionContext, useDecision } from "./DecisionCard.js";
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { KeyContext, WorkContext } from "./links.js";
 import { PinnedContext } from "./Artifacts.js";
@@ -202,6 +202,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 	const isPinned = useCallback(() => pinned.current, []);
 	return (
 		<PinnedContext.Provider value={isPinned}>
+		<DecisionContext.Provider value={{ card: running ? null : decision, turnId: tail?.id, workKey, session: workId, gone: reread }}>
 			<div
 				className="scroll"
 				ref={scroller}
@@ -259,7 +260,6 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 						</div>
 					))}
 					{asking ? <div className="needs" data-kind="needs-input"><span className="dot" />{t.needsInput}</div> : null}
-					{decision !== null && !running ? <DecisionCard card={decision} workKey={workKey} session={workId} gone={reread} /> : null}
 					<InboxRows seen={new Set(turns.flatMap((u) => u.items.flatMap((i) => (i.kind === "peer" ? [i.messageId] : []))))} after={open.length > 0} />
 					<div ref={spacer} aria-hidden="true" />
 					{uncertain ? <VerdictPanel state={session.state} onVerdict={(id, r) => void session.verdict(id, r)} /> : interrupted ? <ResumeCard onResume={() => void session.resume()} /> : null}
@@ -290,6 +290,7 @@ export function WorkView({ session, auto, home, focusDecision, onFocused, lead }
 			) : (
 				<Composer down={down} held={held} hint={asking ? t.answerHint : open.length === 1 ? t.declineHint : null} view={session.view} running={running} suggestion={decision !== null && decision.recommended ? decision.choices[0]! : suggestion} onSend={(x) => (toBottom(), session.send(x))} onSteer={steer} onStop={() => void session.abort()} />
 			)}
+		</DecisionContext.Provider>
 		</PinnedContext.Provider>
 	);
 }

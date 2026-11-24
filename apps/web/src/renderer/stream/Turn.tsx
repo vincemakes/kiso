@@ -7,6 +7,7 @@ import { Approval } from "./Approval.js";
 import { ForkContext, RunContext, WorkContext } from "./links.js";
 import { useNow } from "./useNow.js";
 import { Process } from "./Process.js";
+import { DecisionSlot } from "./DecisionCard.js";
 import { artifactsOf, focusOf, nameOf, Picture } from "./Artifacts.js";
 import { artifactIcon, Check, Copy, Fork, I } from "./Icons.js";
 import { LightboxContext, useOpenArtifact } from "./Lightbox.js";
@@ -177,7 +178,7 @@ function RunEnd({ turn }: { readonly turn: TurnModel }): ReactNode {
 /** One run: the person's line, the process, the approvals still open, the answer, what it made, the live row or the footer. */
 export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted, onRewind }: Props): ReactNode {
 	const { process: items, answer, openAsks } = split(turn);
-	const inProcess = items.filter((i) => !(i.kind === "ask" && i.decision === "open"));
+	const inProcess = items.filter((i) => !(i.kind === "ask" && i.decision === "open") && !(i.kind === "step" && i.name === "finish_with_choices")); // the card is that step
 	const live = turn.phase === "running" && !interrupted;
 	// a run seen running in this view: what it adds fades in; a run read back from the log (opening or switching to a Work) draws at once
 	const fresh = useRef(live);
@@ -200,6 +201,7 @@ export const Turn = memo(function Turn({ turn, tasks, onAnswer, interrupted, onR
 				<Approval key={ask.id} ask={ask} onAnswer={interrupted ? null : onAnswer} />
 			))}
 			{answer !== null ? <Answer text={answer.text} live={live} onSettled={setDrawn} /> : null}
+			{turn.phase === "ended" && !live && (answer === null || drawn) ? <DecisionSlot turnId={turn.id} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <RunEnd turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Made turn={turn} /> : null}
 			{turn.phase === "ended" && !live && (answer === null || drawn) ? <Footer turn={turn} /> : null}

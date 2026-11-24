@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { DecisionCard as Card } from "../../shared/decision.js";
 import { t } from "../i18n/index.js";
 import { fetchDecision, postDecision } from "../state/desk.js";
@@ -21,7 +21,16 @@ export function useDecision(key: string | null, session: string, moved: string):
 	return [card, () => setAgain((n) => n + 1)];
 }
 
-export function DecisionCard({ card, workKey, session, gone }: { readonly card: Card; readonly workKey: string | null; readonly session: string; readonly gone: () => void }): ReactNode {
+/** What the Work's stream hands its last turn: the live card (if any), whose turn it hangs under, and how to ask again after a 409. */
+export const DecisionContext = createContext<{ readonly card: Card | null; readonly turnId: string | undefined; readonly workKey: string | null; readonly session: string; readonly gone: () => void } | null>(null);
+
+/** The card, drawn inside the turn it ends: under that turn's final message, above its footer. */
+export function DecisionSlot({ turnId }: { readonly turnId: string }): ReactNode {
+	const d = useContext(DecisionContext);
+	return d?.card != null && d.turnId === turnId ? <DecisionCard card={d.card} workKey={d.workKey} session={d.session} gone={d.gone} /> : null;
+}
+
+function DecisionCard({ card, workKey, session, gone }: { readonly card: Card; readonly workKey: string | null; readonly session: string; readonly gone: () => void }): ReactNode {
 	const [hidden, setHidden] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const pick = (option: number): void => {
