@@ -917,3 +917,23 @@ route, the marker rejection, the shrink invariant, the breaker.
 **When to overturn this.** If hosts find the plain-prose rule or the
 every-section requirement too strict, the rule is relaxed by host evidence, not
 by default; a dynamic list (a callback) is a separate design.
+
+## Pending exceptions from ADR-0063 (PROPOSED, 2026-11-24)
+
+Not in force. Recorded here so a reader arriving by this number sees them;
+they take effect only when ADR-0063 is accepted and its M3 stage lands, as
+declared projection supersessions (ADR-0051 Amendment 3 (b)).
+
+- **To Amendment 2.** The projection renders the one latest checkpoint, the
+  raw tail, and also the latest committed record projection, which persists
+  across compactions. Checkpoints still replace each other; records are not
+  checkpoints.
+- **To Amendment 3.** The record projection and verbatim quoted spans are
+  program-filled. They are not checkpoint sections; the checkpoint's own
+  sections stay the host's and stay prose.
+- **To Amendment 1 A5.** The raw tail moves from `min(0.1·window, 100K)` to
+  20K only after ADR-0063's records (M3) and recall tool (M1) ship (the
+  owner, 2026-11-23).
+
+The trigger change (one trigger, `auto | percent | reserve`) is reserved as
+Amendment 4 of this ADR and is not part of 0063.

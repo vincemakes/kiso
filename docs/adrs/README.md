@@ -170,6 +170,15 @@ not another recalibration)
   configuration. The decision-load hypothesis was measured in a nine-pair
   round and NOT SUPPORTED, so the projection idea is moot and deferred
   loading is reserved for an MCP-heavy long tail, not applied at seven.
+- 0063 — Recoverable Context: a lossy working context over lossless
+  evidence, with durable decisions and on-demand recall — PROPOSED,
+  2026-11-24, awaiting the owner's acceptance. One effective-history
+  function shared with the projection, a single human-authoritative
+  surface, append-only session records with a mechanical provenance check
+  and authority-aware supersession, a stable record projection that
+  outlives compactions (exceptions to 0055 Amendments 2 and 3), internal
+  retrieval before a public `recall` tool; the 20K tail only after records
+  and recall ship. Docs only
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
