@@ -133,7 +133,7 @@ An extension is a plain `.mjs` file — no build step. Five ship built in: MCP, 
 
 ## Under the hood
 
-- **Small and inspectable.** The kernel is capped at 2,200 lines (2,196 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 47 ADRs, with why, and when to overturn it.
+- **Small and inspectable.** The kernel is capped at 2,200 lines (2,196 of 2,200 today); a session is a JSONL log you can read; every design decision is one of 48 ADRs, with why, and when to overturn it.
 - **Measured.** Every release is benched against the one before it, paired, on the same route; the numbers are in [bench/README.md](bench/README.md).
 
 Keys, commands and the status row: [docs/cli.md](docs/cli.md). `?` shows the keys in a session and `/help` lists the commands. `ctrl+v` attaches the clipboard image on macOS; elsewhere, put the image's path in your message.
