@@ -232,7 +232,7 @@ test files; add-only per the round's stop clause d):
 | ③ the incomplete-draft law | draft-tail-red.test.ts; dangling-invocation-red.test.ts; prefix-table live-order rows |
 | ④ identity trichotomy | prefix-table decided/denied/execute rows; storage-identity.test.ts; the generation-normalization gates (this round) |
 | ⑤ kernel tenancy | adapter-trust.test.ts:49-69; event-schema.test.ts; **the whitelist drift gate (this round, R5)** |
-| ⑥ byte stability | prompt-cache.test.ts:14-50; summarize.test.ts:52; extensions.test.ts:315; **the compacted-generation byte case (this round, R1a/R8a)**; declared supersession, 0.40.2 (ADR-0055 Amendment 2): the summarize.test.ts two-summary golden moves to ONE projected summary — the latest replaces the earlier ones |
+| ⑥ byte stability | prompt-cache.test.ts:14-50; summarize.test.ts:52; extensions.test.ts:315; **the compacted-generation byte case (this round, R1a/R8a)**; declared supersession, 0.40.2 (ADR-0055 Amendment 2): the summarize.test.ts two-summary golden moves to ONE projected summary — the latest replaces the earlier ones; declared supersession, P0 of ADR-0063 M0 (2026-11-25): pair atomicity keys a `tool_result` on its `invocationSeq`, so a result whose named invocation did not project no longer renders beside another projected call that reused its callId; results without `invocationSeq` replay as before (pair-identity.test.ts, both cases) |
 | G1 same-facts-same-projection | **the purity gate (this round, R7)** — derivation never reads trace data, no I/O |
 | G2 exactly-one-terminal | loop.test.ts terminalOf; terminal.test.ts; adapter-trust.test.ts:55-62; crash-matrix.test.ts:337; recovery-plan.ts:89 |
 | the envelope shape | **the envelope-shape drift gate (this round, R2a)** |

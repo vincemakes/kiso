@@ -232,7 +232,15 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// tool_use blocks were actually pushed) — the pair-atomicity signal a
 	// tool_result consults. A declaration the void skipped is not here, so
 	// its (possibly post-marker) receipt drops — both or neither.
-	const projectedDeclarations = new Set<string>();
+	// Pair identity (ADR-0063 M0 prerequisite P0): the set also holds each
+	// projected declaration's SEQ, and a result is looked up by its
+	// `invocationSeq` (the invocation it was recorded for, R-E 0.1.43) —
+	// a provider callId is correlation, never identity (CX-1 F1). A reused
+	// callId whose second call was voided no longer lets that call's
+	// receipt pair with the first call's declaration. A result without
+	// `invocationSeq` (old logs, seed messages) still pairs by callId,
+	// exactly as before.
+	const projectedDeclarations = new Set<string | number>();
 	// P1 (0.1.42): the mid-execution input deferral. A user input arriving
 	// while the last closed assistant's tool_calls are UNANSWERED (the
 	// result lands later in the log — the boundary straddle's durable
@@ -398,6 +406,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				if (blocks.length === 0 && text === null && resultBuf.length > 0) flushResults();
 				pushText();
 				projectedDeclarations.add(ev.callId);
+				if ("seq" in ev && typeof ev.seq === "number") projectedDeclarations.add(ev.seq);
 				callOrder.set(ev.callId, callOrderNext++);
 				blocks.push({
 					type: "tool_use",
@@ -416,7 +425,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// declaration is in the set; the voided draft's post-marker
 				// receipt (0143) is the orphan — dropped here, kept in the
 				// audit (persist facts, derive state).
-				if (!projectedDeclarations.has(ev.callId)) break;
+				if (!projectedDeclarations.has(ev.invocationSeq ?? ev.callId)) break;
 				// 0.1.26: NO flushAssistant — the streaming execution lands
 				// results BETWEEN the turn's tool_call_ends; closing the
 				// assistant here splits the turn's tool_calls message (the
