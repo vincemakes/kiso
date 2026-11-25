@@ -1,14 +1,13 @@
 // A Work deleted while its store close is still pending (#520 made the delete `await store.close()` and then remove the files): a
-// child's completion notice that lands in that gap is never written, and after the delete no writer can make the Work's inbox again.
-// No host, no model: the real workAct and notifyParent over a real store, the close held open by hand.
-import { existsSync, mkdtempSync, readdirSync } from "node:fs";
+// child's completion notice that lands in that gap is never written, and a message whose receiver is deleted while it is being sent
+// is refused in words and makes no inbox. No host, no model: the real workAct, notifyParent and message tool over a real store.
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "@vincemakes/kiso-runtime";
-import { InboxRefusedError, writeMessage, writeSessionName, writeStartedBy } from "@vincemakes/kiso-runtime/internal";
 import { checker } from "./lib.mjs";
 import { workAct } from "../../dist/main/works.js";
-import { notifyParent } from "../../dist/main/message-tool.js";
+import { messageTool, notifyParent } from "../../dist/main/message-tool.js";
 
 const { check, verdict } = checker("delete-gap");
 const dir = mkdtempSync(join(tmpdir(), "kiso-delete-gap-"));
@@ -21,22 +20,22 @@ const run = async (id, runId) => {
 	await store.append(id, runId, { seq: seq++, type: "stop", reason: "end_turn" });
 	await store.append(id, runId, { seq: seq++, type: "terminal", outcome: { kind: "completed" } });
 };
+// the sidecars as the host writes them: a name, and the child's parent
+const sidecar = (id, tenants) => writeFileSync(join(dir, `${id}.meta.json`), `${JSON.stringify(tenants, null, "\t")}\n`);
 await run("wp", "r0");
-writeSessionName(dir, "wp", "Parent");
+sidecar("wp", { name: "Parent" });
 await run("wa", "r1");
-writeSessionName(dir, "wa", "Child");
-writeStartedBy(dir, "wa", `${key}/wp`);
+sidecar("wa", { name: "Child", startedBy: `${key}/wp` });
 
-// the delete, with its store close held open: the gap #520 opened
+// 1. the delete, with its store close held open (the gap #520 opened); the child's run ends in the gap
 let open;
 const gate = new Promise((r) => (open = r));
 const space = { key, dir, store: { ids: () => store.ids(), close: async (id) => (await gate, store.close(id)) }, tasks: { managerFor: () => ({ list: () => [] }), forget: () => undefined }, service: { isRunning: () => false } };
 const settings = { bury: () => undefined, forget: () => undefined, mark: () => undefined };
 const deleting = workAct(space, settings, "wp", "delete");
 await new Promise((r) => setImmediate(r));
-
-// the child's run ends in the gap: its completion notice must see the parent as gone
-const host = { dirOf: () => dir, list: async () => ({ works: [{ key, id: "wa", title: "Child" }] }), deliver: async () => "now" };
+const rows = [{ key, id: "wa", title: "Child", folder: "f" }, { key, id: "wp", title: "Parent", folder: "f" }];
+const host = { dirOf: () => dir, list: async () => ({ works: rows }), deliver: async () => "now" };
 await notifyParent(store, key, "wa", "r1", false, host);
 const inGap = existsSync(join(dir, "wp.inbox"));
 open();
@@ -44,14 +43,22 @@ await deleting;
 const left = readdirSync(dir).filter((f) => f.startsWith("wp."));
 check(!inGap && left.length === 0, `a completion notice in the close gap writes nothing, and the delete leaves nothing of the parent (in the gap: ${inGap ? "wp.inbox made" : "nothing"}; after: ${left.join(",") || "nothing"})`);
 
-// after the delete, any writer (the message tool's included) is refused in words, and makes no inbox
-let refused = null;
-try {
-	// the message tool's write, with the host's word on the receiver (its sidecar), as message-tool.ts passes it
-	await writeMessage(dir, "wp", { messageId: "m1", from: `${key}/wa`, fromTitle: "Child", text: "late", files: [], rootId: `${key}/wa#0`, at: Date.now() }, () => existsSync(join(dir, "wp.meta.json")));
-} catch (e) {
-	refused = e;
-}
-check(refused instanceof InboxRefusedError && /no longer exists/.test(refused.message) && !existsSync(join(dir, "wp.inbox")), `a write to the deleted Work is an explicit refusal and makes no inbox (${refused?.message ?? "it was written"})`);
+// 2. the message tool: the receiver is listed and still there at its first look, then deleted while the tool checks the file it sends
+//    (the sidecar goes, as workAct's first step removes it); the write that follows is refused in words and makes no inbox
+await run("wq", "r2");
+sidecar("wq", { name: "Receiver" });
+const file = join(dir, "note.txt");
+writeFileSync(file, "x\n");
+const tool = messageTool({ key, sessionId: "wa" }, {
+	...host,
+	list: async () => ({ works: [...rows, { key, id: "wq", title: "Receiver", folder: "f" }] }),
+	cwdOf: () => dir,
+	mayRead: () => (rmSync(join(dir, "wq.meta.json"), { force: true }), true),
+	eventsOf: () => [],
+	tierOf: () => "default",
+	chainOf: () => `${key}/wa#0`,
+});
+const sent = await tool.execute({ to: `${key}/wq`, text: "late", files: [file] }, { callId: "c1" });
+check(sent.isError === true && /no longer exists/.test(String(sent.content)) && !existsSync(join(dir, "wq.inbox")), `a message whose receiver is deleted while it is sent is refused in words, and no inbox is made (${String(sent.content).slice(0, 80)})`);
 await store.closeAll();
 verdict();
