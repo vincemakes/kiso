@@ -287,7 +287,11 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		expect(clean).toContain("↑↓ move · ⏎ or click confirms · 1–4 instant · esc denies"); // Graphite P4: esc says it denies
 		expect(clean).toContain("more rows — the full args are in the event log");
 		expect(clean).toContain("line07"); // the always-verbose middle — never hidden
-		expect(clean).not.toContain("ctrl+o to expand"); // the live cut is gone — the panel superseded it
+		// the live cut is gone — the panel superseded it. Read up to the panel's own footer (2026-11-25): after the answer, the approved
+		// write runs while its last events sync off the event loop, and that live card may paint folded, with the affordance, for a
+		// frame before it settles; that frame is a running card's, not the pause's
+		const atThePause = clean.slice(0, clean.indexOf("esc denies"));
+		expect(atThePause).not.toContain("ctrl+o to expand");
 		// DECLARED SUPERSESSION (DC-50 / R14): the second key used to answer
 		// with `[nothing to expand]`, because this settled cell was never
 		// cut with an affordance and the walk had nothing to open. The key
