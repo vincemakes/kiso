@@ -128,6 +128,13 @@ describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
 		// them twice; the person sees them once.
 		const screen = new VtScreen(24, 80);
 		screen.write(Buffer.from(out, "utf8"));
+		// The duplication class the byte count guarded: a frozen line written
+		// into the terminal's scrollback twice. The scrolled-off rows hold it
+		// at most once, and scrollback plus screen exactly once. (The second
+		// write in the bytes is a repaint of the same row: CUP ESC[2;1H, then
+		// EL ESC[0K, then the words, inside a synchronized-update frame.)
+		const scrolled = screen.scrollback().join("\n");
+		expect((scrolled.match(/flood 01/g) ?? []).length).toBeLessThanOrEqual(1);
 		const seen = [...screen.scrollback(), ...screen.visible()].join("\n");
 		expect((seen.match(/flood 01/g) ?? []).length).toBe(1);
 		// 3. The LAST turn completed — the flood ran to the end.
