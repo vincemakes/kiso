@@ -68,9 +68,13 @@ function publish(dir: string, messageId: string, bytes: Buffer): void {
 }
 
 /** Write a message into the receiver's inbox. "duplicate" when that id is already there (a replayed send). */
-export async function writeMessage(root: string, sessionId: string, message: PeerMessage): Promise<"written" | "duplicate"> {
+/** `alive`: the host's word that the receiver still exists, asked right before the inbox is made, with nothing awaited between: a
+ *  receiver the host has deleted is refused in words and its inbox is never made again (a late write never brings a deleted Work
+ *  back). Absent, every receiver is taken as alive (the runtime has no notion of deletion of its own). */
+export async function writeMessage(root: string, sessionId: string, message: PeerMessage, alive?: () => boolean): Promise<"written" | "duplicate"> {
 	if (Buffer.byteLength(message.text) > INBOX_LIMITS.textBytes) throw new InboxRefusedError(`the message is ${Buffer.byteLength(message.text)} bytes; the limit is ${INBOX_LIMITS.textBytes}`);
 	if (message.files.length > INBOX_LIMITS.files) throw new InboxRefusedError(`${message.files.length} files; the limit is ${INBOX_LIMITS.files}`);
+	if (alive !== undefined && !alive()) throw new InboxRefusedError("that session no longer exists: nothing was sent");
 	const dir = inboxDir(root, sessionId);
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
 	const bytes = Buffer.from(JSON.stringify(message));
