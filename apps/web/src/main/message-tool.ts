@@ -44,7 +44,12 @@ export async function notifyParent(store: SessionStore, key: string, sessionId: 
 	if (notice === null) return;
 	// asked again right before each write, with nothing awaited between: a delete during the scan above lands before the check, never after it
 	if (gone()) return;
-	await writeMessage(host.dirOf(pKey), pId, notice);
+	try {
+		await writeMessage(host.dirOf(pKey), pId, notice, () => !gone());
+	} catch (err) {
+		if (err instanceof InboxRefusedError) return; // the parent went between the two looks: nothing is sent, and nothing of it is made
+		throw err;
+	}
 	if (gone()) return; // deleted while it was written: never reopened by delivering
 	await host.deliver(pKey, pId).catch(() => undefined);
 }
@@ -95,7 +100,8 @@ export function messageTool(self: Self, host: SessionsHost): Tool {
 			const held = reachesFurther(reach(self.key, self.sessionId), reach(target.key, target.id));
 			const fromTitle = reply.works.find((w) => w.key === self.key && w.id === self.sessionId)?.title ?? self.sessionId;
 			try {
-				await writeMessage(host.dirOf(target.key), target.id, { messageId, from, fromTitle, text: input.text, files, rootId: host.chainOf(self.key, self.sessionId), at: Date.now(), ...(held ? { held: true as const } : {}) });
+				// the receiver is asked again right before its inbox is made: a delete during the file checks above is refused here, in words
+				await writeMessage(host.dirOf(target.key), target.id, { messageId, from, fromTitle, text: input.text, files, rootId: host.chainOf(self.key, self.sessionId), at: Date.now(), ...(held ? { held: true as const } : {}) }, () => existsSync(join(host.dirOf(target.key), `${target.id}.meta.json`)));
 			} catch (err) {
 				if (err instanceof InboxRefusedError) return refused(err.message);
 				throw err;
