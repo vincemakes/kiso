@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedEnv } from "../../../tests/helpers/isolated-cli.mjs";
+import { VtScreen } from "./helpers/vt-screen.js";
 
 const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
 
@@ -117,11 +118,25 @@ describe("TUI v2e (real PTY, 24×80) — the #13 scrollback gate", () => {
 		// total frozen lines - fit.
 		const frozenFloor = 25 * 3 - 20; // 55
 		expect(lf).toBeGreaterThanOrEqual(frozenFloor);
-		// 2. THE FREEZE SEMANTICS: the FIRST turn's content appears EXACTLY
-		// once — the old overwrite-in-place defect would show it repeated or
-		// missing; a working scroll shows it once in the stream (it scrolled
-		// away into the terminal's scrollback, never rewritten).
-		expect((out.match(/flood 01/g) ?? []).length).toBe(1);
+		// 2. THE FREEZE SEMANTICS: the FIRST turn's content is on the screen
+		// EXACTLY once, scrollback included — the old overwrite-in-place
+		// defect would show it repeated or missing. Read on an emulated
+		// 24x80 screen (2026-11-25), not as a count of bytes: the turn's last
+		// events now sync off the event loop, so its text can paint in the
+		// live region a frame before it freezes, and a repaint of the live
+		// region writes the same words again in place. The bytes then hold
+		// them twice; the person sees them once.
+		const screen = new VtScreen(24, 80);
+		screen.write(Buffer.from(out, "utf8"));
+		// The duplication class the byte count guarded: a frozen line written
+		// into the terminal's scrollback twice. The scrolled-off rows hold it
+		// at most once, and scrollback plus screen exactly once. (The second
+		// write in the bytes is a repaint of the same row: CUP ESC[2;1H, then
+		// EL ESC[0K, then the words, inside a synchronized-update frame.)
+		const scrolled = screen.scrollback().join("\n");
+		expect((scrolled.match(/flood 01/g) ?? []).length).toBeLessThanOrEqual(1);
+		const seen = [...screen.scrollback(), ...screen.visible()].join("\n");
+		expect((seen.match(/flood 01/g) ?? []).length).toBe(1);
 		// 3. The LAST turn completed — the flood ran to the end.
 		expect(out).toContain("flood 25");
 		// 4. No DECSTBM anywhere (v2d-B).
