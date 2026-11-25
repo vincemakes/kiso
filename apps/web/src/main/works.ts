@@ -18,6 +18,9 @@ const busyOf = (space: Space, id: string): string | null => (space.service.isRun
 /** Everything a Work leaves: closed first (the store refuses any later write to it, so nothing brings the files back). */
 async function remove(space: Space, settings: Settings, session: string): Promise<void> {
 	settings.bury(space.key, session); // first: from here on nothing opens it again, not even a read
+	// then its sidecar, before the close is awaited: every writer that asks whether a Work still exists (a child's completion notice,
+	// the message tool) reads it as gone from here, so nothing writes into it during the close and is left behind
+	rmSync(join(space.dir, `${session}.meta.json`), { force: true });
 	await space.store.close(session); // the barrier: no write or sync of it is in flight once this returns
 	space.tasks.forget(session);
 	for (const path of [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`, join("traces", `${session}.jsonl`)]) rmSync(join(space.dir, path), { recursive: true, force: true });
