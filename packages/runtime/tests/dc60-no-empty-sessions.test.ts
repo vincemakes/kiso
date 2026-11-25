@@ -39,7 +39,7 @@ describe("DC-60 — nothing of a new session is on disk before its first durable
 		for await (const _ of session.resume()) {
 			// nothing to recover
 		}
-		store.closeAll();
+		await store.closeAll();
 		expect(filesOf(dir, "s")).toEqual([]);
 	});
 
@@ -54,7 +54,7 @@ describe("DC-60 — nothing of a new session is on disk before its first durable
 		for await (const _ of session.run("hello")) {
 			// the first turn
 		}
-		store.closeAll();
+		await store.closeAll();
 		expect(filesOf(dir, "s")).toEqual(["s.jsonl", "s.lock", "s.meta.json", "traces/s.jsonl"].filter((f) => f !== "s.lock" || existsSync(join(dir, "s.lock"))));
 		const profile = readProfile(dir, "s");
 		expect(profile.kind).toBe("ok");
@@ -75,7 +75,7 @@ describe("DC-60 — nothing of a new session is on disk before its first durable
 		for await (const _ of session.run("hello")) {
 			// the first turn
 		}
-		store.closeAll();
+		await store.closeAll();
 		const profile = readProfile(dir, "s");
 		expect(profile.kind).toBe("ok");
 		if (profile.kind === "ok") {

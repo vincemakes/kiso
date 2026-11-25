@@ -25,8 +25,9 @@
  * - the mechanism is an injection point: `new SessionStore(root, {
  *   lockAdapter })` — the interface is the extension point, and the
  *   default adapter is `nativeLockAdapter` (ADR-0050);
- * - `close()` releases only THIS instance's handle; `closeAll()` every
- *   held handle — a foreign close can never release another writer's
+ * - `close()` (a Promise, a barrier: it waits for the session's queued
+ *   appends and their syncs) releases only THIS instance's handle;
+ *   `closeAll()` every held handle — a foreign close can never release another writer's
  *   lock. Release leaves the EMPTY released marker; the path is never
  *   deleted.
  *
@@ -48,6 +49,7 @@ import {
 	closeSync,
 	constants,
 	existsSync,
+	fsync,
 	fsyncSync,
 	fstatSync,
 	statSync,
@@ -218,6 +220,8 @@ export class SessionStore {
 	 *  never land after a stale failure (which would fork memory and disk). */
 	readonly #appendQueues = new Map<string, Promise<void>>();
 	readonly #closed = new Set<string>();
+	/** The close barrier of each session being closed or closed (coalesced: a second `close` reuses the first). */
+	readonly #closing = new Map<string, Promise<void>>();
 
 	constructor(root: string, opts?: { lockAdapter?: LockAdapter }) {
 		this.root = root;
@@ -280,14 +284,14 @@ export class SessionStore {
 		const lockPath = this.lockPathFor(sessionId);
 		const handle = await this.#lockAdapter.acquire(lockPath, sessionId, () => {
 			if (this.#closed.has(sessionId)) {
-				throw new Error(`session store is closed for ${sessionId}`);
+				throw closedError(sessionId);
 			}
 		});
 		// round 5(P1-3): a close() that landed while we waited ends the
 		// acquisition immediately — no lock outlives the instance.
 		if (this.#closed.has(sessionId)) {
 			handle.release();
-			throw new Error(`session store is closed for ${sessionId}`);
+			throw closedError(sessionId);
 		}
 		this.#lockHandles.set(sessionId, handle);
 	}
@@ -312,7 +316,7 @@ export class SessionStore {
 	 *  ADR-0052). */
 	async append(sessionId: string, runId: string, event: Event): Promise<void> {
 		if (this.#closed.has(sessionId)) {
-			throw new Error(`session store is closed for ${sessionId}`);
+			throw closedError(sessionId);
 		}
 		this.pathFor(sessionId); // id validated before ANY file side effect
 		// round 5(P1-1): the WHOLE critical section is serialized per session
@@ -335,14 +339,14 @@ export class SessionStore {
 		// round 5(P1-3): close() may have returned while we waited — the
 		// lifecycle barrier is re-checked after the lock acquisition.
 		if (this.#closed.has(sessionId)) {
-			throw new Error(`session store is closed for ${sessionId}`);
+			throw closedError(sessionId);
 		}
 		await this.acquireLock(sessionId);
 		if (this.#closed.has(sessionId)) {
-			// The lock was acquired AFTER close() returned — release it and
-			// fail; nothing of this instance may outlive close().
-			this.releaseLock(sessionId);
-			throw new Error(`session store is closed for ${sessionId}`);
+			// A close() began while we waited for the lock: refuse. The close
+			// barrier waits for this append to settle and then releases the
+			// lock and the fd itself (one owner of the cleanup).
+			throw closedError(sessionId);
 		}
 		// R-G 0.1.47 (ADR-0050): possession is RE-CHECKED at every append —
 		// the file must still name this handle's pid AND token. A displaced
@@ -380,12 +384,14 @@ export class SessionStore {
 		// it. Syncing each one cost minutes for a long streamed argument.
 		// A process kill loses nothing either way: the write is already in
 		// the OS page cache.
-		if (!STREAMED_FRAGMENTS.has(event.type)) fsyncSync(fd);
-		// round 5(P1-3): a close() that landed during the write must not
-		// leave our helper behind.
-		if (this.#closed.has(sessionId)) {
-			this.releaseLock(sessionId);
-		}
+		//
+		// The sync runs on the thread pool, off the event loop (owner, 2026-11-25:
+		// other Works keep running while this one syncs). The append still
+		// resolves only after it, the per-session queue keeps one write and one
+		// sync at a time, and the writer lock is held until it settles: a
+		// close() waits for it (the lock covers the durability boundary, not
+		// only the write).
+		if (!STREAMED_FRAGMENTS.has(event.type)) await fsyncAsync(fd);
 	}
 
 	/**
@@ -587,23 +593,67 @@ export class SessionStore {
 
 	// ── lifecycle ────────────────────────────────────────────────────────
 
-	/** Release a session's fd and OUR writer lock. Idempotent. */
-	close(sessionId: string): void {
+	/**
+	 * Close a session: a barrier (owner, 2026-11-25). It refuses every new
+	 * append at once, waits for the WHOLE append chain already queued (an
+	 * append still waiting for the lock included, and the admitted one's sync),
+	 * then ALWAYS closes the fd and ALWAYS releases OUR lock, and only then
+	 * settles; an append or sync error seen while waiting is propagated after
+	 * the cleanup. After it settles nothing of this session is held. Coalesced
+	 * and idempotent: a second call returns the first barrier.
+	 */
+	close(sessionId: string): Promise<void> {
 		this.pathFor(sessionId); // id validated before ANY file side effect
-		const fd = this.#fds.get(sessionId);
-		if (fd !== undefined) {
-			closeSync(fd);
-			this.#fds.delete(sessionId);
-		}
-		this.releaseLock(sessionId);
+		const closing = this.#closing.get(sessionId);
+		if (closing !== undefined) return closing;
 		this.#closed.add(sessionId);
+		const barrier = this.#closeOnce(sessionId);
+		this.#closing.set(sessionId, barrier);
+		return barrier;
 	}
 
-	/** Release every held fd and lock, including locks whose JSONL open failed. */
-	closeAll(): void {
-		for (const id of new Set([...this.#fds.keys(), ...this.#lockHandles.keys()])) {
-			this.close(id);
+	async #closeOnce(sessionId: string): Promise<void> {
+		let failure: { readonly error: unknown } | null = null;
+		const note = (error: unknown): void => {
+			if (failure === null && !(typeof error === "object" && error !== null && closedRefusals.has(error))) failure = { error };
+		};
+		// the whole chain: appends queued before the close (they refuse when their turn comes) and the admitted one (its sync included)
+		for (;;) {
+			const chain = this.#appendQueues.get(sessionId) ?? this.#lockAcquiring.get(sessionId);
+			if (chain === undefined) break;
+			try {
+				await chain;
+			} catch (error) {
+				note(error);
+			}
+			if (this.#appendQueues.get(sessionId) === chain) this.#appendQueues.delete(sessionId);
+			if (this.#lockAcquiring.get(sessionId) === chain) this.#lockAcquiring.delete(sessionId);
 		}
+		const fd = this.#fds.get(sessionId);
+		if (fd !== undefined) {
+			this.#fds.delete(sessionId);
+			try {
+				closeSync(fd);
+			} catch (error) {
+				note(error);
+			}
+		}
+		try {
+			this.releaseLock(sessionId);
+		} catch (error) {
+			note(error);
+		}
+		if (failure !== null) throw (failure as { readonly error: unknown }).error;
+	}
+
+	/** Close every session this instance holds anything of: every close is started and awaited (none is abandoned when another fails); after
+	 *  it settles the store holds no fd and no lock; it rejects with the one error, or an AggregateError of several. */
+	async closeAll(): Promise<void> {
+		const ids = new Set([...this.#fds.keys(), ...this.#lockHandles.keys(), ...this.#appendQueues.keys(), ...this.#lockAcquiring.keys()]);
+		const settled = await Promise.allSettled([...ids].map((id) => this.close(id)));
+		const errors = settled.flatMap((r) => (r.status === "rejected" ? [r.reason as unknown] : []));
+		if (errors.length === 1) throw errors[0];
+		if (errors.length > 1) throw new AggregateError(errors, `${errors.length} sessions did not close cleanly`);
 	}
 }
 
@@ -678,6 +728,19 @@ function lastCommittedSeq(fd: number): number | undefined {
 		if (readLen >= size) return undefined;
 		chunk *= 2;
 	}
+}
+
+/** The store's own refusal of an append because the session is being closed: not an error of the close itself. */
+const closedRefusals = new WeakSet<object>();
+function closedError(sessionId: string): Error {
+	const error = new Error(`session store is closed for ${sessionId}`);
+	closedRefusals.add(error);
+	return error;
+}
+
+/** fsync on libuv's thread pool: the event loop keeps running while the disk flushes. */
+function fsyncAsync(fd: number): Promise<void> {
+	return new Promise((resolve, reject) => fsync(fd, (error) => (error === null ? resolve() : reject(error))));
 }
 
 /** The streamed fragments the store writes without their own sync. */

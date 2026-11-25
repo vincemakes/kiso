@@ -71,7 +71,7 @@ describe("execution identity end to end (round 4)", () => {
 		for await (const ev of run1) {
 			if (ev.type === "uncertain_pending") await sessionA.resolveUncertain(ev.executionId, "abandoned");
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Run 2: the SAME callId SUCCEEDS — it must not inherit run 1's
 		// failure, must not emit a stale uncertain_pending, and must not
@@ -105,7 +105,7 @@ describe("execution identity end to end (round 4)", () => {
 			name: "web_search",
 			input: { query: "k" },
 		});
-		store.closeAll();
+		await store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
 		await session.resolveUncertain("ex-2", "abandoned");
@@ -126,7 +126,7 @@ describe("execution identity end to end (round 4)", () => {
 		for await (const ev of sessionA.run("first")) {
 			if (ev.type === "permission_requested") break; // pause, then exit
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Process B resumes and approves; the resumed execution FAILS
 		// non-idempotently — the receipt IS the outcome: a clean failure
@@ -173,7 +173,7 @@ describe("execution identity end to end (round 4)", () => {
 		await store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", invocationSeq: 8, name: "web_search", input: { query: "k" } });
 		await store.append("s", "run-one", { seq: 10, type: "tool_execution_succeeded", executionId: "ex-9", callId: "c1", invocationSeq: 8, result: { content: "new ok", isError: false } });
-		store.closeAll();
+		await store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
 		const events: Event[] = [];
@@ -215,7 +215,7 @@ describe("execution identity end to end (round 4)", () => {
 		await store.append("s", "run-one", { seq: 8, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "run-one", { seq: 9, type: "tool_execution_started", executionId: "ex-9", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "run-one", { seq: 10, type: "tool_execution_resolved", executionId: "ex-9", callId: "c1", resolution: "abandoned" });
-		store.closeAll();
+		await store.closeAll();
 
 		const session = await agent(new SessionStore(dir), join(dir, "m.txt")).session({ id: "s" });
 		const events: Event[] = [];
@@ -245,7 +245,7 @@ describe("execution identity end to end (round 4)", () => {
 			liveEvents.push(ev);
 			if (ev.type === "permission_requested") await live.approve(ev.decisionId, true);
 		}
-		liveStore.closeAll();
+		await liveStore.closeAll();
 
 		// Resume: same durable prefix, crash at the pause, approve, run on.
 		const resumeDir = mkdtempSync(join(tmpdir(), "kiso-eid-"));
@@ -254,7 +254,7 @@ describe("execution identity end to end (round 4)", () => {
 		for await (const ev of before.run("hello")) {
 			if (ev.type === "permission_requested") break; // pause, then exit
 		}
-		resumeStore.closeAll();
+		await resumeStore.closeAll();
 
 		const after = await agent(new SessionStore(resumeDir), marker, CALL).session({ id: "s" });
 		const resumeEvents: Event[] = [];
@@ -294,7 +294,7 @@ describe("execution identity end to end (round 4)", () => {
 		for await (const ev of sessionA.run("first")) {
 			if (ev.type === "permission_requested") break;
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Run 2 must be REFUSED: an earlier run is still open.
 		const storeB = new SessionStore(dir);

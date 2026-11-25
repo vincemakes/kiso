@@ -38,7 +38,7 @@ describe("R-E 0.1.43 Gap B (RED): an un-stopped tail draft", () => {
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store.append("s", "r1", { seq: 1, type: "text_delta", text: "the draft answer begins" });
 		await store.append("s", "r1", { seq: 2, type: "text_delta", text: " and continues" });
-		store.closeAll();
+		await store.closeAll();
 
 		// The provider captures every request and serves one fresh turn.
 		const requests: Message[][] = [];

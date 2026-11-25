@@ -82,7 +82,7 @@ describe("session.approve", () => {
 			if (ev.type === "permission_requested") break;
 		}
 		// Process restart: fresh store handle, fresh agent.
-		store.closeAll(); // old process released its writer lock
+		await store.closeAll(); // old process released its writer lock
 		const store2 = new SessionStore(dir);
 		const agent2 = searchAgent(store2);
 		const reloaded = await agent2.session({ id: "s" });

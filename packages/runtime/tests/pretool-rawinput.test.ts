@@ -88,7 +88,7 @@ async function bothPaths(pieces: readonly string[] | null, withChain: boolean) {
 	const sessionA = await agentA.session({ id: "s" });
 	for await (const _ of sessionA.run("go")) void _;
 	const logA = [...sessionA.log.all];
-	agentA.close();
+	await agentA.close();
 
 	const callEnd = logA.findIndex((e) => e.type === "tool_call_end");
 	const stopAt = logA.findIndex((e, i) => e.type === "stop" && i > callEnd);
@@ -97,12 +97,12 @@ async function bothPaths(pieces: readonly string[] | null, withChain: boolean) {
 	const seed = new SessionStore(dirB);
 	let seq = 0;
 	for (const e of prefix) await seed.append("s", "r1", { ...e, seq: seq++ } as Event);
-	seed.closeAll();
+	await seed.closeAll();
 	const recovered = recorder();
 	const agentB = createAgent({ model: "faux", store: new SessionStore(dirB), tools: [probe], adapter: answering, hooks: recovered.hooks, ...(withChain ? { extensions: [recovered.gate] } : {}) } as AgentDefinition);
 	const sessionB = await agentB.session({ id: "s" });
 	for await (const _ of sessionB.resume()) void _;
-	agentB.close();
+	await agentB.close();
 	return { fresh, recovered };
 }
 

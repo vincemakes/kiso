@@ -88,7 +88,7 @@ async function bothPaths(call: { name: string; input: Record<string, unknown> | 
 	for await (const _ of sessionA.run("go")) void _;
 	const logA = [...sessionA.log.all];
 	const freshCtx = seen[0];
-	agentA.close();
+	await agentA.close();
 
 	const callEnd = logA.findIndex((e) => e.type === "tool_call_end");
 	const stopAt = logA.findIndex((e, i) => e.type === "stop" && i > callEnd);
@@ -97,14 +97,14 @@ async function bothPaths(call: { name: string; input: Record<string, unknown> | 
 	const seedStore = new SessionStore(dirB);
 	let seq = 0;
 	for (const e of prefix) await seedStore.append("s", "r1", { ...e, seq: seq++ } as Event);
-	seedStore.closeAll();
+	await seedStore.closeAll();
 	seen.length = 0;
 	const agentB = createAgent({ model: "faux", store: new SessionStore(dirB), tools: [probe], adapter: answering, ...def } as AgentDefinition);
 	const sessionB = await agentB.session({ id: "s" });
 	for await (const _ of sessionB.resume()) void _;
 	const logB = [...sessionB.log.all];
 	const resumedCtx = seen[0];
-	agentB.close();
+	await agentB.close();
 
 	const outcome = (log: Event[]) => log.filter((e) => OUTCOME.has(e.type)).map(shape);
 	return { fresh: outcome(logA), resumed: outcome(logB), freshCtx, resumedCtx, logA, logB };
@@ -207,12 +207,12 @@ describe("0430-F1: the same durable prefix, fresh and recovered, writes the same
 		const sessionA = await agentA.session({ id: "s" });
 		for await (const _ of sessionA.run("go")) void _;
 		const logA = [...sessionA.log.all];
-		agentA.close();
+		await agentA.close();
 		const cut = logA.findIndex((e) => e.type === "tool_result");
 		const dirB = mkdtempSync(join(tmpdir(), "kiso-parity-crash-resume-"));
 		const seedStore = new SessionStore(dirB);
 		for (const e of logA.slice(0, cut)) await seedStore.append("s", "r1", e); // started + succeeded receipt on disk, no result
-		seedStore.closeAll();
+		await seedStore.closeAll();
 		seen.length = 0;
 		const agentB = createAgent({ model: "faux", store: new SessionStore(dirB), tools: [probe], adapter: answering });
 		const sessionB = await agentB.session({ id: "s" });
@@ -231,7 +231,7 @@ describe("0430-F1: the same durable prefix, fresh and recovered, writes the same
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "ender", input: {} });
 		await store.append("s", "r1", { seq: 2, type: "stop", reason: "tool_use" });
-		store.closeAll();
+		await store.closeAll();
 		let calls = 0;
 		const counting: Adapter = { stream: async function* () { calls += 1; yield* answering.stream({} as never); } };
 		const agent = createAgent({ model: "faux", store: new SessionStore(dir), tools: [ender], adapter: counting });
@@ -259,7 +259,7 @@ describe("0430-F1: a callId re-used by another invocation lends it nothing on re
 		await ev({ seq: 4, type: "stop", reason: "tool_use" });
 		await ev({ seq: 5, type: "permission_decided", decisionId: "d-5", callId: "call_0", invocationSeq: 3, decision: "denied", reason: "B is refused", decidedBy: "gate" });
 		await ev({ seq: 6, type: "tool_result", callId: "call_0", invocationSeq: 3, content: "[Permission denied] B is refused", isError: true, errorKind: "precondition", tags: ["denied"] });
-		store.closeAll();
+		await store.closeAll();
 		seen.length = 0;
 		const agent = createAgent({ model: "faux", store: new SessionStore(dir), tools: [probe], adapter: answering });
 		const session = await agent.session({ id: "s" });

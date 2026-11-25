@@ -46,7 +46,7 @@ async function loggedSession(id: string, dir: string): Promise<void> {
 	const store = new SessionStore(dir);
 	await store.append(id, "r1", { seq: 0, type: "user_input", content: "hi" } as never);
 	await store.append(id, "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
-	store.closeAll();
+	await store.closeAll();
 }
 
 describe("XP-1 — the recorded binding is history, never a gate", () => {
@@ -195,7 +195,7 @@ describe("XP-1 — the recorded binding is history, never a gate", () => {
 			reason: "end_turn",
 			continuation: { scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: "m" }, entries: [] },
 		} as never);
-		store.closeAll();
+		await store.closeAll();
 		await expect(
 			createAgent({ model: "faux-y", store: new SessionStore(b), tools: [], adapter: DONE }).session({ id: "g4" }),
 		).rejects.toThrow(/integrity|missing/i);

@@ -60,7 +60,7 @@ describe("permanent poison (round 4)", () => {
 
 		// The disk moves on while B is poisoned.
 		await storeA.append("s", "r1", { seq: 2, type: "user_input", content: "a-2" });
-		storeA.closeAll(); // the lock frees — but B is permanently poisoned
+		await storeA.closeAll(); // the lock frees — but B is permanently poisoned
 
 		// Every path fails fast with PoisonedSessionError; NOTHING of B's
 		// context ever lands, even though the lock is now free.
@@ -96,7 +96,7 @@ describe("permanent poison (round 4)", () => {
 		// A third writer takes the lock (after A released it); run1's first
 		// append fails → poison. C's own run is TERMINATED so the open-run
 		// guard lets B's run reach the write.
-		storeA.closeAll();
+		await storeA.closeAll();
 		const storeC = new SessionStore(dir);
 		await storeC.append("s", "r1", { seq: 2, type: "user_input", content: "c-1" });
 		await storeC.append("s", "r1", { seq: 3, type: "terminal", outcome: { kind: "completed" } });

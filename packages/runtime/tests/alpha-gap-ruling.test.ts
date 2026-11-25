@@ -98,7 +98,7 @@ describe("the α-gap ruling (ADR-0047 Amendment 2): the already-executed draft c
 		const marker = join(dir, "side-effect.txt");
 		const store = new SessionStore(dir);
 		for (const ev of PREFIX) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 
 		// The FIRST derivation, on the raw durable prefix: the draft dies
 		// before anything else — and it is ABANDON_DRAFT, never
@@ -150,7 +150,7 @@ describe("the α-gap ruling (ADR-0047 Amendment 2): the already-executed draft c
 		// RECEIPTED execution; the window itself is the human's).
 		const prefix: readonly Event[] = [...PREFIX.slice(0, 11)];
 		for (const ev of prefix) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 
 		expect(deriveRecoveryPlan(prefix, prefix)).toEqual({ kind: "RESOLVE_UNCERTAIN", executionId: "ex-2" });
 	});

@@ -36,12 +36,12 @@ describe("R6 — private modes on a fresh home", () => {
 		const root = join(mkdtempSync(join(tmpdir(), "kiso-r6-keep-")), "home", "sessions");
 		const store = new SessionStore(root);
 		await store.append("s1", "r1", { seq: 0, type: "user_input", content: "first" } as never);
-		store.closeAll();
+		await store.closeAll();
 		const { chmodSync } = await import("node:fs");
 		chmodSync(join(root, "s1.jsonl"), 0o644); // the owner widens it deliberately
 		const again = new SessionStore(root);
 		await again.append("s1", "r2", { seq: 1, type: "user_input", content: "second" } as never);
-		again.closeAll();
+		await again.closeAll();
 		if (POSIX_MODES) expect(modeOf(join(root, "s1.jsonl")), "kiso does not reverse a deliberate choice").toBe("644");
 	});
 
@@ -49,7 +49,7 @@ describe("R6 — private modes on a fresh home", () => {
 		const root = join(mkdtempSync(join(tmpdir(), "kiso-r6-")), "home", "sessions");
 		const store = new SessionStore(root);
 		await store.append("s1", "r1", { seq: 0, type: "user_input", content: "private words" } as never);
-		store.closeAll();
+		await store.closeAll();
 		if (POSIX_MODES) expect(modeOf(root), "the directory does not list to the world").toBe("700");
 		if (POSIX_MODES) expect(modeOf(join(root, "s1.jsonl")), "nor does the transcript read to it").toBe("600");
 	});

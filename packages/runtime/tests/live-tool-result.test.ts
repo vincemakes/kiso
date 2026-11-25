@@ -56,7 +56,7 @@ describe("live tool results (round 5)", () => {
 		)!;
 		expect(streamed.tags).toEqual(["do-not-compact", "billing"]);
 		expect(streamed.content).toBe("signed");
-		store.closeAll();
+		await store.closeAll();
 
 		// The DISK record carries them, and passes deep schema validation.
 		const store2 = new SessionStore(dir);
@@ -84,7 +84,7 @@ describe("live tool results (round 5)", () => {
 		for await (const ev of first.run("go")) {
 			if (ev.type === "permission_requested") break; // pause, then exit
 		}
-		store.closeAll();
+		await store.closeAll();
 
 		const store2 = new SessionStore(dir);
 		const second = await agent(store2).session({ id: "s" });

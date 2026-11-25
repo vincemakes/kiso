@@ -161,7 +161,7 @@ describe("R3 — a rejecting decision hook fails the run, through session.resume
 		]) {
 			await store.append("s", "r1", event as never);
 		}
-		store.closeAll();
+		await store.closeAll();
 
 		const unhandled: string[] = [];
 		const onUnhandled = (err: unknown): void => {
@@ -227,7 +227,7 @@ describe("R3 — a rejecting decision hook fails the run, through session.resume
 			await new Promise((r) => setTimeout(r, 20));
 			expect(unhandled, "nothing left unhandled behind it").toEqual([]);
 			run.abort();
-			agent.close();
+			await agent.close();
 		} finally {
 			process.off("unhandledRejection", onUnhandled);
 		}

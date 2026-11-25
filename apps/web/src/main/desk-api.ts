@@ -201,7 +201,7 @@ export async function deskApi(ctx: DeskContext, req: IncomingMessage, url: URL):
 			const session = str(body["session"]) ?? "";
 			const act = str(body["act"]) ?? "";
 			if (!SAFE_ID.test(session) || !WORK_ACTS.includes(act as WorkAct)) return json(404, {});
-			workAct(space, ctx.settings, session, act as WorkAct);
+			await workAct(space, ctx.settings, session, act as WorkAct);
 			return json(200, { ok: true });
 		}
 		if (path === "/desk/task-stop") {

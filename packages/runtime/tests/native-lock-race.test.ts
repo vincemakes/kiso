@@ -65,7 +65,7 @@ describe("kill-mid-acquire: no empty final path is producible (ADR-0050)", () =>
 		writeFileSync(join(dir, "s.lock.tmp-999-deadbeef"), JSON.stringify({ pid: 99999999, token: "halfway" }));
 		await store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
-		store.closeAll();
+		await store.closeAll();
 	});
 
 	it("a stray tmp + a full dead lock (killed after the link) — clean takeover", async () => {
@@ -76,7 +76,7 @@ describe("kill-mid-acquire: no empty final path is producible (ADR-0050)", () =>
 		expect(store.load("s")).toHaveLength(1);
 		// The final path always carries a token — never empty or half-written.
 		expect(readFileSync(join(dir, "s.lock"), "utf8")).toContain("token");
-		store.closeAll();
+		await store.closeAll();
 	});
 
 	it("a REAL SIGKILL mid-hold: the dead holder's lock is taken over by a fresh store", async () => {
@@ -106,7 +106,7 @@ setInterval(() => {}, 1000);
 		const fresh = new SessionStore(dir);
 		await fresh.append("s", "rN", { seq: 1, type: "stop", reason: "end_turn" });
 		expect(fresh.load("s").map((r) => r.event.seq)).toEqual([0, 1]);
-		fresh.closeAll();
+		await fresh.closeAll();
 	});
 });
 
@@ -159,7 +159,7 @@ describe("PID reuse — refuse-happy, never two writers (ADR-0050)", () => {
 		await once(sleeper, "close");
 		await store.append("s", "r1", ev(0));
 		expect(store.load("s")).toHaveLength(1);
-		store.closeAll();
+		await store.closeAll();
 	});
 });
 
@@ -185,7 +185,7 @@ try {
 } catch (e) {
   console.log("C-REJECTED:" + e.message);
 } finally {
-  store.closeAll();
+  await store.closeAll();
 }
 `;
 		const { spawn } = await import("node:child_process");
@@ -218,7 +218,7 @@ try {
 import { SessionStore } from ${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)};
 const store = new SessionStore(${JSON.stringify(dir)});
 await store.append("s", "rK", { seq: 1, type: "stop", reason: "end_turn" });
-store.closeAll();
+await store.closeAll();
 process.exit(0);
 `;
 		const k = spawn(process.execPath, ["--input-type=module", "-e", third], { stdio: "ignore" });
@@ -243,13 +243,13 @@ process.exit(0);
 		// inert staging name — never at the lock path.
 		const orphans = readdirSync(dir).filter((n) => n.startsWith(`${id}.lock.staging-`));
 		expect(orphans).toHaveLength(1);
-		holder.closeAll();
+		await holder.closeAll();
 
 		// 8. The session continues: a fresh store takes over the dead
 		//    holder's lock and writes (the resume path, ADR-0050).
 		const fresh = new SessionStore(dir);
 		await fresh.append(id, "rN", { seq: 2, type: "stop", reason: "end_turn" });
 		expect(fresh.load(id).map((r) => r.event.seq)).toEqual([0, 1, 2]);
-		fresh.closeAll();
+		await fresh.closeAll();
 	});
 });

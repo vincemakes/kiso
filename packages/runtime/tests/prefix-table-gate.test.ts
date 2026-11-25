@@ -470,7 +470,7 @@ describe("the prefix table gate (Spec = Test)", () => {
 			const marker = join(dir, "side-effect.txt");
 			const store = new SessionStore(dir);
 			for (const ev of row.prefix) await store.append("s", "r1", ev);
-			store.closeAll();
+			await store.closeAll();
 
 			const { adapter, requests } = scriptedAdapter(row.script);
 			const agent = createAgent({

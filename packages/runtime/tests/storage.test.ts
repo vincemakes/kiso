@@ -34,7 +34,7 @@ describe("torn-tail repair", () => {
 		// Crash mid-write: a partial line, no trailing newline. The first
 		// store "process" is gone — close releases its lock and fd.
 		appendFileSync(join(dir, "s.jsonl"), '{"runId":"r1","event":');
-		store.close("s");
+		await store.close("s");
 		// A NEW store (new process) appends next.
 		const store2 = new SessionStore(dir);
 		await store2.append("s", "r2", ev(2));
@@ -130,7 +130,7 @@ describe("cross-process single-writer", () => {
 	it("close releases the lock and the fd; appends after close are refused", async () => {
 		const { dir, store } = tempStore();
 		await store.append("s", "r1", ev(0));
-		store.close("s");
+		await store.close("s");
 		const other = new SessionStore(dir);
 		await other.append("s", "r2", ev(1)); // lock released → other writer may proceed
 		expect(other.load("s")).toHaveLength(2);

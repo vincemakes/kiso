@@ -278,7 +278,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "COMPLETED" });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		// reopen: nothing to recover — a FRESH run drives the same program
 		const session2 = await reopenAgent(dir, adapter);
@@ -309,7 +309,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter);
 		const events2: Event[] = [];
@@ -337,7 +337,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter);
 		const events: Event[] = [];
@@ -369,7 +369,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter);
 		const events2: Event[] = [];
@@ -407,7 +407,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "RESOLVE_UNCERTAIN", executionId: started!.executionId });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		// the uncertain execution blocks the resume — the human decides
 		const session2 = await reopenAgent(dir, adapter, tool);
@@ -450,7 +450,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "RESOLVE_UNCERTAIN", executionId: started!.executionId });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter, tool);
 		await expect(drain(session2, async () => {})).rejects.toThrow(/uncertain/);
@@ -489,7 +489,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "WAIT_PERMISSION", invocationSeq: callSeqOf(events) });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		// the SAME request is re-announced; the human answers for real
 		const session2 = await reopenAgent(dir, adapter, tool, true);
@@ -546,7 +546,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "EXECUTE", invocationSeq: callSeqOf(events) });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		// the resume announces NOTHING — the decision survived the crash
 		const session2 = await reopenAgent(dir, adapter, tool, true);
@@ -597,7 +597,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "WAIT_PERMISSION", invocationSeq: callSeqOf(events) });
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter, tool, true);
 		let reasked = 0;
@@ -622,7 +622,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 		expect(planAt(dir)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 });
 
 		const { adapter } = scriptedAdapter([DONE_TURN]);
@@ -636,7 +636,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 }); // STILL the same action
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter);
 		const events: Event[] = [];
@@ -658,7 +658,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 		expect(planAt(dir)).toEqual({ kind: "REPAIR_RESULT", executionId: "ex-1" });
 
 		const { adapter } = scriptedAdapter([DONE_TURN]);
@@ -672,7 +672,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(planAt(dir)).toEqual({ kind: "REPAIR_RESULT", executionId: "ex-1" }); // STILL the same repair
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter);
 		const events: Event[] = [];
@@ -699,7 +699,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 
 		const { adapter } = scriptedAdapter([DONE_TURN, DONE_TURN]);
 		const live = new SessionStore(dir);
@@ -712,7 +712,7 @@ describe("the crash matrix (R-F 0.1.46-3): the four effect boundaries, crash-bef
 		expect(recordsOf(dir).some((e) => e.type === "user_input" && e.content === "again")).toBe(false);
 
 		await processDeath(it);
-		live.closeAll(); // the old process released its writer lock
+		await live.closeAll(); // the old process released its writer lock
 
 		const session2 = await reopenAgent(dir, adapter);
 		const events: Event[] = [];
@@ -779,7 +779,7 @@ describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
 		expect(planAt(dirA)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 });
 
 		await processDeath(itA);
-		liveA.closeAll();
+		await liveA.closeAll();
 
 		// ── arm B: killed after the commit, before anything started ──
 		const dirB = mkdtempSync(join(tmpdir(), "kiso-mx-b-"));
@@ -808,7 +808,7 @@ describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
 		expect(prefixB.at(-1)!.type).toBe("stop");
 
 		await processDeath(itB);
-		liveB.closeAll();
+		await liveB.closeAll();
 
 		// ── and the two resumes diverge exactly as the one event says ──
 		const resumeA = await drain(await reopenAgent(dirA, scriptedAdapter([DONE_TURN]).adapter, toolA), async () => {});
@@ -858,7 +858,7 @@ describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
 		expect(planAt(dir)).toEqual({ kind: "RESOLVE_UNCERTAIN", executionId: started[0]!.executionId });
 
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		// The human adjudicates the ONE interrupted execution; the barrier's
 		// waiter is an ordinary committed call and simply runs.
@@ -916,7 +916,7 @@ describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
 		expect(planAt(dir)).toEqual({ kind: "DECIDE_PERMISSION", invocationSeq: callSeqOf(events) });
 
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		const agent2 = createAgent({ model: "faux", store: new SessionStore(dir), tools: [exclusive, shared], adapter });
 		const session2 = await agent2.session({ id: "s" });
@@ -968,7 +968,7 @@ describe("EC-1 ⑥ — the crash cells of the Turn Commit boundary", () => {
 		expect(pause.callId).toBe("c1");
 
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		// The resume re-presents the SAME question and the human answers for
 		// real; the effect happens once, after a verdict that was never given
@@ -1004,7 +1004,7 @@ describe("F4 — the mid-stream retry's crash cells", () => {
 		];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 		// The marker is the last boundary and nothing follows it: the one
 		// safe action is a fresh model call — the in-frame retry budget died
 		// with the process (ADR-0005 Amendment 1: per-process by design).
@@ -1030,7 +1030,7 @@ describe("F4 — the mid-stream retry's crash cells", () => {
 		];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 		// A receipted execution is an OUTCOME, never uncertain (rule 3); the
 		// delta suffix is a draft (rule 4) — void first, repairs follow.
 		expect(planAt(dir)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 });
@@ -1057,7 +1057,7 @@ describe("F4 — the mid-stream retry's crash cells", () => {
 		];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 		// The NEW draft voids from the MARKER, not from the run's start —
 		// the retry moved the boundary, and recovery agrees.
 		expect(planAt(dir)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 2 });
@@ -1117,7 +1117,7 @@ describe("ADR-0057 — the Safe Admission crash rows", () => {
 		expect(steerInputs(recordsOf(dir))).toHaveLength(0);
 		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		const reopen = lastMessages([DONE_TURN]);
 		const session2 = await reopenAgent(dir, reopen.adapter);
@@ -1147,7 +1147,7 @@ describe("ADR-0057 — the Safe Admission crash rows", () => {
 		expect(steerInputs(recordsOf(dir))).toHaveLength(1);
 		expect(planAt(dir)).toEqual({ kind: "CONTINUE_MODEL" });
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		const reopen = lastMessages([DONE_TURN]);
 		const session2 = await reopenAgent(dir, reopen.adapter);
@@ -1184,7 +1184,7 @@ describe("ADR-0057 — the Safe Admission crash rows", () => {
 		const steerSeq = steerInputs(recordsOf(dir))[0]!.seq;
 		expect(recordsOf(dir).some((e) => e.type === "user_input_replaced" && e.replaces === steerSeq)).toBe(false);
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		hooked.length = 0;
 		const reopen = lastMessages([DONE_TURN]);
@@ -1228,7 +1228,7 @@ describe("ADR-0057 — the Safe Admission crash rows", () => {
 		expect(refused).toBeInstanceOf(RunClosedError);
 		expect(terminalOf(recordsOf(dir))).toBeUndefined();
 		await processDeath(it);
-		live.closeAll();
+		await live.closeAll();
 
 		const session2 = await reopenAgent(dir, scriptedAdapter([DONE_TURN]).adapter);
 		for await (const _ of session2.resume()) {

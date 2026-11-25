@@ -7,11 +7,11 @@ import { SessionStore } from "@vincemakes/kiso-runtime";
  * Message in: `{ dir }`. Message out: `{ dir, metas }` or `{ dir, error }`.
  */
 
-parentPort!.on("message", (message: { readonly dir: string }) => {
+parentPort!.on("message", async (message: { readonly dir: string }) => {
 	try {
 		const store = new SessionStore(message.dir);
 		const metas = store.list();
-		store.closeAll();
+		await store.closeAll();
 		parentPort!.postMessage({ dir: message.dir, metas });
 	} catch (error) {
 		parentPort!.postMessage({ dir: message.dir, error: error instanceof Error ? error.message : String(error) });

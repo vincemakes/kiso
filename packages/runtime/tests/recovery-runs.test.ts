@@ -73,7 +73,7 @@ describe("per-run recovery (B group)", () => {
 		for await (const ev of sessionA.run("second")) {
 			if (ev.type === "permission_requested") break;
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Process B resumes: the recovery must target run 2 (not run 1).
 		const storeB = new SessionStore(dir);
@@ -107,7 +107,7 @@ describe("per-run recovery (B group)", () => {
 		for await (const ev of run1) {
 			if (ev.type === "permission_requested") run1.abort();
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Run 2 completes in a new process.
 		const storeB = new SessionStore(dir);
@@ -116,7 +116,7 @@ describe("per-run recovery (B group)", () => {
 		for await (const _ev of sessionB.run("second")) {
 			// drain
 		}
-		storeB.closeAll();
+		await storeB.closeAll();
 
 		// The dangling approval of the ABORTED run 1 is dead: not
 		// re-presented, and nothing to resume.
@@ -144,7 +144,7 @@ describe("per-run recovery (B group)", () => {
 				run1.abort(); // the user cancels — the run terminates (aborted)
 			}
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// The run is terminated; a later approve() must not resurrect it.
 		const storeB = new SessionStore(dir);
@@ -167,7 +167,7 @@ describe("execution identity across runs (B group)", () => {
 		for await (const ev of sessionA.run("first")) {
 			if (ev.type === "permission_requested") await sessionA.approve(ev.decisionId, true); // executes c1
 		}
-		store.closeAll();
+		await store.closeAll();
 
 		const storeB = new SessionStore(dir);
 		const agentB = agent(storeB, marker, STOP);
@@ -175,7 +175,7 @@ describe("execution identity across runs (B group)", () => {
 		for await (const _ev of sessionB.run("second")) {
 			// drain — run 2 does NOT call the tool
 		}
-		storeB.closeAll();
+		await storeB.closeAll();
 		const { executionLedger } = await import("@vincemakes/kiso-runtime");
 		const ledger = executionLedger(storeB.load("s").map((r) => r.event));
 		const executions = [...ledger.values()].filter((e) => e.callId === "c1");
@@ -202,7 +202,7 @@ describe("execution identity across runs (B group)", () => {
 		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "a" } });
 		await store.append("s", "r1", { seq: 3, type: "tool_call_end", callId: "c2", name: "web_search", input: { query: "b" } });
 		await store.append("s", "r1", { seq: 4, type: "tool_execution_started", executionId: "ex-4", callId: "c2", name: "web_search", input: { query: "b" } });
-		store.closeAll();
+		await store.closeAll();
 
 		const agentA = agent(new SessionStore(dir), join(dir, "m.txt"));
 		const session = await agentA.session({ id: "s" });
@@ -232,7 +232,7 @@ describe("execution identity across runs (B group)", () => {
 		// The resolution landed…
 		await store.append("s", "r1", { seq: 3, type: "tool_execution_resolved", executionId: "ex-2", callId: "c1", resolution: "abandoned" });
 		// …but the process crashed before the tool_result fill was written.
-		store.closeAll();
+		await store.closeAll();
 
 		const agentA = agent(new SessionStore(dir), join(dir, "m.txt"));
 		const session = await agentA.session({ id: "s" });

@@ -100,7 +100,7 @@ describe("E3 — R7 star: the script's prediction equals a real session's record
 		});
 		const session = await agent.session({ id: "tracey" });
 		for await (const ev of session.run("hi")) void ev;
-		agent.close();
+		await agent.close();
 
 		const ledgerPath = join(store.root, "traces", "tracey.jsonl");
 		const lines = readFileSync(ledgerPath, "utf8").split("\n").filter(Boolean);
@@ -158,7 +158,7 @@ describe("TUI2-R3v2 ③ — the side-query arm: prediction equals a real side qu
 		});
 		const session = await agent.session({ id: "sidey" });
 		await session.sideQuery({ purpose: "safer-options", systemPrompt: SIDE_PROMPT, prompt: "the pending call is: rm -rf build" });
-		agent.close();
+		await agent.close();
 
 		const lines = readFileSync(join(store.root, "traces", "sidey.jsonl"), "utf8").split("\n").filter(Boolean);
 		for (const line of lines) expect(validateTraceLine(JSON.parse(line))).toBe(true);

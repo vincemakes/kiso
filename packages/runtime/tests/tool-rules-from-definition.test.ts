@@ -210,7 +210,7 @@ describe("0.42.0: the append is evaluated exactly ONCE per provider attempt — 
 		});
 		const session = await agent.session({ id: "once" });
 		for await (const _ of session.run("go")) void _;
-		agent.close();
+		await agent.close();
 		// exactly one evaluation per attempt: the kernel reads its field twice
 		// and the tracer reads the rent parts twice — none of those evaluate.
 		expect(n).toBe(2);

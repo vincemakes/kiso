@@ -175,7 +175,7 @@ describe("0.43.0 (0420-F1): ToolContext is derived from the durable invocation a
 		expect(fresh.sessionId).toBe("s");
 		const logA = [...sessionA.log.all];
 		expect(seen[0]!.ctx.executionId).toBe(startedIdOf(logA)); // keyed by the event it wrote
-		agentA.close();
+		await agentA.close();
 
 		// the same durable prefix, cut before the execution started
 		const startedAt = logA.findIndex((e) => e.type === "tool_execution_started");
@@ -183,7 +183,7 @@ describe("0.43.0 (0420-F1): ToolContext is derived from the durable invocation a
 		const dirB = mkdtempSync(join(tmpdir(), "kiso-raw-resume-"));
 		const seedStore = new SessionStore(dirB);
 		for (const e of logA.slice(0, startedAt)) await seedStore.append("s", "r1", e);
-		seedStore.closeAll();
+		await seedStore.closeAll();
 
 		seen.length = 0;
 		// a model that only answers — the resume must execute the COMMITTED call, then ask once and stop

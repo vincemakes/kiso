@@ -126,7 +126,7 @@ describe("kiso CLI (built artifact, faux mode)", () => {
 		const store = new SessionStore(join(home, "sessions"));
 		await store.append("prep", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store.append("prep", "r1", { seq: 1, type: "permission_requested", decisionId: "d-1", callId: "c1", name: "web_search", input: {} });
-		store.closeAll();
+		await store.closeAll();
 
 		// A REAL PTY via python3's pty module (ISIG enabled): Ctrl+C at the
 		// question (cancels it and aborts the recovery run), then a user

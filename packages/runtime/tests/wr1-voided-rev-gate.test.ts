@@ -36,13 +36,13 @@ describe("WR-1A ④b — a voided turn's revision is unciteable by construction"
 		] as unknown as readonly Event[];
 		const store = new SessionStore(dir);
 		for (const ev of seed) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 
 		const live = new SessionStore(dir);
 		const session = await createAgent({ model: "faux", store: live, tools: [], adapter: createFauxProvider(DONE) }).session({ id: "s" });
 		const events: Event[] = [];
 		for await (const ev of session.resume()) events.push(ev);
-		live.closeAll();
+		await live.closeAll();
 
 		// What the NEXT model request would see: the projection of the
 		// post-recovery durable log. The voided draft's revision must be

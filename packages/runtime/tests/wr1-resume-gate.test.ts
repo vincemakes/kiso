@@ -46,7 +46,7 @@ async function resumeAndDrain(dir: string, workspace: string): Promise<readonly 
 	}).session({ id: "s" });
 	const events: Event[] = [];
 	for await (const ev of session.resume()) events.push(ev);
-	store.closeAll();
+	await store.closeAll();
 	return events;
 }
 
@@ -57,7 +57,7 @@ describe("WR-1A ④a — recovery re-asks reality (the executable invariant)", (
 		writeFileSync(join(workspace, "f.ts"), "A\n");
 		const store = new SessionStore(dir);
 		for (const ev of seedFor(rev("A\n"))) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 
 		const events = await resumeAndDrain(dir, workspace);
 		const succeeded = events.filter((e) => e.type === "tool_execution_succeeded");
@@ -72,7 +72,7 @@ describe("WR-1A ④a — recovery re-asks reality (the executable invariant)", (
 		writeFileSync(join(workspace, "f.ts"), "A\n");
 		const store = new SessionStore(dir);
 		for (const ev of seedFor(rev("A\n"))) await store.append("s", "r1", ev);
-		store.closeAll();
+		await store.closeAll();
 
 		// the world moves while the process is dead
 		writeFileSync(join(workspace, "f.ts"), "B — the user edited\n");

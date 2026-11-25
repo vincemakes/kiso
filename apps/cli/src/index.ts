@@ -1013,7 +1013,7 @@ async function reloadAgent(
 		return old;
 	}
 	// The new set is built and sound; only now does the old one go.
-	old.close();
+	await old.close();
 	await disposeExtensions(oldLoaded);
 	for (const p of oldTemps) {
 		try {
@@ -1968,7 +1968,7 @@ async function main(): Promise<void> {
 		// the person chose to leave them (3e), only the moved commands. What
 		// could not be confirmed is said, never called stopped.
 		const tasksAtExit = await stopAllTasks();
-		agent?.close();
+		await agent?.close();
 		// v2b: the dock tears down on EVERY exit path — CSI r resets the
 		// scroll region, the cursor lands at the input line, no broken
 		// terminal (kill -9 excepted; `reset` saves it).

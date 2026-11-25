@@ -28,7 +28,7 @@ describe("TV-1B ① — the run() provenance seam", () => {
 		for await (const _ of session.run("Verify the completed work.", { source: "system" })) {
 			/* drain */
 		}
-		store.closeAll();
+		await store.closeAll();
 		const events = new SessionStore(dir).load("s").map((r) => r.event);
 		const inputs = events.filter((e): e is Event & { type: "user_input" } => e.type === "user_input");
 		expect(inputs).toHaveLength(2);

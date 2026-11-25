@@ -237,7 +237,7 @@ try {
 } catch (e) {
   console.log("LOSER " + (e && e.name) + ": " + (e && e.message));
 } finally {
-  store.closeAll();
+  await store.closeAll();
 }
 `;
 		const { spawn } = await import("node:child_process");

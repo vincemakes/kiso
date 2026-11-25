@@ -136,7 +136,11 @@ describe("0.40.0 — one session folder per project (CLI)", () => {
 				cwd: w.alpha,
 				feeds: [
 					["/mode to switch", "the here task\r"],
-					["here answered.", "/resume pp-lost\r"],
+					// 2026-11-25: the answer can paint a moment before the turn's
+					// last events are durable (their sync runs off the event loop),
+					// and a /resume typed in that moment is refused as mid-run; the
+					// recap ("took ") is the turn's end
+					["took ", "/resume pp-lost\r"],
 					// RE-DERIVED (the last sweep, owner 2026-10-06): a switch is a
 					// SESSION row on a dock — the id, and the way back
 					["/resume pp-here returns", "/resume pp-here\r"],

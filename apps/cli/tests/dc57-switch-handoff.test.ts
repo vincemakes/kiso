@@ -105,7 +105,7 @@ describe("DC-57 — a line that arrives with a switch belongs to the new session
 			reason: "end_turn",
 			continuation: { scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: "m" }, entries: [] },
 		} as never);
-		store.closeAll();
+		await store.closeAll();
 
 		const run = runCli(["chat", "fresh"], env, { input: "/resume legacy\nthis belongs to legacy\n", timeout: 90_000 });
 		const out = stripANSI(`${run.stdout}${run.stderr}`);

@@ -16,15 +16,15 @@ export const WORK_ACTS: readonly WorkAct[] = ["pin", "unpin", "archive", "unarch
 const busyOf = (space: Space, id: string): string | null => (space.service.isRunning(id) ? "it is running" : space.tasks.managerFor(id).list().some((t) => t.endedAt === undefined) ? "a background task of it is still running" : null);
 
 /** Everything a Work leaves: closed first (the store refuses any later write to it, so nothing brings the files back). */
-function remove(space: Space, settings: Settings, session: string): void {
+async function remove(space: Space, settings: Settings, session: string): Promise<void> {
 	settings.bury(space.key, session); // first: from here on nothing opens it again, not even a read
-	space.store.close(session);
+	await space.store.close(session); // the barrier: no write or sync of it is in flight once this returns
 	space.tasks.forget(session);
 	for (const path of [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`, join("traces", `${session}.jsonl`)]) rmSync(join(space.dir, path), { recursive: true, force: true });
 	settings.forget(session);
 }
 
-export function workAct(space: Space, settings: Settings, session: string, act: WorkAct): void {
+export async function workAct(space: Space, settings: Settings, session: string, act: WorkAct): Promise<void> {
 	if (!space.store.ids().includes(session)) throw new Refusal(404, "no such Work in this folder");
 	if (act === "pin" || act === "unpin") return settings.mark(session, "pins", act === "pin");
 	if (act === "delete-tree") {
@@ -34,11 +34,11 @@ export function workAct(space: Space, settings: Settings, session: string, act: 
 			const why = busyOf(space, id);
 			if (why !== null) throw new Refusal(409, `\u201c${nameOf(space.dir, id)}\u201d cannot be deleted while ${why}: stop it first. Nothing was deleted.`);
 		}
-		for (const id of [...tree].reverse()) remove(space, settings, id);
+		for (const id of [...tree].reverse()) await remove(space, settings, id);
 		return;
 	}
 	const busy = busyOf(space, session);
 	if (busy !== null && act !== "unarchive") throw new Refusal(409, `${act === "delete" ? "This Work cannot be deleted" : "This Work cannot be archived"} while ${busy}: stop it first`);
 	if (act === "archive" || act === "unarchive") return settings.mark(session, "archived", act === "archive");
-	remove(space, settings, session);
+	await remove(space, settings, session);
 }

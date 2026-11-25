@@ -93,7 +93,7 @@ describe("R-E 0.1.43 Gap A (RED): a committed turn's undecided invocation", () =
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "r1", { seq: 2, type: "stop", reason: "tool_use" });
-		store.closeAll();
+		await store.closeAll();
 
 		const { adapter, requests } = danglingRejectingProvider();
 		const agent = createAgent({ model: "faux", store: new SessionStore(dir), tools: [markerTool(marker)], adapter });

@@ -60,6 +60,15 @@ vi.mock("node:fs", async (importOriginal) => {
 			io.log.push({ op: "sync", fd });
 			return real.fsyncSync(fd);
 		},
+		// 2026-11-25: the store's per-event sync runs on the thread pool (fs.fsync); counted and failed the same way
+		fsync: (fd: number, cb: (error: NodeJS.ErrnoException | null) => void) => {
+			if (io.failSyncAfter !== null && lastType.get(fd) === io.failSyncAfter) {
+				queueMicrotask(() => cb(new Error(`injected sync failure after ${io.failSyncAfter}`)));
+				return;
+			}
+			io.log.push({ op: "sync", fd });
+			real.fsync(fd, cb);
+		},
 	};
 });
 
@@ -130,7 +139,7 @@ async function runOnce(): Promise<{ events: Event[]; error: unknown }> {
 	} catch (err) {
 		error = err;
 	}
-	agent.close();
+	await agent.close();
 	return { events, error };
 }
 
@@ -149,7 +158,7 @@ describe("the store's durability classes — a fragment is written, everything e
 			{ type: "stop", reason: "end_turn" },
 		];
 		for (const [i, e] of sequence.entries()) await store.append("s", "r1", { ...e, seq: i } as unknown as Event);
-		store.closeAll();
+		await store.closeAll();
 		const rows = syncsPerAppend();
 		expect(rows.map((r) => r.type)).toEqual(sequence.map((e) => e.type));
 		for (const r of rows) expect(r.syncs, r.type).toBe(FRAGMENTS.has(r.type) ? 0 : 1);
@@ -172,7 +181,7 @@ describe("the store's durability classes — a fragment is written, everything e
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" } as Event);
 		io.failAppendOf = "text_delta";
 		await expect(store.append("s", "r1", { seq: 1, type: "text_delta", text: "x" } as Event)).rejects.toThrow(/injected write failure/);
-		store.closeAll();
+		await store.closeAll();
 	});
 
 	it("a failed sync of tool_execution_started: the handler never starts", async () => {

@@ -62,7 +62,10 @@ describe("what can be rewound", () => {
 		await done.run("first");
 		expect(done.session.rewindable(), "a run that finished").toBeNull();
 		const tool = await work([call, slow]);
-		await tool.run("use the tool", 200);
+		// aborted once its tool has executed (not after a fixed 200 ms: the log's sync now runs on the thread pool, which a loaded
+		// test process shares, so a wall-clock abort could land before the call ran)
+		const used = tool.session.run("use the tool");
+		for await (const e of used) if ((e as { type?: string }).type === "tool_result") used.abort();
 		expect(tool.session.rewindable(), "a run that executed a tool").toBeNull();
 		const busy = await work([slow]);
 		const r = busy.session.run("going");

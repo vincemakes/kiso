@@ -5,7 +5,8 @@ import { SessionStore } from "@vincemakes/kiso-runtime";
 export function fauxSkip(sessionsDir: string, sessionId: string): number {
 	const store = new SessionStore(sessionsDir);
 	const events = store.load(sessionId).map((r) => r.event);
-	store.closeAll();
+	// a read-only instance: load() opens and closes its own fd and takes no lock, so nothing is in flight and nothing is waited for
+	void store.closeAll();
 	const results = new Set(events.filter((e) => e.type === "tool_result").map((e) => e.callId));
 	return (
 		events.filter((e) => e.type === "tool_result").length +

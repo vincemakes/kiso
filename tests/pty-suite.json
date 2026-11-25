@@ -190,6 +190,7 @@
   "packages/runtime/tests/session-ids.test.ts",
   "packages/runtime/tests/sessions-tools.test.ts",
   "packages/runtime/tests/state-probe-lock.test.ts",
+  "packages/runtime/tests/store-async-fsync-kill9.test.ts",
   "packages/runtime/tests/store-fsync-classes.test.ts",
   "packages/runtime/tests/task-delivery-agents.test.ts",
   "packages/runtime/tests/task-delivery-claims.test.ts",

@@ -348,7 +348,7 @@ export function createSpace(options: SpaceOptions): Space {
 		drain: (graceMs) => service.drain(graceMs),
 		close: async () => {
 			await tasks.close();
-			store.closeAll();
+			await store.closeAll();
 		},
 	};
 }

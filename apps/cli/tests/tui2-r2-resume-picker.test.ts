@@ -46,7 +46,7 @@ async function fixtureHome(home: string): Promise<void> {
 		{ runId: "r1", events: [user("refactor the bench"), { type: "tool_execution_started", executionId: "x1", callId: "c1", name: "shell", input: { command: "npm test" } } as Omit<Event, "seq">] },
 	]);
 	await write("tui2-dogfood", [{ runId: "r1", events: [user("dogfood the tui"), stop()] }]);
-	store.closeAll();
+	await store.closeAll();
 }
 
 describe("TUI2-R2 ② — bare `kiso resume`: the picker is a TTY surface", () => {

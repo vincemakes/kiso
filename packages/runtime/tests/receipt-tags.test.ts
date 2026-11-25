@@ -58,7 +58,7 @@ describe("receipt crash window tags (round 8)", () => {
 			result: { content: "results for k", isError: false },
 			tags: [...TAGS],
 		});
-		store.closeAll();
+		await store.closeAll();
 
 		const session = await agent(new SessionStore(dir), [...TAGS]).session({ id: "s" });
 		const events: Event[] = [];
@@ -88,7 +88,7 @@ describe("receipt crash window tags (round 8)", () => {
 			safeToRetry: true, // an idempotent failure is a clean, repairable failure
 			tags: [...TAGS],
 		});
-		store.closeAll();
+		await store.closeAll();
 
 		const session = await agent(new SessionStore(dir), [...TAGS]).session({ id: "s" });
 		const events: Event[] = [];
