@@ -30,6 +30,7 @@ import type { EventInput } from "./event-log.js";
 import type {
 	AssistantBlock,
 	AssistantMessage,
+	ContentBlock,
 	Message,
 	MessageSource,
 	ToolResultMessage,
@@ -78,6 +79,59 @@ function primaryArg(input: Readonly<Record<string, unknown>> | null | undefined)
 		if (typeof value === "string" && value !== "") return value;
 	}
 	return undefined;
+}
+
+/** R-E 0.1.44 (the void scope sentence): a void range voids MODEL OUTPUT
+ *  only — never the framework's facts (permission*, tool_execution,
+ *  tool_result, user_input, terminal). F4b: text_start/text_end are model
+ *  output (a voided text_start carries the draft's `source`). */
+const MODEL_OUTPUT_TYPES = new Set(["text_start", "text_delta", "text_end", "thinking", "tool_call_start", "tool_call_input_delta", "tool_call_end"]);
+
+/** How the projection treats one event: rendered, covered by the live
+ *  checkpoint, or voided as abandoned model output. */
+export type HistoryStatus = "effective" | "covered" | "voided";
+
+/** What `resolveHistory` returns — the projection's structural decisions. */
+export interface HistoryResolution {
+	/** input seq → its FINAL replacement; `content: null` is a veto (round 6). */
+	readonly replaced: ReadonlyMap<number, { readonly content: string | readonly ContentBlock[] | null; readonly source?: MessageSource }>;
+	/** ADR-0055 Amendment 2: the ONE live checkpoint, covering (−1, to];
+	 *  `eventSeq` is the `summarized` event's own seq (a reader's coveredBy). */
+	readonly summary: { readonly eventSeq: number; readonly to: number; readonly summary: string } | undefined;
+	readonly status: (ev: Event | EventInput) => HistoryStatus;
+}
+
+/**
+ * M0 (ADR-0063 §3) — the structural resolution the projection applies,
+ * exported so the runtime's effective history (retrieval, extraction,
+ * recall) reads the log exactly as `projectMessages` does: no second
+ * interpreter. Pure over the complete ordered log; the same ordered log
+ * always yields the same resolution.
+ *
+ * - The FINAL `user_input_replaced` for an input wins (C group/round 6).
+ * - The `summarized` event with the greatest `coversToSeq` (the later one
+ *   on a tie) is the live checkpoint; superseded ones render nothing
+ *   (ADR-0055 Amendment 2).
+ *   Seed events (no seq) are never covered; `summarized` events are exempt.
+ * - A `model_output_abandoned` marker voids (voidFromSeq, its seq] — model
+ *   output only (R-E 0.1.43/0.1.44). Voided wins over covered: an abandoned
+ *   draft a later checkpoint covers is still abandoned, never evidence.
+ */
+export function resolveHistory(events: readonly (Event | EventInput)[]): HistoryResolution {
+	const replaced = new Map<number, { content: string | readonly ContentBlock[] | null; source?: MessageSource }>();
+	let summary: { eventSeq: number; to: number; summary: string } | undefined;
+	const voids: { from: number; to: number }[] = [];
+	for (const ev of events) {
+		if (ev.type === "user_input_replaced") replaced.set(ev.replaces, { content: ev.content, ...(ev.source !== undefined ? { source: ev.source } : {}) });
+		else if (ev.type === "summarized" && (summary === undefined || ev.coversToSeq >= summary.to)) summary = { eventSeq: (ev as { seq?: number }).seq ?? -1, to: ev.coversToSeq, summary: ev.summary };
+		else if (ev.type === "model_output_abandoned") voids.push({ from: ev.voidFromSeq, to: (ev as { seq?: number }).seq ?? -1 });
+	}
+	const status = (ev: Event | EventInput): HistoryStatus => {
+		const seq = (ev as { seq?: number }).seq ?? -1;
+		if (MODEL_OUTPUT_TYPES.has(ev.type) && voids.some((r) => seq > r.from && seq <= r.to)) return "voided";
+		return ev.type !== "summarized" && summary !== undefined && seq > -1 && seq <= summary.to ? "covered" : "effective";
+	};
+	return { replaced, summary, status };
 }
 
 /**
@@ -150,18 +204,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// INPUT'S OWN POSITION: the original is skipped, the final non-null
 	// content speaks for it there, a null content is a true veto (nothing
 	// at that position).
-	const replaced = new Map<
-		number,
-		{ content: string | readonly import("../protocol/messages.js").ContentBlock[] | null; source?: MessageSource }
-	>();
-	for (const ev of events) {
-		if (ev.type === "user_input_replaced") {
-			replaced.set(ev.replaces, {
-				content: ev.content,
-				...(ev.source !== undefined ? { source: ev.source } : {}),
-			});
-		}
-	}
+	// M0 (ADR-0063 §3): the structural resolution — replacements, the one
+	// live checkpoint, the void ranges — is resolveHistory's, shared with the
+	// runtime's effective history so the two never read the log differently.
+	const { replaced, summary, status } = resolveHistory(events);
 	// C area: callId → {name, input} for the microcompact placeholder.
 	const callMeta = new Map<string, { name: string; input: Readonly<Record<string, unknown>> | null }>();
 	for (const ev of events) {
@@ -178,12 +224,7 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// event after the covered range — NOT at the summarized event itself:
 	// the event sits at the log's END (the kept rounds live between the
 	// boundary and it), and the summary must precede the kept conversation.
-	const summaryRanges: { from: number; to: number; summary: string }[] = [];
-	for (const ev of events) {
-		if (ev.type === "summarized" && (summaryRanges[0] === undefined || ev.coversToSeq >= summaryRanges[0].to)) {
-			summaryRanges[0] = { from: -1, to: ev.coversToSeq, summary: ev.summary };
-		}
-	}
+	const summaryRanges = summary === undefined ? [] : [{ from: -1, ...summary }];
 	// R-E 0.1.43 (Gap B): a model_output_abandoned marker voids the range
 	// (voidFromSeq, its seq] — the abandoned draft's events. The ranges are
 	// disjoint and in seq order; the skip below treats them exactly like the
@@ -196,21 +237,6 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 	// output and join the family — a voided text_start carries the
 	// draft's provenance (`source`), and leaving it alive relabeled the
 	// RETRIED answer with the abandoned attempt's source.
-	const MODEL_OUTPUT_TYPES = new Set([
-		"text_start",
-		"text_delta",
-		"text_end",
-		"thinking",
-		"tool_call_start",
-		"tool_call_input_delta",
-		"tool_call_end",
-	]);
-	const voidRanges: { from: number; to: number }[] = [];
-	for (const ev of events) {
-		if (ev.type === "model_output_abandoned") voidRanges.push({ from: ev.voidFromSeq, to: (ev as { seq?: number }).seq ?? -1 });
-	}
-	const coveredBySummary = (seq: number): boolean => summaryRanges.some((r) => seq > r.from && seq <= r.to);
-	const coveredByVoid = (seq: number): boolean => voidRanges.some((r) => seq > r.from && seq <= r.to);
 	// Summaries render in range order as the pass crosses their boundaries.
 	let renderedSummaries = 0;
 
@@ -276,11 +302,10 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 		// never covered. The summarized events themselves are exempt (their
 		// own event sits inside the NEXT range's coverage; the boundary
 		// render below is where their message lands).
-		const evSeq = (ev as { seq?: number }).seq ?? -1;
 		// R-E 0.1.44 (sentence 2): the VOID skip is type-filtered — model
 		// output dies with the draft, the framework's facts never do (a
 		// straddling tool_result inside the void range keeps its pair).
-		if (ev.type !== "summarized" && (coveredBySummary(evSeq) || (MODEL_OUTPUT_TYPES.has(ev.type) && coveredByVoid(evSeq)))) continue;
+		if (status(ev) !== "effective") continue;
 		// The boundary render: every range whose end this event crosses
 		// yields its assistant summary message, before this event renders.
 		while (
