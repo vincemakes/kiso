@@ -27,11 +27,11 @@ check((await app.count("[data-act=delete-alt]")) === 0 && (await app.text("[data
 await app.click("[data-act=delete-cancel]"); const g = clientFor(app.host()).session("wg"), run = g.run("go"); await sleep(1200); const busy = await desk({ session: "wp", act: "delete-tree" });
 check(busy.status === 409 && /Grandchild.*while it is running.*Nothing was deleted/.test(busy.message) && ["wp", "wa", "wb", "wg"].every(have), `a running member refuses the whole tree and names it: nothing is removed (${busy.status} ${busy.message})`);
 await run; await settle(); // only the parent: the children stand on their own, the grandchild stays under its parent; a later notice for the gone parent is dropped
-await ask("wp"); await app.click("[data-act=delete-confirm]"); await waitUntil(async () => !have("wp"), 10_000); await reload();
+await ask("wp"); await app.click("[data-act=delete-confirm]"); await waitUntil(async () => !existsSync(join(dir, "wp.jsonl")), 10_000); await reload(); // the delete has finished: its sidecar goes first, before the store close, and the files after it in one synchronous step, so the log gone means that step ran and a restart cannot cut the delete short
 await clientFor(app.host()).session("wa").run("again"); await settle(); const left = await rows();
 check(left.join() !== "" && !left.includes("└wa") && !left.includes("└wb") && left.includes("wa") && left.includes("wb") && left.includes("└wg") && have("wa") && have("wg") && !readdirSync(dir).some((f) => f.startsWith("wp.")), `deleting only the parent: its children are top-level, the grandchild stays under its parent, nothing of the parent is made again after a child's run (${left} | ${readdirSync(dir).filter((f) => f.startsWith("wp"))}${inboxOf("wp")})`);
 // the whole tree: gone from the list and from the disk
-await ask("wa"); await app.click("[data-act=delete-alt]"); await waitUntil(async () => !have("wa") && !have("wg"), 10_000);
+await ask("wa"); await app.click("[data-act=delete-alt]"); await waitUntil(async () => !existsSync(join(dir, "wa.jsonl")) && !existsSync(join(dir, "wg.jsonl")), 10_000);
 const [list, disk] = [await rows(), readdirSync(dir).filter((f) => /^w[ag]\./.test(f))];
 check(!have("wa") && !have("wg") && have("wb") && !list.some((r) => r.endsWith("wa") || r.endsWith("wg")) && disk.length === 0, `Delete all removes the Work and what is nested under it, list and disk, and nothing else (${list} | ${disk})`);
 await app.close(); verdict();
