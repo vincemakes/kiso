@@ -76,7 +76,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	const rail = railOf(state);
 	const openPanel = useOpenPanel();
 	const openArtifact = useOpenArtifact();
-	const [hover, setHover] = useState<{ readonly tip: TipData; readonly top?: number; readonly bottom?: number } | null>(null);
+	const [hover, setHover] = useState<{ readonly id: string; readonly at: number } | null>(null);
 	const [folded, setFolded] = useState<Readonly<Record<string, boolean>>>({ context: true });
 	const [allOutputs, setAllOutputs] = useState(false);
 	const [allChanges, setAllChanges] = useState(false);
@@ -89,10 +89,11 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 	}, [where, session]);
 	const [noStop, setNoStop] = useState<string | null>(null); // a stop the host answered false: why, for a moment
 	const toggle = (id: string) => () => setFolded((f) => ({ ...f, [id]: !f[id] }));
-	const over = (tip: TipData) => ({
+	// the card is read from the task on every render, so its clock keeps time with the row
+	const tipOf = (x: TaskRow): TipData => ((n) => ({ title: n.name || n.command, meta: isRunning(x) || x.endedAt !== null ? `${n.status} · ${clock(x.elapsedMs)}` : n.status }))(taskNameOf(state, x));
+	const over = (id: string) => ({
 		onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
-			const r = e.currentTarget.getBoundingClientRect();
-			setHover(r.top > innerHeight * 0.55 ? { tip, bottom: Math.max(8, innerHeight - r.bottom - 6) } : { tip, top: Math.max(8, r.top - 6) });
+			setHover({ id, at: e.currentTarget.getBoundingClientRect().top });
 		},
 		onMouseLeave: () => setHover(null),
 	});
@@ -139,7 +140,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 		const on = isRunning(x);
 		return (
 			<Fragment key={x.id}>
-			<div className={`r-row${on ? "" : " dim"}`} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over({ title: n.name, head: n.command, log: x.tail, rows: [[t.railState, n.status]] })}>
+			<div className={`r-row${on ? "" : " dim"}`} data-field="task" data-status={n.status} onClick={() => openPanel("term", x.id)} {...over(x.id)}>
 				<span className="r-ic"><I.term /></span>
 				<span className="r-nm">{n.title}</span>
 				<span className="r-mt">{on || x.endedAt !== null ? `${n.status} · ${clock(x.elapsedMs)}` : n.status}</span>
@@ -319,7 +320,7 @@ export function Rail({ state, env, session, where, onEnvChanged, onStopTask, git
 					)}
 				</div>
 			</div>
-			<Tip tip={hover?.tip ?? null} {...(hover?.top !== undefined ? { top: hover.top } : {})} {...(hover?.bottom !== undefined ? { bottom: hover.bottom } : {})} />
+			<Tip key={hover?.id} tip={((x) => (x === undefined ? null : tipOf(x)))(state.tasks.find((x) => x.id === hover?.id))} at={hover?.at ?? 0} />
 		</aside>
 	);
 }
