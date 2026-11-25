@@ -36,6 +36,8 @@ function wrapText(text: string, cols: number): string[] {
 
 export class VtScreen {
 	#grid: Row[] = [];
+	/** the rows an LF at the last row pushed off the top: what the terminal's own scrollback holds, oldest first */
+	#scrolled: string[] = [];
 	#rows: number;
 	#cols: number;
 	#r = 0; // the cursor row — a GRID index
@@ -53,6 +55,11 @@ export class VtScreen {
 
 	get cols(): number {
 		return this.#cols;
+	}
+
+	/** The terminal's scrollback: every row that scrolled off the top, oldest first (what the person can scroll back to). */
+	scrollback(): string[] {
+		return this.#scrolled.slice();
 	}
 
 	/** The visible screen — the grid rows. */
@@ -211,6 +218,7 @@ export class VtScreen {
 		if (this.#r === this.#grid.length - 1) {
 			// at the last row: SCROLL — every row shifts up, the top row
 			// leaves the grid, a blank row enters at the bottom
+			this.#scrolled.push(this.#grid[0]!.text);
 			for (let k = 0; k < this.#grid.length - 1; k += 1) this.#grid[k] = this.#grid[k + 1]!;
 			this.#grid[this.#grid.length - 1] = { text: "", cont: false };
 		} else {
