@@ -1,29 +1,24 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-/** What a hover shows: a heading, rows of label and value, a log or lines, and an optional enlarged preview. */
+/** What a hover shows: the name (at most three lines) and one line of what it is doing. */
 export interface TipData {
-	readonly title?: string;
-	readonly head?: string;
-	readonly rows?: readonly (readonly [string, string])[];
-	readonly log?: readonly string[];
-	readonly note?: string;
+	readonly title: string;
+	readonly meta: string;
 }
 
-/** The hover card, drawn to the left of the rail beside the row that asked for it (hung from the row's bottom edge when the row is low in the window). */
-export function Tip({ tip, top, bottom }: { readonly tip: TipData | null; readonly top?: number; readonly bottom?: number }): ReactNode {
+/**
+ * The hover card, dark and small, to the left of the rail beside the row that asked for it (owner 2026-11-25): placed at the row's
+ * top and moved up as far as it must so the whole card stays in the window, measured before it paints.
+ */
+export function Tip({ tip, at }: { readonly tip: TipData | null; readonly at: number }): ReactNode {
+	const box = useRef<HTMLDivElement>(null);
+	const [top, setTop] = useState<number | null>(null);
+	useLayoutEffect(() => setTop(Math.max(8, Math.min(at - 6, innerHeight - (box.current?.offsetHeight ?? 0) - 8))), [tip, at]);
 	if (tip === null) return null;
 	return (
-		<div className="tip show" style={bottom === undefined ? { top } : { bottom }} data-kind="tip">
-			{tip.title !== undefined && tip.title !== "" ? <div className="ttl">{tip.title}</div> : null}
-			{tip.head !== undefined ? <h6>{tip.head}</h6> : null}
-			{tip.rows?.map(([k, v]) => (
-				<div className="kv" key={k}>
-					<span>{k}</span>
-					<b>{v}</b>
-				</div>
-			))}
-			{tip.log !== undefined && tip.log.length > 0 ? <div className="lg">{tip.log.join("\n")}</div> : null}
-			{tip.note !== undefined ? <div className="tnote">{tip.note}</div> : null}
+		<div ref={box} className="tip show" style={{ top: top ?? at, visibility: top === null ? "hidden" : undefined }} data-kind="tip">
+			<div className="ttl" data-field="tip-title">{tip.title}</div>
+			<div className="meta" data-field="tip-meta">{tip.meta}</div>
 		</div>
 	);
 }

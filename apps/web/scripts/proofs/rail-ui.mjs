@@ -54,7 +54,7 @@ const hover = async (name) => {
 	return waitUntil(async () => (await app.count("[data-kind=tip]")) === 1, 3000).then(() => q(`document.querySelector('[data-kind=tip]')?.innerText ?? ''`));
 };
 let tip = await hover("task");
-check(tip.includes("hello-from-task") && tip.includes("this long-named background command printed for the proof") && (await app.count("[data-act=task-stop]")) === 1, "the background task's row: its full name and its last output in the hover, and a stop button while it runs");
+check(!tip.includes("hello-from-task") && tip.includes("this long-named background command printed for the proof") && /running · \d+:\d\d/.test(tip) && (await app.count("[data-act=task-stop]")) === 1, "the background task's row: its full name and its state in the hover (no output there), and a stop button while it runs");
 await q(`document.querySelector('[data-field=task]').dispatchEvent(new MouseEvent('mouseleave'))`);
 await app.click("[data-act=task-stop]");
 check(await waitUntil(async () => (await app.count("[data-act=task-stop]")) === 0 && /stopped/.test((await app.text("[data-field=task]")) ?? ""), 15_000) && (await app.count("[data-act=finished]")) === 0 && (await app.count("[data-field=task]")) === 1, "stop ends the task: its row stays in the one list, now stopped, with no group folding the ended ones");

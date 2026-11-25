@@ -244,7 +244,6 @@ export const en = {
 	finishedTab: "Finished ({n})",
 	download: "Download",
 	openInTab: "Open in a new tab",
-	railState: "State",
 	railEnv: "Environment",
 	railHere: "This computer",
 	railPath: "Folder",
