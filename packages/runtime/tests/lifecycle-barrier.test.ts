@@ -4,8 +4,12 @@
  * P1-1: the WHOLE append critical section is serialized per session; a
  *       concurrent append can never land after a rejected (stale) write.
  * P1-2: a displaced/dead lock is detected — the store never writes locklessly.
- * P1-3: close() is a lifecycle barrier — an in-flight append fails and no
- *       lock handle outlives the instance.
+ * P1-3: close() is a lifecycle barrier — redefined 2026-11-25 (the session
+ *       log's fsync moved off the event loop): close() refuses appends not
+ *       yet admitted, waits for the WHOLE queued chain (an append still
+ *       waiting for the lock included, an admitted write's sync included),
+ *       then closes the fd and releases the lock, and only then settles; no
+ *       lock handle outlives it.
  *
  * R-G 0.1.47 (ADR-0050) re-baselines: the round-5 tests killed the python3
  * helper process; the native link lock has no helper, so a dead/displaced
@@ -45,7 +49,7 @@ describe("store write lifecycle (round 5 P1)", () => {
 		const id = sess();
 		const external = new SessionStore(root);
 		await external.append(id, "r1", ev(0));
-		external.closeAll();
+		await external.closeAll();
 
 		// Two concurrent appends on ONE instance, both against the moved
 		// disk: the first fails stale; the second must NOT land either.
@@ -61,7 +65,7 @@ describe("store write lifecycle (round 5 P1)", () => {
 		const records = new SessionStore(root).load(id);
 		expect(records).toHaveLength(1);
 		expect(records[0]!.runId).toBe("r1");
-		store.closeAll(); // never leave our lock behind for later tests
+		await store.closeAll(); // never leave our lock behind for later tests
 	});
 
 	it("P1-2: a displaced lock makes further appends fail — never a lockless write", async () => {
@@ -82,7 +86,7 @@ describe("store write lifecycle (round 5 P1)", () => {
 		// The disk carries ONLY the store's own record — nothing was written
 		// without possession of the lock.
 		expect(new SessionStore(root).load(id)).toHaveLength(1);
-		store.closeAll();
+		await store.closeAll();
 
 		// The lock is recoverable: a fresh store takes over the dead
 		// identity and holds the REAL lock (a further contender refuses
@@ -91,9 +95,9 @@ describe("store write lifecycle (round 5 P1)", () => {
 		await fresh.append(id, "r2", ev(1));
 		const contender = new SessionStore(root);
 		await expect(contender.append(id, "r3", ev(2))).rejects.toThrow(/locked|writer/);
-		fresh.closeAll();
+		await fresh.closeAll();
 		await expect(contender.append(id, "r3", ev(2))).resolves.toBeUndefined();
-		contender.closeAll();
+		await contender.closeAll();
 	});
 
 	it("P1-2b: the fast path never trusts a displaced lock — a rival holds the real lock, our write FAILS", async () => {
@@ -111,21 +115,29 @@ describe("store write lifecycle (round 5 P1)", () => {
 		// locklessly behind a displaced handle.
 		await expect(store.append(id, "r1", ev(1))).rejects.toThrow(/locked|writer/);
 		expect(new SessionStore(root).load(id)).toHaveLength(2); // rival's only
-		store.closeAll();
-		rival.closeAll();
+		await store.closeAll();
+		await rival.closeAll();
 	});
 
-	it("P1-3: close() is a lifecycle barrier — an in-flight append fails and no lock handle outlives the instance", async () => {
+	it("P1-3 (redefined 2026-11-25): close() is a barrier — it settles only after the queued append (still waiting for the lock) refused, and no lock handle outlives it", async () => {
 		const root = dir();
 		const id = sess();
 		const holder = new SessionStore(root);
 		await holder.append(id, "r1", ev(0)); // holds the lock
 
 		const store = new SessionStore(root);
-		const appending = store.append(id, "r2", ev(1)); // waits on the lock
-		store.close(id); // returns immediately
-		await expect(appending).rejects.toThrow(/closed/i);
-		holder.closeAll();
+		const order: string[] = [];
+		const appending = store.append(id, "r2", ev(1)).then(
+			() => order.push("append resolved"),
+			(e: Error) => order.push(`append refused: ${e.message}`),
+		); // waits on the lock
+		await store.close(id);
+		order.push("close resolved");
+		await appending;
+		// the append settled (refused: the session is closed) BEFORE the close resolved — never after it
+		expect(order[0]).toMatch(/^append refused: .*closed/i);
+		expect(order[1]).toBe("close resolved");
+		await holder.closeAll();
 		// The release left the EMPTY released marker (the path is never
 		// deleted — ADR-0050) and no handle outlives the instance: a fresh
 		// writer may proceed.
@@ -133,7 +145,7 @@ describe("store write lifecycle (round 5 P1)", () => {
 		const other = new SessionStore(root);
 		await other.append(id, "r2", ev(1));
 		expect(other.load(id)).toHaveLength(2);
-		other.closeAll();
+		await other.closeAll();
 	});
 });
 
@@ -154,7 +166,7 @@ describe("locking-unavailable errors (round 5 P2, re-baselined — ADR-0050)", (
 		const store = new SessionStore(root, { lockAdapter: stub });
 		await expect(store.append("s", "r1", ev(0))).rejects.toThrow(/locking unavailable/);
 		await expect(store.append("s", "r1", ev(0))).rejects.not.toThrow(/locked by another writer/);
-		store.closeAll();
+		await store.closeAll();
 	});
 
 	it("P2-1b: an unwritable lock dir is an HONEST locking-unavailable error (real fs, EACCES)", async () => {
@@ -168,6 +180,6 @@ describe("locking-unavailable errors (round 5 P2, re-baselined — ADR-0050)", (
 		} finally {
 			chmodSync(root, 0o755);
 		}
-		store.closeAll();
+		await store.closeAll();
 	});
 });

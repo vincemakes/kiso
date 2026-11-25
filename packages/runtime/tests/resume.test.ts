@@ -63,7 +63,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		}
 		expect(inA.some((e) => e.type === "permission_requested")).toBe(true);
 		expect(existsSync(marker)).toBe(false); // nothing ran yet
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Process B: reload, resume, approve.
 		const storeB = new SessionStore(dir);
@@ -103,7 +103,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		for await (const ev of sessionA.run("search")) {
 			if (ev.type === "permission_requested") break;
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		const storeB = new SessionStore(dir);
 		const agentB = pausedAgent(storeB, marker, STOP_SCRIPT);
@@ -132,7 +132,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		for await (const ev of sessionA.run("search")) {
 			if (ev.type === "permission_requested") break;
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// A helper process approved the request directly (durable decision).
 		const storeMid = new SessionStore(dir);
@@ -141,7 +141,7 @@ describe("resume: process A paused and exited, process B decides", () => {
 		const pending = sessionMid.pendingApprovals();
 		expect(pending).toHaveLength(1);
 		await sessionMid.approve(pending[0]!.decisionId, true);
-		storeMid.closeAll();
+		await storeMid.closeAll();
 
 		// The real resume applies the decision WITHOUT pausing again.
 		const storeB = new SessionStore(dir);
@@ -168,7 +168,7 @@ describe("receipt repair", () => {
 		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "r1", { seq: 3, type: "tool_execution_succeeded", executionId: "ex-2", callId: "c1", result: { content: "results for k", isError: false } });
-		store.closeAll();
+		await store.closeAll();
 
 		const agent = pausedAgent(new SessionStore(dir), marker, STOP_SCRIPT);
 		const session = await agent.session({ id: "s" });
@@ -193,7 +193,7 @@ describe("resume boundaries", () => {
 		for await (const _ev of session.run("search")) {
 			if (_ev.type === "permission_requested") await session.approve((_ev as { decisionId: string }).decisionId, true);
 		}
-		store.closeAll();
+		await store.closeAll();
 
 		const session2 = await agent.session({ id: "s" });
 		const resumed: Event[] = [];
@@ -207,7 +207,7 @@ describe("resume boundaries", () => {
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store.append("s", "r1", { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } });
 		await store.append("s", "r1", { seq: 2, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: { query: "k" } });
-		store.closeAll();
+		await store.closeAll();
 
 		const agent = pausedAgent(new SessionStore(dir), join(dir, "m.txt"));
 		const session = await agent.session({ id: "s" });

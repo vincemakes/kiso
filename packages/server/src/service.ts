@@ -37,7 +37,7 @@ export interface SessionServiceOptions {
 	 *
 	 *  Ownership: the host owns the store. `close()` aborts runs and
 	 *  forgets sessions; it never closes the store — the host calls
-	 *  `store.closeAll()` when its process ends. */
+	 *  `await store.closeAll()` when its process ends. */
 	readonly store: SessionStore;
 	/** The product's agent factory, called once per session id (and again by
 	 *  `reopen`). Everything product-specific — prompt, tools, extensions,
@@ -476,7 +476,7 @@ export class SessionService {
 	 *  then forget every session. Whatever did not settle is resumable by
 	 *  the next process — persist-first means nothing delivered is lost.
 	 *  The STORE is not closed here: the host owns it and calls
-	 *  `store.closeAll()` when its process ends. */
+	 *  `await store.closeAll()` when its process ends. */
 	async close(graceMs = 0): Promise<void> {
 		this.#draining = true;
 		const settling: Promise<void>[] = [];

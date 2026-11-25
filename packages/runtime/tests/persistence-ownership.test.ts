@@ -45,7 +45,7 @@ describe("persistence ownership (round 1)", () => {
 		for await (const _ev of sessionA.run("first")) {
 			// run 1 completes; storeA closes (its view ends at N)
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// B is a stale handle: it preloads the log at seq N.
 		const storeB = new SessionStore(dir);
@@ -59,7 +59,7 @@ describe("persistence ownership (round 1)", () => {
 		for await (const _ev of sessionC.run("second")) {
 			// drain
 		}
-		storeC.closeAll();
+		await storeC.closeAll();
 
 		// B tries to write an event derived from ITS stale context.
 		await expect(async () => {

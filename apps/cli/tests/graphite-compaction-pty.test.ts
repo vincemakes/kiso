@@ -32,7 +32,7 @@ async function seed(home: string, id: string): Promise<number> {
 	await store.append(id, "r1", { seq: seq++, type: "terminal", outcome: { kind: "completed" } });
 	// the writer's lock goes with the seeding: held, the CLI's run fails
 	// with "locked by another writer"
-	store.close(id);
+	await store.close(id);
 	return 6; // the faux script's durable position: five results and one end_turn
 }
 

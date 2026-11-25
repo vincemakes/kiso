@@ -32,7 +32,7 @@ async function oneTurn(dir: string, reasoning?: typeof HIGH | typeof LOW): Promi
 	const session = await agent.session({ id: "s" });
 	for await (const _ of session.run("go")) void _;
 	const r = { reasoning: session.reasoning };
-	agent.close();
+	await agent.close();
 	return r;
 }
 

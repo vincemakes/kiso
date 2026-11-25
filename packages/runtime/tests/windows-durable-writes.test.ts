@@ -41,6 +41,15 @@ vi.mock("node:fs", async (importOriginal) => {
 			rules.syncs += 1;
 			return real.fsyncSync(fd);
 		},
+		// 2026-11-25: the store's per-event sync runs on the thread pool; the same Windows rule applies to it
+		fsync: (fd: number, cb: (error: NodeJS.ErrnoException | null) => void) => {
+			if (rules.on && rules.appendFds.has(fd)) {
+				queueMicrotask(() => cb(eperm("fsync") as NodeJS.ErrnoException));
+				return;
+			}
+			rules.syncs += 1;
+			real.fsync(fd, cb);
+		},
 		ftruncateSync: (fd: number, len?: number) => {
 			if (rules.on && rules.appendFds.has(fd)) throw eperm("ftruncate");
 			return real.ftruncateSync(fd, len);
@@ -69,7 +78,7 @@ describe("under Windows' file rules", () => {
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "go" } as never);
 		await store.append("s", "r1", { seq: 1, type: "text_delta", text: "do" } as never);
 		await store.append("s", "r1", { seq: 2, type: "stop", reason: "end_turn" } as never);
-		store.closeAll();
+		await store.closeAll();
 		expect(rules.syncs).toBeGreaterThanOrEqual(2);
 		expect(new SessionStore(store.root).load("s").map((r) => r.event.type)).toEqual(["user_input", "text_delta", "stop"]);
 	});
@@ -78,12 +87,12 @@ describe("under Windows' file rules", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-win-torn-"));
 		const first = new SessionStore(dir);
 		await first.append("s", "r1", { seq: 0, type: "user_input", content: "go" } as never);
-		first.closeAll();
+		await first.closeAll();
 		const file = join(dir, "s.jsonl");
 		writeFileSync(file, `${readFileSync(file, "utf8")}{"runId":"r1","ev`);
 		const store = new SessionStore(dir);
 		await store.append("s", "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
-		store.closeAll();
+		await store.closeAll();
 		expect(new SessionStore(dir).load("s").map((r) => r.event.seq)).toEqual([0, 1]);
 	});
 

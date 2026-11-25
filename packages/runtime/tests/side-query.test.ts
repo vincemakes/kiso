@@ -84,7 +84,7 @@ describe("TUI2-R3v2 ③ — the side query is TRACE-VISIBLE", () => {
 	it("records a request line of its own, marked with its purpose", async () => {
 		const { store, agent, session } = await fixture([say("alternatives here")]);
 		const answer = await session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT });
-		agent.close();
+		await agent.close();
 
 		expect(answer).toBe("alternatives here");
 		const requests = traceLines(store).filter((l) => l.kind === "request");
@@ -101,7 +101,7 @@ describe("TUI2-R3v2 ③ — the side query is TRACE-VISIBLE", () => {
 		const { store, agent, session } = await fixture([say("turn one"), say("alternatives")]);
 		for await (const ev of session.run("hello")) void ev;
 		await session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT });
-		agent.close();
+		await agent.close();
 
 		const requests = traceLines(store).filter((l) => l.kind === "request");
 		expect(requests).toHaveLength(2);
@@ -114,7 +114,7 @@ describe("TUI2-R3v2 ③ — the side query is TRACE-VISIBLE", () => {
 	it("an ordinary run is UNCHANGED — no purpose, and the old records still validate", async () => {
 		const { store, agent, session } = await fixture([say("just a turn")]);
 		for await (const ev of session.run("hello")) void ev;
-		agent.close();
+		await agent.close();
 		const requests = traceLines(store).filter((l) => l.kind === "request");
 		expect(requests).toHaveLength(1);
 		expect(validateTraceRecord(requests[0])).toBe(true);
@@ -129,7 +129,7 @@ describe("TUI2-R3v2 ③ — the side query is EPHEMERAL", () => {
 		const before = JSON.stringify(session.log.all);
 		await session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT });
 		expect(JSON.stringify(session.log.all), "a side query must not touch the durable log").toBe(before);
-		agent.close();
+		await agent.close();
 	});
 
 	it("does not count as a run — the one-run-at-a-time guard is untouched", async () => {
@@ -137,7 +137,7 @@ describe("TUI2-R3v2 ③ — the side query is EPHEMERAL", () => {
 		// a side query in flight must not block the next run from starting
 		await session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT });
 		for await (const ev of session.run("hello")) void ev;
-		agent.close();
+		await agent.close();
 	});
 
 	it("passes its SIGNAL to the adapter — esc cancels the ask, and it settles as aborted", async () => {
@@ -167,7 +167,7 @@ describe("TUI2-R3v2 ③ — the side query is EPHEMERAL", () => {
 		const pending = session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT, signal: ctrl.signal });
 		ctrl.abort();
 		await expect(pending, "the caller learns the ask was cancelled").rejects.toThrow();
-		agent.close();
+		await agent.close();
 		const requests = traceLines(store).filter((l) => l.kind === "request");
 		expect(requests[0]?.outcome, "and the ledger records it honestly, never as ok").toBe("aborted");
 	});
@@ -177,7 +177,7 @@ describe("TUI2-R3v2 ③ — the side query's DECLARED rent arm", () => {
 	it("pays its OWN composition: its small prompt + the envelope, and no tools", async () => {
 		const { store, agent, session } = await fixture([say("alternatives")]);
 		await session.sideQuery({ purpose: "safer-options", systemPrompt: SYS, prompt: PROMPT });
-		agent.close();
+		await agent.close();
 
 		const request = traceLines(store).find((l) => l.kind === "request")!;
 		// the declared arm: base = the side query's OWN system prompt (never
@@ -196,7 +196,7 @@ describe("TUI2-R3v2 ③ — ZERO AMBIENT RENT", () => {
 		const { store, agent, session } = await fixture([say("one"), say("two"), say("three")]);
 		for await (const ev of session.run("hello")) void ev;
 		for await (const ev of session.run("again")) void ev;
-		agent.close();
+		await agent.close();
 
 		const requests = traceLines(store).filter((l) => l.kind === "request");
 		expect(requests.length, "two turns, two requests — and not one more").toBe(2);

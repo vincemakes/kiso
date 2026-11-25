@@ -48,7 +48,7 @@ async function seedPoisoned(dir: string, extraDangling = false): Promise<void> {
 	await put({ type: "tool_execution_failed", executionId: ex1, callId: "c1", invocationSeq: callSeq.c1, error: "shell aborted", errorKind: "fatal", safeToRetry: false });
 	await put({ type: "tool_result", callId: "c1", invocationSeq: callSeq.c1, content: "shell aborted", isError: true, errorKind: "fatal" });
 	await put({ type: "terminal", outcome: { kind: "aborted", by: "user" } });
-	store.closeAll();
+	await store.closeAll();
 }
 
 /** The durable records, read the way a new process reads them. */
@@ -78,7 +78,7 @@ async function runOnce(dir: string) {
 	for await (const _ of session.run("why did it fail")) {
 		// the run lands in the log and the store
 	}
-	store.closeAll();
+	await store.closeAll();
 	return requests;
 }
 
@@ -141,7 +141,7 @@ describe("the repair — the poisoned session heals by the next run", () => {
 		const c2Seq = seeded.find((r) => r.event.type === "tool_call_end" && r.event.callId === "c2")!.event.seq;
 		const writer = new SessionStore(dir);
 		await writer.append("s", "r1", { seq: seeded.at(-1)!.event.seq + 1, type: "tool_result", callId: "c2", invocationSeq: c2Seq, content: ABORTED_BEFORE_EXECUTION, isError: true, errorKind: "precondition" } as never);
-		writer.closeAll();
+		await writer.closeAll();
 
 		const requests = await runOnce(dir);
 		expect(unpaired(requests[0]!.messages)).toEqual([]);

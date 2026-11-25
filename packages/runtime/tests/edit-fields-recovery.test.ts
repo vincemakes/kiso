@@ -85,7 +85,7 @@ async function resumeAfterUpgrade(keep: (e: Event) => boolean) {
 	const sA = await agentA.session({ id: "s" });
 	for await (const _ of sA.run("go")) void _;
 	const logA = [...sA.log.all];
-	agentA.close();
+	await agentA.close();
 
 	const callEnd = logA.findIndex((e) => e.type === "tool_call_end");
 	const stopAt = logA.findIndex((e, i) => e.type === "stop" && i > callEnd);
@@ -98,12 +98,12 @@ async function resumeAfterUpgrade(keep: (e: Event) => boolean) {
 	const seed = new SessionStore(dirB);
 	let seq = 0;
 	for (const e of prefix) await seed.append("s", "r1", { ...e, seq: seq++ } as Event);
-	seed.closeAll();
+	await seed.closeAll();
 	const agentB = createAgent({ model: "faux", store: new SessionStore(dirB), tools: [today], adapter: answering, extensions: [gate] } as unknown as AgentDefinition);
 	const sB = await agentB.session({ id: "s" });
 	for await (const _ of sB.resume()) void _;
 	const logB = [...sB.log.all];
-	agentB.close();
+	await agentB.close();
 	return { input, prefix, logB, file: readFileSync(join(workspace, "f.ts"), "utf8") };
 }
 

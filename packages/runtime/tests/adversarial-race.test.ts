@@ -56,7 +56,7 @@ describe("adversarial races (round 4)", () => {
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		expect(durable.filter((e) => e.type === "tool_execution_resolved")).toHaveLength(1);
 		expect(durable.filter((e) => e.type === "tool_execution_resolved")[0]).toMatchObject({ resolution: "abandoned" });
-		store.closeAll(); // release the writer before a fresh process's resume
+		await store.closeAll(); // release the writer before a fresh process's resume
 		// A later resume does not block on it, and cannot double-record it.
 		const session2 = await failingAgent(new SessionStore(dir), STOP).session({ id: "s" });
 		for await (const _ev of session2.resume()) {
@@ -132,7 +132,7 @@ describe("adversarial races (round 4)", () => {
 		});
 		const session = await failingAgent(store, STOP).session({ id: "s" });
 		await session.resolveUncertain("ex-1", "abandoned");
-		store.closeAll(); // the process dies right after the verdict
+		await store.closeAll(); // the process dies right after the verdict
 		const durable = new SessionStore(dir).load("s").map((r) => r.event);
 		expect(durable.filter((e) => e.type === "tool_execution_resolved" && e.resolution === "abandoned")).toHaveLength(1);
 	});
@@ -145,7 +145,7 @@ describe("adversarial races (round 4)", () => {
 		for await (const ev of sessionA.run("first")) {
 			if (ev.type === "permission_requested") break; // pause, exit
 		}
-		storeA.closeAll();
+		await storeA.closeAll();
 
 		// Process B resumes; the human answers and aborts in the SAME tick.
 		const storeB = new SessionStore(dir);

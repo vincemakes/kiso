@@ -105,7 +105,7 @@ describe("0.40.0 — profileName is never drift", () => {
 		const dir = mkdtempSync(join(tmpdir(), "kiso-ws-"));
 		const store = new SessionStore(dir);
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "hi" } as never);
-		store.closeAll();
+		await store.closeAll();
 		writeProfile(dir, "s", { ...buildProfile({ revision: 1, modelId: "faux-y", provider: null, profileName: "old-name", registry: new ToolRegistry(), workspace: "/w" }) });
 		const agent = createAgent({ model: "faux-y", store: new SessionStore(dir), tools: [], adapter: DONE, profileName: "new-name", workspace: "/w" });
 		const session = await agent.session({ id: "s" });
@@ -122,7 +122,7 @@ describe("0.40.0 — where a session started is history, and unknown history sta
 		await store.append("s", "r1", { seq: 0, type: "user_input", content: "hi" } as never);
 		await store.append("s", "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
 		await store.append("s", "r1", { seq: 2, type: "terminal", outcome: { kind: "completed" } } as never);
-		store.closeAll();
+		await store.closeAll();
 		const agent = createAgent({ model: "faux-y", store: new SessionStore(dir), tools: [], adapter: DONE, workspace: "/not/where/it/started", profileName: "p" });
 		const session = await agent.session({ id: "s" });
 		for await (const _ of session.run("again")) {

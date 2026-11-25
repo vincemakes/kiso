@@ -21,7 +21,7 @@ async function logOf(root: string, id: string, first: string): Promise<void> {
 	const store = new SessionStore(root);
 	await store.append(id, "r1", { seq: 0, type: "user_input", content: first } as never);
 	await store.append(id, "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
-	store.closeAll();
+	await store.closeAll();
 }
 
 describe("the name tenant", () => {
@@ -64,7 +64,7 @@ describe("the name tenant", () => {
 		const store = new SessionStore(root);
 		const titles = Object.fromEntries(store.list().map((m) => [m.id, m.title]));
 		expect(titles).toEqual({ a: "fix the resize repaint", b: "0.45 notes" });
-		store.closeAll();
+		await store.closeAll();
 		const names = Object.fromEntries(listSessionSidecars(root).map((l) => [l.id, l.name]));
 		expect(names).toEqual({ a: null, b: "0.45 notes" });
 	});

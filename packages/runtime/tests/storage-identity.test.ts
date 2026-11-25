@@ -36,7 +36,7 @@ describe("lock ownership tokens", () => {
 		// A's close releases ONLY A's handle — the lock path survives as
 		// the empty released marker and no contender ever deletes it
 		// (ADR-0050).
-		store.close("s");
+		await store.close("s");
 		expect(readFileSync(join(dir, "s.lock"), "utf8")).not.toContain("99999999"); // untouched by close
 		// Now the lock is free: B acquires it and writes.
 		await storeB.append("s", "r2", ev(1));
@@ -46,7 +46,7 @@ describe("lock ownership tokens", () => {
 	it("close() releases only the lock this instance holds", async () => {
 		const { dir, store } = tempStore();
 		await store.append("s", "r1", ev(0));
-		store.close("s");
+		await store.close("s");
 		// The lock is gone; a fresh writer may proceed.
 		const other = new SessionStore(dir);
 		await other.append("s", "r2", ev(1));
@@ -72,7 +72,7 @@ describe("id validation before ANY file side effect", () => {
 		const dir = join(parent, "work");
 		const store = new SessionStore(dir);
 		expect(() => store.close("../evil")).toThrow();
-		expect(() => store.closeAll()).not.toThrow();
+		await expect(store.closeAll()).resolves.toBeUndefined();
 		expect(existsSync(join(parent, "evil.lock"))).toBe(false);
 		expect(readdirSync(parent)).toEqual(["work"]); // only the work dir, no evil.lock
 	});
@@ -90,7 +90,7 @@ describe("expected-last-seq CAS", () => {
 		const { dir, store } = tempStore();
 		await store.append("s", "r1", ev(0));
 		await store.append("s", "r1", ev(1));
-		store.closeAll();
+		await store.closeAll();
 
 		// Process B preloads the session READ-ONLY (its view ends at seq 1,
 		// it holds no lock)…
@@ -100,7 +100,7 @@ describe("expected-last-seq CAS", () => {
 		// …meanwhile process C advanced the file to seq 2.
 		const storeC = new SessionStore(dir);
 		await storeC.append("s", "r3", ev(2));
-		storeC.closeAll();
+		await storeC.closeAll();
 
 		// B's stale handle tries to write seq 2 (its view) — the file is
 		// already at 2 → refused, no duplicate.
@@ -135,7 +135,7 @@ describe("expected-last-seq CAS", () => {
 		await store.append("a", "r1", ev(0));
 		await store.append("b", "r1", ev(0));
 		await store.append("c", "r1", ev(0));
-		store.closeAll();
+		await store.closeAll();
 		const other = new SessionStore(dir);
 		await other.append("a", "r2", ev(1));
 		await other.append("b", "r2", ev(1));

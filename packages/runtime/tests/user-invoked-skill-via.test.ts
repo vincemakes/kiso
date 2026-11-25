@@ -34,7 +34,7 @@ async function oneTurn(withVia: boolean): Promise<{ requests: string[]; events: 
 	for await (const _ of session.run(BODY, withVia ? { source: "user", via } : { source: "user" })) {
 		/* drain */
 	}
-	store.closeAll();
+	await store.closeAll();
 	return { requests, events: new SessionStore(dir).load("s").map((r) => r.event), dir };
 }
 

@@ -95,7 +95,7 @@ describe("uncertainty flow (round 7) — the crash window (ruling #12, ADR-0038)
 		await store2.append("s2", "r1", { seq: 0, type: "user_input", content: "go" });
 		await store2.append("s2", "r1", { seq: 1, type: "tool_execution_started", executionId: "ex-2", callId: "c1", name: "web_search", input: {} });
 		await store2.append("s2", "r1", { seq: 2, type: "tool_execution_failed", executionId: "ex-2", callId: "c1", error: "boom", safeToRetry: false });
-		store2.closeAll();
+		await store2.closeAll();
 		const session2 = await failingAgent(new SessionStore(dir), STOP).session({ id: "s2" });
 		expect(session2.uncertainExecutions()).toHaveLength(0);
 	});
@@ -106,7 +106,7 @@ describe("uncertainty flow (round 7) — the crash window (ruling #12, ADR-0038)
 		await seedUncertain(storeA, "s");
 		const sessionA = await failingAgent(storeA, STOP).session({ id: "s" });
 		await sessionA.resolveUncertain("ex-1", "rerun"); // process A decides offline
-		storeA.closeAll(); // process A exits — the lock is released
+		await storeA.closeAll(); // process A exits — the lock is released
 
 		// Process B reloads: the resolution is on disk, the seqs are
 		// contiguous 0..N — the durable trajectory has no gap.

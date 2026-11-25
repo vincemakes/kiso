@@ -47,7 +47,7 @@ async function seed(dir: string, withResult: boolean): Promise<void> {
 	await store.append("s", "r1", { seq: 3, type: "tool_execution_started", executionId: "ex-3", callId: "c1", name: "ask", input: { q: "which?" } });
 	await store.append("s", "r1", { seq: 4, type: "tool_execution_succeeded", executionId: "ex-3", callId: "c1", result: { content: "asked", isError: false }, tags: [END_TURN] });
 	if (withResult) await store.append("s", "r1", { seq: 5, type: "tool_result", callId: "c1", content: "asked", isError: false, tags: [END_TURN], executionId: "ex-3" });
-	store.closeAll();
+	await store.closeAll();
 }
 
 describe("0.42.0: END_TURN decides the same on a cold resume as on the fresh path", () => {

@@ -62,8 +62,9 @@ await service.close(5_000);                              // abort what is live, 
 
 - **The store.** `createSessionService({ store })` takes the store the
   factory's agents write to; the service never closes it — `close()`
-  aborts runs and forgets sessions, and the host calls `store.closeAll()`
-  when its process ends. Everything about an open session is read from
+  aborts runs and forgets sessions, and the host awaits `store.closeAll()`
+  when its process ends (a Promise since 2026-11-25: it waits for the appends
+  in flight and their syncs, then releases every fd and lock). Everything about an open session is read from
   that session's own log (the object the run writes), so replay and run
   share one truth by construction; a factory that binds its agents to a
   DIFFERENT store is detected — the first run to settle on such a session
@@ -78,7 +79,7 @@ await service.close(5_000);                              // abort what is live, 
 
 The order that keeps every run resumable: `service.drain(graceMs)` (no
 new runs; wait for executing tools; the report says what was parked or
-cut), then stop the listener, then `store.closeAll()`, then exit. Do not
+cut), then stop the listener, then `await store.closeAll()`, then exit. Do not
 call `service.close()` for that — it ABORTS what is live, including a
 run parked at an approval, which voids the draft its answer would have
 continued. And do not call `agent.close()` on a factory's agent when the

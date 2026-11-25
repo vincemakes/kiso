@@ -32,7 +32,7 @@ async function legacyLog(root: string, id: string, turns: string[]): Promise<voi
 		await store.append(id, "r1", { seq: seq++, type: "stop", reason: "end_turn" } as never);
 	}
 	await store.append(id, "r1", { seq: seq++, type: "terminal", outcome: { kind: "completed" } } as never);
-	store.closeAll();
+	await store.closeAll();
 }
 
 describe("0.40.0 dogfood — the sidecar's two tenants", () => {
@@ -66,7 +66,7 @@ describe("0.40.0 dogfood — a run writes its row", () => {
 		for await (const _ of session.run("fix the parser")) {
 			/* drain */
 		}
-		store.closeAll();
+		await store.closeAll();
 		const s = readSummary(root, "live");
 		expect(s).toMatchObject({ title: "fix the parser", turns: 1, state: "completed", source: "run", workspaceUnknown: false });
 	});

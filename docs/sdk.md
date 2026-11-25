@@ -193,7 +193,8 @@ runtime must own its own store.
 
 In concrete terms (GAP #20 ①, documented 2026-08-12): the store holds a
 file descriptor and a writer lock per open session; `close()`/`closeAll()`
-releases both and marks the session closed, after which THAT store
+(Promises since 2026-11-25: await them; they wait for the appends in
+flight and their syncs) release both and mark the session closed, after which THAT store
 instance refuses to reopen it (a re-open requires a fresh store on the
 same directory). A runtime always calls `close()` on exit — so an
 injected store shared between two runtimes, open while the first closes,

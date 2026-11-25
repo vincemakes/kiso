@@ -108,7 +108,7 @@ describe("EC1-F1 — a bare tool-call suffix with no stop is a DRAFT, not a cont
 			name: "edit_file",
 			input: { path: "a" },
 		} as Event);
-		store.closeAll();
+		await store.closeAll();
 
 		const requests: Message[][] = [];
 		const adapter: Adapter = {

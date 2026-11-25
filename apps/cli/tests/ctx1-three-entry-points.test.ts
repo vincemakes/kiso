@@ -121,7 +121,7 @@ async function seedHistory(home: string): Promise<void> {
 	// `session s is locked by another writer`. Without this the session never
 	// opens, no turn runs, no boundary is written, and the arm that expects
 	// no boundary passes for a reason that has nothing to do with the fix.
-	store.close(SESSION);
+	await store.close(SESSION);
 }
 
 /** Rewrite ONLY the recorded model id. Everything the drift check looks at —

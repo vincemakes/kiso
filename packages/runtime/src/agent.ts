@@ -157,9 +157,10 @@ export class AgentRuntime {
 		return this.#definition.store.list();
 	}
 
-	/** Release every held fd and writer lock (E group: the CLI closes on exit). */
-	close(): void {
-		this.#definition.store.closeAll();
+	/** Release every held fd and writer lock (E group: the CLI closes on exit). A Promise since 2026-11-25: it waits for the appends
+	 *  in flight and their syncs; await it before exiting or removing a session's files. */
+	close(): Promise<void> {
+		return this.#definition.store.closeAll();
 	}
 
 	/** Load an existing session from disk, or create a fresh one.

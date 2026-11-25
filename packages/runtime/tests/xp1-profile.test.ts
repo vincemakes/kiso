@@ -64,7 +64,7 @@ describe("XP-1 — the sidecar's fail-closed lifecycle", () => {
 		const dir = freshDir();
 		const store = new SessionStore(dir);
 		await store.append("s2", "r1", { seq: 0, type: "user_input", content: "go" } as never);
-		store.closeAll();
+		await store.closeAll();
 		writeFileSync(profilePath(dir, "s2"), "{ this is not json");
 		const agent = createAgent({ model: "faux-y", store: new SessionStore(dir), tools: [], adapter: DONE });
 		await expect(agent.session({ id: "s2" })).rejects.toThrow(/profile.*unreadable|unreadable.*profile/i);
@@ -80,7 +80,7 @@ describe("XP-1 — the sidecar's fail-closed lifecycle", () => {
 			reason: "end_turn",
 			continuation: { scope: { providerId: "anthropic", apiId: "anthropic-messages", modelId: "m" }, entries: [] },
 		} as never);
-		store.closeAll();
+		await store.closeAll();
 		const agent = createAgent({ model: "faux-y", store: new SessionStore(dir), tools: [], adapter: DONE });
 		await expect(agent.session({ id: "s3" })).rejects.toThrow(/integrity|missing/i);
 	});
@@ -90,7 +90,7 @@ describe("XP-1 — the sidecar's fail-closed lifecycle", () => {
 		const store = new SessionStore(dir);
 		await store.append("s4", "r1", { seq: 0, type: "user_input", content: "go" } as never);
 		await store.append("s4", "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
-		store.closeAll();
+		await store.closeAll();
 		const agent = createAgent({ model: "faux-y", store: new SessionStore(dir), tools: [], adapter: DONE });
 		const session = await agent.session({ id: "s4" });
 		expect(session).toBeDefined();
@@ -104,7 +104,7 @@ describe("XP-1 — the model is part of the binding (re-ruled by the owner, 2026
 		const store = new SessionStore(dir);
 		await store.append("s5", "r1", { seq: 0, type: "user_input", content: "hi" } as never);
 		await store.append("s5", "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
-		store.closeAll();
+		await store.closeAll();
 		writeProfile(dir, "s5", buildProfile({ revision: 3, modelId: "recorded-x", provider: null, registry: new ToolRegistry() }));
 		const agent = createAgent({ model: "recorded-x", store: new SessionStore(dir), tools: [], adapter: DONE });
 		const session = await agent.session({ id: "s5" });
@@ -119,7 +119,7 @@ describe("XP-1 — the model is part of the binding (re-ruled by the owner, 2026
 		const store = new SessionStore(dir);
 		await store.append("s5b", "r1", { seq: 0, type: "user_input", content: "hi" } as never);
 		await store.append("s5b", "r1", { seq: 1, type: "stop", reason: "end_turn" } as never);
-		store.closeAll();
+		await store.closeAll();
 		writeProfile(dir, "s5b", buildProfile({ revision: 3, modelId: "recorded-x", provider: null, registry: new ToolRegistry() }));
 		const agent = createAgent({ model: "process-default-y", store: new SessionStore(dir), tools: [], adapter: DONE });
 		const session = await agent.session({ id: "s5b" });
@@ -133,7 +133,7 @@ describe("XP-1 — the model is part of the binding (re-ruled by the owner, 2026
 		const dir = freshDir();
 		const store = new SessionStore(dir);
 		await store.append("s6", "r1", { seq: 0, type: "user_input", content: "hi" } as never);
-		store.closeAll();
+		await store.closeAll();
 		writeProfile(
 			dir,
 			"s6",

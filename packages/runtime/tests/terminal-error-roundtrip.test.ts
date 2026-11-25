@@ -30,7 +30,7 @@ async function terminalOf(err: unknown): Promise<{ terminal: Event & { type: "te
 	const session = await agent.session({ id: "s" });
 	const events: Event[] = [];
 	for await (const ev of session.run("go")) events.push(ev);
-	agent.close();
+	await agent.close();
 	return { terminal: events.find((e) => e.type === "terminal") as Event & { type: "terminal" }, dir };
 }
 
