@@ -274,7 +274,14 @@ describe("TUI v2c (real PTY, 24×80)", () => {
 			{ ...env, KISO_FAUX_SCRIPT: script },
 			[
 				// "one" submits; "two" + "three" are steers while turn one runs.
-				["▌ ", "one\rtwo\rthree\r"],
+				// 2026-11-25: typed once the first request is in flight
+				// ("thinking…"), not with "one": the turn's opening events now
+				// sync off the event loop, so lines typed in the same burst can
+				// reach the turn head before its first request and be admitted
+				// INTO it (ADR-0057 site A: one request answers both, nothing is
+				// lost), which is not the steer-row path this case pins.
+				["▌ ", "one\r"],
+				["thinking…", "two\rthree\r"],
 				// The third steer's row — ↑ takes the LAST steer back into the
 				// editor (its row leaves).
 				[STEER("three"), "\x1b[A"],
