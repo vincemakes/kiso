@@ -247,7 +247,15 @@ describe("ADR-0044 cli: /compact on a real PTY", () => {
 				// does not fold — one row into one row is pure loss — so
 				// its work has no summary line anywhere. The row itself is
 				// the record, which is why the needle can be the row.)
-				["exit 0", "/compact\r"],
+				//
+				// 2026-11-25 (the session log's sync moved off the event
+				// loop): the shell's row now draws while the turn is still
+				// writing its last events, so "exit 0" alone no longer means
+				// the turn has ended. The driver looks for each needle AFTER
+				// the previous one matched, so the recap's "took " found after
+				// this turn's own "exit 0" row is this turn's end, and only it.
+				["exit 0", ""],
+				["took ", "/compact\r"],
 				["/mode to switch", "/status\r"],
 				["typing goes to the input", "exit\r"],
 			],
