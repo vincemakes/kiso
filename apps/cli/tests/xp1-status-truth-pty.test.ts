@@ -98,7 +98,7 @@ describe("XP-1 — the row and the request agree, per session", () => {
 				{ ...env, XP1_KEY: "fake" },
 				[
 					["/mode to switch", "hello there\r"],
-					["What would you like me to inspect", "/clear\r"],
+					["took ", "/clear\r"],
 					// inside the FRESH session: switch the live selection
 					// RE-DERIVED (the last sweep, owner 2026-10-06): a switch is a
 					// SESSION row on a dock — the id, and the way back
