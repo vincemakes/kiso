@@ -160,6 +160,9 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 			// usage chunk is still accepted after the finish: some compat
 			// providers send it late.
 			let finishSeen = false;
+			// #20: whether THIS attempt streamed any non-blank text. Declared
+			// per stream() call, so a retry starts clean.
+			let sawSubstantiveText = false;
 			// TRACE-F1: the model the SERVER says it served. Every chunk of an
 			// OpenAI-shaped stream carries `model`; we never read it, so an id
 			// the vendor silently aliases (a retired name, a migration id)
@@ -212,6 +215,7 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 
 					const delta = chunk.choices?.[0]?.delta;
 					if (delta?.content) {
+						if (delta.content.trim().length > 0) sawSubstantiveText = true;
 						yield { seq: 0, type: "text_delta", text: delta.content };
 					}
 
@@ -407,6 +411,14 @@ export function createOpenAICompatAdapter(client: OpenAI, adapterOpts: OpenAICom
 				err.name = "AbortError";
 				throw err;
 			}
+			// #20: a compat route may label a prose answer "tool_calls" and send
+			// no call. The label alone must not decide: with NO pending call
+			// (this adapter's own wire state — a call whose id never arrived
+			// is pending too, though it has no start) and some non-blank text
+			// in this attempt, the provider answered, and the turn ends. An
+			// empty reply keeps tool_use, so the kernel's Area-6 rule still
+			// refuses it: an empty answer is never laundered into a success.
+			if (finishReason === "tool_calls" && pending.size === 0 && sawSubstantiveText) stopReason = "end_turn";
 			yield { seq: 0, type: "stop", reason: stopReason };
 		},
 	};
