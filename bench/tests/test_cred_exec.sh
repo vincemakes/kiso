@@ -73,6 +73,9 @@ out=$(sh "$B/cred-print.sh" "$T/cfg/kiso-commandcode/credentials.env" COMMANDCOD
 [ "$out" = "$KEY" ] && ok "cred-print prints the named variable's value and nothing else" || bad "cred-print printed: $out"
 err=$(sh "$B/cred-print.sh" "$T/empty.env" COMMANDCODE_API_KEY 2>&1 >/dev/null || echo "rc=$?")
 case "$err" in *rc=78*) ok "cred-print refuses a file without the variable (78)" ;; *) bad "cred-print on a keyless file: $err" ;; esac
+# an AMBIENT key (the variable exported in the caller, absent from the file) never leaks through: 78, and nothing on stdout
+amb=$(COMMANDCODE_API_KEY="sk-ambient-$$-canary" sh "$B/cred-print.sh" "$T/empty.env" COMMANDCODE_API_KEY 2>/dev/null || echo "rc=$?")
+[ "$amb" = "rc=78" ] && ok "cred-print never prints an ambient key the file does not carry (78, stdout empty)" || bad "cred-print with an ambient key and a keyless file: $(printf '%s' "$amb" | sed 's/sk-ambient-[0-9]*-canary/<ambient canary>/')"
 if sh "$B/cred-print.sh" "$T/cfg/kiso-commandcode/credentials.env" 'X;rm' >/dev/null 2>&1; then bad "cred-print accepted a non-name"; else ok "cred-print refuses a variable that is not a name"; fi
 for t in kiso pi; do
 	cat > "$T/cobin/$t" <<EOF
