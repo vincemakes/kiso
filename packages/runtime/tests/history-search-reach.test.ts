@@ -9,7 +9,7 @@
  */
 
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -25,23 +25,35 @@ function sources(dir: string): string[] {
 	});
 }
 
+/** Repo-relative, always with forward slashes: `relative` uses backslashes on Windows. */
+const repoPath = (f: string) => relative(ROOT, f).split(sep).join("/");
+
+/** Every shipped source file, repo-relative. */
+function shipped(): string[] {
+	const srcDirs = ["packages", "apps", "extensions"].flatMap((tier) =>
+		readdirSync(join(ROOT, tier), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => join(ROOT, tier, d.name, "src")),
+	);
+	return srcDirs.flatMap((d) => {
+		try {
+			return sources(d);
+		} catch {
+			return [];
+		}
+	});
+}
+
 describe("M0.5 reachability", () => {
 	it("no shipped source imports effective history or retrieval", () => {
-		const srcDirs = ["packages", "apps", "extensions"].flatMap((tier) =>
-			readdirSync(join(ROOT, tier), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => join(ROOT, tier, d.name, "src")),
-		);
-		const importers = srcDirs
-			.flatMap((d) => {
-				try {
-					return sources(d);
-				} catch {
-					return [];
-				}
-			})
+		const importers = shipped()
 			.filter((f) => INTERNAL.test(readFileSync(f, "utf8")))
-			.map((f) => relative(ROOT, f))
+			.map(repoPath)
 			.filter((f) => !ALLOWED.has(f));
 		expect(importers).toEqual([]);
+	});
+
+	it("every allow-list entry is a walked file, in the same spelling (a vanished entry allows nothing)", () => {
+		const walked = new Set(shipped().map(repoPath));
+		for (const allowed of ALLOWED) expect(walked.has(allowed)).toBe(true);
 	});
 
 	it("the gate sees an import when there is one", () => {
