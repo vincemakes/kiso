@@ -91,7 +91,11 @@ describe("0.49.0 C1 — the conversation's profile survives /reload for a delega
 				feeds: [
 					["/mode to switch", "/model beta\r"],
 					["model-beta", "map the code\r"],
-					["FIRST-DONE", "/reload\r"],
+					// /reload only once the run has settled: the end-of-turn line ("✦ took …",
+					// styled, so the needle is its unstyled tail) follows the
+					// durable persist (async since #520); typed on FIRST-DONE it can land
+					// inside that window and is refused as "a run is in flight".
+					["took ", "/reload\r"],
 					["the conversation is unchanged", "map it again\r"],
 					["SECOND-DONE", "exit\r"],
 				],
