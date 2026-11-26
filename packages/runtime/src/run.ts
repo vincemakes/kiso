@@ -9,6 +9,7 @@ import type { SessionStore } from "./store.js";
 import { ABORTED, MergedSignal, abortable, openRunId } from "./recovery.js";
 import { resolveReasoning, type WireReasoning } from "./provider/metadata.js";
 import { deriveRecoveryPlan, invocationSeqOf } from "./recovery-plan.js";
+import { ABORTED_BEFORE_EXECUTION } from "./aborted-calls.js";
 import { appendOf, composeApprovalChain, composeToolTable, joinPrompt, promptPerAttempt, runBasePrompt } from "./compose.js";
 import { truncationGuard } from "./truncation-guard.js";
 import { overflowBelt } from "./overflow-belt.js";
@@ -1039,7 +1040,7 @@ export class Run implements AsyncIterable<Event> {
 		} else {
 			try {
 				if (signal.aborted) {
-					result = { content: "aborted before execution", isError: true, errorKind: "fatal" };
+					result = { content: ABORTED_BEFORE_EXECUTION, isError: true, errorKind: "precondition" }; // #24: the kernel's words and kind — nothing ran
 				} else {
 					result = await tool.execute(input, ctx);
 				}

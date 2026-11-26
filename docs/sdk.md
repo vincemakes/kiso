@@ -22,6 +22,7 @@ machinery the SDK deliberately does not expose (see §3).
 | `createAgent`, `AgentDefinition` | keep | the agent factory and its config |
 | `Run` | keep | the run handle (`abort()`, `steer()`, `retract()`, `unadmitted()`, async iterable of `Event`) |
 | `RunClosedError` | keep | ADR-0057: `steer()` on a run whose ingress sealed — the host starts a new run with the input |
+| `ABORTED_BEFORE_EXECUTION` | keep | 0.56.1 (#24): the `content` of the result a call gets when an abort lands after its durable start and before its handler; its `errorKind` is `"precondition"` (nothing ran), on the kernel's path and the runtime's alike |
 | `SessionStore`, `StoreRecord`, `SessionMeta`, `StaleWriterError`, `StoreCorruptionError` | keep | the append-only JSONL store |
 | `ForkRefusedError`, `ForkOrigin` | keep | `SessionStore.fork(parent, { afterSeq? })`: a new session with the conversation up to the end of one of the parent's runs; its origin in the fork's sidecar |
 | `PoisonedSessionError`, `ResumeBlockedError` | keep | the two documented session failure modes |
