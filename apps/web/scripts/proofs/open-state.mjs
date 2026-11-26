@@ -20,9 +20,10 @@ check(opened <= 3, `its replay asked the host for the state ${opened} times (twe
 await s.run("a slow one");
 check(await waitUntil(async () => (await tab.count("[data-act=stop]")) === 1, 10_000), "a run that starts after the open is read at once: Stop shows");
 check(await waitUntil(async () => (await tab.count("[data-kind=footer]")) === 13 && (await tab.count("[data-act=stop]")) === 0, 20_000), "and its end is read at once: the footer, no Stop");
-// the skeleton that shows while a Work opens: nothing for 300 ms, then message-shaped rows with a shimmer
-const sk = await tab.evaluate(`(() => { const d = document.createElement("div"); d.innerHTML = '<div class="loading"><i class="me-sk"></i><i></i><i></i><i></i></div>'; document.body.append(d); const l = getComputedStyle(d.firstChild), i = getComputedStyle(d.querySelector("i:nth-child(3)")); const r = [l.animationDelay, i.animationName, getComputedStyle(d.querySelector(".me-sk")).alignSelf].join(); d.remove(); return r; })()`);
-check(sk === "0.3s,sheen,flex-end", `the opening skeleton waits 300 ms, shimmers, and has a message-shaped row on the person's side (${sk})`);
+// the skeleton that shows while a Work opens: nothing for 300 ms, then message-shaped rows with a shimmer; the person's row is read
+// by where it lays out, not by the alignment keyword (Chrome 158 serializes a computed flex-end as flow-end)
+const sk = await tab.evaluate(`(() => { const d = document.createElement("div"); d.innerHTML = '<div class="loading"><i class="me-sk"></i><i></i><i></i><i></i></div>'; document.body.append(d); const l = getComputedStyle(d.firstChild), i = getComputedStyle(d.querySelector("i:nth-child(3)")), c = d.firstChild.getBoundingClientRect(), m = d.querySelector(".me-sk").getBoundingClientRect(); const r = [l.animationDelay, i.animationName, Math.abs(m.right - c.right) <= 1 && m.left - c.left > 1 ? "right" : "left"].join(); d.remove(); return r; })()`);
+check(sk === "0.3s,sheen,right", `the opening skeleton waits 300 ms, shimmers, and has a message-shaped row on the person's side (${sk})`);
 await tab.close();
 await app.close();
 verdict();
