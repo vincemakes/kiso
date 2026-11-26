@@ -40,7 +40,7 @@ class ExpectPairs(unittest.TestCase):
             a, b = os.path.join(tmp, "rc.json"), os.path.join(tmp, "ctl.json")
             write(a, json.dumps(rc)); write(b, json.dumps(ctl))
             r = run(["node", "paired-compare.mjs", a, b, "--causal=request", "--margins=bm1-a1", *extra])
-            return r, (json.loads(r.stdout) if r.returncode == 0 else None)
+            return r, (json.loads(r.stdout) if r.returncode in (0, 2, 3) else None)
 
     def test_fewer_usable_pairs_than_registered_is_invalid_never_a_pass(self):
         rc, ctl = rows(11)
@@ -58,6 +58,22 @@ class ExpectPairs(unittest.TestCase):
         self.assertEqual(self.compare(rc, ctl, "--expect-pairs=12")[1]["verdict"], "PASS")
         rc, ctl = rows(12, cost_rc=150.0)
         self.assertEqual(self.compare(rc, ctl, "--expect-pairs=12")[1]["verdict"], "FAIL")
+
+    def test_the_exit_code_carries_the_verdict(self):
+        # red before: a blocking FAIL and an INVALID both exited 0, so a gate
+        # that read only the exit code passed them
+        rc, ctl = rows(12)
+        self.assertEqual(self.compare(rc, ctl, "--expect-pairs=12")[0].returncode, 0)
+        rc, ctl = rows(12, cost_rc=150.0)
+        r, v = self.compare(rc, ctl, "--expect-pairs=12")
+        self.assertEqual((r.returncode, v["verdict"], v["blocking"]), (2, "FAIL", True))
+        with tempfile.TemporaryDirectory() as tmp:
+            a, b = os.path.join(tmp, "rc.json"), os.path.join(tmp, "ctl.json")
+            write(a, json.dumps(rc)); write(b, json.dumps(ctl))
+            r = run(["node", "paired-compare.mjs", a, b, "--causal=ui", "--margins=bm1-a1", "--expect-pairs=12"])
+            self.assertEqual((r.returncode, json.loads(r.stdout)["blocking"]), (0, False))
+        rc, ctl = rows(11)
+        self.assertEqual(self.compare(rc, ctl, "--expect-pairs=12")[0].returncode, 3)
 
     def test_without_the_flag_the_old_behaviour_stands_and_a_bad_flag_is_refused(self):
         rc, ctl = rows(5)

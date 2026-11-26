@@ -132,6 +132,10 @@ function main() {
 				? "FAIL — BLOCKS the release (the causal tier makes the paired bench a blocker)"
 				: "FAIL — informational only (the causal tier does not block on live cost); file the finding";
 	process.stdout.write(JSON.stringify(v, null, 1) + "\n");
+	// The exit code carries the verdict, so a caller that only checks it can
+	// never read a blocking FAIL as a pass: 0 PASS or an informational FAIL,
+	// 2 a blocking FAIL, 3 INVALID (no verdict). 1 stays a usage error.
+	process.exitCode = v.verdict === "INVALID" ? 3 : v.verdict === "FAIL" && v.blocking ? 2 : 0;
 }
 
 if (isMain(import.meta.url)) {
