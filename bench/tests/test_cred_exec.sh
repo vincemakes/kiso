@@ -29,6 +29,9 @@ if env -i PATH="$PATH" BENCH_CRED_FILE="$T/co.env" BENCH_CRED_AS=OPENAI_API_KEY 
 
 printf 'NOTHING=1\n' > "$T/empty.env"
 if env -i PATH="$PATH" BENCH_CRED_FILE="$T/empty.env" BENCH_CRED_AS=OPENAI_API_KEY sh "$B/cred-exec.sh" true 2>/dev/null; then bad "a keyless file launched the arm"; else ok "a file without the key refuses to launch the arm"; fi
+# an AMBIENT key (exported in the caller, absent from the file) never stands in: 78, and the command never runs
+rc=0; env -i PATH="$PATH" DEEPSEEK_API_KEY="sk-ambient-$$-canary" BENCH_CRED_FILE="$T/empty.env" BENCH_CRED_AS=OPENAI_API_KEY sh "$B/cred-exec.sh" touch "$T/ambient-ran" 2>/dev/null || rc=$?
+[ "$rc" = 78 ] && [ ! -e "$T/ambient-ran" ] && ok "an ambient key never launches the arm on a keyless file (78, the command never ran)" || bad "cred-exec with an ambient key and a keyless file: rc=$rc, ran=$([ -e "$T/ambient-ran" ] && echo yes || echo no)"
 
 # 3. END TO END through both runners: the fake arm snapshots every process's
 #    arguments while it is running; the key must appear in none of them
