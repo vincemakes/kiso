@@ -8,7 +8,8 @@
 # reads the key inside the process that then becomes the arm.
 #
 # Only DEEPSEEK_API_KEY is taken from the file, in a subshell, so nothing
-# else the file defines reaches the arm.
+# else the file defines reaches the arm. The variable is unset first, so a
+# value in the caller's environment never stands in for a keyless file's.
 set -eu
 : "${BENCH_CRED_FILE:?set BENCH_CRED_FILE to the credentials file path}"
 : "${BENCH_CRED_AS:?set BENCH_CRED_AS to the variable the arm reads}"
@@ -18,7 +19,7 @@ _kv=${BENCH_CRED_KEY:-DEEPSEEK_API_KEY}
 case "$_kv" in
 	*[!A-Z0-9_]*) echo "cred-exec: not a variable name: $_kv" >&2; exit 78 ;;
 esac
-_k=$( . "$BENCH_CRED_FILE" > /dev/null 2>&1; eval "printf '%s' \"\${$_kv:-}\"" )
+_k=$( unset "$_kv"; . "$BENCH_CRED_FILE" > /dev/null 2>&1; eval "printf '%s' \"\${$_kv:-}\"" )
 [ -n "$_k" ] || { echo "cred-exec: the credentials file carries no $_kv" >&2; exit 78; }
 case "$BENCH_CRED_AS" in
 	*[!A-Z0-9_]*) echo "cred-exec: not a variable name: $BENCH_CRED_AS" >&2; exit 78 ;;

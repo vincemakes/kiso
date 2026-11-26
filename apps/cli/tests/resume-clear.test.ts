@@ -86,7 +86,7 @@ describe("/clear — a fresh conversation, history untouched", () => {
 		const out = strip(
 			ptyRun(["chat", "first-conv"], env, [
 				["/mode to switch", "hello there\r"],
-				["What would you like me to inspect", "/clear\r"], // the faux script's turn-1 reply — a SETTLED anchor (the spinner shares the recap glyph)
+				["took ", "/clear\r"], // the turn's end: the recap row. The reply text paints before the turn has committed (#520), and a /clear typed then is refused as "a run is in flight"
 				// a turn IN the new session — a run-less session writes no
 				// file by design (the E1 lazy-marker semantics), so the new
 				// log materializes here
@@ -120,7 +120,7 @@ describe("/resume — the in-session door", () => {
 		const out = strip(
 			ptyRun(["chat", "conv-a"], env, [
 				["/mode to switch", "alpha turn\r"],
-				["What would you like me to inspect", "/clear\r"],
+				["took ", "/clear\r"], // the turn's end, as above
 				["/resume conv-a returns", "/resume conv-a\r"],
 				// RE-DERIVED (the last sweep): back in conv-a, the row names it
 				["conv-a · /resume", "exit\r"],
