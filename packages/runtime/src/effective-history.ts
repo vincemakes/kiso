@@ -39,6 +39,8 @@ export type EvidenceView = "current" | "covered" | "gone";
 export type EffectiveEvidence = {
 	/** The event that carries the content (a text block: its first event). */
 	readonly seq: number;
+	/** A text block that spans several events: its last event (M0.5's seq lookup). */
+	readonly throughSeq?: number;
 	readonly kind: "user" | "assistant" | "tool" | "permission" | "runtime";
 	/** What the model saw (a replaced input: the final replacement). */
 	readonly content: string;
@@ -48,6 +50,8 @@ export type EffectiveEvidence = {
 		readonly via?: UserInputVia;
 		readonly source?: MessageSource;
 		readonly callId?: string;
+		/** The declared tool's name, on a call and on its result: a label, never pairing. */
+		readonly tool?: string;
 		readonly coveredBy?: number;
 	};
 };
@@ -141,13 +145,14 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 	// One open text block per view: the projection segments the CURRENT
 	// view's text; covered and gone text are segmented the same way among
 	// their own events.
-	const open = new Map<EvidenceView, { seq: number; text: string; source?: MessageSource }>();
+	const open = new Map<EvidenceView, { seq: number; through: number; text: string; source?: MessageSource }>();
 	const closeText = (view: EvidenceView): void => {
 		const block = open.get(view);
 		if (block === undefined) return;
 		open.delete(view);
 		out.push({
 			seq: block.seq,
+			...(block.through !== block.seq ? { throughSeq: block.through } : {}),
 			kind: "assistant",
 			content: block.text,
 			authority: "model",
@@ -157,6 +162,7 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 	};
 	// The declarations seen so far, by seq and by callId, with their view.
 	const declBySeq = new Map<number, EvidenceView>();
+	const toolOf = new Map<number | string, string>();
 	const declViewsByCallId = new Map<string, Set<EvidenceView>>();
 	let pendingSource = new Map<EvidenceView, MessageSource>();
 
@@ -198,12 +204,16 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 				const block = open.get(view);
 				if (block === undefined) {
 					const source = pendingSource.get(view);
-					open.set(view, { seq, text: ev.text, ...(source !== undefined ? { source } : {}) });
-				} else block.text += ev.text;
+					open.set(view, { seq, through: seq, text: ev.text, ...(source !== undefined ? { source } : {}) });
+				} else {
+					block.text += ev.text;
+					block.through = seq;
+				}
 				break;
 			}
 			case "tool_call_end": {
 				declBySeq.set(seq, view);
+				toolOf.set(seq, ev.name).set(ev.callId, ev.name);
 				const views = declViewsByCallId.get(ev.callId) ?? new Set<EvidenceView>();
 				views.add(view);
 				declViewsByCallId.set(ev.callId, views);
@@ -213,7 +223,7 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 					content: `${ev.name} ${JSON.stringify(ev.input ?? {})}`,
 					authority: "model",
 					structuralStatus: view === "gone" ? "abandoned" : "effective",
-					provenance: { callId: ev.callId, ...where(view) },
+					provenance: { callId: ev.callId, tool: ev.name, ...where(view) },
 				});
 				break;
 			}
@@ -222,6 +232,7 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 				// declaration; without it, the projection's legacy rule — any
 				// earlier declaration with its callId — applied within the
 				// result's own view. A gone declaration never pairs.
+				const tool = toolOf.get(ev.invocationSeq ?? ev.callId);
 				const paired =
 					ev.invocationSeq !== undefined
 						? declBySeq.get(ev.invocationSeq) === view
@@ -234,6 +245,7 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 					structuralStatus: paired && view !== "gone" ? "effective" : "orphaned",
 					provenance: {
 						callId: ev.callId,
+						...(tool !== undefined ? { tool } : {}),
 						...(ev.source !== undefined ? { source: ev.source } : {}),
 						...where(view),
 					},
