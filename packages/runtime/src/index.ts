@@ -37,6 +37,9 @@ export type { CheckpointSection } from "./summarize.js";
 
 // run
 export { Run, RunClosedError } from "./run.js";
+// #24: the content of the result a call gets when an abort lands after its
+// durable start and before its handler (errorKind "precondition": nothing ran)
+export { ABORTED_BEFORE_EXECUTION } from "./aborted-calls.js";
 
 // store
 export { SessionStore, StaleWriterError, StoreCorruptionError } from "./store.js";
