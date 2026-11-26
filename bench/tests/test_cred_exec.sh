@@ -29,6 +29,9 @@ if env -i PATH="$PATH" BENCH_CRED_FILE="$T/co.env" BENCH_CRED_AS=OPENAI_API_KEY 
 
 printf 'NOTHING=1\n' > "$T/empty.env"
 if env -i PATH="$PATH" BENCH_CRED_FILE="$T/empty.env" BENCH_CRED_AS=OPENAI_API_KEY sh "$B/cred-exec.sh" true 2>/dev/null; then bad "a keyless file launched the arm"; else ok "a file without the key refuses to launch the arm"; fi
+# an AMBIENT key (exported in the caller, absent from the file) never stands in: 78, and the command never runs
+rc=0; env -i PATH="$PATH" DEEPSEEK_API_KEY="sk-ambient-$$-canary" BENCH_CRED_FILE="$T/empty.env" BENCH_CRED_AS=OPENAI_API_KEY sh "$B/cred-exec.sh" touch "$T/ambient-ran" 2>/dev/null || rc=$?
+[ "$rc" = 78 ] && [ ! -e "$T/ambient-ran" ] && ok "an ambient key never launches the arm on a keyless file (78, the command never ran)" || bad "cred-exec with an ambient key and a keyless file: rc=$rc, ran=$([ -e "$T/ambient-ran" ] && echo yes || echo no)"
 
 # 3. END TO END through both runners: the fake arm snapshots every process's
 #    arguments while it is running; the key must appear in none of them
@@ -73,6 +76,9 @@ out=$(sh "$B/cred-print.sh" "$T/cfg/kiso-commandcode/credentials.env" COMMANDCOD
 [ "$out" = "$KEY" ] && ok "cred-print prints the named variable's value and nothing else" || bad "cred-print printed: $out"
 err=$(sh "$B/cred-print.sh" "$T/empty.env" COMMANDCODE_API_KEY 2>&1 >/dev/null || echo "rc=$?")
 case "$err" in *rc=78*) ok "cred-print refuses a file without the variable (78)" ;; *) bad "cred-print on a keyless file: $err" ;; esac
+# an AMBIENT key (the variable exported in the caller, absent from the file) never leaks through: 78, and nothing on stdout
+amb=$(COMMANDCODE_API_KEY="sk-ambient-$$-canary" sh "$B/cred-print.sh" "$T/empty.env" COMMANDCODE_API_KEY 2>/dev/null || echo "rc=$?")
+[ "$amb" = "rc=78" ] && ok "cred-print never prints an ambient key the file does not carry (78, stdout empty)" || bad "cred-print with an ambient key and a keyless file: $(printf '%s' "$amb" | sed 's/sk-ambient-[0-9]*-canary/<ambient canary>/')"
 if sh "$B/cred-print.sh" "$T/cfg/kiso-commandcode/credentials.env" 'X;rm' >/dev/null 2>&1; then bad "cred-print accepted a non-name"; else ok "cred-print refuses a variable that is not a name"; fi
 for t in kiso pi; do
 	cat > "$T/cobin/$t" <<EOF
