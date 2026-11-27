@@ -23,9 +23,12 @@ const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.j
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Ev = { type: string; source?: string; via?: { kind: string; items?: unknown[] }; content?: unknown };
+// finding #34: polled while the CLI still appends; on Linux a reader can see a line cut at a page boundary, so only whole lines
+// (up to the last newline) are read, as the loader reads them
+const whole = (text: string): string => text.slice(0, text.lastIndexOf("\n") + 1);
 const eventsOf = (file: string): Ev[] =>
 	existsSync(file)
-		? readFileSync(file, "utf8")
+		? whole(readFileSync(file, "utf8"))
 				.split("\n")
 				.filter((l) => l !== "")
 				.map((l) => (JSON.parse(l) as { event: Ev }).event)

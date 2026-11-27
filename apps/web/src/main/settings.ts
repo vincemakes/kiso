@@ -66,6 +66,7 @@ interface Own {
 	readonly updateHidden?: string;
 	/** Works deleted here, as `key/id`, the latest first: never opened again, whatever asks (a tab still open, a poll) */
 	readonly deleted?: readonly string[];
+	readonly buriedAt?: Readonly<Record<string, number>>; // when each was deleted (ms): the startup sweep tells its sidecar from a later one
 }
 
 interface Work {
@@ -290,9 +291,13 @@ export class Settings {
 
 	/** A deleted Work's tombstone: its id is never opened again in that folder (kept across restarts, the latest 2,000). */
 	bury(key: string, session: string): void {
-		const id = `${key}/${session}`;
-		this.write({ deleted: [id, ...(this.#read().deleted ?? []).filter((d) => d !== id)].slice(0, 2000) });
+		const id = `${key}/${session}`, own = this.#read(), deleted = [id, ...(own.deleted ?? []).filter((d) => d !== id)].slice(0, 2000), kept = new Set(deleted);
+		this.write({ deleted, buriedAt: { ...Object.fromEntries(Object.entries(own.buriedAt ?? {}).filter(([d]) => kept.has(d))), [id]: Date.now() } });
 	}
+
+	/** For the startup sweep: the ids deleted in one folder, and whether anything here still names a Work (what `forget` drops). */
+	buriedIn = (key: string, own = this.#read()): { session: string; at?: number }[] => (own.deleted ?? []).filter((d) => d.startsWith(`${key}/`)).map((d) => ({ session: d.slice(key.length + 1), ...(own.buriedAt?.[d] !== undefined ? { at: own.buriedAt[d] } : {}) }));
+	remembers = (session: string, own = this.#read()): boolean => [own.tiers, own.works, own.forks, own.prs, own.prLinks].some((m) => m !== undefined && session in m) || [own.pins, own.archived, own.unread].some((l) => l?.includes(session) === true);
 
 	buried(key: string, session: string): boolean {
 		return this.#read().deleted?.includes(`${key}/${session}`) ?? false;

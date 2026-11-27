@@ -20,9 +20,12 @@ const CLI = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.j
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Ev = { type: string; reason?: string; via?: { kind: string } };
+// finding #34: polled while the CLI still appends; on Linux a reader can see a line cut at a page boundary, so only whole lines
+// (up to the last newline) are read, as the loader reads them
+const whole = (text: string): string => text.slice(0, text.lastIndexOf("\n") + 1);
 const eventsOf = (home: string): Ev[] =>
 	existsSync(join(home, "sessions", "sv.jsonl"))
-		? readFileSync(join(home, "sessions", "sv.jsonl"), "utf8")
+		? whole(readFileSync(join(home, "sessions", "sv.jsonl"), "utf8"))
 				.split("\n")
 				.filter((l) => l !== "")
 				.map((l) => (JSON.parse(l) as { event: Ev }).event)

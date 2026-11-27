@@ -23,6 +23,7 @@ import type { TaskHub } from "./tasks.js";
 import type { WorkState } from "../shared/history.js";
 import { AskBridge } from "./ask-bridge.js";
 import { UpdateWatch } from "./update-check.js";
+import { sweepBuried } from "./works.js";
 
 /**
  * The loopback host: the hosted-session service behind HTTP + SSE on
@@ -145,6 +146,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 	const workspace = canonicalPath(options.workspace);
 	const currentDir = projectDirFor(home, workspace);
 	claimProjectDir(currentDir, workspace);
+	sweepBuried(currentDir, basename(currentDir), options.settings); // a delete a kill cut short is finished before the folder is read
 	const current = createSpace(spaceOptions(basename(currentDir), workspace, currentDir, "/v1/sessions"));
 	spaces.set(current.key, current);
 	/** Another folder's space, made on first use; only a folder the listing names (a key is never a path). */
@@ -153,6 +155,7 @@ export async function startHost(options: HostOptions): Promise<Host> {
 		if (held !== undefined) return held;
 		const folder = sessionFolders(home).find((f) => f.kind === "project" && f.workspace !== null && basename(f.dir) === key);
 		if (folder === undefined || folder.workspace === null) return null;
+		sweepBuried(folder.dir, key, options.settings);
 		const space = createSpace(spaceOptions(key, folder.workspace, folder.dir, `/w/${key}/v1/sessions`));
 		spaces.set(key, space);
 		return space;

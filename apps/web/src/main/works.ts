@@ -1,4 +1,4 @@
-import { rmSync } from "node:fs";
+import { existsSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { nameOf, subtreeOf } from "./names.js";
 import { Refusal } from "./files.js";
@@ -23,8 +23,32 @@ async function remove(space: Space, settings: Settings, session: string): Promis
 	rmSync(join(space.dir, `${session}.meta.json`), { force: true });
 	await space.store.close(session); // the barrier: no write or sync of it is in flight once this returns
 	space.tasks.forget(session);
-	for (const path of [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`, join("traces", `${session}.jsonl`)]) rmSync(join(space.dir, path), { recursive: true, force: true });
+	for (const path of filesOf(session)) rmSync(join(space.dir, path), { recursive: true, force: true });
 	settings.forget(session);
+}
+
+/** A Work's files in its folder, as a delete removes them (the log first: a Work without one is no longer listed). */
+const filesOf = (session: string): string[] => [`${session}.jsonl`, `${session}.lock`, `${session}.meta.json`, `${session}.environment.json`, `${session}.environment.json.lock`, `${session}.inbox`, `${session}.tasks`, `${session}.files`, join("traces", `${session}.jsonl`)];
+
+/**
+ * #21 (and #28): a delete that a kill cut short (the tombstone written, some files not yet removed) is finished when the folder is
+ * next opened, before anything reads it. Only tombstoned ids; one whose sidecar was written after the delete is left alone (a Work
+ * something opened since is never touched). Idempotent: an id with nothing left and nothing remembered costs one look. The ids it finished.
+ */
+export function sweepBuried(dir: string, key: string, settings: Settings): string[] {
+	const swept: string[] = [];
+	for (const { session, at } of settings.buriedIn(key)) {
+		// a sidecar from before the delete is its own (a kill between the tombstone and its removal); one written since, or under a
+		// tombstone with no time (written before 0.56.3), is left alone
+		const meta = statSync(join(dir, `${session}.meta.json`), { throwIfNoEntry: false });
+		if (meta !== undefined && (at === undefined || meta.mtimeMs >= at)) continue;
+		const left = filesOf(session).filter((path) => existsSync(join(dir, path)));
+		if (left.length === 0 && !settings.remembers(session)) continue;
+		for (const path of left) rmSync(join(dir, path), { recursive: true, force: true });
+		settings.forget(session);
+		swept.push(session);
+	}
+	return swept;
 }
 
 export async function workAct(space: Space, settings: Settings, session: string, act: WorkAct): Promise<void> {
