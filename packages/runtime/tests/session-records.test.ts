@@ -96,10 +96,17 @@ describe("the provenance gate (spec § 4, Q3)", () => {
 		}
 		expect(admitRecord(history, S, "r", { kind: "rejection", text: "t", authority: "user", evidence: [ev(5)] }).dropped).toBe("user quote failed the provenance check");
 	});
-	it("a decision whose user claim fails is committed as model, without the quote", () => {
-		const r = admitRecord(history, S, "r", { kind: "decision", text: "use the plan because chosen", authority: "user", evidence: [ev(3)], quote: { ...ev(3), span: "Use the suggested plan" } });
-		expect(r.record?.authority).toBe("model");
-		expect(r.record?.quote).toBeUndefined();
+	it("a decision whose user claim fails is dropped too: a downgrade would keep a false attribution in its text (GPT's M2a review)", () => {
+		for (const text of ["The user decided to use the plan.", "use the plan because chosen"]) {
+			const r = admitRecord(history, S, "r", { kind: "decision", text, authority: "user", evidence: [ev(3)], quote: { ...ev(3), span: "Use the suggested plan" } });
+			expect(r.record).toBeUndefined();
+			expect(r.dropped).toBe("user quote failed the provenance check");
+		}
+	});
+	it("no admitted record claims the person's authority without the person's own located words", () => {
+		const claims = [0, 1, 3, 4, 5, 6].flatMap((seq) => (["constraint", "decision", "rejection", "correction"] as const).map((kind) => admitRecord(history, S, "r", { kind, text: "t", authority: "user", evidence: [ev(seq)], quote: { ...ev(seq), span: "Never use Redis for session state." } })));
+		for (const a of claims) if (a.record) expect(a.record.authority === "user" && a.record.quote?.span === "Never use Redis for session state." && a.record.quote.seq === 0).toBe(true);
+		expect(claims.filter((a) => a.record).length).toBe(4); // only seq 0's four kinds
 	});
 	it("a quote from another owner's log is refused", () => {
 		const r = admitRecord(history, S, "r", { kind: "constraint", text: "t", authority: "user", evidence: [ev(0)], quote: { owner: "work/w1", seq: 0, span: "Never use" } });
