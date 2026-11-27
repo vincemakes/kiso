@@ -48,6 +48,14 @@ export class LogLockedError extends Error {
 	}
 }
 
+/** A write or its fsync failed; this writer refuses every later append. Close it and open a new writer. */
+export class LogPoisonedError extends Error {
+	constructor(logId: string, cause: unknown) {
+		super(`log ${logId} writer is poisoned by a failed write: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+		this.name = "LogPoisonedError";
+	}
+}
+
 export class LogCorruptionError extends Error {
 	constructor(logId: string, message: string) {
 		super(`log ${logId} is corrupt: ${message}`);

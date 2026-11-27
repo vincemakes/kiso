@@ -18,7 +18,7 @@ import { appendFileSync, closeSync, fsync, fsyncSync, mkdirSync, openSync, readF
 import { dirname, join } from "node:path";
 import { nativeLockAdapter, LockedError, type LockAdapter, type LockHandle } from "@vincemakes/kiso-runtime/internal";
 import { lastCommittedSeq, repairTornTail } from "./file-tail.js";
-import { checkLine, LogCorruptionError, LogLockedError, StaleRevisionError, validLogId, type AppendLog, type AppendLogBackend, type LogLine } from "./log.js";
+import { checkLine, LogCorruptionError, LogLockedError, LogPoisonedError, StaleRevisionError, validLogId, type AppendLog, type AppendLogBackend, type LogLine } from "./log.js";
 
 export class FileLogBackend<T> implements AppendLogBackend<T> {
 	readonly #root: string;
@@ -80,6 +80,8 @@ export class FileLogBackend<T> implements AppendLogBackend<T> {
 class FileLog<T> implements AppendLog<T> {
 	#queue: Promise<unknown> = Promise.resolve();
 	#closed = false;
+	/** A write or its fsync failed: what reached the disk is unknown, so this writer never appends again. */
+	#poisoned: unknown = undefined;
 
 	constructor(
 		readonly logId: string,
@@ -104,13 +106,23 @@ class FileLog<T> implements AppendLog<T> {
 
 	async #appendOnce(expectedRevision: number, event: T): Promise<number> {
 		if (this.#closed) throw new Error(`log ${this.logId} is closed`);
+		if (this.#poisoned !== undefined) throw new LogPoisonedError(this.logId, this.#poisoned);
 		if (!this.handle.verify()) throw new LogLockedError(this.logId);
 		repairTornTail(this.fd);
 		const actual = lastCommittedSeq(this.logId, this.fd);
 		if (actual !== expectedRevision || actual !== this.revision) throw new StaleRevisionError(expectedRevision, actual);
 		const line: LogLine<T> = { seq: actual + 1, ts: Date.now(), event };
-		appendFileSync(this.fd, `${JSON.stringify(line)}\n`);
-		await new Promise<void>((resolve, reject) => fsync(this.fd, (error) => (error === null ? resolve() : reject(error))));
+		try {
+			appendFileSync(this.fd, `${JSON.stringify(line)}\n`);
+			await new Promise<void>((resolve, reject) => fsync(this.fd, (error) => (error === null ? resolve() : reject(error))));
+		} catch (error) {
+			// The line may be on disk without being durable or in `committed`.
+			// Permanent poison, as in the session store: refuse every later
+			// append with this cause, never a misleading stale revision. A new
+			// writer re-reads the file and repairs its tail.
+			this.#poisoned = error;
+			throw new LogPoisonedError(this.logId, error);
+		}
 		this.committed.push(line);
 		return line.seq;
 	}
