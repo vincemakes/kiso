@@ -15,6 +15,7 @@
 
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { contextPolicyFromEnv } from "../src/index.js";
+import { sessionRecordsFromEnv } from "../src/create-coding-agent.js";
 
 const SAVED = new Map<string, string | undefined>();
 const ENVS = [
@@ -91,5 +92,21 @@ describe("E6 (g) — the CLI context-policy arming", () => {
 	it("invalid env values are ignored, not crashes (positiveIntEnv discipline)", () => {
 		process.env.KISO_CONTEXT_WINDOW = "bogus";
 		expect(contextPolicyFromEnv()).toBeUndefined();
+	});
+});
+
+describe("ADR-0063 M2b: KISO_SESSION_RECORDS arms session records, nothing else does", () => {
+	it("off unless exactly 1", () => {
+		const prev = process.env.KISO_SESSION_RECORDS;
+		try {
+			for (const [v, on] of [[undefined, false], ["0", false], ["true", false], ["1", true]] as const) {
+				if (v === undefined) delete process.env.KISO_SESSION_RECORDS;
+				else process.env.KISO_SESSION_RECORDS = v;
+				expect(sessionRecordsFromEnv(), String(v)).toBe(on);
+			}
+		} finally {
+			if (prev === undefined) delete process.env.KISO_SESSION_RECORDS;
+			else process.env.KISO_SESSION_RECORDS = prev;
+		}
 	});
 });
