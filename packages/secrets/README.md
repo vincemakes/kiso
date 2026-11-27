@@ -7,7 +7,8 @@ extension's bundle all use the same rules.
   conventional purpose is to hold credentials).
 - `SHELL_STRIP_EXACT` and `strippedShellEnv(env, secretNames)`: the child-environment strip.
 - `isSecretLocation(path, { home, kisoHome, separator? })`: the secret-location deny list (the SSH directory,
-  keychains, GnuPG, the credential-file set, kiso's own credentials).
+  GnuPG, the OS keychain and credential stores, browser profile roots, known password-manager stores, the
+  credential-file set, kiso's own credentials), by name only.
 - `findSecret(text)`: the first secret by shape (private-key blocks, provider and cloud key formats, JWTs,
   credentials in URLs, secret assignments with real-looking values), or `null`. It matches by shape only, never by
   entropy alone.
