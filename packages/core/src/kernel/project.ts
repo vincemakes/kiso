@@ -675,5 +675,3 @@ export function messagesToEvents(messages: readonly Message[]): EventInput[] {
 	}
 	return out;
 }
-
-export type { AssistantBlock, MessageSource };

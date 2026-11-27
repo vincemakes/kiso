@@ -14,7 +14,7 @@
  */
 
 import type { Event } from "../protocol/events.js";
-import type { Message, UserMessage } from "../protocol/messages.js";
+import type { UserMessage } from "../protocol/messages.js";
 import type { ToolResult } from "../tools/tool.js";
 import type { PermissionDecision } from "./permission.js";
 
