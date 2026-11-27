@@ -1049,7 +1049,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
  * tool_use/function_call that produced no complete call are all explicit
  * non-completions.
  */
-/** A protocol anomaly that voids the turn: never retryable (Area 6). */
+/** A non-retryable invalid_request terminal. */
 const invalid = (message: string): Terminal => ({ kind: "error", error: { code: "invalid_request", retryable: false, message } });
 
 function terminalForStop(reason: StopReason | undefined): Terminal {

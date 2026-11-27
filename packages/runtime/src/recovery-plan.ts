@@ -153,10 +153,14 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		// drafts. Deleting this clause would silently change how pre-EC-1
 		// sessions recover; it stays until the generation corpus no longer
 		// contains a pre-EC-1 era.
+		// Only a request WITH invocationSeq is a live ask (the owner's ruling,
+		// 2026-11-27): a legacy one authorizes nothing, so the requests pass
+		// skips it; letting it hold the draft open would continue the model
+		// with a dangling tool_call_end. It is voided with its draft instead.
 		const liveAsk =
 			afterBoundary &&
 			boundary.type === "user_input" &&
-			openEvents.some((e) => e.type === "permission_requested" && e.seq > boundary.seq);
+			openEvents.some((e) => e.type === "permission_requested" && e.invocationSeq !== undefined && e.seq > boundary.seq);
 		if (afterBoundary && !liveAsk) return { kind: "ABANDON_DRAFT", voidFromSeq: boundary.seq };
 	}
 	// 5. the invocations: the Gap A calls first (scope order), then the

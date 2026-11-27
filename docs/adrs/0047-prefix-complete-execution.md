@@ -104,10 +104,9 @@ boundary.
    `permission_decided`, `tool_execution_started`, `tool_execution_succeeded`,
    `tool_execution_failed`, `tool_execution_resolved`, `tool_result`);
    new logs write it, old logs pair by callId + seq proximity (the
-   last such call before the seq). *(Amended 2026-11-27, by the owner's ruling: absence is
-   accepted for historical readability and effect evidence; permission
-   authority requires invocationSeq. A request or decision without it
-   authorizes nothing, and the call is decided again.)* The contract forbids any persisted
+   last such call before the seq). *(Superseded 2026-11-27 by the owner's ruling — see the
+   amendment at the end of this record: the callId + seq-proximity
+   pairing now holds only for conservative effect evidence.)* The contract forbids any persisted
    derived state — no InvocationRecord/InvocationStore/InvocationState:
    `Event[]` stays the only durable truth (Persist facts. Derive
    state.).
@@ -180,7 +179,8 @@ boundary.
   only the projection of logs that carry it — the semantic fix itself,
   expected.
 - Old-log compatibility: 0.1.42 and earlier logs load → validate →
-  project → resume unchanged (no invocationSeq, no marker events).
+  project → resume unchanged (no invocationSeq, no marker events). *(Superseded 2026-11-27 for permission authority — see the
+  amendment at the end of this record.)*
 - TUI/tui-cells handle the new event type gracefully — never crash,
   never garble; an interrupted hint is optional, and if implemented it
   counts against the tui gate budget (self-proving).
@@ -372,3 +372,28 @@ starts from a paired history. A stranded call whose approval request was
 still pending keeps that request pending, as today (a dead run's request
 is expired on the next resume); its result now exists, so nothing is sent
 unpaired.
+
+## Amendment (2026-11-27): permission authority requires invocationSeq
+
+**The owner's ruling:** "pre-invocationSeq permission authority gets no
+recovery compatibility; legacy events stay readable, and legacy
+execution/receipt evidence stays conservative so an old side effect is
+never repeated."
+
+It supersedes two statements above:
+
+1. **"old logs pair by callId + seq proximity"** (§ 4). That pairing now
+   holds **only for effect evidence**: a `tool_execution_started`,
+   `tool_execution_succeeded`, `tool_execution_failed` or `tool_result`
+   without invocationSeq still binds to its call by callId after the
+   call, so an old side effect is never re-run. A `permission_requested`
+   or `permission_decided` without invocationSeq binds to nothing, on
+   the fresh path (core `decideCall`) and on resume (runtime
+   `recovery-plan`) alike. It authorizes nothing, it is never a live ask,
+   and the call is decided again by the current chain.
+2. **"0.1.42 and earlier logs load → validate → project → resume
+   unchanged."** Old logs stay loadable, valid and projectable.
+   **Legacy permission authority is no longer recovery-compatible:** such
+   a log's undecided-by-invocation calls are decided again, and a
+   pre-EC-1 ask without invocationSeq, crashed before its stop, is voided
+   with its draft.
