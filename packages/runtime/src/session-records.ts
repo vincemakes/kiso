@@ -40,15 +40,15 @@ export interface SessionRecord {
 /** What the extractor proposes; the runtime decides what commits. */
 export type RecordCandidate = Omit<SessionRecord, "id" | "freshness"> & { readonly freshness?: SessionRecord["freshness"] };
 
-/** Kinds whose user-authority claim is refused, not downgraded, when its quote fails (spec Q3). */
-const NORMATIVE = new Set<RecordKind>(["constraint", "rejection", "correction"]);
-
 export type Admission = { readonly record: SessionRecord; readonly dropped?: undefined } | { readonly record?: undefined; readonly dropped: string };
 
 /**
  * Validate one candidate against the session's own log. A `user` claim
- * keeps the EXACT source bytes `locateQuote` returns; when the quote fails,
- * a normative kind is dropped and a decision commits as `model` without it.
+ * keeps the EXACT source bytes `locateQuote` returns. When the quote fails,
+ * the record is DROPPED, whatever its kind: a downgrade to `model` would
+ * keep its text's attribution ("the user decided …") with no evidence
+ * behind it (GPT's M2a review, 2026-11-27; this reverses rev 1's
+ * "a decision downgrades").
  * The extractor cannot assert `tool` or `external` authority: who asserted a
  * statement is evidence it cannot supply, so such a claim commits as `model`.
  */
@@ -59,9 +59,7 @@ export function admitRecord(events: readonly Event[], owner: EvidenceOwner, id: 
 	if (c.authority !== "user") return { record: { ...c, id, freshness, authority: "model" } };
 	const located = c.quote !== undefined && c.quote.owner === owner ? locateQuote(events, c.quote) : null;
 	if (located !== null) return { record: { ...c, id, freshness, quote: located } };
-	if (NORMATIVE.has(c.kind)) return { dropped: "user quote failed the provenance check" };
-	const { quote: _drop, ...rest } = c;
-	return { record: { ...rest, id, freshness, authority: "model" } };
+	return { dropped: "user quote failed the provenance check" };
 }
 
 const RANK: Record<RecordAuthority, number> = { user: 3, external: 2, model: 1, tool: 1 };
