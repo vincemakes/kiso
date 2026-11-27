@@ -433,6 +433,27 @@ export interface SummarizedEvent {
 }
 
 /**
+ * ADR-0063 M2 — a committed batch of session records. Core validates,
+ * persists and replays it; the records are OPAQUE (the runtime's
+ * vocabulary). The batch covers (coversFromSeq, coversToSeq], a non-empty
+ * range: coversFromSeq is a cursor (−1 = from the start) and is strictly
+ * below coversToSeq. Core guarantees only the shape and coversToSeq < seq;
+ * every record's evidence (owner, seq within the range, provenance) is a
+ * RUNTIME invariant. An empty batch (`records: []`) means nothing was
+ * extracted from that range. `projection`, when present (M3), is the exact
+ * bytes the model sees; absent, it renders nothing.
+ */
+export interface ContextRecordsEvent {
+	readonly seq: number;
+	readonly type: "context_records";
+	readonly batchKey: string;
+	readonly coversFromSeq: number;
+	readonly coversToSeq: number;
+	readonly records: readonly unknown[];
+	readonly projection?: string;
+}
+
+/**
  * R-E 0.1.43 / ADR-0047 (Gap B) — a model output suffix WITHOUT a committed
  * stop was abandoned on resume. `voidFromSeq` is the last committed-boundary
  * event's seq (stop / user_input / terminal / compaction / summarized); the
@@ -664,6 +685,7 @@ export type Event =
 	| UserInputReplaced
 	| MicroCompactEvent
 	| SummarizedEvent
+	| ContextRecordsEvent
 	| ModelOutputAbandoned
 	| TerminalEvent;
 
@@ -930,6 +952,10 @@ const EVENT_VALIDATORS = {
 		typeof v.summary === "string" &&
 		v.summary.length > 0 &&
 		(v.coversToSeq as number) < (v.seq as number),
+	// ADR-0063 M2: the batch covers (from, to], a non-empty range before this event (from may be the −1 cursor); records are opaque.
+	context_records: (v: Record<string, unknown>) =>
+		typeof v.batchKey === "string" && v.batchKey !== "" && Number.isSafeInteger(v.coversFromSeq) && (v.coversFromSeq as number) >= -1 && isNonNegativeInt(v.coversToSeq) &&
+		(v.coversFromSeq as number) < (v.coversToSeq as number) && (v.coversToSeq as number) < (v.seq as number) && Array.isArray(v.records) && (v.projection === undefined || typeof v.projection === "string"),
 	// R-E 0.1.43: the void starts at a committed boundary BEFORE the marker —
 	// a marker that voids nothing (or itself) is corruption, not history.
 	model_output_abandoned: (v: Record<string, unknown>) => isNonNegativeInt(v.voidFromSeq) && typeof v.reason === "string" && (v.voidFromSeq as number) < (v.seq as number),
