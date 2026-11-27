@@ -1,5 +1,6 @@
 /**
- * #32: a folder write_file makes at the top of a git repository is said in its result, by its absolute path, so a tree written
+ * #32: a folder write_file makes at the top of a git repository is said in its result, by its name and "/" (one segment, the
+ * same bytes on every OS), so a tree written
  * in the wrong place (the incident: a relative delivery path made a new top-level folder) is seen at once. Every other result
  * is unchanged, byte for byte: a folder made deeper, a workspace that is no repository, a file at the top. The absolute path
  * of the file itself is not echoed (declined: its per-request cost against WR-1E).
@@ -27,12 +28,12 @@ describe("#32: a new top-level folder in a git repository is said", () => {
 		const root = repo();
 		const r = await write(root, "pkg/deep/a.ts");
 		expect(r.isError).toBe(false);
-		expect(r.content).toBe(`wrote pkg/deep/a.ts (2 chars)\nnote: created a new top-level folder in the git repository: ${join(root, "pkg")}\n[${rev("x\n")}]`);
+		expect(r.content).toBe(`wrote pkg/deep/a.ts (2 chars)\nnote: created a new top-level folder in the git repository: pkg/\n[${rev("x\n")}]`);
 	});
 
 	it("a worktree's .git file counts as a repository", async () => {
 		const root = repo(true);
-		expect((await write(root, "tools/b.ts")).content).toBe(`wrote tools/b.ts (2 chars)\nnote: created a new top-level folder in the git repository: ${join(root, "tools")}\n[${rev("x\n")}]`);
+		expect((await write(root, "tools/b.ts")).content).toBe(`wrote tools/b.ts (2 chars)\nnote: created a new top-level folder in the git repository: tools/\n[${rev("x\n")}]`);
 	});
 
 	it("a folder made under an existing one: the result is unchanged", async () => {
