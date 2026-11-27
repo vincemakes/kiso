@@ -122,6 +122,12 @@ function resultContent(result) {
  * editor's panel slot and ignores `ctx`; a test can pass any object with
  * that one method.
  */
+// The routing rule (decision-card round 4): a named reversal of Plan B above, which moved every ask rule into a tool
+// description. This one routes BETWEEN two tools, which no single description can do, so it is the one prompt-level rule.
+// Set only when the host draws cards (`ui.cards`), the same condition that registers finish_with_choices: a TTY host's
+// prompt is unchanged.
+const ROUTING = "When your work reaches a next-step decision that belongs to the person, do not choose it silently for them. If you do not need the answer to finish this turn, end with finish_with_choices; if you need it before continuing, use ask_user; otherwise use neither.";
+
 export default async function createAskExtension(ui) {
 	// TTY gating by construction: no bridge, no tool. A host that can also draw the decision card says so (`ui.cards`); one that
 	// cannot never sees finish_with_choices, so a headless run has no card nobody could click.
@@ -130,6 +136,7 @@ export default async function createAskExtension(ui) {
 	if (!asks && !cards) return { name: "ask", tools: [] };
 	return {
 		name: "ask",
+		...(cards ? { systemPrompt: { append: ROUTING } } : {}),
 		// The approval chain: both tools are ALLOWED by this extension, and nothing else is. Requiring approval to ask a question
 		// would put two panels in front of one decision (the chain is deny > allow > ask — the W21/R3 ruling), and a choice the
 		// person may ignore needs none at all.

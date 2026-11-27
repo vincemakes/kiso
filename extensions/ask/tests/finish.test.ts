@@ -17,6 +17,19 @@ describe("finish_with_choices", () => {
 		expect(await names({ ask, cards: true })).toEqual(["ask_user", "finish_with_choices"]);
 	});
 
+	it("round 4: the routing rule is appended to the system prompt only where the host draws cards (259 B); a TTY host's prompt is unchanged", async () => {
+		const append = async (ui?: object) => (await createAskExtension(ui as never)).systemPrompt?.append;
+		expect(await append()).toBeUndefined();
+		expect(await append({ ask })).toBeUndefined();
+		for (const ui of [{ cards: true }, { ask, cards: true }]) {
+			const text = await append(ui);
+			expect(typeof text).toBe("string");
+			expect(Buffer.byteLength(text as string)).toBe(259);
+			expect(text).toMatch(/^When your work reaches a next-step decision that belongs to the person, do not choose it silently for them\. /);
+			expect(text).toContain("end with finish_with_choices; if you need it before continuing, use ask_user; otherwise use neither.");
+		}
+	});
+
 	it("takes 2-3 labels, each 1-80 cells, and an optional recommended flag", () => {
 		const why = (input: unknown) => validateArgs(FINISH_PARAMETERS, input);
 		expect(why({ choices: ["a", "b"] })).toBeNull();
