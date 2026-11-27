@@ -5,7 +5,7 @@
 // The Context breakdown's parts add up to the measured size. Screenshots go outside the repository.
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { scratch, checker, launchApp, waitUntil } from "./lib.mjs";
 
 const { check, verdict } = checker("changes-git");
@@ -14,7 +14,9 @@ const ID = { GIT_AUTHOR_NAME: "p", GIT_AUTHOR_EMAIL: "p@x", GIT_COMMITTER_NAME: 
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...ID } }).trim();
 const origin = scratch("git-origin");
 git(origin, "init", "-q", "--bare", "-b", "main");
-const ws = scratch("git-ws");
+// a folder named as people name theirs, so the row reads as it will: "kiso · feat/rail"
+const ws = join(scratch("git-ws"), "kiso");
+mkdirSync(ws);
 git(ws, "init", "-q", "-b", "main");
 writeFileSync(join(ws, "a.txt"), "one\ntwo\nthree\n");
 writeFileSync(join(ws, "d.txt"), "keep\n");
@@ -42,9 +44,14 @@ const app = await launchApp({ data: scratch("git-data"), workspace: ws, fauxScri
 const q = (js) => app.evaluate(js);
 const text = (sel) => app.text(sel).then((v) => v ?? "");
 await q(`window.__kiso.send("look at the branch")`);
-await waitUntil(async () => (await app.count("[data-kind=footer]")) === 1 && (await app.count("[data-field=change]")) > 0, 30_000);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) === 1 && (await app.count("[data-field=changes-row]")) === 1, 30_000);
+const top = await q(`(() => { const r = document.querySelector("[data-field=changes-row]"); return { text: r.textContent, title: r.title }; })()`);
+check((await app.count("[data-field=change]")) === 0 && top.text.startsWith(`${basename(ws)} · feat/rail`) && /\+\d+\s*−1/.test(top.text) && /4 files/.test(top.title) && /→ main ↑2/.test(top.title), "no pull request: the four files fold into one row (folder · branch, +N −M, the count and base on hover), no file row (owner 2026-11-27)");
+await app.shot("changes-git-folded");
+await app.click("[data-field=changes-row]");
 const row = (p) => q(`[...document.querySelectorAll('[data-field=change]')].find((e) => e.title === ${JSON.stringify(p)})?.textContent ?? ''`);
-check((await text("[data-field=branch]")) === "feat/rail" && /→ main ↑2/.test(await text("[data-field=branch-row]")) && (await app.count("[data-field=change]")) === 4 && /\+2\s*−1/.test(await row("a.txt")) && /new/.test(await row("c.txt")), "Changes is git's: the branch, two commits ahead of main, four files (a.txt +2 −1, the untracked c.txt new)");
+check((await app.count("[data-field=change]")) === 4 && /\+2\s*−1/.test(await row("a.txt")) && /new/.test(await row("c.txt")), "opened: Changes is git's, four files (a.txt +2 −1, the untracked c.txt new)");
+await app.shot("changes-git-opened");
 check((await app.count("[data-act=commit]")) === 1 && (await app.count("[data-act=create-pr]")) === 0, "with uncommitted files the action is Commit…, not a pull request");
 
 // commit only what is ticked
@@ -56,8 +63,8 @@ await app.click("[data-act=git-confirm]");
 check(await waitUntil(async () => (await app.count("[data-kind=git-dialog]")) === 0) && git(ws, "log", "-1", "--format=%s") === "more in d" && git(ws, "show", "--name-only", "--format=", "HEAD") === "d.txt" && git(ws, "status", "--porcelain") === "?? c.txt", "Commit… commits only the ticked file with the person's message; the unticked one stays out");
 rmSync(join(ws, "c.txt"));
 await q(`window.__kiso.send("again")`);
-check(await waitUntil(async () => (await app.count("[data-act=create-pr]")) === 1, 30_000) && /↑3/.test(await text("[data-field=branch-row]")), "a clean branch ahead of main offers Create PR");
-check(await q(`(() => { const r = document.querySelector("[data-field=branch-row]"); return [...r.children].every((c) => c.scrollWidth <= c.clientWidth + 1); })()`), "the branch row with Create PR reads whole: branch, base and the button, nothing cut");
+check(await waitUntil(async () => (await app.count("[data-act=create-pr]")) === 1, 30_000) && /↑3/.test(await q(`document.querySelector("[data-field=changes-row]").title`)), "a clean branch ahead of main offers Create PR");
+check(await q(`(() => { const r = document.querySelector("[data-field=changes-row]"); return [...r.children].every((c) => c.scrollWidth <= c.clientWidth + 1); })()`), "the summary row with Create PR reads whole: name, lines and the button, nothing cut");
 await app.shot("changes-git-create-pr");
 
 // the pull request: nothing before the confirm
