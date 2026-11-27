@@ -267,13 +267,27 @@ ${SUMMARY_PROMPT}`;
 
 /**
  * E6 (b) — the output-side validation (the finding E6-F4/F5 follow-up):
- * a summary must be a complete checkpoint or NOTHING. The marker family
+ * a summary must be a complete checkpoint or NOTHING. The markup family
  * is the auto-T5-1 signature — the model echoing tool-call markup as
- * text; the required sections are the truncated-tail signature (a wire
- * cut kills "## Next steps" first). The rejection throws, and the
- * caller's safe catch (session.ts) makes it "nothing happened".
+ * text (the real body: DeepSeek's DSML special tokens,
+ * `<｜｜DSML｜｜tool_calls>` / `<｜｜DSML｜｜invoke name=…>`); the required
+ * sections are the truncated-tail signature (a wire cut kills
+ * "## Next steps" first). The rejection throws, and the caller's safe
+ * catch (session.ts) makes it "nothing happened".
+ *
+ * Finding #29 (E1 stage 1, 2026-11-27): the check matches MARKUP SHAPES,
+ * never a bare identifier. A checkpoint of a session about kiso's own
+ * code names `tool_call_end` in prose; the substring check rejected it on
+ * both paths, three times in a row, and the breaker turned compaction off.
+ * Matched: a DSML special token (either bar), a tool-call tag, and the
+ * JSON shapes of a call (`"type":"tool_call_end"`, `"tool_calls": [`).
  */
-export const DSML_MARKERS = ["<tool_call", "<tool_use", "<invoke", "tool_calls", "tool_call_end", "tool_call_start"] as const;
+export const TOOL_CALL_MARKUP: readonly { readonly name: string; readonly pattern: RegExp }[] = [
+	{ name: "DSML special token", pattern: /<\/?[|\uFF5C]+\s*DSML\s*[|\uFF5C]+/i },
+	{ name: "tool-call tag", pattern: /<\/?(?:tool_calls?(?:_start|_end)?|tool_use|invoke|function_calls?)(?=[\s>/])/i },
+	{ name: "JSON tool-call event", pattern: /"type"\s*:\s*"tool_call_(?:start|end)"/i },
+	{ name: "JSON tool_calls array", pattern: /"tool_calls"\s*:\s*\[/i },
+];
 
 /** The checkpoint sections a summary must carry — the ones a truncated
  *  generation loses first (the (c) prompt demands all seven; validation
@@ -290,9 +304,8 @@ export const REQUIRED_SECTIONS = ["## Current work", "## Next steps"] as const;
 export function validateSummary(text: string, headings?: readonly string[]): string | null {
 	const trimmed = text.trim();
 	if (trimmed === "") return "the summary is empty";
-	const lower = trimmed.toLowerCase();
-	for (const marker of DSML_MARKERS) {
-		if (lower.includes(marker)) return `the summary carries a tool-call marker (${marker}) — reject`;
+	for (const { name, pattern } of TOOL_CALL_MARKUP) {
+		if (pattern.test(trimmed)) return `the summary carries a tool-call marker (${name}) — reject`;
 	}
 	if (headings !== undefined) {
 		const lines = new Set(trimmed.split(/\r?\n/).map((l) => l.trim()));
