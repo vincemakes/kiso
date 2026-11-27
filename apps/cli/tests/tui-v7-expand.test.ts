@@ -241,7 +241,9 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 	it("LIVE: the approval panel shows the ALWAYS-verbose diff at the pause (the fold cap + the notice row); a second key on the settled cell EXPANDS it", () => {
 		const { env } = isolatedEnv();
 		const dir = mkdtempSync(join(tmpdir(), "kiso-v7-expand-"));
-		const target = join(dir, "target.txt");
+		// #31 (ADR-0058 Amendment 21): since #31 an approved outside write lands, and a landed write's card has a body; the target
+		// is under kiso's home (a write stop in every mode), so the approved write is still refused in one line, as this case needs
+		const target = join(env.KISO_HOME!, "target.txt");
 		const script = join(dir, "faux.json");
 		const content = Array.from({ length: 15 }, (_, i) => `line${String(i).padStart(2, "0")}`).join("\n");
 		writeFileSync(
@@ -303,7 +305,7 @@ describe("TUI v7 W15 — the expand key (real PTY, 24×80)", () => {
 		// The press REPRINTED — that is what a switch does, and the erase is
 		// the proof of it. What it did NOT do is grow an affordance on this
 		// card, and that is correct rather than a miss: this write was
-		// refused, so its result is one line, so the card is §7.4's
+		// refused (since #31, by kiso's home as a write stop), so its result is one line, so the card is §7.4's
 		// three-row form with nothing between head and outcome to close.
 		// A card hiding nothing has no way back to offer.
 		expect(out, "the press did not reprint").toContain("\x1b[2J\x1b[H\x1b[3J");
