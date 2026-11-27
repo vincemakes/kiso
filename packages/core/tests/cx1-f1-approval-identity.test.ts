@@ -116,7 +116,7 @@ describe("CX-1 F1 — a reused provider callId never inherits an earlier decisio
 		expect(h.ran).toEqual(["allowed", "allowed"]);
 	});
 
-	it("a LEGACY decision (no invocationSeq) that binds to no call is ambiguous — the call asks, never the chain's allow", async () => {
+	it("a LEGACY decision (no invocationSeq) binds to nothing: the chain decides the call again (owner ruling 2026-11-27: pre-round-5 logs no longer resume)", async () => {
 		const h = harness();
 		const log = new EventLog();
 		log.append({ type: "user_input", content: "go" } as never);
@@ -140,8 +140,11 @@ describe("CX-1 F1 — a reused provider callId never inherits an earlier decisio
 		})) {
 			events.push(ev);
 		}
-		expect(h.seen).toEqual([]); // the chain was NOT consulted — no silent allow
-		expect(h.ran).toEqual([]); // and nothing executed
+		expect(h.seen).toEqual(["allowed"]); // the old decision is ignored; the chain is asked again
+		expect(h.ran).toEqual(["allowed"]); // and its verdict, not the old one, governs
+		const decided = events.filter((e) => e.type === "permission_decided") as { invocationSeq?: number }[];
+		expect(decided).toHaveLength(1); // a fresh decision, bound to this invocation
+		expect(decided[0]!.invocationSeq).toBeTypeOf("number");
 	});
 
 	it("the review's same-turn shape (2026-09-07 P1): ONE turn, TWO calls under one callId with identical input — the policy decides both, the second is denied, the handler runs once", async () => {

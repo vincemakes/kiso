@@ -104,7 +104,10 @@ boundary.
    `permission_decided`, `tool_execution_started`, `tool_execution_succeeded`,
    `tool_execution_failed`, `tool_execution_resolved`, `tool_result`);
    new logs write it, old logs pair by callId + seq proximity (the
-   last such call before the seq). The contract forbids any persisted
+   last such call before the seq). *(Amended 2026-11-27, by the owner's ruling: absence is
+   accepted for historical readability and effect evidence; permission
+   authority requires invocationSeq. A request or decision without it
+   authorizes nothing, and the call is decided again.)* The contract forbids any persisted
    derived state — no InvocationRecord/InvocationStore/InvocationState:
    `Event[]` stays the only durable truth (Persist facts. Derive
    state.).

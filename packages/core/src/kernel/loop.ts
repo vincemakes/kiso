@@ -1213,37 +1213,13 @@ async function decideCall(
 	// it twice costs nothing and gives a stateful one its say).
 	//
 	// The decision's invocationSeq names the original call (every
-	// producer stamps it, round 5). A legacy decision (no invocationSeq,
-	// pre-round-5 logs) binds to the nearest PRECEDING same-callId call
-	// before it — call first, decision after — with no run boundary
-	// between; one that binds to nothing is ambiguous, and the call goes
-	// to ask, never to the chain's allow.
-	const all = log.all;
-	const legacyBinding = (d: Event & { type: "permission_decided" }): number | undefined => {
-		for (let i = all.length - 1; i >= 0; i -= 1) {
-			const e = all[i]!;
-			if (e.seq >= d.seq) continue;
-			if (e.type === "terminal") return undefined;
-			if (e.type === "tool_call_end" && e.callId === call.callId) return e.seq;
-		}
-		return undefined;
-	};
+	// producer stamps it, round 5). A decision without one (a pre-round-5
+	// log) binds to nothing: the owner ruled on 2026-11-27 that those logs
+	// no longer need to resume, so the chain decides the call again.
 	let durable: (Event & { type: "permission_decided" }) | undefined;
-	let legacyAmbiguous = false;
-	for (const e of all) {
-		if (e.type !== "permission_decided" || e.decidedBy === undefined) continue;
-		if (e.invocationSeq === undefined && e.callId !== call.callId) continue;
-		const origSeq = e.invocationSeq ?? legacyBinding(e);
-		if (origSeq === undefined) {
-			legacyAmbiguous = true;
-			continue;
-		}
-		if (origSeq === call.seq) durable = e;
-	}
+	for (const e of log.all) if (e.type === "permission_decided" && e.decidedBy !== undefined && e.invocationSeq === call.seq) durable = e;
 	let chainVerdict: ChainVerdict | undefined;
-	if (durable === undefined && legacyAmbiguous) {
-		chainVerdict = { action: "ask" }; // the conservative reading of an old log
-	} else if (durable === undefined && approvalPolicy !== undefined) {
+	if (durable === undefined && approvalPolicy !== undefined) {
 		try {
 			chainVerdict = await raceAbort(Promise.resolve(approvalPolicy.decide({ name: payload.name, input: payload.input }, { ...ctx, callId: call.callId })), signal);
 		} catch {
