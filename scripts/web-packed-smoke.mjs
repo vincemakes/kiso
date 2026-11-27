@@ -8,7 +8,7 @@
  * resolves the same way; `npx @vincemakes/kiso-web` is not covered). The tarballs are installed together, so
  * a release's pins resolve from the set itself before anything is published.
  *
- *   A, all 18 packages:  `kiso-web --no-open` serves the page (200) and a connect code signs in;
+ *   A, all 19 packages:  `kiso-web --no-open` serves the page (200) and a connect code signs in;
  *                        `kiso web --no-open` does the same through the CLI; ctrl+C and SIGTERM both stop the
  *                        host; `kiso chat web` and `kiso -p "web ..."` stay what they were (a session, a prompt);
  *                        no build tool (React, vite) is anywhere in the installed tree.
@@ -39,7 +39,7 @@ if (!existsSync(join(ROOT, "apps/web/out/renderer/index.html"))) {
 
 // pack the closure; a derivation that finds fewer than the lockstep is a failed read
 const packages = publishablePackages();
-check(packages.length === 18 && packages.includes(WEB), `the publishable closure is 18 packages including ${WEB} (found ${packages.length})`);
+check(packages.length === 19 && packages.includes(WEB), `the publishable closure is 19 packages including ${WEB} (found ${packages.length})`);
 const packs = join(TMP, "packs");
 mkdirSync(packs);
 const tarballs = new Map();
