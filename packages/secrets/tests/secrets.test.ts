@@ -72,6 +72,40 @@ describe("isSecretLocation (#31's deny list, for the owner to confirm: D12)", ()
 		expect(isSecretLocation("/Users/p/.kiso/profiles/credentials.env", ctx)).toBe(true);
 		expect(isSecretLocation("/Users/p/.kiso/sessions/s1.jsonl", ctx)).toBe(false);
 	});
+	it("browser profile roots, whole (cookies, Login Data, history), on macOS, Linux and Windows", () => {
+		const roots = [
+			"/Users/p/Library/Application Support/Google/Chrome/Default/Cookies",
+			"/Users/p/Library/Application Support/Chromium/Default/Login Data",
+			"/Users/p/Library/Application Support/Microsoft Edge/Profile 1/Login Data",
+			"/Users/p/Library/Application Support/BraveSoftware/Brave-Browser/Default/Cookies",
+			"/Users/p/Library/Application Support/Firefox/Profiles/x.default/cookies.sqlite",
+			"/Users/p/Library/Cookies/Cookies.binarycookies",
+			"/Users/p/Library/Safari/History.db",
+			"/Users/p/.config/google-chrome/Default/Cookies",
+			"/Users/p/.config/chromium/Default/Login Data",
+			"/Users/p/.config/microsoft-edge/Default/Cookies",
+			"/Users/p/.config/BraveSoftware/Brave-Browser/Default/Login Data",
+			"/Users/p/.mozilla/firefox/x.default/logins.json",
+		];
+		for (const p of roots) expect(isSecretLocation(p, ctx), p).toBe(true);
+		const win = { home: "C:\\Users\\p", kisoHome: "C:\\Users\\p\\.kiso", separator: "\\" };
+		for (const p of ["C:\\Users\\p\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Cookies", "C:\\Users\\p\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default\\Login Data", "C:\\Users\\p\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\x\\key4.db"]) expect(isSecretLocation(p, win), p).toBe(true);
+	});
+	it("known password-manager stores, by name only", () => {
+		for (const p of [
+			"/Users/p/Library/Group Containers/2BUA8C4S2C.com.1password/Library/Application Support/1Password/Data/1password.sqlite",
+			"/Users/p/.config/1Password/settings.json",
+			"/Users/p/Library/Application Support/Bitwarden/data.json",
+			"/Users/p/.config/Bitwarden/data.json",
+			"/Users/p/.password-store/email/work.gpg",
+			"/Users/p/.lpass/session",
+			"/Users/p/.config/keepassxc/keepassxc.ini",
+			"/work/vault/Passwords.kdbx",
+		]) expect(isSecretLocation(p, ctx), p).toBe(true);
+	});
+	it("no fuzzy matching: a name that only resembles a store is not one", () => {
+		for (const p of ["/Users/p/projects/chrome-extension/src/cookies.ts", "/Users/p/.config/bitwarden-cli-notes.md", "/Users/p/Library/Application Support/Google/Drive/config.json", "/work/firefox-docs/Profiles.md", "/work/app/password-store.ts"]) expect(isSecretLocation(p, ctx), p).toBe(false);
+	});
 	it("ordinary files are not secret locations; templates stay readable", () => {
 		for (const p of ["/work/app/src/index.ts", "/work/app/.env.example", "/work/app/.environment", "/Users/p/.sshrc", "/Users/p/Documents/notes.md"]) expect(isSecretLocation(p, ctx), p).toBe(false);
 	});
