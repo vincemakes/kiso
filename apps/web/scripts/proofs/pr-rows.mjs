@@ -40,10 +40,10 @@ check(await waitUntil(async () => (await app.evaluate(`[...document.querySelecto
 const rows = await app.evaluate(`JSON.stringify([...document.querySelectorAll("[data-field=pr]")].map((e) => [e.textContent, e.querySelector("[data-field=pr-checks]")?.textContent ?? ""]))`).then(JSON.parse);
 check(rows.some(([t, c]) => /gadgets|Gadget/.test(t) && c === "1/1") && rows.some(([t, c]) => /Stacked/.test(t) && c === "1/2") && rows.some(([t, c]) => /Base/.test(t) && c === "merged"), `rows carry title and checks, a failed one among the finished (${JSON.stringify(rows)})`);
 check((await app.count(".r-ci.bad")) === 1, "the failed check marks its row");
-check((await app.text("[data-field=uncommitted]"))?.startsWith("Uncommitted12 files") && (await app.count("[data-field=change]")) === 0, "the twelve uncommitted files are folded under one row");
-check((await app.evaluate(`(() => { const r = document.querySelector("[data-field=uncommitted]"); return r.getBoundingClientRect().width <= 281 && [...r.children].every((c) => c.scrollWidth <= c.clientWidth + 1); })()`)), "at the rail's width the row reads whole: name, count and Commit, nothing cut");
+check((await app.text("[data-field=changes-row]"))?.startsWith(`${ws.split("/").pop()} · main`) && /main\+\d+ −\d+Commit…$/.test((await app.text("[data-field=changes-row]")) ?? "") && /\n12 files/.test(await app.evaluate(`document.querySelector("[data-field=changes-row]").title`)) && (await app.count("[data-field=change]")) === 0 && (await app.evaluate(`!!document.querySelector("[data-field=changes-row] ~ [data-field=pr]")`)), "the twelve uncommitted files are folded under one row, above the pull requests");
+check((await app.evaluate(`(() => { const r = document.querySelector("[data-field=changes-row]"); const [nm, ...rest] = r.children; return r.getBoundingClientRect().width <= 281 && getComputedStyle(nm).textOverflow === "ellipsis" && r.title.startsWith(nm.textContent) && rest.every((c) => c.scrollWidth <= c.clientWidth + 1); })()`)), "at the rail's width a long folder name is cut (whole on hover); the lines and Commit never are");
 await app.shot("pr-rows-folded");
-await app.click("[data-field=uncommitted]");
+await app.click("[data-field=changes-row]");
 check((await app.count("[data-field=change]")) === 8 && (await app.count("[data-act=commit]")) === 1, "the row opens to its files and carries Commit");
 await app.shot("pr-rows");
 const before = asked(ok.log, `${A}/1`);
@@ -59,7 +59,7 @@ const bare = launch("prr2", scratch("prr2-ws"), `case "$1 $2" in\n"pr create") c
 const app2 = await bare.run();
 await app2.evaluate(`window.__kiso.send("open them")`);
 check(await waitUntil(async () => (await app2.count("[data-field=pr]")) === 3, 30_000), "without gh the three rows are still there, from the log");
-check((await app2.count("[data-field=pr-checks]")) === 0 && (await app2.count("[data-field=uncommitted]")) === 0, "no state or checks, and no uncommitted row outside a repository");
+check((await app2.count("[data-field=pr-checks]")) === 0 && (await app2.count("[data-field=changes-row]")) === 0, "no state or checks, and no changes row outside a repository with nothing edited");
 await app2.shot("pr-rows-nogh");
 await app2.close();
 verdict();

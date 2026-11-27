@@ -26,17 +26,10 @@
 .r-row { width: calc(100% - 16px); margin: 0 8px; display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px; border-radius: 8px; font-size: 14.5px; color: var(--ink); text-align: left; cursor: pointer; }
 .r-row:hover { background: rgba(0, 0, 0, 0.05); }
 .r-row.dim { color: var(--mute); }
-.r-row.r-br, .r-row.r-st { cursor: default; }
-/* the uncommitted row: name, count and Commit all stay whole at the rail's width */
+.r-row.r-st { cursor: default; }
+/* the Changes summary row: the name (folder · faint branch) is cut first; the lines and the action never are */
 .r-row.r-un { gap: 8px; }
-/* the branch row with an action: no icon, so a branch name of ordinary length is not cut */
-.r-row.r-br { gap: 8px; }
-.r-row.r-br > .r-ic { display: none; }
-.r-row.r-br .r-nm { flex: none; max-width: 100%; }
-.r-row.r-br .r-mt { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.r-row.r-un .r-nm { flex: none; }
-.r-row.r-un .r-mt { flex: 1; text-align: right; }
-.r-row.r-br:hover, .r-row.r-st:hover { background: none; }
+.r-row.r-st:hover { background: none; }
 .r-grp { margin-top: 6px; }
 .r-gh { margin: 4px 20px 2px; font-size: 12px; color: var(--mute); }
 .r-more { display: block; margin: 0 20px; padding: 4px 12px; font-size: 12.5px; color: var(--mute); }

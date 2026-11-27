@@ -225,7 +225,6 @@ export const en = {
 	prOpen: "Create PR",
 	prMerged: "merged",
 	prClosed: "closed",
-	uncommitted: "Uncommitted",
 	nFile: "1 file",
 	nFiles: "{n} files",
 	gitState: { new: "new", deleted: "deleted", modified: "modified" } as Readonly<Record<"new" | "deleted" | "modified", string>>,
