@@ -3,10 +3,11 @@
 > Work is not Session. Work is not Memory. Work survives sessions. A session is
 > execution context for a work. The work log is authoritative for work.
 
-- **Status:** Proposed (drafted 2026-11-27). Docs only; nothing here is built. The
-  owner approved the direction (the A1 stage plan, the package kept private until
-  C0, this record before code) on 2026-11-27; acceptance of this record is a
-  separate owner decision.
+- **Status:** Accepted (the owner, 2026-11-27). Drafted 2026-11-27 and merged as
+  Proposed by #540; stage A1 built it in #542 (`packages/actor`, private until C0,
+  and the runtime's `./evidence` subpath), shipped on main after 0.56.2. No core
+  change. Later stages (A2 onward) are recorded as amendments or in their own
+  records.
 - **Baseline:** `origin/main` ce844ad3 (0.56.1).
 - **Lineage:** kiso-doc `rfc-kiso-actor-runtime-2026-11-23.md` (rev 5, sealed by the
   owner 2026-11-23) and the A1 stage spec `spec-actor-a1-2026-11-27.md` (rev 1.2).

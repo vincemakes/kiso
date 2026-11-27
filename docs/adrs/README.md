@@ -162,6 +162,14 @@ not another recalibration)
   the receiver (its own folders compared since finding G1); plus the steer's
   visible Send now, rewind and `ask_user` in the web. Shipped in 0.55.0,
   off by default until the choice eval passes
+- 0064 — kiso-actor: durable work over disposable sessions. A private
+  package (published at C0) whose work state is a strict, versioned reducer
+  over an append-only work log on a storage contract (a file backend with
+  the session store's discipline, and a conformance suite); acceptance
+  criteria with authority and the 0063 provenance check; evidence-bound
+  completion; work-owned effect identity bound at prepare and joined to the
+  runtime's execution ledger. Freezes `EvidenceOwner` / `EvidenceRef =
+  { owner, seq }`. No core change. Built by stage A1 (#542)
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's
@@ -179,14 +187,6 @@ not another recalibration)
   outlives compactions (exceptions to 0055 Amendments 2 and 3), internal
   retrieval before a public `recall` tool; the 20K tail only after records
   and recall ship. Docs only
-- 0064 — kiso-actor: durable work over disposable sessions — PROPOSED,
-  2026-11-27, awaiting the owner's acceptance. A new private package
-  (published at C0) whose work state is a strict, versioned reducer over an
-  append-only work log on a storage contract (file backend + conformance
-  suite); acceptance criteria with authority and the 0063 provenance check;
-  evidence-bound completion; work-owned effect identity bound at prepare and
-  joined to the runtime's execution ledger. Freezes `EvidenceOwner` /
-  `EvidenceRef = { owner, seq }`. No core change. Docs only
 
 Old ADRs are kept verbatim — decision history is the point of the
 discipline; superseded records carry the marker in their own Status line,
