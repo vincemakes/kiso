@@ -279,14 +279,15 @@ ${SUMMARY_PROMPT}`;
  * never a bare identifier. A checkpoint of a session about kiso's own
  * code names `tool_call_end` in prose; the substring check rejected it on
  * both paths, three times in a row, and the breaker turned compaction off.
- * Matched: a DSML special token (either bar), a tool-call tag, and the
- * JSON shapes of a call (`"type":"tool_call_end"`, `"tool_calls": [`).
+ * Matched: a DSML special token (either bar) and a tool-call tag. Only
+ * shapes backed by an observed leak: a checkpoint that quotes code (a
+ * kiso event log's `{"type":"tool_call_end",…}`, an OpenAI request's
+ * `"tool_calls": [`) is citing code, not leaking a call. A new shape is
+ * added when a leak of it is measured.
  */
 export const TOOL_CALL_MARKUP: readonly { readonly name: string; readonly pattern: RegExp }[] = [
 	{ name: "DSML special token", pattern: /<\/?[|\uFF5C]+\s*DSML\s*[|\uFF5C]+/i },
 	{ name: "tool-call tag", pattern: /<\/?(?:tool_calls?(?:_start|_end)?|tool_use|invoke|function_calls?)(?=[\s>/])/i },
-	{ name: "JSON tool-call event", pattern: /"type"\s*:\s*"tool_call_(?:start|end)"/i },
-	{ name: "JSON tool_calls array", pattern: /"tool_calls"\s*:\s*\[/i },
 ];
 
 /** The checkpoint sections a summary must carry — the ones a truncated

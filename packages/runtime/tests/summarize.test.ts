@@ -416,12 +416,13 @@ describe("E6 (c) — the structured checkpoint prompt", () => {
 describe("E6 (b) — the output validation (the rejection path)", () => {
 	it("rejects a summary carrying tool-call DSML markers — the auto-T5-1 signature", () => {
 		// The E6-F4/F5 signature family: the model echoed tool-call markup
-		// as text. Each marker shape is rejected, wherever it sits.
-		expect(validateSummary('<conversation><tool_call name="read_file">…')).not.toBeNull();
-		expect(validateSummary('{"type":"tool_call_end","callId":"c1","input":{}}')).not.toBeNull();
-		expect(validateSummary('use the <invoke> element for that')).not.toBeNull();
-		expect(validateSummary('{"tool_calls":[{"id":"c1","type":"function"}]}')).not.toBeNull();
-		expect(validateSummary('{"type":"tool_call_start"}')).not.toBeNull();
+		// as text. Each markup shape is rejected, wherever it sits.
+		expect(validateSummary('<conversation><tool_call name="read_file">…')).toMatch(/tool-call marker/);
+		expect(validateSummary('use the <invoke> element for that')).toMatch(/tool-call marker/);
+		// A bare JSON event is no checkpoint either, but it is rejected for its missing sections, not as
+		// markup (finding #29: quoted code is not a leaked call).
+		expect(validateSummary('{"type":"tool_call_end","callId":"c1","input":{}}')).toMatch(/missing the required section/);
+		expect(validateSummary('{"tool_calls":[{"id":"c1","type":"function"}]}')).toMatch(/missing the required section/);
 	});
 
 	it("rejects a truncated summary — the Current work or Next steps section missing", () => {
@@ -466,10 +467,18 @@ describe("finding #29 — the marker check rejects markup, never an identifier i
 		expect(validateSummary(withProse("</\uff5cDSML\uff5cparameter>"))).toMatch(/tool-call marker/);
 	});
 
-	it("tag-shaped and JSON-shaped tool-call markup still rejects inside a valid checkpoint", () => {
-		for (const markup of ['<tool_call name="read_file">', "</tool_call>", "<tool_use>", '<invoke name="x">', "<function_calls>", "<tool_call_end>", '{"type":"tool_call_end","callId":"c1"}', '{"type": "tool_call_start"}', '"tool_calls": [{"id":"c1"}]']) {
+	it("tag-shaped tool-call markup still rejects inside a valid checkpoint", () => {
+		for (const markup of ['<tool_call name="read_file">', "</tool_call>", "<tool_use>", '<invoke name="x">', "<function_calls>", "<tool_call_end>"]) {
 			expect(validateSummary(withProse(markup)), markup).toMatch(/tool-call marker/);
 		}
+	});
+
+	it("a checkpoint that quotes code passes: JSON in a fenced and an inline code span is citing code, not a call", () => {
+		const fenced = withProse(['The event log line read in `packages/core/src/kernel/event-log.ts`:', "```json", '{"type":"tool_call_end","callId":"c1","name":"read_file","input":{"path":"src/cli.js"}}', "```", "The request builder in `src/client.ts`:", "```ts", 'const body = { model, messages, "tool_calls": [{ id: "c1", type: "function" }] };', "```"].join("\n"));
+		expect(validateSummary(fenced)).toBeNull();
+		const inline = withProse('the log carries `{"type":"tool_call_end"}` after each call, and the client sends `"tool_calls": [` with every assistant turn');
+		expect(validateSummary(inline)).toBeNull();
+		expect(validateSummary(withProse('{"type": "tool_call_start"} then {"type":"tool_call_end"}'))).toBeNull();
 	});
 
 	// E1 stage 1 (2026-11-27): real checkpoints a coding session on kiso's own source wrote, rejected at the pin
