@@ -58,7 +58,9 @@ check(!tip.includes("hello-from-task") && tip.includes("this long-named backgrou
 await q(`document.querySelector('[data-field=task]').dispatchEvent(new MouseEvent('mouseleave'))`);
 await app.click("[data-act=task-stop]");
 check(await waitUntil(async () => (await app.count("[data-act=task-stop]")) === 0 && /stopped/.test((await app.text("[data-field=task]")) ?? ""), 15_000) && (await app.count("[data-act=finished]")) === 0 && (await app.count("[data-field=task]")) === 1, "stop ends the task: its row stays in the one list, now stopped, with no group folding the ended ones");
-check((await app.count("[data-field=branch-row]")) === 0 && (await app.count("[data-field=change]")) === 1 && /README\.md\s*\+2\s*−3/.test(await field("change")), "Changes lists the file the run edited, with the edit's lines added and removed (no branch row without an action)");
+check((await field("changes-row")) === `${workspace.split("/").pop()} · feature-rail+2 −3` && (await app.count("[data-field=change]")) === 0, "Changes is one row: the folder, the branch, the run's lines added and removed; no file row until it is opened");
+await app.click("[data-field=changes-row]");
+check((await app.count("[data-field=change]")) === 1 && /README\.md\s*\+2\s*−3/.test(await field("change")), "opened, it lists the file the run edited with its lines");
 await app.click("[data-act=fold-changes]");
 check((await app.count("[data-field=change]")) === 0, "a section folds from its header");
 await app.click("[data-act=fold-changes]");

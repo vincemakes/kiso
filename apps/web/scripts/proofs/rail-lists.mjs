@@ -1,5 +1,5 @@
-// A folder with hundreds of changed files keeps the rail light (owner 2026-11-03: 9,871 changes all listed at once): Changes lists
-// eight, "Show n more" lists up to 200, and the rest are counted, not drawn.
+// A folder with hundreds of changed files keeps the rail light (owner 2026-11-03: 9,871 changes all listed at once): Changes, opened,
+// lists eight, "Show n more" lists up to 200, and the rest are counted, not drawn.
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,8 @@ for (let i = 0; i < 210; i++) writeFileSync(join(ws, `f${String(i).padStart(3, "
 const turn = { events: [{ type: "text_delta", text: "Looked." }, { type: "stop", reason: "end_turn" }] };
 const app = await launchApp({ data: scratch("lists-data"), workspace: ws, fauxScript: [turn], env: { KISO_WEB_SESSION: "lists", ...ID } });
 await app.evaluate(`window.__kiso.send("look")`);
-await waitUntil(async () => (await app.count("[data-kind=footer]")) === 1 && (await app.count("[data-field=change]")) > 0, 30_000);
+await waitUntil(async () => (await app.count("[data-kind=footer]")) === 1 && (await app.count("[data-field=changes-row]")) === 1, 30_000);
+await app.click("[data-field=changes-row]");
 const more = await app.text("[data-act=more-changes]");
 check((await app.count("[data-field=change]")) === 8 && more === "Show 202 more", `Changes lists eight of 210 files, then "${more}"`);
 await app.click("[data-act=more-changes]");
