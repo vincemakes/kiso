@@ -1231,8 +1231,11 @@ export function writeFileTool(opts: WorkspaceToolsOptions): Tool<{ path: string;
 				// O1: with no "absent" in the input, the "created" tag tells
 				// the host's card a creation from a rewrite — a product tag,
 				// never sent to the model.
+				// #32: a folder this write made at the top of a git repository is said (its one-segment name and "/", the same bytes on
+				// every OS), so a tree written in the wrong place is seen at once; every other result is unchanged, byte for byte
+				const newTop = createdDirs !== undefined && existsSync(join(dirname(createdDirs), ".git")) ? `\nnote: created a new top-level folder in the git repository: ${basename(createdDirs)}/` : "";
 				return {
-					content: `wrote ${path} (${content.length} chars)\n[${contentRevision(Buffer.from(content, "utf8"))}]`,
+					content: `wrote ${path} (${content.length} chars)${newTop}\n[${contentRevision(Buffer.from(content, "utf8"))}]`,
 					isError: false,
 					...(opts.observedRevision !== undefined && !exists ? { tags: ["created"] } : {}),
 				};
