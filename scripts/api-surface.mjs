@@ -122,7 +122,9 @@ if (mode === "--check" || mode === "--update") {
 		console.error(`api-surface: ${mode} needs <pkg> <snapshot-file>`);
 		process.exit(2);
 	}
-	const index = join(root, "packages", pkg, "dist", "index.d.ts");
+	// ADR-0064: `<pkg>/<entry>` gates a subpath export (packages/<pkg>/dist/<entry>.d.ts).
+	const [dir, entry = "index"] = pkg.split("/");
+	const index = join(root, "packages", dir, "dist", `${entry}.d.ts`);
 	if (!existsSync(index)) {
 		console.error(`api-surface: no dist for package ${pkg} (build first)`);
 		process.exit(2);
