@@ -180,6 +180,7 @@
   "extensions/subagent/tests/sessions-dir-channel.test.ts",
   "extensions/subagent/tests/subagent-e2e.test.ts",
   "extensions/subagent/tests/subagent.test.ts",
+  "packages/actor/tests/work-crash-kill9.test.ts",
   "packages/runtime/tests/framing-lock.test.ts",
   "packages/runtime/tests/inbox-locks.test.ts",
   "packages/runtime/tests/lock-stale-same-pid.test.ts",
