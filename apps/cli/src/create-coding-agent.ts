@@ -85,6 +85,11 @@ export function contextPolicyFromEnv(): ContextPolicy | undefined {
 	};
 }
 
+/** ADR-0063 M2b: KISO_SESSION_RECORDS=1 arms session records; anything else leaves them off. */
+export function sessionRecordsFromEnv(): boolean {
+	return process.env.KISO_SESSION_RECORDS === "1";
+}
+
 /** { [key]: value } when the env int is set — the spread-friendly optional field. */
 function kv(key: string, env: string): { [key: string]: number } | undefined {
 	const v = positiveIntEnv(env);
@@ -334,6 +339,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 		// 1 reads the user's configured checks first, then the runner table.
 		contextPolicy: {
 			...(contextPolicy ?? {}),
+			// ADR-0063 M2b: session records, OFF unless KISO_SESSION_RECORDS=1
+			// (env only until E2 decides whether coding sessions pay for them)
+			...(sessionRecordsFromEnv() ? { records: { enabled: true } } : {}),
 			tiers: {
 				windowTokens: contextWindowTokens(),
 				isCheck: (command: string) => runsACheck(command, Object.values(merged.checks ?? {})),

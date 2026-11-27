@@ -89,6 +89,8 @@ import type { TaskManager } from "./tasks/manager.js";
 // TUI2-R3v2 ③ — the side query rides the SAME tracer the runs ride; that
 // sameness is the whole point (one ledger, one shape, no second path).
 import { RequestTracer, traceGuard } from "./trace/guard.js";
+import { EXTRACTOR_SYSTEM, extractRange, type ExtractionOutcome } from "./records-extract.js";
+import { recordCoverage, recordsBatch } from "./session-records.js";
 import { DEFAULT_STREAM_IDLE_MS, idleGuard } from "./idle-guard.js";
 import { runtimeVersion } from "./trace/writer.js";
 
@@ -314,6 +316,8 @@ export class AgentSession {
 	/** E6 (h): the circuit-breaker counter — consecutive auto-policy
 	 *  summary failures this session (a success resets it). */
 	#summaryFailures = 0;
+	/** M2b: the one extraction in flight (at most one per session) and, once settled, its outcome. */
+	#recordsFlight: { outcome?: ExtractionOutcome } | undefined;
 	/** 0.40.0: usage at or before this seq was billed under another model — never an anchor. */
 	#anchorFloorSeq = -1;
 	/** A1b: the window the tiers are drawn from — the live binding's, once a
@@ -507,6 +511,7 @@ export class AgentSession {
 
 	endRun(run: Run): void {
 		this.#activeRuns.delete(run);
+		this.#recordsAtRunEnd();
 		this.#delivery?.onRunSettled(run); // the slot is free: a wake may follow
 		this.#peers?.onRunSettled(run);
 	}
@@ -632,6 +637,24 @@ export class AgentSession {
 		readonly signal?: AbortSignalLike;
 		readonly maxRetries?: number;
 	}): ((events: readonly Event[], messages: readonly Message[], why: "request" | "overflow") => Promise<readonly EventInput[]>) | undefined {
+		const inner = this.#checkpointPoint(run);
+		// M2b: records OFF (the default) leaves the compaction point exactly as it was
+		if (this.#config.contextPolicy?.records?.enabled !== true) return inner;
+		// ON: the point is armed even without tiers (a session that never
+		// compacts still pays its debt at its next request); a settled batch
+		// lands here, through the run's own writer, before whatever the
+		// checkpoint logic returns; a committed checkpoint starts the next one
+		return async (events, messages, why) => {
+			const ready = this.#takeRecords(events);
+			const out = inner === undefined ? [] : await inner(events, messages, why);
+			const fired = out.find((e): e is EventInput & { type: "summarized" } => e.type === "summarized");
+			if (fired !== undefined) this.#startRecords(events, fired.coversToSeq, ready?.coversToSeq ?? -1);
+			return ready === null ? out : [ready, ...out];
+		};
+	}
+
+	/** The checkpoint logic of the compaction point (ADR-0055), unchanged by M2b. */
+	#checkpointPoint(run: Parameters<AgentSession["compactionPoint"]>[0]): ((events: readonly Event[], messages: readonly Message[], why: "request" | "overflow") => Promise<readonly EventInput[]>) | undefined {
 		const tiersPolicy = this.#config.contextPolicy?.tiers;
 		const legacy = tiersPolicy === undefined ? microcompactFor(this.#effectiveConfig(), this.log.all) : undefined;
 		if (tiersPolicy === undefined && legacy === undefined) return undefined;
@@ -727,6 +750,107 @@ export class AgentSession {
 	/** A2 — one in-run summary: in-band first, the serialised form once on
 	 *  a rejection; null when neither produced a valid checkpoint. The
 	 *  summary call's usage and path ride the trace ledger, as /compact's do. */
+	/**
+	 * M2b: start ONE extraction over (cursor, target], unless one is in
+	 * flight (the later boundary pays the merged range once it lands) or the
+	 * range is empty. Not awaited: it overlaps the run (B1). `floor` is the
+	 * coverage of a batch being appended in the same compaction call.
+	 */
+	#startRecords(events: readonly Event[], target: number, floor = -1): void {
+		if (this.#recordsFlight !== undefined) return;
+		const from = Math.max(recordCoverage(events), floor);
+		if (from >= target) return;
+		const snapshot = events.slice();
+		const flight: { outcome?: ExtractionOutcome } = {};
+		this.#recordsFlight = flight;
+		void extractRange({ events: snapshot, owner: `session/${this.id}`, from, to: target, query: (messages) => this.#recordsQuery(messages) })
+			.catch((err: unknown): ExtractionOutcome => ({ kind: "transport", from, to: target, error: err instanceof Error ? err.message : String(err) }))
+			.then((outcome) => {
+				flight.outcome = outcome;
+				this.#traceRecords(outcome);
+				// a transport failure has nothing to append: the slot frees now,
+				// so the next boundary computes the merged range from the cursor
+				if (outcome.kind === "transport" && this.#recordsFlight === flight) this.#recordsFlight = undefined;
+			});
+	}
+
+	/** M2b: the settled flight's batch to append now, or null (none, still running, or a transport failure). */
+	#takeRecords(events: readonly Event[]): (EventInput & { type: "context_records" }) | null {
+		const outcome = this.#recordsFlight?.outcome;
+		if (outcome === undefined) return null;
+		this.#recordsFlight = undefined;
+		if (outcome.kind !== "batch" || outcome.from !== recordCoverage(events)) return null;
+		const checkpoint = events.find((e) => e.type === "summarized" && e.coversToSeq === outcome.to)?.seq ?? "none";
+		return recordsBatch(this.id, outcome.from, outcome.to, checkpoint, outcome.records);
+	}
+
+	/** M2b: a run's end pays its debt to the last settled seq; overlapped, landing at the next request. */
+	#recordsAtRunEnd(): void {
+		if (this.#config.contextPolicy?.records?.enabled !== true) return;
+		const last = this.log.all.at(-1);
+		if (last?.type === "terminal") this.#startRecords(this.log.all, last.seq);
+	}
+
+	/** M2b: resume pays the debt to the last committed boundary (a terminal or a stop). */
+	#recordsAtResume(): void {
+		if (this.#config.contextPolicy?.records?.enabled !== true) return;
+		const all = this.log.all;
+		for (let i = all.length - 1; i >= 0; i--) {
+			const e = all[i]!;
+			if (e.type === "terminal" || e.type === "stop") return this.#startRecords(all, e.seq);
+		}
+	}
+
+	/** M2b's model call: a traced side query (purpose "records"), its usage in the trace like the summary's. */
+	async #recordsQuery(messages: readonly { readonly role: "user" | "assistant"; readonly text: string }[]): Promise<{ readonly text: string; readonly truncated: boolean }> {
+		const tracer = new RequestTracer({
+			root: this.#store.root,
+			sessionId: this.id,
+			runId: crypto.randomUUID(),
+			provider: this.#provider ?? "adapter",
+			model: this.#model,
+			...(this.#baseUrl !== undefined ? { endpoint: this.#baseUrl } : {}),
+			adapterVersion: runtimeVersion(),
+			purpose: "records",
+			log: [],
+			rentParts: { base: EXTRACTOR_SYSTEM, appends: [] },
+		});
+		tracer.init();
+		const guarded = traceGuard(tracer, idleGuard(this.#sideAdapter ?? this.#adapter, this.#config.streamIdleMs ?? DEFAULT_STREAM_IDLE_MS));
+		const quiet = quietReasoning(this.#model, this.#baseUrl);
+		let text = "";
+		let truncated = false;
+		try {
+			for await (const ev of guarded.stream({
+				model: this.#model,
+				systemPrompt: EXTRACTOR_SYSTEM,
+				messages: messages.map((m): Message => (m.role === "user" ? { role: "user", content: m.text } : { role: "assistant", blocks: [{ type: "text", text: m.text }] })),
+				maxTokens: this.#config.contextPolicy?.records?.maxOutputTokens ?? 6_000,
+				...(quiet !== null ? { reasoning: quiet } : {}),
+			})) {
+				if (ev.type === "text_delta") text += ev.text;
+				if (ev.type === "stop" && ev.reason === "max_tokens") truncated = true;
+				if (ev.type === "stop" && ev.reason === "error") throw new Error("the provider stopped with an error");
+			}
+		} finally {
+			tracer.finishRun();
+		}
+		return { text, truncated };
+	}
+
+	/** M2b: one ledger line per extraction — its range, outcome and drop counts (never record text). */
+	#traceRecords(outcome: ExtractionOutcome): void {
+		const line = outcome.kind === "batch"
+			? { kind: "records", from: outcome.from, to: outcome.to, outcome: outcome.emptyAfterFailure ? "empty-after-failure" : "batch", records: outcome.records.length, drops: outcome.drops, retried: outcome.retried }
+			: { kind: "records", from: outcome.from, to: outcome.to, outcome: "transport-failure" };
+		try {
+			mkdirSync(join(this.#store.root, "traces"), { recursive: true, mode: 0o700 });
+			appendFileSync(join(this.#store.root, "traces", `${this.id}.jsonl`), `${JSON.stringify(line)}\n`, { mode: 0o600 });
+		} catch {
+			// the ledger is an observation; the batch does not depend on it
+		}
+	}
+
 	async #summarizeInRun(
 		events: readonly Event[],
 		messages: readonly Message[],
@@ -1214,6 +1338,7 @@ export class AgentSession {
 	 */
 	resume(): Run {
 		this.ensureHealthy();
+		this.#recordsAtResume();
 		return new Run(this.#store, this.#remembering(this.#learning(this.#adapter)), this.#effectiveConfig(), this, undefined, undefined, true);
 	}
 
@@ -1783,6 +1908,17 @@ export interface ContextPolicy {
 	 * `[...DEFAULT_CHECKPOINT_SECTIONS, { heading, instruction }]`.
 	 */
 	readonly checkpointSections?: readonly CheckpointSection[];
+	/**
+	 * ADR-0063 M2b — session records (spec `spec-m2b-extraction-wiring`).
+	 * OFF unless `enabled`: absent or false, no extraction call is ever made
+	 * and nothing is written — the log, the requests and the cost are those
+	 * of a session without records. On: one serialized extraction per
+	 * boundary (after a checkpoint commits, at a run's end, at resume),
+	 * overlapped with the run and accounted as a side call (purpose
+	 * "records" in the trace); its batch lands through the compaction point,
+	 * the session's own writer. `maxOutputTokens` defaults to 6,000.
+	 */
+	readonly records?: { readonly enabled: boolean; readonly maxOutputTokens?: number };
 	/**
 	 * A — the auto-summary: at run start, when the projected context
 	 * crosses the trigger AND enough uncovered rounds exist, the
