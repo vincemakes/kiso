@@ -36,6 +36,8 @@ export type EffectState = {
 	readonly receipt?: string;
 };
 
+export type LeaseState = { readonly leaseId: string; readonly sessionId: string; readonly state: "opened" | "attached"; readonly sourceWorkRevision: number; readonly bootstrapDigest?: string };
+
 export type WorkStatus = "active" | "waiting" | "needs-human" | "verifying" | "completed" | "failed" | "cancelled";
 
 export type Commitment = {
@@ -49,6 +51,10 @@ export type Commitment = {
 	readonly evidence: readonly EvidenceRecord[];
 	readonly effects: readonly EffectState[];
 	readonly completion: Readonly<Record<Authority, { readonly met: number; readonly required: number }>>;
+	/** The lease that is open or attached, if any (A2): at most one at a time. */
+	readonly lease?: LeaseState;
+	/** The last released lease's note to the next one. */
+	readonly lastHandoff?: string;
 };
 
 export type Problem = { readonly seq: number; readonly rule: string };
@@ -74,10 +80,13 @@ export function reduceWork(lines: readonly LogLine<unknown>[]): { readonly commi
 	const problems: Problem[] = [];
 	let explicit: WorkStatus | undefined;
 	let terminal: WorkStatus | undefined;
+	let lease: LeaseState | undefined;
+	let lastHandoff: string | undefined;
 
 	const apply = (ev: WorkEvent, seq: number): string | null => {
 		if (seq > 0 && ev.type === "work_created") return "work_created after seq 0";
-		if (terminal !== undefined) return `event after ${terminal}`;
+		// A lease still open when the work ends must be releasable; nothing else follows a terminal event.
+		if (terminal !== undefined && ev.type !== "session_lease_released") return `event after ${terminal}`;
 		switch (ev.type) {
 			case "work_created":
 				return null;
@@ -141,6 +150,23 @@ export function reduceWork(lines: readonly LogLine<unknown>[]): { readonly commi
 				effects.set(ev.effectId, { ...fx, status: "abandoned", ...receipt });
 				return null;
 			}
+			case "session_lease_opened":
+				if (lease !== undefined) return `lease ${lease.leaseId} is still ${lease.state}`;
+				if (ev.sourceWorkRevision < 0 || ev.sourceWorkRevision >= seq) return "sourceWorkRevision is not an observed revision";
+				lease = { leaseId: ev.leaseId, sessionId: ev.sessionId, state: "opened", sourceWorkRevision: ev.sourceWorkRevision };
+				return null;
+			case "session_lease_attached":
+				if (lease?.leaseId !== ev.leaseId) return `attach of ${ev.leaseId}, not the open lease`;
+				if (lease.state !== "opened") return `lease ${ev.leaseId} is already attached`;
+				if (ev.bootstrapSeq !== 0) return "a bootstrap is a session's first event (seq 0)";
+				if (!DIGEST.test(ev.bootstrapDigest)) return "bootstrapDigest is not a SHA-256 hex digest";
+				lease = { ...lease, state: "attached", bootstrapDigest: ev.bootstrapDigest };
+				return null;
+			case "session_lease_released":
+				if (lease?.leaseId !== ev.leaseId || lease.sessionId !== ev.sessionId) return `release of ${ev.leaseId}, not the open lease`;
+				lease = undefined;
+				if (ev.handoff !== undefined) lastHandoff = ev.handoff;
+				return null;
 			case "state_changed":
 				explicit = ev.to;
 				return null;
@@ -185,6 +211,8 @@ export function reduceWork(lines: readonly LogLine<unknown>[]): { readonly commi
 			evidence,
 			effects: fx,
 			completion,
+			...(lease !== undefined ? { lease } : {}),
+			...(lastHandoff !== undefined ? { lastHandoff } : {}),
 		},
 		problems,
 	};

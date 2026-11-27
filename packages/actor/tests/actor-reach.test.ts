@@ -40,7 +40,7 @@ const everything = () => [...tiers.flatMap((pkg) => [...walk(join(pkg, "src")), 
 
 export const IMPORTS_ACTOR = /["']@vincemakes\/kiso-actor(\/[^"']*)?["']/;
 export const DEEP_ACTOR = /["'](@vincemakes\/kiso-actor\/[^"']*|[^"']*packages\/actor\/(src|dist)\/[^"']*|(\.\.\/)+actor\/(src|dist)\/[^"']*)["']/;
-export const IMPORTS_EVIDENCE = /["']@vincemakes\/kiso-runtime\/evidence["']/;
+export const IMPORTS_EVIDENCE = /["']@vincemakes\/kiso-runtime\/(evidence|lease)["']/;
 
 const inActor = (f: string) => f.startsWith("packages/actor/");
 const matching = (files: string[], re: RegExp) => files.filter((f) => re.test(readFileSync(f, "utf8"))).map(repoPath);
@@ -50,7 +50,7 @@ describe("ADR-0064 gates", () => {
 		expect(matching(shipped(), IMPORTS_ACTOR).filter((f) => !inActor(f))).toEqual([]);
 	});
 
-	it("the evidence subpath has one importer: kiso-actor", () => {
+	it("the evidence and lease subpaths have one importer: kiso-actor", () => {
 		expect(matching(shipped(), IMPORTS_EVIDENCE).filter((f) => !inActor(f))).toEqual([]);
 		expect(matching(shipped(), IMPORTS_EVIDENCE).length).toBeGreaterThan(0);
 	});

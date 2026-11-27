@@ -15,6 +15,8 @@ import type { StoreRecord } from "./store.js";
 export function openRunId(records: readonly StoreRecord[]): string | undefined {
 	const terminated = new Set(records.filter((r) => r.event.type === "terminal").map((r) => r.runId));
 	for (let i = records.length - 1; i >= 0; i--) {
+		// ADR-0064 A2: a lease's bootstrap is the session's starting state, written before any run: it belongs to none
+		if (records[i]!.event.type === "context_bootstrap") continue;
 		const runId = records[i]!.runId;
 		if (!terminated.has(runId)) return runId;
 	}

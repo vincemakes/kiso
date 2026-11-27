@@ -10,6 +10,9 @@ export type { EvidenceOwner, EvidenceRef };
 
 export const WORK_LOG_FORMAT = 1;
 
+/** A released lease's note to the next one: written by the host, never by a model call (A2 spec § 5.1). */
+export const HANDOFF_MAX_BYTES = 4096;
+
 export type Authority = "user" | "system" | "agent";
 export type WorkQuote = { readonly owner: EvidenceOwner; readonly seq: number; readonly span: string };
 
@@ -49,6 +52,16 @@ export type WorkEvent =
 			readonly receipt?: string;
 	  }
 	| { readonly type: "state_changed"; readonly to: "active" | "waiting" | "needs-human" | "verifying"; readonly reason: string }
+	| { readonly type: "session_lease_opened"; readonly leaseId: string; readonly sessionId: string; readonly sourceWorkRevision: number }
+	| { readonly type: "session_lease_attached"; readonly leaseId: string; readonly bootstrapSeq: number; readonly bootstrapDigest: string }
+	| {
+			readonly type: "session_lease_released";
+			readonly leaseId: string;
+			readonly sessionId: string;
+			readonly result: "completed-turn" | "waiting" | "handoff" | "abandoned" | "failed";
+			readonly finalSessionSeq: number;
+			readonly handoff?: string;
+	  }
 	| { readonly type: "completed"; readonly summary?: string }
 	| { readonly type: "failed"; readonly reason: string }
 	| { readonly type: "cancelled"; readonly reason: string };
@@ -98,6 +111,14 @@ const SHAPES: Record<WorkEvent["type"], (e: Raw) => boolean> = {
 	effect_resolved: (e) =>
 		str(e.effectId) && int(e.attempt) && oneOf("succeeded", "failed", "rerun", "abandoned")(e.outcome) && oneOf("receipt", "human", "host")(e.by) && opt(e.receipt, str),
 	state_changed: (e) => oneOf("active", "waiting", "needs-human", "verifying")(e.to) && str(e.reason),
+	session_lease_opened: (e) => str(e.leaseId) && str(e.sessionId) && int(e.sourceWorkRevision),
+	session_lease_attached: (e) => str(e.leaseId) && int(e.bootstrapSeq) && str(e.bootstrapDigest),
+	session_lease_released: (e) =>
+		str(e.leaseId) &&
+		str(e.sessionId) &&
+		oneOf("completed-turn", "waiting", "handoff", "abandoned", "failed")(e.result) &&
+		int(e.finalSessionSeq) &&
+		opt(e.handoff, (h) => str(h) && Buffer.byteLength(h as string) <= HANDOFF_MAX_BYTES),
 	completed: (e) => opt(e.summary, str),
 	failed: (e) => str(e.reason),
 	cancelled: (e) => str(e.reason),

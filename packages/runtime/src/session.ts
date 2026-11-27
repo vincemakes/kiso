@@ -192,6 +192,9 @@ export interface CompactInfo {
  * is an optimisation and the scaled budget is the fix — the budget
  * reaches every model, this reaches the ones we can vouch for.
  */
+/** ADR-0064 A2: a lease session skips the in-band checkpoint call (never thrown out of the session). */
+class BootstrapSessionSummary extends Error {}
+
 function summaryReasoning(model: string, baseUrl: string | undefined): { reasoning?: { readonly thinking?: "adaptive" | "enabled" | "disabled"; readonly effort?: string } } {
 	const r = resolveReasoning(model, { thinking: "disabled", effort: "default" }, baseUrl);
 	return r.ok && r.wire.thinking !== undefined ? { reasoning: r.wire } : {};
@@ -715,6 +718,15 @@ export class AgentSession {
 			...(this.#checkpoint !== undefined ? { checkpoint: this.#checkpoint } : {}),
 		};
 		try {
+			// ADR-0064 A2, invariant 2: a lease session's bootstrap is never summary
+			// material. The in-band call would hand it to the summarizer as context, so a
+			// lease session goes straight to the serialised form, which never carries it.
+			// This is A2's implementation, not the invariant: it gives up the in-band
+			// call's cache reuse. Debt to settle before C0: a request projection
+			// (bootstrap + checkpoint + records + tail) and a separate summary-material
+			// projection (without the bootstrap and record projections) would keep the
+			// invariant and bring the in-band savings back.
+			if (this.log.all[0]?.type === "context_bootstrap") throw new BootstrapSessionSummary();
 			// The in-band call carries the run's whole context, so the overflow
 			// belt applies to it; the serialised fallback below is small, and
 			// its failures keep their own classification.

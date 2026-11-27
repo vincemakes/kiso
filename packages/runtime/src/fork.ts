@@ -57,6 +57,8 @@ export function forkSession(root: string, parent: string, afterSeq?: number): { 
 	const cut = afterSeq === undefined ? [...lines].reverse().find((l) => l.type === "terminal") : lines.find((l) => l.seq === afterSeq);
 	if (cut === undefined) throw new ForkRefusedError(afterSeq === undefined ? "this session has no finished run to fork from yet" : `no event ${afterSeq} in this session`);
 	if (cut.type !== "terminal") throw new ForkRefusedError("a fork starts at the end of a run: pick a reply that finished");
+	// ADR-0064 A2: a lease session belongs to a work; a copy would be an ordinary session holding its bootstrap
+	if (lines[0]?.type === "context_bootstrap") throw new ForkRefusedError("this session is a lease on a work: open a new lease to continue the work, rather than forking it");
 	const kept = lines.filter((l) => l.end <= cut.end);
 	// an execution still waiting for a verdict belongs to the world the parent ran in: settle it there first
 	const resolved = new Set(kept.filter((l) => l.type === "tool_execution_resolved").map((l) => l.event["executionId"]));

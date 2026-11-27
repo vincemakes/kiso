@@ -7,13 +7,15 @@
   Proposed by #540; stage A1 built it in #542 (`packages/actor`, private until C0,
   and the runtime's `./evidence` subpath), shipped on main after 0.56.2. No core
   change. Later stages (A2 onward) are recorded as amendments or in their own
-  records.
+  records. Amendment 1 (A2, 2026-11-27): session leases and the bootstrap, with
+  the one core event the owner approved as measured (+11 lines).
 - **Baseline:** `origin/main` ce844ad3 (0.56.1).
 - **Lineage:** kiso-doc `rfc-kiso-actor-runtime-2026-11-23.md` (rev 5, sealed by the
   owner 2026-11-23) and the A1 stage spec `spec-actor-a1-2026-11-27.md` (rev 1.2).
   This ADR records the decisions; it does not restate the RFC's argument.
 - **Layer:** a new package `@vincemakes/kiso-actor` (`packages/actor`), and one
-  neutral provenance module in the runtime (§ 6). **No core change.**
+  neutral provenance module in the runtime (§ 6). **No core change** in A1;
+  Amendment 1 (A2) adds one core event, as measured and approved.
 - **Companions:** ADR-0002 (the event log is the single truth), ADR-0038
   (uncertainty belongs to the crash window), ADR-0050 (the identity-confirmed
   lock), ADR-0058 § 6 (durable before the effect), ADR-0062 (sessions), ADR-0063
@@ -125,3 +127,86 @@ or nothing. It is neutral: neither memory nor work owns it, and both import it.
 If a second backend cannot meet the contract in § 2.3 without changing the reducer,
 or if the C0 consumer needs to reach past the public index, the contract is wrong
 and this record is reopened.
+
+## Amendment 1 (2026-11-27): A2, session leases and the bootstrap
+
+Lineage: kiso-doc `spec-actor-a2-2026-11-27.md` (rev 2.1, measured on a local
+spike). The owner and the reviewer approved the core diff as measured (+11
+lines; core 2138 to 2149 on main fb8ebf78, beside M2's `context_records`) and
+the choice of a dedicated event type. § 7's last gate is met for A2: this is the exact diff the owner decided.
+
+### A1. The lease protocol in the work log
+
+Three new work events, no `format` bump (an A1-era strict reader refuses them
+rather than misreading them):
+
+- `session_lease_opened { leaseId, sessionId, sourceWorkRevision }`
+- `session_lease_attached { leaseId, bootstrapSeq: 0, bootstrapDigest }`
+- `session_lease_released { leaseId, sessionId, result, finalSessionSeq, handoff? }`,
+  with `handoff` bounded at 4 KiB and taken from the session's last committed
+  text, never from an extra model call.
+
+One lease is open or attached at a time; `attached` and `released` name it;
+`sourceWorkRevision` is an observed revision. A lease open when the work reaches
+a terminal event may still be released, and nothing else may follow the
+terminal event. `reconcileLease` reads every durable state a crash can leave
+(`no-lease`, `none`, `retry-bootstrap`, `attach`, `resume-session`,
+`release-stale`, `corrupt`); the bootstrap is found by `meta.leaseId`, never by
+position, and a digest mismatch is corruption, reported and not repaired.
+
+### A2. The bootstrap: one core event
+
+`context_bootstrap { seq, meta, projection }`: the compiled starting state of a
+lease session, rendered at the head of the projection as a program-written user
+message (`source: "system"`), and never covered by a checkpoint. `meta` is
+opaque to core. Two zero-core paths were rejected: as a `user_input` it is
+summarised away; in the system prompt it is not in the log. It is a separate
+type from the memory stream's `context_records` (ADR-0063 M2) because the two
+have different lifecycles: one is written once and never covered, the other is
+re-derived at each checkpoint.
+
+### A3. The three invariants, by layer
+
+1. **Exactly one per lease session, immutable.** Split by layer:
+   - **core** guarantees *at most one, and if present the first event*: its
+     validator accepts the event only at `seq === 0`. Core does not know which
+     sessions are lease sessions, so it does not, and cannot, guarantee
+     "exactly one";
+   - **kiso-actor's contract** (A2): every session a lease creates holds exactly
+     one `context_bootstrap`, written before anything else. `openLease` creates
+     the session through the runtime door (`@vincemakes/kiso-runtime/lease`,
+     not stable), which writes only into an empty log; a test pins it.
+   A new lease is a new session with a new bootstrap; a lease session cannot be
+   forked (`ForkRefusedError` names the way: open a new lease).
+2. **Never summary or extractor material.** No checkpoint, in-band or
+   serialised, takes the bootstrap as input, and neither does the memory
+   stream's extractor.
+3. **It names its revision and never claims to be current.** The rendering opens
+   with a fixed line naming the WorkRevision it snapshots. Priority: fresh
+   in-session evidence > newer work events and records > the bootstrap.
+
+### A4. Invariant 2's implementation is debt, not the invariant
+
+A2 keeps invariant 2 by sending a lease session's checkpoint straight to the
+serialised form, which never carries the bootstrap. That gives up the in-band
+call's cache reuse. **Settle before C0:** a request projection (bootstrap +
+checkpoint + records + tail) and a separate summary-material projection
+(without the bootstrap and record projections) would keep the invariant and
+bring the in-band savings back. The reviewer confirmed no provider concern with
+a system-source user message followed by the person's message; an existing
+regression test covers that shape.
+
+### A5. Context order (provisional, frozen jointly with ADR-0063)
+
+```text
+system prompt · project instructions · actor bootstrap · working checkpoint
+  · session-record projection (M3) · recent raw tail · current input
+```
+
+### A6. What does not move
+
+kiso web never sees the bootstrap (the wire map has no entry for it; a test pins
+it). The wire fixture and the rent ratchet are unchanged; kiso-actor stays
+unreachable from any run. The context compiler (`compileContext`, built-in
+`work-state`, `handoff` and `recent-evidence` sources, per-source byte budgets)
+lives in kiso-actor and changes no request byte until a host opens a lease.

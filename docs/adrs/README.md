@@ -169,7 +169,10 @@ not another recalibration)
   criteria with authority and the 0063 provenance check; evidence-bound
   completion; work-owned effect identity bound at prepare and joined to the
   runtime's execution ledger. Freezes `EvidenceOwner` / `EvidenceRef =
-  { owner, seq }`. No core change. Built by stage A1 (#542)
+  { owner, seq }`. No core change in A1. Built by stage A1 (#542).
+  Amendment 1 (A2): session leases in the work log, and one core event,
+  `context_bootstrap` (at most one, at seq 0, never covered; +11 core
+  lines, approved as measured).
 
 - 0054 — The default tool table: what is always present, and what deferral
   is reserved for — PROPOSED, 2026-09-16, awaiting the owner's
