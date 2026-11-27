@@ -294,6 +294,10 @@ export class Settings {
 		this.write({ deleted: [id, ...(this.#read().deleted ?? []).filter((d) => d !== id)].slice(0, 2000) });
 	}
 
+	/** For the startup sweep: the ids deleted in one folder, and whether anything here still names a Work (what `forget` drops). */
+	buriedIn = (key: string): string[] => (this.#read().deleted ?? []).filter((d) => d.startsWith(`${key}/`)).map((d) => d.slice(key.length + 1));
+	remembers = (session: string, own = this.#read()): boolean => [own.tiers, own.works, own.forks, own.prs, own.prLinks].some((m) => m !== undefined && session in m) || [own.pins, own.archived, own.unread].some((l) => l?.includes(session) === true);
+
 	buried(key: string, session: string): boolean {
 		return this.#read().deleted?.includes(`${key}/${session}`) ?? false;
 	}
