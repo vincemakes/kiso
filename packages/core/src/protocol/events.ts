@@ -631,7 +631,9 @@ export interface TerminalEvent {
  * runs), `invocationSeq` (the framework identity = the call's tool_call_end
  * .seq; OPTIONAL — absent on old logs, present on everything written from
  * 0.1.43), and `executionId` (a specific execution of that invocation, one
- * per started event). Old logs keep the callId + seq-proximity fallback.
+ * per started event). Absence is accepted for historical readability and
+ * effect evidence; permission authority requires invocationSeq (the owner's
+ * ruling, 2026-11-27).
  *
  * The union. Consume it with a `switch (event.type)`; with
  * `strictNullChecks` on, an unhandled variant is a compile error.

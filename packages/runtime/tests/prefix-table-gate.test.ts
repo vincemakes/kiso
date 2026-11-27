@@ -85,9 +85,12 @@ const FRESH: ReadonlyArray<AdapterEvent> = [
 const USER: Event = { seq: 0, type: "user_input", content: "go" };
 const CALL: Event = { seq: 1, type: "tool_call_end", callId: "c1", name: "web_search", input: { query: "k" } };
 const STOP: Event = { seq: 2, type: "stop", reason: "tool_use" };
-const REQ: Event = { seq: 3, type: "permission_requested", decisionId: "d1", callId: "c1", name: "web_search", input: { query: "k" } };
-const DECIDED: Event = { seq: 4, type: "permission_decided", decisionId: "d1", callId: "c1", decision: "approved" };
-const DECIDED_DENIED: Event = { seq: 4, type: "permission_decided", decisionId: "d1", callId: "c1", decision: "denied", reason: "human said no" };
+// the permission events carry invocationSeq, as every writer since round 5 does: permission authority
+// requires it (the owner's ruling, 2026-11-27). STARTED keeps the legacy shape on purpose: effect evidence
+// without invocationSeq still binds, so an old side effect is never repeated.
+const REQ: Event = { seq: 3, type: "permission_requested", decisionId: "d1", callId: "c1", invocationSeq: 1, name: "web_search", input: { query: "k" } };
+const DECIDED: Event = { seq: 4, type: "permission_decided", decisionId: "d1", callId: "c1", invocationSeq: 1, decision: "approved" };
+const DECIDED_DENIED: Event = { seq: 4, type: "permission_decided", decisionId: "d1", callId: "c1", invocationSeq: 1, decision: "denied", reason: "human said no" };
 const STARTED: Event = { seq: 5, type: "tool_execution_started", executionId: "ex-1", callId: "c1", name: "web_search", input: { query: "k" } };
 const SUCCEEDED: Event = { seq: 6, type: "tool_execution_succeeded", executionId: "ex-1", callId: "c1", result: { content: "receipt content", isError: false } };
 const FAILED: Event = { seq: 6, type: "tool_execution_failed", executionId: "ex-1", callId: "c1", error: "boom", errorKind: "fatal", safeToRetry: false };
@@ -353,8 +356,8 @@ const TABLE: ReadonlyArray<GateRow> = [
 			{ ...SUCCEEDED, seq: 5, executionId: "ex-1", callId: "c1" },
 			{ ...RESULT, seq: 6, callId: "c1", executionId: "ex-1" },
 			{ ...CALL, seq: 7, callId: "c2" },
-			{ ...REQ, seq: 8, decisionId: "d2", callId: "c2" },
-			{ ...DECIDED, seq: 9, decisionId: "d2", callId: "c2", decidedBy: "mode:default" },
+			{ ...REQ, seq: 8, decisionId: "d2", callId: "c2", invocationSeq: 7 },
+			{ ...DECIDED, seq: 9, decisionId: "d2", callId: "c2", invocationSeq: 7, decidedBy: "mode:default" },
 			{ ...STARTED, seq: 10, executionId: "ex-2", callId: "c2" },
 			{ ...STOP, seq: 11 },
 			{ ...SUCCEEDED, seq: 12, executionId: "ex-2", callId: "c2" },
@@ -381,8 +384,8 @@ const TABLE: ReadonlyArray<GateRow> = [
 			{ ...CALL, seq: 5, callId: "c2" },
 			{ ...SUCCEEDED, seq: 6, executionId: "ex-1", callId: "c1" },
 			{ ...RESULT, seq: 7, callId: "c1", executionId: "ex-1" },
-			{ ...REQ, seq: 8, decisionId: "d2", callId: "c2" },
-			{ ...DECIDED, seq: 9, decisionId: "d2", callId: "c2", decidedBy: "mode:default" },
+			{ ...REQ, seq: 8, decisionId: "d2", callId: "c2", invocationSeq: 5 },
+			{ ...DECIDED, seq: 9, decisionId: "d2", callId: "c2", invocationSeq: 5, decidedBy: "mode:default" },
 			{ ...STARTED, seq: 10, executionId: "ex-2", callId: "c2" },
 			{ ...STOP, seq: 11 },
 			{ ...SUCCEEDED, seq: 12, executionId: "ex-2", callId: "c2" },

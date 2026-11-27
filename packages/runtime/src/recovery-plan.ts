@@ -153,10 +153,14 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		// drafts. Deleting this clause would silently change how pre-EC-1
 		// sessions recover; it stays until the generation corpus no longer
 		// contains a pre-EC-1 era.
+		// Only a request WITH invocationSeq is a live ask (the owner's ruling,
+		// 2026-11-27): a legacy one authorizes nothing, so the requests pass
+		// skips it; letting it hold the draft open would continue the model
+		// with a dangling tool_call_end. It is voided with its draft instead.
 		const liveAsk =
 			afterBoundary &&
 			boundary.type === "user_input" &&
-			openEvents.some((e) => e.type === "permission_requested" && e.seq > boundary.seq);
+			openEvents.some((e) => e.type === "permission_requested" && e.invocationSeq !== undefined && e.seq > boundary.seq);
 		if (afterBoundary && !liveAsk) return { kind: "ABANDON_DRAFT", voidFromSeq: boundary.seq };
 	}
 	// 5. the invocations: the Gap A calls first (scope order), then the
@@ -166,28 +170,22 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 	//    model-facing result → repair it from the denial.
 	// 0430-F1: an event binds to an invocation by its OWN invocationSeq
 	// when both carry one (0.1.43+) — callId is a correlation key the model
-	// may re-use; an old log's event without one binds by callId after the
-	// call, as before.
+	// may re-use. EFFECT evidence (a start, a receipt, a result) without one
+	// still binds by callId after the call, so an old side effect is never
+	// repeated. PERMISSION authority never does (the owner's ruling,
+	// 2026-11-27): a request or decision without invocationSeq authorizes
+	// nothing, and the call is decided again.
 	const bound = (e: { readonly callId: string; readonly seq: number; readonly invocationSeq?: number }, callId: string, after: number, invocationSeq: number | undefined): boolean =>
 		e.invocationSeq !== undefined && invocationSeq !== undefined ? e.invocationSeq === invocationSeq : e.callId === callId && e.seq > after;
-	const hasRequest = (callId: string, after: number, invocationSeq?: number): boolean =>
-		events.some((e) => e.type === "permission_requested" && bound(e, callId, after, invocationSeq));
+	const hasRequest = (invocationSeq: number): boolean => events.some((e) => e.type === "permission_requested" && e.invocationSeq === invocationSeq);
 	const hasExecution = (callId: string, after: number, invocationSeq?: number): boolean =>
 		events.some((e) => e.type === "tool_execution_started" && bound(e, callId, after, invocationSeq));
 	const hasResult = (callId: string, after: number, invocationSeq?: number): boolean =>
 		events.some((e) => e.type === "tool_result" && bound(e, callId, after, invocationSeq));
-	const decidedForCall = (callId: string, after: number): (Event & { type: "permission_decided" }) | undefined => {
-		for (const e of events) {
-			if (e.type !== "permission_decided") continue;
-			// a durable POLICY verdict binds the call (E1); a human verdict
-			// binds its request, never the call (the requests pass owns it).
-			// 0430-F1: a decision that names its invocation binds EXACTLY that
-			// one (callId repeats); only an old log's decision binds by callId.
-			if (e.decidedBy === undefined) continue;
-			if (e.invocationSeq !== undefined ? e.invocationSeq === after : e.callId === callId && e.seq > after) return e;
-		}
-		return undefined;
-	};
+	// a durable POLICY verdict binds the call (E1) by the invocation it names,
+	// exactly; a human verdict binds its request (the requests pass owns it)
+	const decidedForCall = (after: number): (Event & { type: "permission_decided" }) | undefined =>
+		events.find((e): e is Event & { type: "permission_decided" } => e.type === "permission_decided" && e.decidedBy !== undefined && e.invocationSeq === after);
 	const decidedForRequest = (decisionId: string): (Event & { type: "permission_decided" }) | undefined => {
 		for (const e of events) {
 			if (e.type === "permission_decided" && e.decisionId === decisionId) return e;
@@ -203,9 +201,9 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		// a stored request owns the invocation (the requests pass below) —
 		// "only a durable permission_decided authorizes an effect"; Gap A
 		// must never re-decide over a stored request.
-		if (hasRequest(call.callId, call.seq, call.seq)) continue;
+		if (hasRequest(call.seq)) continue;
 		if (hasResult(call.callId, call.seq, call.seq)) continue; // closed — nothing to fill
-		const decided = decidedForCall(call.callId, call.seq);
+		const decided = decidedForCall(call.seq);
 		// 0430-F1: a started execution proves the invocation crossed the
 		// permission gate on the fresh path (which records no decision for
 		// a default or hook allow) — it is never re-decided; step 6 owns its
@@ -225,23 +223,21 @@ export function deriveRecoveryPlan(events: readonly Event[], scope: readonly Eve
 		...events.filter((e): e is Event & { type: "permission_requested" } => e.type === "permission_requested" && e.seq > lastScopeSeq),
 	];
 	for (const pending of requests) {
-		const invocationSeq = invocationSeqOf(pending, scope);
+		// a request without invocationSeq owns no invocation for authorization:
+		// its call was decided again above (the owner's ruling, 2026-11-27)
+		const invocationSeq = pending.invocationSeq;
+		if (invocationSeq === undefined) continue;
 		// a voided request was expired by the ABANDON_DRAFT step (sentence 3:
 		// never re-presented, never executed) — skip it here.
-		if (
-			invocationSeq !== undefined &&
-			events.some((e) => e.type === "model_output_abandoned" && invocationSeq! > e.voidFromSeq && invocationSeq! <= e.seq)
-		) {
-			continue;
-		}
+		if (events.some((e) => e.type === "model_output_abandoned" && invocationSeq > e.voidFromSeq && invocationSeq <= e.seq)) continue;
 		const decided = decidedForRequest(pending.decisionId);
 		if (decided === undefined) {
-			return { kind: "WAIT_PERMISSION", invocationSeq: invocationSeq ?? pending.seq };
+			return { kind: "WAIT_PERMISSION", invocationSeq: invocationSeq };
 		}
 		if (decided.decision === "approved") {
-			if (!hasExecution(pending.callId, pending.seq, invocationSeq)) return { kind: "EXECUTE", invocationSeq: invocationSeq ?? pending.seq };
+			if (!hasExecution(pending.callId, pending.seq, invocationSeq)) return { kind: "EXECUTE", invocationSeq: invocationSeq };
 		} else if (!hasResult(pending.callId, pending.seq, invocationSeq)) {
-			return { kind: "REPAIR_RESULT", invocationSeq: invocationSeq ?? pending.seq };
+			return { kind: "REPAIR_RESULT", invocationSeq: invocationSeq };
 		}
 	}
 	// 6. the receipt repairs: an execution that reached a terminal state
