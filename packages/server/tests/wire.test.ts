@@ -44,12 +44,13 @@ const SAMPLES: readonly Event[] = [
 	{ seq: 25, type: "stop", reason: "end_turn" } as unknown as Event,
 	{ seq: 26, type: "assistant_end" },
 	{ seq: 27, type: "terminal", outcome: { kind: "completed" } },
+	{ seq: 28, type: "context_records", batchKey: "s:0:27:none", coversFromSeq: 0, coversToSeq: 27, records: [] } as unknown as Event,
 ];
 
 describe("R4: the projection", () => {
 	it("covers every durable type once", () => {
 		const types = SAMPLES.map((e) => e.type).sort();
-		expect(new Set(types).size).toBe(27);
+		expect(new Set(types).size).toBe(28);
 		expect(types).toEqual([...Object.keys(DURABLE_TO_WIRE), ...NOT_ON_WIRE].sort());
 	});
 

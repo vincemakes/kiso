@@ -189,8 +189,9 @@ export type WireEventType = (typeof DURABLE_TO_WIRE)[DurableTypeOnWire];
 
 /** Off the wire, by decision: usage (a product bills through its own
  *  frames), stop and the assistant/compaction boundaries (control facts
- *  that render nothing), tool_call_input_delta (the end carries the input). */
-export const NOT_ON_WIRE = ["usage", "stop", "assistant_start", "assistant_end", "compacted", "microcompacted", "tool_call_input_delta"] as const;
+ *  that render nothing), tool_call_input_delta (the end carries the input),
+ *  context_records (ADR-0063 M2: session records stay in the log). */
+export const NOT_ON_WIRE = ["usage", "stop", "assistant_start", "assistant_end", "compacted", "microcompacted", "tool_call_input_delta", "context_records"] as const;
 
 /** The allowlist: the fields a wire event MAY carry, per wire type. A
  *  field absent here never reaches the wire, whatever the durable event

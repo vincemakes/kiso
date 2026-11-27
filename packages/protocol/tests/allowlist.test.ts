@@ -1,9 +1,9 @@
 /**
  * The wire's classification is TOTAL over the durable union: every one of
- * the runtime's 27 event types is either on the wire (with an allowlist
+ * the runtime's 28 event types is either on the wire (with an allowlist
  * row) or named off it. A new durable variant cannot reach a client by
  * default and cannot be forgotten either — this test goes red until it is
- * classified. The 27 names are pinned here as data on purpose: this
+ * classified. The 28 names are pinned here as data on purpose: this
  * package imports nothing from the runtime.
  */
 
@@ -14,6 +14,7 @@ const DURABLE_TYPES = [
 	"assistant_end",
 	"assistant_start",
 	"compacted",
+	"context_records",
 	"microcompacted",
 	"model_output_abandoned",
 	"permission_decided",
@@ -41,10 +42,10 @@ const DURABLE_TYPES = [
 ] as const;
 
 describe("the wire classification is total", () => {
-	it("on-wire ∪ off-wire = the 27 durable types, disjoint", () => {
+	it("on-wire ∪ off-wire = the 28 durable types, disjoint", () => {
 		const on = Object.keys(DURABLE_TO_WIRE).sort();
 		const off = [...NOT_ON_WIRE].sort();
-		expect(DURABLE_TYPES).toHaveLength(27);
+		expect(DURABLE_TYPES).toHaveLength(28);
 		expect([...on, ...off].sort()).toEqual([...DURABLE_TYPES]);
 		expect(on.filter((t) => off.includes(t as never))).toEqual([]);
 	});
