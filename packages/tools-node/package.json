@@ -1,7 +1,7 @@
 {
 	"name": "@vincemakes/kiso-tools-node",
 	"version": "0.56.2",
-	"description": "kiso coding tools for Node hosts \u2014 read file, list directory, search text, write/edit file, shell command.",
+	"description": "kiso coding tools for Node hosts — read file, list directory, search text, write/edit file, shell command.",
 	"type": "module",
 	"license": "MIT",
 	"exports": {
@@ -26,6 +26,7 @@
 	},
 	"dependencies": {
 		"@vincemakes/kiso-core": "0.56.2",
+		"@vincemakes/kiso-secrets": "0.56.2",
 		"ignore": "^7.0.9"
 	},
 	"devDependencies": {
