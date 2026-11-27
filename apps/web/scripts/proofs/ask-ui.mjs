@@ -4,7 +4,7 @@
 // skipping every question declines. Screenshots go outside the repository.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { scratch, checker, launchApp, waitUntil, sleep } from "./lib.mjs";
+import { scratch, checker, launchApp, waitUntil } from "./lib.mjs";
 
 const { check, verdict } = checker("ask-ui");
 const ok = { events: [{ type: "text_delta", text: "Ok." }, { type: "stop", reason: "end_turn" }] };
@@ -27,25 +27,23 @@ check((await app.text(".q-head > span"))?.trim() === range.question && (await ap
 check((await app.count(".q-opt")) === 4 && (await q(`[...document.querySelectorAll(".q-opt b")].map((b) => b.textContent).join("|")`)) === "2024 only|2023 to 2024|Everything|Other", "one row per option, Other last");
 check((await q(`document.querySelector(".q-opt i")?.textContent`))?.trim() === "(Recommended)" && (await q(`document.querySelector(".q-opt small")?.textContent`)) === "The invoices the request names", "the recommended option says so; each has its line of description");
 check((await q(`document.querySelector("[data-act=q-next]").disabled`)) === true && (await q(`(dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true })), document.querySelector(".q-pager").textContent.replace(/\\s+/g, " ").trim())`)) === "‹ 1 of 2 ›", "nothing picked: Next is disabled and ⌘↩ does nothing; nothing is ever chosen for the person");
-check((await app.text("[data-kind=needs-input]")) === "Needs your input" && (await state()) === "waiting", "the stream ends on Needs your input; the sidebar shows the Work waiting");
-check((await q(`document.querySelector('[data-kind=composer] textarea').placeholder`)) === "Answer, or pick above", "the box says it answers the question");
-await waitUntil(async () => (await app.count(".item.on")) === 1, 10_000).then(() => sleep(600)); // a new Work's row joins the list on its next read (up to ~3 s); then past the card's entrance
-check((await app.count(".item.on .dot.amber")) === 1 && (await app.count(".item.on .dot.run")) === 0, "the open Work's sidebar row shows the amber waiting dot, not the spinner");
+check(await waitUntil(async () => (await app.text("[data-kind=needs-input]")) === "Needs your input" && (await state()) === "waiting", 20_000), "the stream ends on Needs your input; the sidebar shows the Work waiting");
+check(await waitUntil(async () => (await q(`document.querySelector('[data-kind=composer] textarea').placeholder`)) === "Answer, or pick above", 10_000), "the box says it answers the question");
+// a new Work's row joins the list on its next read (up to ~3 s), then reads waiting
+check(await waitUntil(async () => (await app.count(".item.on .dot.amber")) === 1 && (await app.count(".item.on .dot.run")) === 0, 15_000), "the open Work's sidebar row shows the amber waiting dot, not the spinner");
 check((await q(`getComputedStyle(document.querySelector(".q-opt input")).accentColor`)) !== "auto", "the radios and boxes take the ink colour, not the browser's blue");
 await app.shot("pr7-ask-1-of-2");
 await q(`document.querySelectorAll(".q-opt input")[1].click()`);
 await app.click("[data-act=q-next]");
-await sleep(200);
-check((await app.text("[data-act=q-next]")) === "Submit ⌘↩" && (await q(`document.querySelector(".q-opt input").type`)) === "checkbox", "the last question: Submit, and boxes for a multi-select");
+check(await waitUntil(async () => (await app.text("[data-act=q-next]")) === "Submit ⌘↩" && (await q(`document.querySelector(".q-opt input").type`)) === "checkbox", 10_000), "the last question: Submit, and boxes for a multi-select");
 await q(`document.querySelectorAll(".q-opt input")[0].click(); document.querySelectorAll(".q-opt input")[2].click()`);
-check((await q(`document.querySelector("[data-act=q-other] input").click(); true`).then(() => sleep(100)).then(() => q(`(() => { const el = document.querySelector(".q-text"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "Runtime"); el.dispatchEvent(new Event("input", { bubbles: true })); return [...document.querySelectorAll(".q-opt input:not(.q-text)")].map((x) => x.checked).join(); })()`))) === "true,false,true,true", "a multi-select keeps its picks when Other is ticked too");
-check((await app.count(".item.on .dot.amber")) === 1, "still waiting on the second question: the amber dot");
+check((await q(`document.querySelector("[data-act=q-other] input").click(); true`).then(() => waitUntil(async () => (await app.count(".q-text")) === 1, 10_000)).then(() => q(`(() => { const el = document.querySelector(".q-text"); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, "Runtime"); el.dispatchEvent(new Event("input", { bubbles: true })); return [...document.querySelectorAll(".q-opt input:not(.q-text)")].map((x) => x.checked).join(); })()`))) === "true,false,true,true", "a multi-select keeps its picks when Other is ticked too");
+check(await waitUntil(async () => (await app.count(".item.on .dot.amber")) === 1, 10_000), "still waiting on the second question: the amber dot");
 await app.shot("pr7-ask-2-of-2");
 await app.click("[data-act=q-next]");
 await waitUntil(async () => result("a1") !== undefined, 15_000);
 check(result("a1") === JSON.stringify({ answers: [{ q: range.question, choice: "2023 to 2024 (recommended)".replace(" (recommended)", "") }, { q: parts.question, choices: ["Importer", "Docs", "Runtime"] }] }), "the model reads the answers in the terminal's shapes");
-await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 0 && (await app.count("[data-kind=needs-input]")) === 0, 15_000);
-check(true, "answered, the card and the marker are gone");
+check(await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 0 && (await app.count("[data-kind=needs-input]")) === 0, 15_000), "answered, the card and the marker are gone");
 await q(`window.__kiso.send("And the 2023 ones?")`);
 await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000);
 await answerable();
@@ -63,9 +61,11 @@ check(result("a3") === JSON.stringify({ declined: [range.question] }), "skipping
 // F8: the host is killed while a question waits: no card or marker left to answer; the model reads that it was never answered and
 // asks again (a restarted scripted host starts its script over, so the call it makes on Resume is a1's again)
 await q(`window.__kiso.send("Import them all.")`);
-await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000).then(() => app.restart());
+await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000).then(answerable).then(() => app.restart()); // killed once the host holds it, not while the call still streams
 check(await waitUntil(async () => (await app.count("[data-kind=resume]")) === 1 && (await app.count("[data-kind=question-card]")) === 0 && (await app.count("[data-kind=needs-input]")) === 0, 20_000), "killed while a question waits: Resume, and no card or Needs your input left to answer");
 await app.click("[data-act=resume]");
-check((await waitUntil(() => /Ask it again: call ask_user/.test(result("a4") ?? ""), 15_000)) && !/Permission denied/.test(result("a4")) && (await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000)), "the model reads that the question was never answered, without a permission prefix, and asks again: the card is back");
+check(await waitUntil(() => /Ask it again: call ask_user/.test(result("a4") ?? ""), 15_000), "the model reads that the question was never answered");
+check(!/Permission denied/.test(result("a4") ?? ""), "without a permission prefix");
+check(await waitUntil(async () => (await app.count("[data-kind=question-card]")) === 1, 20_000), "and asks again: the card is back");
 await app.close();
 verdict();
