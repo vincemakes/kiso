@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { fmt, t } from "../i18n/index.js";
 import type { Session } from "../state/store.js";
+import { Busy } from "./Busy.js";
 
 /** What the person is told about a lost connection, and what Send says while it lasts. */
 export interface Down {
@@ -31,7 +32,7 @@ export function useLink(session: Session): Down | null {
 
 export const LinkLine = ({ down }: { readonly down: Down }) => (
 	<div className="link" data-kind="link" role="status">
-		<span className="sp" />
+		<Busy seed="link" size={10} />
 		{down.text}
 		{down.retry !== null ? <> · <button onClick={down.retry} data-act="retry-now">{t.retryNow}</button></> : null}
 	</div>

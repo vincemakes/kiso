@@ -5,6 +5,7 @@ import { delta, pretty } from "../state/groups.js";
 import { statusOf, titleOf } from "../state/taskname.js";
 import type { Step as StepItem } from "../state/model.js";
 import type { TaskRow } from "../../shared/frames.js";
+import { Busy } from "./Busy.js";
 import { Chevron, toolIcon } from "./Icons.js";
 import { artifactsOf, InPlace, Thumbs } from "./Artifacts.js";
 import { Chip } from "./links.js";
@@ -80,7 +81,7 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 	return (
 		<div className={`step ${step.status}${shown ? " shown" : ""}`} data-kind="step" data-tool={step.name} data-shown={images ? shown : undefined}>
 			<div className={`s-row${images ? " click" : ""}`} onClick={images ? onShow : undefined}>
-				<span className="s-ic">{running ? <span className="sp" /> : toolIcon(step.name)}</span>
+				<span className="s-ic">{running ? <Busy seed={step.id} /> : toolIcon(step.name)}</span>
 				<span className="s-verb">{replaced ? t.qReplaced : (t.verb[step.name] ?? pretty(step.name))}</span>
 				{named !== null ? <span className="s-name" title={object}>{named}</span> : chip ? <Chip path={object} /> : object === "" ? null : <code className="s-obj">{object}</code>}
 				<Delta d={delta(step)} />
@@ -95,7 +96,7 @@ export function Step({ step, task, frozen = false, shown = false, onShow }: { re
 			{/* a background task: one line, a spinner at its start while it runs (the sliding bar under it is gone) */}
 			{step.taskId !== null && task !== undefined ? (
 				<div className="s-req">
-					{!frozen && task.endedAt === null ? <span className="sp" /> : null}
+					{!frozen && task.endedAt === null ? <Busy seed={task.id} size={10} /> : null}
 					{titleOf(typeof step.input?.["command"] === "string" ? step.input["command"] : task.command, step.input?.["description"])} · {statusOf(task.label)} · {clock(task.elapsedMs)}
 				</div>
 			) : null}

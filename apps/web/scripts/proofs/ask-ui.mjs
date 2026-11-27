@@ -30,7 +30,7 @@ check((await q(`document.querySelector("[data-act=q-next]").disabled`)) === true
 check((await app.text("[data-kind=needs-input]")) === "Needs your input" && (await state()) === "waiting", "the stream ends on Needs your input; the sidebar shows the Work waiting");
 check((await q(`document.querySelector('[data-kind=composer] textarea').placeholder`)) === "Answer, or pick above", "the box says it answers the question");
 await waitUntil(async () => (await app.count(".item.on")) === 1, 10_000).then(() => sleep(600)); // a new Work's row joins the list on its next read (up to ~3 s); then past the card's entrance
-check((await app.count(".item.on .dot.amber")) === 1 && (await app.count(".item.on .sp")) === 0, "the open Work's sidebar row shows the amber waiting dot, not the spinner");
+check((await app.count(".item.on .dot.amber")) === 1 && (await app.count(".item.on .dot.run")) === 0, "the open Work's sidebar row shows the amber waiting dot, not the spinner");
 check((await q(`getComputedStyle(document.querySelector(".q-opt input")).accentColor`)) !== "auto", "the radios and boxes take the ink colour, not the browser's blue");
 await app.shot("pr7-ask-1-of-2");
 await q(`document.querySelectorAll(".q-opt input")[1].click()`);

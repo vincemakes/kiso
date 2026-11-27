@@ -55,8 +55,8 @@
 /* a step: verb, object, time, the first lines of output */
 .s-row { display: flex; align-items: center; gap: 9px; min-height: 26px; }
 .s-ic { width: 16px; height: 16px; display: grid; place-items: center; color: #777; flex: none; }
-.s-ic .sp { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #dcdce0; border-top-color: var(--blue); animation: spn 1s linear infinite; }
-@keyframes spn { to { transform: rotate(360deg); } }
+/* the running mark (Busy): grey, the dots' depth is their fill-opacity */
+.busy { display: block; flex: none; color: #55555a; fill: currentColor; }
 .s-verb { font-weight: 600; font-size: 12.5px; }
 .s-obj { font: 12px var(--mono); color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .s-name { font-size: 13px; color: #3a3a3e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -75,7 +75,7 @@
 .s-req { margin: 3px 0 0; font: 11px var(--mono); color: var(--mute); font-variant-numeric: tabular-nums; }
 .link { display: flex; align-items: center; justify-content: center; gap: 4px; margin-bottom: 8px; font-size: 13px; color: var(--mute); }
 .link button { color: var(--ink); text-decoration: underline; }
-.link .sp, .s-req .sp { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 50%; border: 2px solid #dcdce0; border-top-color: var(--blue); animation: spn 1s linear infinite; }
+.link .busy, .s-req .busy { display: inline-block; margin-right: 6px; vertical-align: -1px; }
 .s-err { margin: 3px 0 0; color: var(--red); font-size: 12px; }
 
 /* approval: never folded */
