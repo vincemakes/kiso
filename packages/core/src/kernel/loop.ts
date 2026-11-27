@@ -40,12 +40,9 @@ import type { ApprovalChain, ChainVerdict } from "../protocol/extension.js";
 import { EventLog } from "./event-log.js";
 import type { EventInput } from "./event-log.js";
 import type {
-	AssistantBlock,
-	AssistantMessage,
 	ContentBlock,
 	Message,
 	MessageSource,
-	ToolResultMessage,
 	UserMessage,
 } from "../protocol/messages.js";
 import type { Tool, ToolContext, ToolResult } from "../tools/tool.js";
@@ -54,7 +51,7 @@ import { validateArgs } from "../tools/validate.js";
 import type { HookHost, ToolCallPayload } from "./hooks.js";
 import { NoOpHooks } from "./hooks.js";
 import { denialResult, type PermissionDecision } from "./permission.js";
-import { messagesToEvents, MICROCOMPACTABLE, DO_NOT_COMPACT, END_TURN, projectMessages } from "./project.js";
+import { messagesToEvents, END_TURN, projectMessages } from "./project.js";
 import type { ToolTable } from "../tools/registry.js";
 
 /** Zero-dependency sleep: the kernel must not import host globals (ADR-0001). */
@@ -494,7 +491,6 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 							{ signal: signal ?? NEVER_ABORT, ...(config.sessionId !== undefined ? { sessionId: config.sessionId } : {}) },
 							log,
 							config.resolveApproval,
-							config.approvalVerdict,
 							signal,
 							config.approvalPolicy,
 							nextDecisionId,
@@ -910,32 +906,20 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		// (abort semantics), then the terminal.
 		let voided: Terminal | null = null;
 		if (forgedEvent) {
-			voided = {
-				kind: "error",
-				error: { code: "invalid_request", retryable: false, message: "provider emitted a kernel-owned event" },
-			};
+			voided = invalid("provider emitted a kernel-owned event");
 		} else if (postStopViolation) {
-			voided = {
-				kind: "error",
-				error: { code: "invalid_request", retryable: false, message: "provider emitted events after its stop event" },
-			};
+			voided = invalid("provider emitted events after its stop event");
 		} else if (duplicateStop) {
 			// EC-1 ①: a second stop. The pre-EC-1 path appended BOTH and voided
 			// afterwards, so a duplicate-stop turn left two stops in the log
 			// forever; now neither is durable — the turn simply never commits.
-			voided = {
-				kind: "error",
-				error: { code: "invalid_request", retryable: false, message: `provider emitted ${stopCount + 1} stop events in one turn` },
-			};
+			voided = invalid(`provider emitted ${stopCount + 1} stop events in one turn`);
 		} else if (stopCount === 0) {
 			// Area 6: protocol anomalies are STRUCTURED ERRORS, never a default
 			// `completed`. EC-1 ①: ONE arm now, not two — the pre-EC-1 code
 			// duplicated this verdict across the pending/no-pending split, where
 			// it never differed.
-			voided = {
-				kind: "error",
-				error: { code: "invalid_request", retryable: false, message: "provider stream ended without a stop event" },
-			};
+			voided = invalid("provider stream ended without a stop event");
 		} else if (pending.length > 0) {
 			// C group: STRUCTURAL COMPATIBILITY — a stop reason that cannot
 			// carry tool calls voids the turn. EC-1 ①: this is now the second
@@ -949,26 +933,12 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 				case "function_call":
 					break; // compatible with complete calls — the executions proceed
 				case "max_tokens":
-					voided = { kind: "max_tokens" };
-					break;
 				case "abort":
-					voided = { kind: "aborted", by: "user" };
-					break;
 				case "error":
-					voided = {
-						kind: "error",
-						error: { code: "unknown", retryable: false, message: "provider stopped with an error" },
-					};
+					voided = terminalForStop(lastStop); // the same terminal a no-call turn ends on
 					break;
 				default:
-					voided = {
-						kind: "error",
-						error: {
-							code: "invalid_request",
-							retryable: false,
-							message: `provider stopped with '${String(lastStop)}' with ${pending.length} tool call(s) launched`,
-						},
-					};
+					voided = invalid(`provider stopped with '${String(lastStop)}' with ${pending.length} tool call(s) launched`);
 					break;
 			}
 		}
@@ -980,10 +950,7 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
 		if (voided === null && heldStop !== null && (heldStop as { continuation?: Continuation }).continuation !== undefined) {
 			const prepared = prepareContinuation(heldStop as EventInput & { continuation?: Continuation }, config.continuationScope);
 			if (prepared === "hard-cap") {
-				voided = {
-					kind: "error",
-					error: { code: "invalid_request", retryable: false, message: "the turn's required continuation metadata exceeds the hard cap" },
-				};
+				voided = invalid("the turn's required continuation metadata exceeds the hard cap");
 			} else {
 				heldStop = prepared;
 			}
@@ -1082,6 +1049,9 @@ export async function* loop(config: LoopConfig): AsyncGenerator<Event> {
  * tool_use/function_call that produced no complete call are all explicit
  * non-completions.
  */
+/** A protocol anomaly that voids the turn: never retryable (Area 6). */
+const invalid = (message: string): Terminal => ({ kind: "error", error: { code: "invalid_request", retryable: false, message } });
+
 function terminalForStop(reason: StopReason | undefined): Terminal {
 	switch (reason) {
 		case "max_tokens":
@@ -1091,11 +1061,11 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 		case "error":
 			return { kind: "error", error: { code: "unknown", retryable: false, message: "provider stopped with an error" } };
 		case "refusal":
-			return { kind: "error", error: { code: "invalid_request", retryable: false, message: "the model refused the request" } };
+			return invalid("the model refused the request");
 		case "pause_turn":
 			return { kind: "error", error: { code: "unknown", retryable: false, message: "the provider paused the turn (pause_turn)" } };
 		case "content_filter":
-			return { kind: "error", error: { code: "invalid_request", retryable: false, message: "the provider's content filter triggered" } };
+			return invalid("the provider's content filter triggered");
 		case "context_window":
 			return {
 				kind: "error",
@@ -1103,14 +1073,7 @@ function terminalForStop(reason: StopReason | undefined): Terminal {
 			};
 		case "tool_use":
 		case "function_call":
-			return {
-				kind: "error",
-				error: {
-					code: "invalid_request",
-					retryable: false,
-					message: "provider stopped with a tool call that was never completed",
-				},
-			};
+			return invalid("provider stopped with a tool call that was never completed");
 		case "end_turn":
 		case "stop_sequence":
 			return { kind: "completed" };
@@ -1186,7 +1149,6 @@ async function decideCall(
 	ctx: ToolContext,
 	log: EventLog,
 	resolveApproval: ((decisionId: string) => Promise<PermissionDecision>) | undefined,
-	resolveApprovalVerdict: ((decisionId: string) => boolean | undefined) | undefined,
 	signal: AbortSignalLike | undefined,
 	approvalPolicy: ApprovalChain | undefined,
 	nextDecisionId: () => string,
@@ -1607,7 +1569,6 @@ const NEVER_ABORT = {
 	removeEventListener: () => {},
 } satisfies AbortSignalLike;
 
-export type { EventInput, AssistantBlock, AssistantMessage, Message, ToolResultMessage };
 
 // ── MG-1 (ADR-0051 Amendment 5): the envelope preparation ────────────────
 //
