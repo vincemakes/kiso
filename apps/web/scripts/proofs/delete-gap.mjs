@@ -1,7 +1,7 @@
 // A Work deleted while its store close is still pending (#520 made the delete `await store.close()` and then remove the files): a
 // child's completion notice that lands in that gap is never written, and a message whose receiver is deleted while it is being sent
 // is refused in words and makes no inbox. No host, no model: the real workAct, notifyParent and message tool over a real store.
-import fs, { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,7 +65,8 @@ check(sent.isError === true && /no longer exists/.test(String(sent.content)) && 
 // 3. #21/#28: a delete cut short after the log went (a kill mid-loop, here a throw) leaves the rest; the next open's sweep finishes it,
 //    forgets the Work, does it once, and never touches a buried id whose sidecar exists again or a Work that was never deleted
 const real = new Settings(mkdtempSync(join(tmpdir(), "kiso-delete-gap-home-")), null, "default");
-for (const id of ["wk", "wm"]) (await run(id, `r-${id}`), sidecar(id, { name: id }), mkdirSync(join(dir, `${id}.inbox`)));
+for (const id of ["wk", "wm", "wo", "wn"]) (await run(id, `r-${id}`), sidecar(id, { name: id }), mkdirSync(join(dir, `${id}.inbox`)));
+const age = (id, s) => utimesSync(join(dir, `${id}.meta.json`), Date.now() / 1000 + s, Date.now() / 1000 + s);
 real.mark("wk", "pins", true);
 const rm = fs.rmSync;
 fs.rmSync = (p, o) => { if (String(p).endsWith("wk.lock")) throw Object.assign(new Error("killed"), { code: "EKILLED" }); return rm(p, o); };
@@ -74,8 +75,10 @@ const cut = await workAct({ ...space, store }, real, "wk", "delete").then(() => 
 fs.rmSync = rm;
 syncBuiltinESMExports();
 const half = readdirSync(dir).filter((f) => f.startsWith("wk.")).sort();
-real.bury(key, "wm"); // a buried id with its sidecar there: left alone
-const swept = sweepBuried(dir, key, real), again = sweepBuried(dir, key, real);
-check(cut === "EKILLED" && !half.includes("wk.jsonl") && half.includes("wk.inbox") && swept.join() === "wk" && again.length === 0 && !readdirSync(dir).some((f) => f.startsWith("wk.")) && !real.remembers("wk") && existsSync(join(dir, "wm.jsonl")) && existsSync(join(dir, "wm.inbox")) && existsSync(join(dir, "wa.jsonl")), `a delete cut short is finished by the startup sweep, once, and nothing else is touched (cut: ${cut}; left: ${half}; swept: ${swept}; again: ${again})`);
+// wo: killed between the tombstone and its sidecar's removal (the sidecar is older): finished. wm: its sidecar written again after the
+// delete: left alone. wn: a tombstone with no time (before 0.56.3) and a sidecar: left alone
+(age("wo", -60), real.bury(key, "wo"), real.bury(key, "wm"), age("wm", 5), real.write({ deleted: [...real.buriedIn(key).map((b) => `${key}/${b.session}`), `${key}/wn`] }));
+const swept = sweepBuried(dir, key, real).sort(), again = sweepBuried(dir, key, real), gone = (id) => !readdirSync(dir).some((f) => f.startsWith(`${id}.`));
+check(cut === "EKILLED" && !half.includes("wk.jsonl") && half.includes("wk.inbox") && swept.join() === "wk,wo" && again.length === 0 && gone("wk") && gone("wo") && !real.remembers("wk") && ["wm", "wn", "wa"].every((id) => existsSync(join(dir, `${id}.jsonl`)) && existsSync(join(dir, `${id}.meta.json`))), `a delete cut short is finished by the startup sweep, once, a sidecar older than the delete with it; a sidecar written since, a tombstone with no time and a live Work are left alone (cut: ${cut}; left: ${half}; swept: ${swept}; again: ${again})`);
 await store.closeAll();
 verdict();
