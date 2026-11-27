@@ -37,6 +37,7 @@ const a = await dots(8);
 await sleep(450);
 check((await dots(8)) !== a, "the dots move between two looks");
 check((await app.count(".item.on .dot.run")) === 1 && (await q("getComputedStyle(document.querySelector('.item.on .dot.run')).animationName")) === "breathe" && (await q("getComputedStyle(document.querySelector('.item.on .dot.run')).backgroundColor")) === "rgb(154, 154, 160)", "the running sidebar row breathes a grey dot");
+check(await q(`(() => { const row = document.querySelector('.item.on').closest('.row'), d = row.querySelector('.dots'); d.style.display = 'grid'; const a = d.getBoundingClientRect(), b = row.querySelector('.dot').getBoundingClientRect(); d.style.display = ''; return Math.abs(a.left + a.right - b.left - b.right) < 1.2; })()`), "the dot is centred under the row's ⋯, so the hover swap does not jump");
 await app.shot("busy-real-size");
 // one mark enlarged ten times, a frame every 0.6 s, and the sidebar's three dots side by side (two rows cloned for the frame)
 const dir = process.env.KISO_WEB_SHOTS ?? join(tmpdir(), "kiso-web-shots");
