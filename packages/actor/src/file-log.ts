@@ -14,11 +14,13 @@
  *
  * The host chooses `root`; there is no default (tenancy is the host's).
  */
-import { appendFileSync, closeSync, fsync, fsyncSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, constants, fstatSync, fsync, fsyncSync, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { nativeLockAdapter, LockedError, type LockAdapter, type LockHandle } from "@vincemakes/kiso-runtime/internal";
 import { lastCommittedSeq, repairTornTail } from "./file-tail.js";
 import { checkLine, LogCorruptionError, LogLockedError, LogPoisonedError, StaleRevisionError, validLogId, type AppendLog, type AppendLogBackend, type LogLine } from "./log.js";
+
+const WINDOWS = process.platform === "win32";
 
 export class FileLogBackend<T> implements AppendLogBackend<T> {
 	readonly #root: string;
@@ -58,7 +60,11 @@ export class FileLogBackend<T> implements AppendLogBackend<T> {
 		}
 		let fd: number;
 		try {
-			fd = openSync(path, "a+", 0o600);
+			// Windows: a handle opened for append can be neither flushed nor
+			// truncated (FlushFileBuffers and SetEndOfFile need the write access
+			// append mode drops), so the log opens read-write there and every
+			// append writes at the end, as the session store does (store.ts).
+			fd = openSync(path, WINDOWS ? constants.O_RDWR | constants.O_CREAT : "a+", 0o600);
 			repairTornTail(fd);
 			fsyncDir(dirname(path));
 		} catch (error) {
@@ -113,7 +119,10 @@ class FileLog<T> implements AppendLog<T> {
 		if (actual !== expectedRevision || actual !== this.revision) throw new StaleRevisionError(expectedRevision, actual);
 		const line: LogLine<T> = { seq: actual + 1, ts: Date.now(), event };
 		try {
-			appendFileSync(this.fd, `${JSON.stringify(line)}\n`);
+			const text = `${JSON.stringify(line)}\n`;
+			// The lock makes this the only writer, so the end is where the line goes.
+			if (WINDOWS) writeSync(this.fd, text, fstatSync(this.fd).size);
+			else appendFileSync(this.fd, text);
 			await new Promise<void>((resolve, reject) => fsync(this.fd, (error) => (error === null ? resolve() : reject(error))));
 		} catch (error) {
 			// The line may be on disk without being durable or in `committed`.
