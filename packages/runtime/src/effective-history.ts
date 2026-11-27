@@ -252,6 +252,10 @@ export function effectiveHistory(events: readonly Event[], opts: { readonly audi
 				});
 				break;
 			}
+			case "context_bootstrap":
+				// ADR-0064 A2: the lease's starting state, program-written: runtime evidence, never a person's.
+				out.push({ seq, kind: "runtime", content: ev.projection, authority: "runtime", structuralStatus: "effective", provenance: { source: "system", ...where(view) } });
+				break;
 			case "permission_decided":
 				out.push({
 					seq,

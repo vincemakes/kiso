@@ -11,3 +11,5 @@ export * from "./acceptance.js";
 export * from "./effects.js";
 export * from "./ledger.js";
 export * from "./conformance.js";
+export * from "./compile.js";
+export * from "./lease.js";

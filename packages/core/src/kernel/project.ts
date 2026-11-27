@@ -129,7 +129,7 @@ export function resolveHistory(events: readonly (Event | EventInput)[]): History
 	const status = (ev: Event | EventInput): HistoryStatus => {
 		const seq = (ev as { seq?: number }).seq ?? -1;
 		if (MODEL_OUTPUT_TYPES.has(ev.type) && voids.some((r) => seq > r.from && seq <= r.to)) return "voided";
-		return ev.type !== "summarized" && summary !== undefined && seq > -1 && seq <= summary.to ? "covered" : "effective";
+		return ev.type !== "summarized" && ev.type !== "context_bootstrap" && summary !== undefined && seq > -1 && seq <= summary.to ? "covered" : "effective";
 	};
 	return { replaced, summary, status };
 }
@@ -540,6 +540,11 @@ export function projectMessages(events: readonly (Event | EventInput)[]): readon
 				// must NOT split the message (the fresh2 400 family).
 				if (blocks.length === 0 && text === null && resultBuf.length > 0) flushResults();
 				pendingReasoning = (pendingReasoning ?? "") + ev.text;
+				break;
+			case "context_bootstrap":
+				// ADR-0064 A2: the lease's starting state, a program-written user
+				// message at the head (it is never covered, so it precedes the summary).
+				out.push({ role: "user", content: ev.projection, source: "system" } satisfies UserMessage);
 				break;
 			case "summarized":
 				// ADR-0044: this event produced nothing itself — its summary

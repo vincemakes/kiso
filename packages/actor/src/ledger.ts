@@ -6,6 +6,10 @@
  */
 import { randomUUID } from "node:crypto";
 import type { Event } from "@vincemakes/kiso-core";
+import type { SessionStore } from "@vincemakes/kiso-runtime";
+import { writeBootstrap } from "@vincemakes/kiso-runtime/lease";
+import { compileContext, type ContextSource, type SourceRenderer } from "./compile.js";
+import { bootstrapDigest } from "./lease.js";
 import { verifyUserQuote } from "./acceptance.js";
 import { actionDigest, effectResolutions } from "./effects.js";
 import { WORK_LOG_FORMAT, type WorkEvent, type WorkEvidence, type WorkQuote } from "./events.js";
@@ -134,6 +138,62 @@ export class WorkLedger {
 
 	cancel(reason: string): Promise<number> {
 		return this.#append({ type: "cancelled", reason });
+	}
+
+	/**
+	 * Open a lease (A2): `opened` in the work log, then the compiled bootstrap as
+	 * the session's first event, then `attached`. A crash between steps is
+	 * `reconcileLease`'s to read. The snapshot is the work at the revision the
+	 * lease was opened from.
+	 *
+	 * The A2 contract (invariant 1, the actor's half): a session a lease creates
+	 * holds exactly one `context_bootstrap`, written before anything else.
+	 * Core only guarantees at most one, at seq 0.
+	 */
+	async openLease(input: {
+		readonly store: SessionStore;
+		readonly sessionId: string;
+		readonly sources: readonly ContextSource[];
+		readonly budgets?: Readonly<Record<string, number>>;
+		readonly renderers?: Readonly<Record<string, SourceRenderer>>;
+		readonly leaseId?: string;
+	}): Promise<{ readonly leaseId: string; readonly digest: string }> {
+		const leaseId = input.leaseId ?? randomUUID();
+		const { commitment } = this.view();
+		await this.#append({ type: "session_lease_opened", leaseId, sessionId: input.sessionId, sourceWorkRevision: commitment.revision });
+		const compiled = compileContext({
+			commitment,
+			sources: input.sources,
+			...(input.budgets !== undefined ? { budgets: input.budgets } : {}),
+			...(input.renderers !== undefined ? { renderers: input.renderers } : {}),
+		});
+		await writeBootstrap(input.store, input.sessionId, {
+			meta: { leaseId, workId: commitment.id, sourceRevisions: compiled.sourceRevisions, digest: compiled.digest, truncated: compiled.truncated },
+			projection: compiled.projection,
+		});
+		await this.#append({ type: "session_lease_attached", leaseId, bootstrapSeq: 0, bootstrapDigest: compiled.digest });
+		return { leaseId, digest: compiled.digest };
+	}
+
+	/** Reconciliation's `attach`: the bootstrap landed, the `attached` did not. */
+	attachFoundBootstrap(leaseId: string, projection: string): Promise<number> {
+		return this.#append({ type: "session_lease_attached", leaseId, bootstrapSeq: 0, bootstrapDigest: bootstrapDigest(projection) });
+	}
+
+	releaseLease(input: {
+		readonly result: "completed-turn" | "waiting" | "handoff" | "abandoned" | "failed";
+		readonly finalSessionSeq: number;
+		readonly handoff?: string;
+	}): Promise<number> {
+		const lease = this.view().commitment.lease;
+		return this.#append({
+			type: "session_lease_released",
+			leaseId: lease?.leaseId ?? "",
+			sessionId: lease?.sessionId ?? "",
+			result: input.result,
+			finalSessionSeq: input.finalSessionSeq,
+			...(input.handoff !== undefined ? { handoff: input.handoff } : {}),
+		});
 	}
 
 	close(): Promise<void> {

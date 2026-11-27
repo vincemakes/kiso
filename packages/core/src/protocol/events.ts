@@ -454,6 +454,24 @@ export interface ContextRecordsEvent {
 }
 
 /**
+ * ADR-0064 A2: the starting state of an actor-lease session. Core holds it
+ * to seq 0, so a log has at most one and, if present, it is the first event;
+ * core does not know which sessions are lease sessions, so "every lease
+ * session has exactly one" is kiso-actor's contract, kept by its lease door.
+ * A fact, not a request: it carries no human authority, and it is never
+ * covered by a checkpoint, so it renders at the head of the projection
+ * whatever a summary covers. `meta` (the lease, the work, the source
+ * revisions, a digest) is opaque to core.
+ */
+export interface ContextBootstrapEvent {
+	readonly seq: number;
+	readonly type: "context_bootstrap";
+	readonly meta: Readonly<Record<string, unknown>>;
+	/** The exact bytes the model reads. */
+	readonly projection: string;
+}
+
+/**
  * R-E 0.1.43 / ADR-0047 (Gap B) — a model output suffix WITHOUT a committed
  * stop was abandoned on resume. `voidFromSeq` is the last committed-boundary
  * event's seq (stop / user_input / terminal / compaction / summarized); the
@@ -686,6 +704,7 @@ export type Event =
 	| MicroCompactEvent
 	| SummarizedEvent
 	| ContextRecordsEvent
+	| ContextBootstrapEvent
 	| ModelOutputAbandoned
 	| TerminalEvent;
 
@@ -945,6 +964,8 @@ const EVENT_VALIDATORS = {
 	uncertain_pending: (v: Record<string, unknown>) =>
 		typeof v.executionId === "string" && typeof v.callId === "string" && typeof v.name === "string" && typeof v.error === "string",
 	microcompacted: (v: Record<string, unknown>) => isNonNegativeInt(v.beforeSeq),
+	// ADR-0064 A2: at most one, at seq 0 (not "exactly one": that is the lease door's); a non-empty projection.
+	context_bootstrap: (v: Record<string, unknown>) => v.seq === 0 && isPlainObject(v.meta) && typeof v.projection === "string" && v.projection.length > 0,
 	// ADR-0044: coversToSeq is a seq boundary BEFORE this event (a summary
 	// covers only what preceded it), and the summary is non-empty text.
 	summarized: (v: Record<string, unknown>) =>
