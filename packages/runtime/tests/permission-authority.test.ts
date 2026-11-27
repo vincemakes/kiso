@@ -89,6 +89,37 @@ describe("permission authority requires invocationSeq (owner ruling 2026-11-27)"
 		expect(r.ran).toEqual([1]);
 	});
 
+	it("plan: a pre-EC-1 legacy ask (no invocationSeq, crash before the stop) is a draft — ABANDON_DRAFT, never a live ask", () => {
+		const ask = { ...LEGACY_REQUEST, seq: 2 };
+		const log = [USER, CALL, ask] as unknown as Event[];
+		expect(deriveRecoveryPlan(log, log)).toEqual({ kind: "ABANDON_DRAFT", voidFromSeq: 0 });
+	});
+
+	it("resume: the legacy ask's draft is voided — no WAIT, no EXECUTE, and the model never sees a dangling tool_use", async () => {
+		const ask = { ...LEGACY_REQUEST, seq: 2 };
+		ran.length = 0;
+		const dir = mkdtempSync(join(tmpdir(), "kiso-authority-ask-"));
+		const store = new SessionStore(dir);
+		for (const e of [USER, CALL, ask]) await store.append("s", "r1", e as unknown as Event);
+		await store.closeAll();
+		const sent: { role: string; blocks?: { type: string }[] }[][] = [];
+		const watching: Adapter = {
+			stream(options) {
+				sent.push(options.messages as never);
+				return answering.stream(options);
+			},
+		};
+		const agent = createAgent({ model: "faux", store: new SessionStore(dir), tools: [probe], adapter: watching } as AgentDefinition);
+		const session = await agent.session({ id: "s" });
+		const events: Event[] = [];
+		for await (const e of session.resume()) events.push(e);
+		await agent.close();
+		expect(events.some((e) => e.type === "permission_requested")).toBe(false); // never re-presented
+		expect(events.some((e) => e.type === "model_output_abandoned")).toBe(true); // the draft is voided
+		expect(ran).toEqual([]);
+		for (const msgs of sent) expect(msgs.some((m) => m.role === "assistant" && (m.blocks ?? []).some((b) => b.type === "tool_use"))).toBe(false);
+	});
+
 	it("effect evidence stays conservative: a legacy start without a receipt is never re-executed or re-decided", () => {
 		const started = { seq: 4, type: "tool_execution_started", executionId: "x-old", callId: "c1", name: "probe", input: { x: 1 } };
 		const log = [USER, CALL, STOP, LEGACY_POLICY_ALLOW, started] as unknown as Event[];
