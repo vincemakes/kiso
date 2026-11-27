@@ -16,7 +16,7 @@ const put = (path: string, text: string): void => {
 	writeFileSync(path, text);
 };
 
-function world(access: Partial<FileAccess> = {}) {
+function world(access: { readonly outside?: FileAccess["outside"] } = {}) {
 	const home = realpathSync(mkdtempSync(join(tmpdir(), "kiso-31-home-")));
 	const kisoHome = join(home, "kiso-home"); // visible, so its prune is the read stop's and not the hidden-folder rule's
 	const ws = join(home, "proj");
@@ -40,12 +40,12 @@ function world(access: Partial<FileAccess> = {}) {
 	linkSync(join(home, "elsewhere", "orig.txt"), join(home, "notes", "hard.txt"));
 	const opts: WorkspaceToolsOptions = {
 		workspaceRoot: ws,
-		access: () => ({ added: [], outside: "deny", read: "anywhere", ...access }),
+		access: (): FileAccess => ({ added: [], outside: access.outside ?? "deny", read: "anywhere" }),
 		stopRoots: [kisoHome, ...[".ssh", ".config", ".kiso", ".gnupg", ".aws"].map((d) => join(home, d))],
 		readStopRoots: [kisoHome],
 		secretHomes: { home, kisoHome },
 		// the calling session's own task outputs (ADR-0058 3b); only `root` is read by read_file
-		tasks: ((sessionId: string | undefined) => (sessionId === undefined ? undefined : { root: join(kisoHome, "sessions", `${sessionId}.tasks`) })) as unknown as WorkspaceToolsOptions["tasks"],
+		tasks: ((sessionId: string | undefined) => (sessionId === undefined ? undefined : { root: join(kisoHome, "sessions", `${sessionId}.tasks`) })) as unknown as NonNullable<WorkspaceToolsOptions["tasks"]>,
 	};
 	return { home, kisoHome, ws, opts };
 }
