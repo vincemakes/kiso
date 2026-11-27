@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 const ROOT = new URL("..", import.meta.url).pathname;
 const PACKAGES = [
 	"@vincemakes/kiso-core",
+	"@vincemakes/kiso-secrets",
 	"@vincemakes/kiso-evals",
 	"@vincemakes/kiso-runtime",
 	// R3 (2026-09-23): the hosted-session service.

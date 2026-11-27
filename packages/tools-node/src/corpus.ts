@@ -34,64 +34,18 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import ignore, { type Ignore } from "ignore";
+import { isCredentialName, isCredentialPath as isCredentialPathWith } from "@vincemakes/kiso-secrets";
 
 /** The walk stops here. `search_text` has always used 8; the glob inherits
  *  it so a pattern cannot reach deeper than a search can. */
 export const CORPUS_MAX_DEPTH = 8;
 
-/** THE CREDENTIAL SET — files whose CONVENTIONAL PURPOSE is to hold
- *  credentials. That class is the rule; the list is its application, and
- *  the next candidate is judged by the class rather than by resemblance.
- *  Changes to this list are RULINGS, not edits.
- *
- *  Enumerated rather than matched by prefix: `.env*` as a prefix would
- *  also swallow `.environment` and `.envoy.yaml`, which are ordinary
- *  files that happen to start the same way.
- *
- *  IN, and why:
- *    `.env`, `.env.*`   the convention itself
- *    `.envrc`           direnv — routinely `export AWS_SECRET_...`
- *    `.netrc`           machine credentials, by definition
- *    id_rsa, id_dsa,    private keys, by name. Their `.pub` counterparts
- *    id_ecdsa,          are different names and stay searchable, which is
- *    id_ed25519         correct: a public key is public.
- *    *.pem              the same, by extension
- *    `.npmrc`, `.pypirc`, `.git-credentials`, `.htpasswd` — RO-F4, the
- *                       owner's 0.40.7 ruling. `.npmrc` was OUT here ("tokens
- *                       in it are normally `${VAR}` placeholders") while the
- *                       read-only shell rule (0.40.0, B4) already called it a
- *                       credential: two lists that disagreed, so a search
- *                       exposed what `cat` asked about. One set now, used by
- *                       both; a literal `_authToken=` is common enough.
- *    and, by PATH (a name alone would be too broad — `config`,
- *    `credentials`): `.aws/credentials`, `.config/gh/hosts.yml`,
- *    `.docker/config.json`, `.kube/config` (isCredentialPath)
- *
- *  OUT, deliberately, so the omissions are decisions and not oversights:
- *    `*.key`    too many non-secret uses to be a credential by name
- *
- *  An explicit `read_file` of ANY of these is unchanged. Reading on
- *  purpose is the user's model doing what it was told; an incidental hit
- *  from a search for "KEY" is exposure without intent, and only the
- *  second is what this prevents. */
-const ENV_TEMPLATES = new Set([".env.example", ".env.sample", ".env.template"]);
-const CREDENTIAL_NAMES = new Set([".envrc", ".netrc", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", ".npmrc", ".pypirc", ".git-credentials", ".htpasswd"]);
-const CREDENTIAL_PATHS = ["/.aws/credentials", "/.config/gh/hosts.yml", "/.docker/config.json", "/.kube/config"];
-
-/** RO-F4: the credential files named by their DIRECTORY as well — a path
- *  (absolute or root-relative), folded to lower case as a case-insensitive
- *  disk would. The read-only shell rule asks this same question. */
-export function isCredentialPath(path: string): boolean {
-	const folded = `/${path.split(sep).join("/")}`.toLowerCase();
-	return CREDENTIAL_PATHS.some((s) => folded.endsWith(s));
-}
-
-export function isCredentialName(name: string): boolean {
-	if (ENV_TEMPLATES.has(name)) return false;
-	if (name === ".env" || name.startsWith(".env.")) return true;
-	if (CREDENTIAL_NAMES.has(name)) return true;
-	return name.endsWith(".pem");
-}
+/** THE CREDENTIAL SET lives in @vincemakes/kiso-secrets (one secret
+ *  detector for kiso). These are its rules on this host, re-exported as
+ *  tools-node's public API; isCredentialPath uses node:path's separator, as
+ *  it always has. */
+export { isCredentialName };
+export const isCredentialPath = (path: string): boolean => isCredentialPathWith(path, sep);
 
 export interface CorpusOptions {
 	workspaceRoot: string;

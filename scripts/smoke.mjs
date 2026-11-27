@@ -38,6 +38,7 @@ const ALL = {
 	"@vincemakes/kiso-core": true,
 	"@vincemakes/kiso-evals": true,
 	"@vincemakes/kiso-runtime": true,
+	"@vincemakes/kiso-secrets": true,
 	"@vincemakes/kiso-tools-node": true,
 	"@vincemakes/kiso-provider-anthropic": true,
 	"@vincemakes/kiso-provider-openai": true,
@@ -84,7 +85,7 @@ function installTier(label, names, proj) {
 // ── tier A: the runtime closure ────────────────────────────────────────
 {
 	const proj = tempProject("runtime");
-	installTier("runtime", ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node"], proj);
+	installTier("runtime", ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-secrets", "@vincemakes/kiso-tools-node"], proj);
 	writeFileSync(
 		join(proj, "smoke.mjs"),
 		`import { defineTool, ToolRegistry, loop, mapApiError } from "@vincemakes/kiso-core";
@@ -199,7 +200,7 @@ void agent; void defineTool; void loop; void ev; void FIXTURES;
 {
 	const proj = tempProject("nested");
 	const stage = mkdtempSync(join(tmpdir(), "kiso-pack-nested-"));
-	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui"].map((n) => pack(stage, n));
+	const tarballs = ["@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-secrets", "@vincemakes/kiso-tools-node", "@vincemakes/kiso-tui-cells", "@vincemakes/kiso-tui"].map((n) => pack(stage, n));
 	for (const tarball of tarballs) {
 		execSync(`npm install --install-strategy=nested --no-audit --no-fund --no-package-lock "${tarball}"`, {
 			cwd: proj,
@@ -253,7 +254,7 @@ console.log("tier B OK — provider closure: the three factories import, error m
 	installTier(
 		"cli",
 		[
-			"@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-tools-node",
+			"@vincemakes/kiso-core", "@vincemakes/kiso-evals", "@vincemakes/kiso-runtime", "@vincemakes/kiso-secrets", "@vincemakes/kiso-tools-node",
 			"@vincemakes/kiso-provider-anthropic", "@vincemakes/kiso-provider-openai", "@vincemakes/kiso-provider-openai-responses",
 			// the tui closure must come from the PACKED tree too: kiso-code's
 			// exact tui pin would otherwise resolve the PUBLISHED tui (stale
