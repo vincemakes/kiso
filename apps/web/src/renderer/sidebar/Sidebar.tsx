@@ -118,7 +118,7 @@ const RANK: Readonly<Record<Dot, number>> = { waiting: 3, running: 2, unread: 1,
 const stateOf = (row: WorkRow): Dot => (row.state === "idle" && row.unread === true ? "unread" : row.state);
 const dotOf = (row: WorkRow): ReactNode => {
 	const state = stateOf(row);
-	return state === "running" ? <span className="sp" title={t.runningNow} /> : state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : state === "unread" ? <span className="dot blue" title={t.unreadNow} data-dot="unread" /> : null;
+	return state === "running" ? <span className="dot run" title={t.runningNow} /> : state === "waiting" ? <span className="dot amber" title={t.waitingForYou} /> : state === "unread" ? <span className="dot blue" title={t.unreadNow} data-dot="unread" /> : null;
 };
 
 /** The history: pinned first, then Recents; a row's ⋯ menu; the Archived line; Settings at the foot. */

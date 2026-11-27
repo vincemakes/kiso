@@ -61,8 +61,10 @@
 .kids-line::before { content: ""; position: absolute; left: 16px; top: 3px; height: 12px; width: 8px; border-left: 1.5px solid #d6d6d2; border-bottom: 1.5px solid #d6d6d2; border-bottom-left-radius: 6px; }
 .kids-line:hover { color: var(--ink); }
 .kids-line em { font-style: normal; color: var(--blue); }
-.item .sp { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #d8d8d5; border-top-color: var(--blue); animation: sp 1s linear infinite; flex: none; }
-@keyframes sp { to { transform: rotate(360deg); } }
+/* running: the same dot as waiting and unread, grey and breathing (owner 2026-11-27) */
+.dot.run { background: #9a9aa0; animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.3; transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
 .fn { border-top: 1px solid rgba(0, 0, 0, 0.06); margin: 8px -4px 0; padding-top: 6px; }
 .fn-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; color: var(--mute); font-size: 14px; border-radius: 10px; }
 .fn-h:hover, .fn-h.on { color: var(--ink); background: rgba(0, 0, 0, 0.04); }
@@ -71,7 +73,7 @@
 .row .dots { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 26px; height: 24px; border-radius: 7px; display: none; place-items: center; color: #555; }
 .row:hover .dots, .row.menu-open .dots { display: grid; }
 /* a row's state mark sits at its right end, under the ⋯ that shows on hover */
-.row:hover .item :is(.sp, .dot), .row.menu-open .item :is(.sp, .dot) { visibility: hidden; }
+.row:hover .item  .dot, .row.menu-open .item .dot { visibility: hidden; }
 .row .dots:hover { background: rgba(0, 0, 0, 0.07); }
 .row-in { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 0; }
 .row-in::selection { background: #cfe0ff; }
