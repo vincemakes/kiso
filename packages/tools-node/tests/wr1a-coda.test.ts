@@ -17,7 +17,7 @@
  *    the partial-effects note over an edit that wrote nothing.
  */
 
-import { chmodSync, existsSync, realpathSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -190,8 +190,7 @@ describe("WR-1E — the protocol is ENCODED, not taught (the encoding pass after
 		);
 		expect(e.isError).toBe(false);
 		expect(e.content).not.toContain("cite");
-		// #32: the file is named by its absolute path (where it landed), and the result stays the path and the token line
-		expect(e.content.trimEnd()).toBe(`edited ${realpathSync(join(dir, "f.ts"))}\n[${rev("gamma beta\n")}]`);
+		expect(e.content.trimEnd()).toMatch(/^edited f\.ts\n\[rev:[0-9a-f]{16}\]$/);
 		const w = await writeFileTool({ workspaceRoot: dir }).execute(
 			{ path: "new.ts", content: "x\n", expectedRevision: "absent" },
 			undefined as never,

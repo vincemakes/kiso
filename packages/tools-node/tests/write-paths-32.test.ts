@@ -1,14 +1,15 @@
 /**
- * #32: a write result names the file where it landed (its absolute, canonical path), and a folder the write made at the top of
- * a git repository is said in the result, so a tree written in the wrong place is seen at once. A folder made deeper, a
- * workspace that is no repository and a rewrite of an existing file say nothing more.
+ * #32: a folder write_file makes at the top of a git repository is said in its result, by its absolute path, so a tree written
+ * in the wrong place (the incident: a relative delivery path made a new top-level folder) is seen at once. Every other result
+ * is unchanged, byte for byte: a folder made deeper, a workspace that is no repository, a file at the top. The absolute path
+ * of the file itself is not echoed (declined: its per-request cost against WR-1E).
  */
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { editFileTool, writeFileTool } from "../src/index.js";
+import { writeFileTool } from "../src/index.js";
 
 const rev = (s: string): string => `rev:${createHash("sha256").update(Buffer.from(s)).digest("hex").slice(0, 16)}`;
 const repo = (gitAsFile = false): string => {
@@ -19,43 +20,31 @@ const repo = (gitAsFile = false): string => {
 	return dir;
 };
 const write = (root: string, path: string, content = "x\n") => writeFileTool({ workspaceRoot: root }).execute({ path, content, expectedRevision: "absent" }, undefined as never);
-const note = (dir: string): string => `\nnote: created a new top-level folder in the git repository: ${dir}`;
+const plain = (path: string): string => `wrote ${path} (2 chars)\n[${rev("x\n")}]`;
 
-describe("#32: write results name where the file landed", () => {
-	it("a new top-level folder in a git repository is said, the topmost folder made", async () => {
+describe("#32: a new top-level folder in a git repository is said", () => {
+	it("the note, its exact bytes, naming the topmost folder the write made", async () => {
 		const root = repo();
 		const r = await write(root, "pkg/deep/a.ts");
 		expect(r.isError).toBe(false);
-		expect(r.content).toBe(`wrote ${join(root, "pkg", "deep", "a.ts")} (2 chars)${note(join(root, "pkg"))}\n[${rev("x\n")}]`);
+		expect(r.content).toBe(`wrote pkg/deep/a.ts (2 chars)\nnote: created a new top-level folder in the git repository: ${join(root, "pkg")}\n[${rev("x\n")}]`);
 	});
 
 	it("a worktree's .git file counts as a repository", async () => {
 		const root = repo(true);
-		expect((await write(root, "tools/b.ts")).content).toContain(note(join(root, "tools")));
+		expect((await write(root, "tools/b.ts")).content).toBe(`wrote tools/b.ts (2 chars)\nnote: created a new top-level folder in the git repository: ${join(root, "tools")}\n[${rev("x\n")}]`);
 	});
 
-	it("a folder made under an existing one says nothing more", async () => {
-		const root = repo();
-		const r = await write(root, "src/new/c.ts");
-		expect(r.content).toBe(`wrote ${join(root, "src", "new", "c.ts")} (2 chars)\n[${rev("x\n")}]`);
+	it("a folder made under an existing one: the result is unchanged", async () => {
+		expect((await write(repo(), "src/new/c.ts")).content).toBe(plain("src/new/c.ts"));
 	});
 
-	it("a workspace that is no repository says nothing more", async () => {
+	it("a workspace that is no repository: the result is unchanged", async () => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "kiso-32-plain-")));
-		expect((await write(root, "pkg/d.ts")).content).toBe(`wrote ${join(root, "pkg", "d.ts")} (2 chars)\n[${rev("x\n")}]`);
+		expect((await write(root, "pkg/d.ts")).content).toBe(plain("pkg/d.ts"));
 	});
 
-	it("a file at the repository's top makes no folder and says nothing more", async () => {
-		const root = repo();
-		expect((await write(root, "e.ts")).content).toBe(`wrote ${join(root, "e.ts")} (2 chars)\n[${rev("x\n")}]`);
-	});
-
-	it("an edit names the file by its absolute path, reached through a symlinked workspace as the disk holds it", async () => {
-		// the temporary folder as given (on macOS /var is a link to /private/var); the result names the real place
-		const given = mkdtempSync(join(tmpdir(), "kiso-32-link-")), root = realpathSync(given);
-		mkdirSync(join(root, "src"));
-		writeFileSync(join(root, "src", "f.ts"), "alpha\n");
-		const r = await editFileTool({ workspaceRoot: given }).execute({ path: "src/f.ts", search: "alpha", replace: "beta", expectedRevision: rev("alpha\n") }, undefined as never);
-		expect(r.content).toBe(`edited ${join(root, "src", "f.ts")}\n[${rev("beta\n")}]`);
+	it("a file at the repository's top makes no folder: the result is unchanged", async () => {
+		expect((await write(repo(), "e.ts")).content).toBe(plain("e.ts"));
 	});
 });
