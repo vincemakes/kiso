@@ -416,12 +416,13 @@ describe("E6 (c) — the structured checkpoint prompt", () => {
 describe("E6 (b) — the output validation (the rejection path)", () => {
 	it("rejects a summary carrying tool-call DSML markers — the auto-T5-1 signature", () => {
 		// The E6-F4/F5 signature family: the model echoed tool-call markup
-		// as text. Each marker shape is rejected, wherever it sits.
-		expect(validateSummary('<conversation><tool_call name="read_file">…')).not.toBeNull();
-		expect(validateSummary('{"type":"tool_call_end","callId":"c1","input":{}}')).not.toBeNull();
-		expect(validateSummary('use the <invoke> element for that')).not.toBeNull();
-		expect(validateSummary('the tool_calls were {"a":1}')).not.toBeNull();
-		expect(validateSummary('{"type":"tool_call_start"}')).not.toBeNull();
+		// as text. Each markup shape is rejected, wherever it sits.
+		expect(validateSummary('<conversation><tool_call name="read_file">…')).toMatch(/tool-call marker/);
+		expect(validateSummary('use the <invoke> element for that')).toMatch(/tool-call marker/);
+		// A bare JSON event is no checkpoint either, but it is rejected for its missing sections, not as
+		// markup (finding #29: quoted code is not a leaked call).
+		expect(validateSummary('{"type":"tool_call_end","callId":"c1","input":{}}')).toMatch(/missing the required section/);
+		expect(validateSummary('{"tool_calls":[{"id":"c1","type":"function"}]}')).toMatch(/missing the required section/);
 	});
 
 	it("rejects a truncated summary — the Current work or Next steps section missing", () => {
@@ -441,6 +442,70 @@ describe("E6 (b) — the output validation (the rejection path)", () => {
 
 	it("accepts a complete checkpoint", () => {
 		expect(validateSummary(VALID_SUMMARY)).toBeNull();
+	});
+});
+
+describe("finding #29 — the marker check rejects markup, never an identifier in prose", () => {
+	const withProse = (line: string): string => VALID_SUMMARY.replace("src/cli.js: wired --count", `src/cli.js: wired --count\n${line}`);
+
+	// The real auto-T5-1 body (bench/runs/e6-crux/auto-T5-1, the 2026-08-14 session's one summarized event):
+	// DeepSeek's DSML special-token markup echoed as text, no checkpoint at all.
+	const AUTO_T5_1 = [
+		"<\uff5c\uff5cDSML\uff5c\uff5ctool_calls>",
+		'<\uff5c\uff5cDSML\uff5c\uff5cinvoke name="tool_call">',
+		'<\uff5c\uff5cDSML\uff5c\uff5cparameter name="query" string="true">range.js clampRange add</\uff5c\uff5cDSML\uff5c\uff5cparameter>',
+		'<\uff5c\uff5cDSML\uff5c\uff5cparameter name="tool" string="true">web_search</\uff5c\uff5cDSML\uff5c\uff5cparameter>',
+		"</\uff5c\uff5cDSML\uff5c\uff5cinvoke>",
+		"</\uff5c\uff5cDSML\uff5c\uff5ctool_calls>",
+	].join("\n");
+
+	it("the auto-T5-1 body still rejects, alone and inside an otherwise valid checkpoint", () => {
+		expect(validateSummary(AUTO_T5_1)).toMatch(/tool-call marker/);
+		expect(validateSummary(withProse(AUTO_T5_1))).toMatch(/tool-call marker/);
+		// one DSML line is enough, with the ASCII bar too
+		expect(validateSummary(withProse('<|DSML|invoke name="read_file">'))).toMatch(/tool-call marker/);
+		expect(validateSummary(withProse("</\uff5cDSML\uff5cparameter>"))).toMatch(/tool-call marker/);
+	});
+
+	it("tag-shaped tool-call markup still rejects inside a valid checkpoint", () => {
+		for (const markup of ['<tool_call name="read_file">', "</tool_call>", "<tool_use>", '<invoke name="x">', "<function_calls>", "<tool_call_end>"]) {
+			expect(validateSummary(withProse(markup)), markup).toMatch(/tool-call marker/);
+		}
+	});
+
+	it("a checkpoint that quotes code passes: JSON in a fenced and an inline code span is citing code, not a call", () => {
+		const fenced = withProse(['The event log line read in `packages/core/src/kernel/event-log.ts`:', "```json", '{"type":"tool_call_end","callId":"c1","name":"read_file","input":{"path":"src/cli.js"}}', "```", "The request builder in `src/client.ts`:", "```ts", 'const body = { model, messages, "tool_calls": [{ id: "c1", type: "function" }] };', "```"].join("\n"));
+		expect(validateSummary(fenced)).toBeNull();
+		const inline = withProse('the log carries `{"type":"tool_call_end"}` after each call, and the client sends `"tool_calls": [` with every assistant turn');
+		expect(validateSummary(inline)).toBeNull();
+		expect(validateSummary(withProse('{"type": "tool_call_start"} then {"type":"tool_call_end"}'))).toBeNull();
+	});
+
+	// E1 stage 1 (2026-11-27): real checkpoints a coding session on kiso's own source wrote, rejected at the pin
+	// for naming the event type. Excerpts, verbatim around each occurrence.
+	const E1_PROSE = [
+		"`packages/core/src/kernel/hooks.ts`/`event-log.ts` reviewed, `packages/runtime/src/effective-history.draft.ts` (`tool_call_end`/`tool_result`/`permission_decided`/`stop` cases)",
+		'`terminal-lies.ts` (`import_v2 type { Event }`), `permission-negotiation.ts` (`{ type_v2: "tool_call_end" }`), `types.ts` (`Returns violation strings`)',
+		"inbox.draft.ts, peer-delivery annotations, checkpoint doc comment `tool_call_end_v2`, fork `const_v2`.",
+		"the file was read around `tool_call_end` and `tool_result` handling but not edited.",
+		"`packages/core/src/kernel/project.ts` around the `tool_call_end` and `tool_result` cases;",
+		'The last edit was in `packages/runtime/src/effective-history.ts`, splicing `authority_v2: "model"` into the `tool_call_end` case.',
+		"packages/runtime/src/checkpoint.ts (`tool_call_end` has its answer → `tool_call_end_v2`);",
+		'`packages/evals/src/fixtures/unknown-tool.ts` (`script_v2`, `{ type_v2: "tool_call_end"`),',
+		'packages/evals/src/fixtures/unknown-tool.ts (`script_v2: [` and later `type_v2: "tool_call_end"`);',
+	];
+
+	it("E1's rejected checkpoints pass: the identifier in prose is not markup", () => {
+		for (const line of E1_PROSE) expect(validateSummary(withProse(line)), line).toBeNull();
+	});
+
+	it("property: every marker word as an identifier, bare, quoted or in backticks, never rejects", () => {
+		const words = ["tool_call_end", "tool_call_start", "tool_calls", "tool_call", "tool_use", "invoke", "function_calls", "DSML"];
+		const wraps = [(w: string) => w, (w: string) => `\`${w}\``, (w: string) => `"${w}"`, (w: string) => `(${w})`, (w: string) => `${w}_v2`, (w: string) => `{ type: "${w}" }`, (w: string) => `the ${w} case`, (w: string) => `${w}.`];
+		for (const w of words) for (const wrap of wraps) {
+			const line = `review notes: ${wrap(w)} in packages/core/src/protocol/events.ts`;
+			expect(validateSummary(withProse(line)), line).toBeNull();
+		}
 	});
 });
 
