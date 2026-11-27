@@ -9,6 +9,10 @@
 			"types": "./dist/index.d.ts",
 			"default": "./dist/index.js"
 		},
+		"./evidence": {
+			"types": "./dist/evidence.d.ts",
+			"default": "./dist/evidence.js"
+		},
 		"./internal": {
 			"types": "./dist/internal.d.ts",
 			"default": "./dist/internal.js"

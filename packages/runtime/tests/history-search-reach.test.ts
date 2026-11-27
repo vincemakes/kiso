@@ -15,7 +15,10 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const INTERNAL = /["'][^"']*\/(effective-history|history-search)(\.js)?["']/;
-const ALLOWED = new Set(["packages/runtime/src/history-search.ts"]);
+// ADR-0064 § 6: the neutral provenance check reads the human-authored
+// surface. It is reached only through the `./evidence` subpath, whose one
+// importer is kiso-actor (packages/actor/tests/actor-reach.test.ts).
+const ALLOWED = new Set(["packages/runtime/src/history-search.ts", "packages/runtime/src/provenance.ts"]);
 
 function sources(dir: string): string[] {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
