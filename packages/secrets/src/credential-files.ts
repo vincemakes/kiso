@@ -35,10 +35,10 @@
  *  OUT, deliberately, so the omissions are decisions and not oversights:
  *    `*.key`    too many non-secret uses to be a credential by name
  *
- *  An explicit `read_file` of ANY of these is unchanged. Reading on
- *  purpose is the user's model doing what it was told; an incidental hit
- *  from a search for "KEY" is exposure without intent, and only the
- *  second is what this prevents. */
+ *  The corpus skips them, so an incidental hit from a search for "KEY"
+ *  is not exposed. Since #31 (ADR-0058 Amendment 21) kiso's file tools
+ *  also refuse an explicit read of one (`isSecretLocation`), inside the
+ *  workspace or out: a secret never reaches the provider by itself. */
 const ENV_TEMPLATES = new Set([".env.example", ".env.sample", ".env.template"]);
 const CREDENTIAL_NAMES = new Set([".envrc", ".netrc", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", ".npmrc", ".pypirc", ".git-credentials", ".htpasswd"]);
 const CREDENTIAL_PATHS = ["/.aws/credentials", "/.config/gh/hosts.yml", "/.docker/config.json", "/.kube/config"];

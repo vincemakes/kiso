@@ -263,7 +263,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	// a destructive shell command; 0.46.2: nor a command across the remote
 	// boundary (remote-boundary.ts).
 	const workspaceRoot = (): string => codingToolOptions().workspaceRoot;
-	const neverInherited = (call: PolicyCall): boolean => neverInheritedCall(call, workspaceRoot());
+	// the Work's added folders, read per decision (ADR-0058 Amendment 19); #31: a write outside them and the workspace always asks
+	const added = (): readonly string[] => (sessionId === undefined ? [] : readEnvironment(activeStoreDir, sessionId).added);
+	const neverInherited = (call: PolicyCall): boolean => neverInheritedCall(call, workspaceRoot(), added());
 	setNeverInherited(neverInherited);
 	// 0.40.0: the catastrophe floor, at the chain's HEAD — a deny there
 	// names itself in decidedBy and outranks every tier, bypass included.
@@ -278,9 +280,9 @@ export async function createCodingAgent(sessionId: string | undefined, input?: L
 	setUserProtectedPaths(userConfig?.protectedPaths);
 	const extensions = [
 		protectedShellExtension({ files: protectedFiles, workspaceRoot, env: () => ({ home: homedir(), kisoHome: kisoHome() }) }),
-		floorExtension(() => floorOn, workspaceRoot, undefined, () => (sessionId === undefined ? [] : readEnvironment(activeStoreDir, sessionId).added)),
+		floorExtension(() => floorOn, workspaceRoot, undefined, added),
 		breakerExtension(),
-		...modeExtensions(workspaceRoot),
+		...modeExtensions(workspaceRoot, undefined, added),
 		readOnlyShellExtension(codingToolOptions),
 		...loadedExtensions.map((e) => guardSavedAllow(e, neverInherited)),
 	];

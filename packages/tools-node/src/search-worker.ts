@@ -19,6 +19,7 @@
 import { open, readdir } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import { byName, bySegments, corpusSkips, layersEntering, readLayer, walkCorpus, type Layer } from "./corpus.js";
+import { isSecretLocation } from "@vincemakes/kiso-secrets";
 import { isMainThread, parentPort } from "node:worker_threads";
 import { diskPath, isProtectedDiskPath, type ProtectedIdentity } from "./protected.js";
 
@@ -74,6 +75,8 @@ export interface SearchRequest {
 	readonly pattern: string;
 	readonly flags: string;
 	readonly excluded: readonly string[];
+	/** #31 (S4): the homes the secret deny is judged against; a secret location is never entered or searched */
+	readonly secretHomes?: { readonly home: string; readonly kisoHome: string };
 	/** files never searched: kiso's credential store (protected.ts) — skipped
 	 *  without a hit, matched by inode and, for a protected name, by the
 	 *  disk's own resolution */
@@ -120,6 +123,8 @@ export interface GlobRequest {
 	readonly flags: string;
 	/** DC-49 exclude roots, workspace-relative */
 	readonly excluded: readonly string[];
+	/** #31 (S4): the homes the secret deny is judged against; a secret location is never entered or listed */
+	readonly secretHomes?: { readonly home: string; readonly kisoHome: string };
 	readonly maxEntries: number;
 	readonly maxVisited: number;
 	readonly deadline: number;
@@ -137,6 +142,10 @@ export interface GlobReply {
 	readonly error?: string;
 }
 
+/** #31 (S4): a secret location by kiso-secrets (the walk's paths are canonical: its root is realpath'd). */
+const secret = (homes: { readonly home: string; readonly kisoHome: string } | undefined, full: string): boolean =>
+	homes !== undefined && isSecretLocation(full, { ...homes, separator: sep });
+
 export function runGlob(req: GlobRequest): GlobReply {
 	const re = new RegExp(req.source, req.flags);
 	const walk = walkCorpus({
@@ -145,10 +154,10 @@ export function runGlob(req: GlobRequest): GlobReply {
 		maxEntries: req.maxEntries,
 		maxVisited: req.maxVisited,
 		deadline: req.deadline,
-		accept: (rel) => re.test(rel),
+		accept: (rel) => re.test(rel) && !secret(req.secretHomes, join(req.workspaceRoot, rel)),
 		isExcluded: (full) => {
 			const r = relative(req.workspaceRoot, full).split(sep).join("/");
-			return req.excluded.some((ex) => r === ex || r.startsWith(`${ex}/`));
+			return req.excluded.some((ex) => r === ex || r.startsWith(`${ex}/`)) || secret(req.secretHomes, full);
 		},
 	});
 	return { kind: "glob", token: req.token, ...walk };
@@ -167,7 +176,7 @@ export async function runSearch(req: SearchRequest): Promise<SearchReply> {
 	let stoppedAt = 0;
 	const isExcluded = (full: string): boolean => {
 		const r = relative(req.root, full);
-		return req.excluded.some((ex) => r === ex || r.startsWith(`${ex}/`));
+		return req.excluded.some((ex) => r === ex || r.startsWith(`${ex}/`)) || secret(req.secretHomes, full);
 	};
 	const outOfBudget = (): boolean => {
 		if (stopped) return true;
@@ -180,6 +189,7 @@ export async function runSearch(req: SearchRequest): Promise<SearchReply> {
 	};
 	const scanFile = async (full: string): Promise<void> => {
 		if (outOfBudget()) return;
+		if (secret(req.secretHomes, full)) return; // #31 (S4): never a line from a secret location
 		filesSeen += 1;
 		try {
 			const fh = await open(full, "r");

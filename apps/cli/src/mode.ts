@@ -20,7 +20,7 @@
 
 import type { PolicyCall, PolicyVerdict } from "@vincemakes/kiso-core";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
-import { isProtectedWrite } from "./protected-writes.js";
+import { isOutsideWrite, isProtectedWrite } from "./protected-writes.js";
 
 export type Mode = "manual" | "default" | "accept-edits" | "plan" | "full-access";
 
@@ -219,7 +219,7 @@ export function applyModeState(s: ModeState): void {
 }
 
 /** The per-tier verdict for a tool call — only when this tier is current (`now`: the tier in force, the process's own by default). */
-function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string, now: Mode): PolicyVerdict {
+function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string, now: Mode, added: () => readonly string[]): PolicyVerdict {
 	if (tier !== now) return { action: "abstain" }; // not our tier — no opinion
 	switch (tier) {
 		case "manual":
@@ -242,7 +242,8 @@ function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string, 
 			if (READ_TOOLS.has(call.name) || STOP_TOOLS.has(call.name)) return { action: "allow" };
 			// 0.40.0: a write into .git/ or .kiso/ asks even here — both hold
 			// configuration that runs (protected-writes.ts)
-			if (call.name === "write_file" || call.name === "edit_file") return isProtectedWrite(call, workspaceRoot()) ? { action: "ask" } : { action: "allow" };
+			// #31 (W1): so does a write outside the workspace and the Work's added folders
+			if (call.name === "write_file" || call.name === "edit_file") return isProtectedWrite(call, workspaceRoot()) || isOutsideWrite(call, workspaceRoot(), added()) ? { action: "ask" } : { action: "allow" };
 			if (call.name === "shell") return { action: "ask" };
 			return { action: "abstain" }; // see "default"
 		case "plan":
@@ -262,13 +263,13 @@ function tierVerdict(tier: Mode, call: PolicyCall, workspaceRoot: () => string, 
  *  deny>allow>ask over the SPEAKING verdicts (abstain = no opinion), so a
  *  user extension's deny wins over any mode tier, full-access included
  *  (the monotonicity e2e pins it). */
-export function modeExtensions(workspaceRoot: () => string = () => process.cwd(), currentTier: () => Mode = getMode): readonly KisoExtension[] {
+export function modeExtensions(workspaceRoot: () => string = () => process.cwd(), currentTier: () => Mode = getMode, added: () => readonly string[] = () => []): readonly KisoExtension[] {
 	// the tier in force is read on every decision, so a host that holds several sessions can give each its own (the terminal passes none)
 	return [...MODES.filter((m) => m === currentTier()), ...MODES.filter((m) => m !== currentTier())].map((m) => ({
 		name: `mode:${m}`,
 		approvals: [
 			{
-				decide: async (payload) => tierVerdict(m, { name: payload.name, input: payload.input ?? {} }, workspaceRoot, currentTier()),
+				decide: async (payload) => tierVerdict(m, { name: payload.name, input: payload.input ?? {} }, workspaceRoot, currentTier(), added),
 			},
 		],
 	}));

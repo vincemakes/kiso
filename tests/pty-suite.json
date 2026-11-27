@@ -221,6 +221,7 @@
   "packages/tools-node/tests/process.test.ts",
   "packages/tools-node/tests/protected-credential-store.test.ts",
   "packages/tools-node/tests/r3-search-yields.test.ts",
+  "packages/tools-node/tests/read-anywhere-31.test.ts",
   "packages/tools-node/tests/safety.test.ts",
   "packages/tools-node/tests/scoped-reads.test.ts",
   "packages/tools-node/tests/search-miss.test.ts",

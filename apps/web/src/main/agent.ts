@@ -110,9 +110,12 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 		excludeRoots: [kisoHome()],
 		secretEnvNames: options.secretEnvNames ?? [],
 		protectedFiles: protectedFiles(),
-		// ADR-0058 Amendment 19: read on every call, so an add, a removal or a mode change applies at the next one
-		access: (sessionId: string | undefined) => ({ added: readEnvironment(store.root, sessionId ?? options.sessionId).added, outside: options.tier() === "full-access" ? ("allow" as const) : ("deny" as const) }),
+		// ADR-0058 Amendment 19: read on every call, so an add, a removal or a mode change applies at the next one. #31: reads reach
+		// anywhere in every tier; writes reach outside in every tier but plan, where the tier asks (W1)
+		access: (sessionId: string | undefined) => ({ added: readEnvironment(store.root, sessionId ?? options.sessionId).added, outside: options.tier() === "plan" ? ("deny" as const) : ("allow" as const), read: "anywhere" as const }),
 		stopRoots: fileStopRoots(homedir(), kisoHome()),
+		readStopRoots: [kisoHome()], // #31 (R4, R5)
+		secretHomes: { home: homedir(), kisoHome: kisoHome() },
 		tasks: options.tasks.shellTasks,
 		observedRevision: observedRevisionFrom(store, workspace),
 		...(options.toolLimits !== undefined ? { limits: options.toolLimits } : {}),
@@ -132,7 +135,7 @@ export function createWebAgent(options: WebAgentOptions): Agent {
 			protectedShellExtension({ files: protectedFiles, workspaceRoot: root, env: () => ({ home: homedir(), kisoHome: kisoHome() }) }),
 			floorExtension(() => true, root, undefined, () => readEnvironment(store.root, options.sessionId).added),
 			breakerExtension(),
-			...modeExtensions(root, options.tier),
+			...modeExtensions(root, options.tier, () => readEnvironment(store.root, options.sessionId).added),
 			readOnlyShellExtension(() => ({ workspaceRoot: workspace, excludeRoots: toolOptions.excludeRoots })),
 			...(options.sessions !== undefined ? [options.sessions] : []),
 			...(options.ask !== undefined ? [options.ask] : []),

@@ -60,10 +60,12 @@ export function setPrintRun(): void {
 	printRun = true;
 }
 
-/** ADR-0058 Amendment 19: the same list the web reads, per call; a delegate child gets none of it. */
+/** ADR-0058 Amendment 19: the same list the web reads, per call; a delegate child gets none of it.
+ *  #31: reads reach anywhere in every mode (the secret deny and $KISO_HOME still refuse), for a child exactly as for its parent;
+ *  writes reach outside in every mode but plan, where the tier asks (W1); a child's writes stay in the workspace. */
 function fileAccess(sessionId: string | undefined): FileAccess {
-	if ((Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0) >= 1) return { added: [], outside: "deny" };
-	return { added: sessionId === undefined || activeStoreDir === "" ? [] : readEnvironment(activeStoreDir, sessionId).added, outside: getMode() === "full-access" ? "allow" : "deny" };
+	if ((Number.parseInt(process.env.KISO_SUBAGENT_DEPTH ?? "0", 10) || 0) >= 1) return { added: [], outside: "deny", read: "anywhere" };
+	return { added: sessionId === undefined || activeStoreDir === "" ? [] : readEnvironment(activeStoreDir, sessionId).added, outside: getMode() === "plan" ? "deny" : "allow", read: "anywhere" };
 }
 
 export function codingToolOptions(): {
@@ -73,6 +75,8 @@ export function codingToolOptions(): {
 	readonly protectedFiles: readonly string[];
 	readonly access: (sessionId: string | undefined) => FileAccess;
 	readonly stopRoots: readonly string[];
+	readonly readStopRoots: readonly string[];
+	readonly secretHomes: { readonly home: string; readonly kisoHome: string };
 	readonly tasks: (sessionId: string | undefined) => ShellTasks | undefined;
 	readonly observedRevision: (sessionId: string | undefined, full: string, kind?: "edit" | "write") => string | undefined;
 	readonly limits?: { readonly minForegroundMs?: number; readonly maxForegroundMs?: number };
@@ -95,6 +99,8 @@ export function codingToolOptions(): {
 		protectedFiles: protectedFiles(),
 		access: fileAccess,
 		stopRoots: fileStopRoots(homedir(), kisoHome()),
+		readStopRoots: [kisoHome()], // #31 (R4, R5): kiso's own home is closed to reads whole; the rest is judged by the secret deny
+		secretHomes: { home: homedir(), kisoHome: kisoHome() },
 		tasks: tasksFor,
 		observedRevision: observedRevisionFromLog,
 		...(Object.keys(limits).length > 0 ? { limits } : {}),
