@@ -16,7 +16,7 @@
  * plan denies it anyway; full-access runs it, as full-access's shell could.
  */
 
-import { relative, sep } from "node:path";
+import { isAbsolute, relative, sep } from "node:path";
 import type { PolicyCall, PolicyVerdict } from "@vincemakes/kiso-core";
 import type { KisoExtension } from "@vincemakes/kiso-runtime";
 import { resolveShellPath } from "./shell-words.js";
@@ -38,6 +38,23 @@ export function isProtectedWrite(call: PolicyCall, workspaceRoot: string): boole
 		.some((seg) => PROTECTED.has(seg.toLowerCase()));
 }
 
+/**
+ * #31 (W1): a write outside the workspace and the Work's added folders asks in every asking tier, as a protected write does:
+ * accept-edits' allow does not cover it, nor does a saved allow; with don't-ask it is denied; plan denies it anyway; full-access
+ * runs it (the file tools' secret deny and stops still refuse). A relative path never leaves the workspace (the resolver refuses
+ * an escape), so only an absolute one is judged.
+ */
+export function isOutsideWrite(call: PolicyCall, workspaceRoot: string, added: readonly string[] = []): boolean {
+	if (!WRITERS.has(call.name)) return false;
+	const path = call.input.path;
+	if (typeof path !== "string" || !isAbsolute(path)) return false;
+	const inside = (root: string): boolean => {
+		const rel = relative(resolveShellPath(root, root, ".").canonical, resolveShellPath(root, root, path).canonical);
+		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+	};
+	return !inside(workspaceRoot) && !added.some(inside);
+}
+
 const ABSTAIN: PolicyVerdict = { action: "abstain" };
 
 /**
@@ -47,8 +64,8 @@ const ABSTAIN: PolicyVerdict = { action: "abstain" };
  * and a command across the remote boundary (remote-boundary.ts, 0.46.2).
  * create-coding-agent.ts wires it into every guarded saved allow.
  */
-export function neverInheritedCall(call: PolicyCall, workspaceRoot: string): boolean {
-	return isProtectedWrite(call, workspaceRoot) || isDestructiveCall(call) || isRemoteBoundaryCall(call);
+export function neverInheritedCall(call: PolicyCall, workspaceRoot: string, added: readonly string[] = []): boolean {
+	return isProtectedWrite(call, workspaceRoot) || isOutsideWrite(call, workspaceRoot, added) || isDestructiveCall(call) || isRemoteBoundaryCall(call);
 }
 
 /**

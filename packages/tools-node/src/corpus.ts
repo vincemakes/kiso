@@ -22,8 +22,9 @@
  *    hold credentials. A committed file is not a secret by the user's own
  *    declaration, so `.github/` and `.eslintrc` ARE searchable; but an
  *    incidental hit from a search for "KEY" is exposure without intent,
- *    and that is what this prevents. An explicit `read_file` of any of
- *    them is unchanged.
+ *    and that is what this prevents. Since #31 (ADR-0058 Amendment 21) an
+ *    explicit `read_file` of one is refused too: the file tools never
+ *    open a secret location, inside the workspace or out.
  *
  * `node_modules` is skipped unconditionally in both modes, as before. It
  * is not a declaration question: DC-54 measured 296,924 files under a home
