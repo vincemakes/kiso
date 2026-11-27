@@ -1,6 +1,6 @@
 {
 	"name": "@vincemakes/kiso-actor",
-	"version": "0.56.2",
+	"version": "0.57.0",
 	"private": true,
 	"description": "kiso actor — durable work over disposable sessions: an append-only work log on a storage contract, its reducer, acceptance authority and work-owned effect identity (ADR-0064). Private until the C0 consumer integration.",
 	"type": "module",
@@ -21,8 +21,8 @@
 		"test": "vitest run"
 	},
 	"dependencies": {
-		"@vincemakes/kiso-core": "0.56.2",
-		"@vincemakes/kiso-runtime": "0.56.2"
+		"@vincemakes/kiso-core": "0.57.0",
+		"@vincemakes/kiso-runtime": "0.57.0"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.2",
