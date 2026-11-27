@@ -18,7 +18,11 @@ const INTERNAL = /["'][^"']*\/(effective-history|history-search)(\.js)?["']/;
 // ADR-0064 § 6: the neutral provenance check reads the human-authored
 // surface. It is reached only through the `./evidence` subpath, whose one
 // importer is kiso-actor (packages/actor/tests/actor-reach.test.ts).
-const ALLOWED = new Set(["packages/runtime/src/history-search.ts", "packages/runtime/src/provenance.ts"]);
+// ADR-0063 M2b: the records serializer reads effective history. It runs only
+// when `contextPolicy.records.enabled` (default off; the m2b wiring test pins
+// that off makes no extraction call and changes no request byte), and its
+// request is a side call of its own, never a run's request.
+const ALLOWED = new Set(["packages/runtime/src/history-search.ts", "packages/runtime/src/provenance.ts", "packages/runtime/src/records-extract.ts"]);
 
 function sources(dir: string): string[] {
 	return readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
